@@ -45,6 +45,22 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg
 #include "Matrix4x4.h"
 #include "Matrix3x3.h"
 
+enum class BlendMode{
+	//!< ブレンドなし
+	kBlendModeNone,
+	//!< 通常アルファブレンド
+	kBlendModeNormal,
+	//!< 加算
+	kBlendModeAdd,
+	//!< 減算
+	kBlendModeSubtract,
+	//!< 乗算
+	kBlendModeMultiply,
+	//!< スクリーン
+	kBlendModeScreen,
+	//利用してはいけない
+	kCountOfBlendMode,
+};
 
 struct VertexData {
 	Vector4 position;
@@ -123,6 +139,18 @@ void Log(const std::string& message) {
 
 void Log(const std::wstring& message) {
 	OutputDebugStringW(message.c_str());
+}
+
+void DrawImGui(BlendMode &currentBlendMode){
+	const char* blendModeNames[] = {
+		"None", "Normal", "Add", "Subtract", "Multiply", "Screen"
+	};
+
+	int current = static_cast<int>(currentBlendMode);
+	if(ImGui::Combo("Blend Mode", &current, blendModeNames, IM_ARRAYSIZE(blendModeNames))){
+		// 選択変更されたとき
+		currentBlendMode = static_cast<BlendMode>(current);
+	}
 }
 
 IDxcBlob* CompileShader(
@@ -782,15 +810,40 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	inputLayoutDesc.pInputElementDescs = inputElementDescs;
 	inputLayoutDesc.NumElements = _countof(inputElementDescs);
 
+	BlendMode currentBlendMode = BlendMode::kBlendModeNormal;
+
 	// BlendStateの設定
 	D3D12_BLEND_DESC blendDesc{};
 	// すべての色要素を書き込む
 	blendDesc.RenderTarget[0].RenderTargetWriteMask =
 		D3D12_COLOR_WRITE_ENABLE_ALL;
 	blendDesc.RenderTarget[0].BlendEnable = TRUE;
-	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	if(currentBlendMode == BlendMode::kBlendModeNormal){
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	}
+	else if(currentBlendMode == BlendMode::kBlendModeAdd){
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	}
+	else if(currentBlendMode == BlendMode::kBlendModeSubtract){
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_REV_SUBTRACT;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	} 
+	else if(currentBlendMode == BlendMode::kBlendModeMultiply){
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_SRC_COLOR;
+	}
+
+	else if(currentBlendMode == BlendMode::kBlendModeScreen){
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_INV_DEST_COLOR;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	}
 	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
 	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
 	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
