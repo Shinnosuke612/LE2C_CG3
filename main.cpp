@@ -787,6 +787,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	// すべての色要素を書き込む
 	blendDesc.RenderTarget[0].RenderTargetWriteMask =
 		D3D12_COLOR_WRITE_ENABLE_ALL;
+	blendDesc.RenderTarget[0].BlendEnable = TRUE;
+	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
 
 	// RasterizerStateの設定
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
@@ -1186,13 +1193,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// ImGui処理の中に追加（ImGui::ShowDemoWindow(); の前でも後でもOK）
 		ImGui::Begin("Scene Controls");
 
-		// === Transform操作 ===
-		if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-			ImGui::DragFloat3("Rotate", &transform.rotate.x, 0.01f);
+		// === modelTransform操作 ===
+		if (ImGui::CollapsingHeader("modelTransform", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGui::DragFloat3("modelRotate", &transform.rotate.x, 0.01f);
+		}
+		// === uvColor操作 ===
+		if(ImGui::CollapsingHeader("modelColor", ImGuiTreeNodeFlags_DefaultOpen)){
+			ImGui::DragFloat4("modelColor", &materialData->color.x, 0.01f, 0.0f, 1.0f);
 		}
 
 		if (ImGui::CollapsingHeader("directionalLight", ImGuiTreeNodeFlags_DefaultOpen)) {
+
+			ImGui::DragFloat4("Color", &directionalLightData->color.x, 0.01f, 0.0f, 1.0f);
 			ImGui::DragFloat3("direction", &directionalLightData->direction.x, 0.01f);
+			ImGui::DragFloat("intensity", &directionalLightData->intensity, 0.1f,0.0f,10.0f);
 		}
 
 		directionalLightData->direction = Normalize(directionalLightData->direction);
@@ -1212,6 +1226,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			ImGui::DragFloat2("UVScale", &uvTransformSprite.scale.x, 0.01f, -10.0f, 10.0f);
 
 			ImGui::SliderAngle("UVRotate", &uvTransformSprite.rotate.z);
+		}
+		// === spriteColor操作 ===
+		if (ImGui::CollapsingHeader("spriteColor", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGui::DragFloat4("spriteColor", &materialDataSprite->color.x, 0.01f,0.0f,1.0f);
 		}
 
 		// === トグル機能 ===
