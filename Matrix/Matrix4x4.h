@@ -1,9 +1,9 @@
 #pragma once
-#include "Vector3.h"
+#include "../Vector/Vector3.h"
 #include <cmath>
 
 struct Matrix4x4 {
-	float m[4][4];
+float m[4][4];
 };
 
 Matrix4x4 Multiply(const Matrix4x4& m1, const Matrix4x4& m2);
