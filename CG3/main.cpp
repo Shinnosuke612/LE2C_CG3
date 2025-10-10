@@ -39,11 +39,11 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg
 #include "externals/DirectXTex/d3dx12.h"
 #include <vector>
 
-#include "../CG2_2025_04_14/Vector/Vector2.h"
-#include "../CG2_2025_04_14/Vector/Vector3.h"
-#include "../CG2_2025_04_14/Vector/Vector4.h"
-#include "../CG2_2025_04_14/Matrix/Matrix4x4.h"
-#include "../CG2_2025_04_14/Matrix/Matrix3x3.h"
+#include "../CG3/Vector/Vector2.h"
+#include "../CG3/Vector/Vector3.h"
+#include "../CG3/Vector/Vector4.h"
+#include "../CG3/Matrix/Matrix4x4.h"
+#include "../CG3/Matrix/Matrix3x3.h"
 
 enum class BlendMode{
 	//!< ブレンドなし
@@ -471,7 +471,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	// ウィンドウプロシージャ
 	wc.lpfnWndProc = WindowProc;
 	// ウィンドウクラス名（なんでも良い）
-	wc.lpszClassName = L"CG2WindowClass";
+	wc.lpszClassName = L"CG3WindowClass";
 	// インスタンスハンドル
 	wc.hInstance = GetModuleHandle(nullptr);
 	// カーソル
