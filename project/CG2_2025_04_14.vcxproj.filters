@@ -102,5 +102,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\Object3D.hlsli" />
+    <None Include=".editorconfig" />
   </ItemGroup>
 </Project>
