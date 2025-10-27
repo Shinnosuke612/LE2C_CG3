@@ -4,18 +4,18 @@ on:
     branches:
      - master
 env:
-  SOLUTION_FILE_PATH:project/CG2_2025_04_14.sln
-  CONFIGURATION:Debug
+  SOLUTION_FILE_PATH:project/CG2_2025_04_14.sln　
+  CONFIGURATION:Debug　
 jobs:
   build:
-    runs-on: windows-2022 :
+    runs-on: windows-2022
     
     steps:
       - name: Checkout
-        uses:actions/checkout@v4 
-          - name: Add MSBuild to PATH
-            uses: microsoft/setup-msbuild@v2
-            with:msbuild-architecture: x64 
-          - name:build
-            run: |
-              msbuild ${{env.SOLUTION_FILE_PATH}}/p:platform=x64,Configuration=${{env.CONFIGURATION}}
+        uses: actions/checkout@v4 
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+        with:msbuild-architecture: x64 
+      - name:build
+        run: |
+          msbuild ${{env.SOLUTION_FILE_PATH}}/p:platform=x64,Configuration=${{env.CONFIGURATION}}
