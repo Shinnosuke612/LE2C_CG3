@@ -1,8 +1,24 @@
 name: DebugBuild
-on:push:branches: -master
+on:
+  push:
+    branches:
+     - master
 env:
-SOLUTION_FILE_PATH:project/CG2_2025_04_14.sln : CONFIGURATION:Debug
-jobs:build:runs-on:windows-2022 : steps:-name:Checkout
-uses:actions/checkout@v4 : -name:Add MSBuild to PATH
-uses:microsoft/setup-msbuild@v2 : with:msbuild-architecture:x64 :-name:build
-run:msbuild ${{env.SOLUTION_FILE_PATH}}/p:platform=x64,Configuration=${{env.CONFIGURATION}}
+#リポジトリのルートディレクトリを基点としたソリューションファイルのパス
+SOLUTION_FILE_PATH:project/CG2_2025_04_14.sln
+
+#Visual Stuido の構成(Debug / Release)
+CONFIGURATION: Debug
+jobs:
+  build:
+    runs-on: windows-2022 :
+    
+    steps:
+      - name: Checkout
+        uses:actions/checkout@v4 
+          - name: Add MSBuild to PATH
+            uses: microsoft/setup-msbuild@v2
+            with:msbuild-architecture: x64 
+          - name:build
+            run: |
+              msbuild ${{env.SOLUTION_FILE_PATH}}/p:platform=x64,Configuration=${{env.CONFIGURATION}}
