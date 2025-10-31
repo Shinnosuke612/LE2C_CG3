@@ -1024,11 +1024,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	//パーティクル用PSO
 		// Shaderをコンパイルする
-	IDxcBlob* vertexShaderBlobForInstancing = CompileShader(L"Particle.VS.hlsl",
+	IDxcBlob* vertexShaderBlobForInstancing = CompileShader(L"resources/shaders/Particle.VS.hlsl",
 											   L"vs_6_0", dxcUtils, dxcCompiler, includeHandler);
 	assert(vertexShaderBlobForInstancing != nullptr);
 
-	IDxcBlob* pixelShaderBlobForInstancing = CompileShader(L"Particle.PS.hlsl",
+	IDxcBlob* pixelShaderBlobForInstancing = CompileShader(L"resources/shaders/Particle.PS.hlsl",
 											  L"ps_6_0", dxcUtils, dxcCompiler, includeHandler);
 	assert(pixelShaderBlobForInstancing != nullptr);
 
