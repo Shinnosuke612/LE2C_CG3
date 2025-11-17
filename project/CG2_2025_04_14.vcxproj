@@ -163,6 +163,7 @@ copy "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\dxil.dll" "$(O
     <ClCompile Include="externals\imgui\imgui_impl_win32.cpp" />
     <ClCompile Include="externals\imgui\imgui_tables.cpp" />
     <ClCompile Include="externals\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="Input.cpp" />
     <ClCompile Include="main.cpp">
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">MaxSpeed</Optimization>
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</WholeProgramOptimization>
@@ -190,6 +191,7 @@ copy "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\dxil.dll" "$(O
     <ClInclude Include="externals\imgui\imstb_rectpack.h" />
     <ClInclude Include="externals\imgui\imstb_textedit.h" />
     <ClInclude Include="externals\imgui\imstb_truetype.h" />
+    <ClInclude Include="Input.h" />
     <ClInclude Include="Matrix\Matrix3x3.h" />
     <ClInclude Include="Matrix\Matrix4x4.h" />
     <ClInclude Include="Vector\Vector2.h" />
