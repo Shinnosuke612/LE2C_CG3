@@ -38,12 +38,20 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg
 #include <DirectXTex.h>
 #include "externals/DirectXTex/d3dx12.h"
 #include <vector>
+//入力
+#define DIRECTINPUT_VERSION 0x0800
+#include <dinput.h>
+
+#pragma comment(lib,"dinput8.lib")
+#pragma comment(lib,"dxguid.lib")
+
 
 #include "Vector2.h"
 #include "Vector3.h"
 #include "Vector4.h"
 #include "Matrix4x4.h"
 #include "Matrix3x3.h"
+#include "Input.h"
 
 enum class BlendMode{
 	//!< ブレンドなし
@@ -721,6 +729,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	HANDLE fenceEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 	assert(fenceEvent != nullptr);
 
+	Input* input = nullptr;
+	input = new Input();
+	input->Initialize(wc.hInstance,hwnd);
+
 	// dxcCompilerを初期化
 	IDxcUtils* dxcUtils = nullptr;
 	IDxcCompiler3* dxcCompiler = nullptr;
@@ -1239,6 +1251,19 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			DispatchMessage(&msg);
 		}
 
+
+		//================================
+		//入力処理
+		//================================
+
+		input->Update();
+		if(input->PushKey(DIK_0)){
+			OutputDebugStringA("Hit 0 \n");
+		}
+		if(input->TriggerKey(DIK_0)){
+			OutputDebugStringA("Trigger 0 \n");
+		}
+
 		//================================
 		// ループの用意
 		//================================
@@ -1477,6 +1502,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 #endif
 	CloseWindow(hwnd);
 
+	delete input;
 
 	// リソースリークチェック
 	IDXGIDebug1* debug;
