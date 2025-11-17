@@ -1423,7 +1423,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		{0.0f,0.0f,0.0f},
 	};
 
-	bool isDrawSprite = true;
+	bool isDrawSprite = false;
 	bool useMonsterBall = true;
 
 	//ImGuiの初期化
