@@ -169,6 +169,7 @@ copy "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\dxil.dll" "$(O
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</WholeProgramOptimization>
     </ClCompile>
     <ClCompile Include="Matrix\Matrix4x4.cpp" />
+    <ClCompile Include="WinApp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="resources\shaders\Object3D.PS.hlsl">
@@ -207,6 +208,7 @@ copy "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\dxil.dll" "$(O
     <ClInclude Include="Vector\Vector2.h" />
     <ClInclude Include="Vector\Vector3.h" />
     <ClInclude Include="Vector\Vector4.h" />
+    <ClInclude Include="WinApp.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="externals\imgui\LICENSE.txt" />

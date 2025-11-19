@@ -1,13 +1,14 @@
 #pragma once
 #include <cassert>
 #include <Windows.h>
+#include "WinApp.h"
 //入力
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
 class Input{
 public:
 	//初期化
-	void Initialize(HINSTANCE hInstance,HWND hwnd);
+	void Initialize(WinApp* winApp);
 	//更新
 	void Update();
 
@@ -20,4 +21,6 @@ private:
 	BYTE keyPre[256] = {};
 
 	IDirectInput8* directInput = nullptr;
+	//WindowAPI
+	WinApp* winApp_ = nullptr;
 };
