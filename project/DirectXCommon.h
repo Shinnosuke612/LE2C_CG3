@@ -16,6 +16,7 @@
 #include "externals/imgui/imgui_impl_win32.h"
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #include <DirectXTex.h>
+#include <chrono>
 
 class DirectXCommon{
 public:
@@ -135,5 +136,11 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[2];
 	//barrier
 	D3D12_RESOURCE_BARRIER barrier{};
+	//記録時間(FPS固定用)
+	std::chrono::steady_clock::time_point reference_;
+	//FPS固定初期化
+	void InitializeFixFPS();
+	//FPS固定更新
+	void UpdateFixFPS();
 };
 
