@@ -1,14 +1,139 @@
 #pragma once
 #include <d3d12.h>
+#pragma comment(lib,"d3d12.lib")
+#pragma comment(lib,"dxgi.lib")
 #include <dxgi1_6.h>
+#include <dxcapi.h>
+#pragma comment(lib,"dxcompiler.lib")
 #include <wrl.h>
 #include "Logger.h"
+#include "StringUtility.h"
+#include "WinApp.h"
+#include <array>
+//imguiを使うためのinclude
+#include "externals/imgui/imgui.h"
+#include "externals/imgui/imgui_impl_dx12.h"
+#include "externals/imgui/imgui_impl_win32.h"
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#include <DirectXTex.h>
+
 class DirectXCommon{
 public:
 	//初期化
-	void Initialize();
+	void Initialize(WinApp* winApp);
+	//描画前処理
+	void PreDraw();
+	// 描画後処理
+	void PostDraw();
 	//デバイスの初期化
 	void DeviceInitialize();
+	//コマンド関連の初期化
+	void CommandInitialize();
+	//スワップチェーンの生成
+	void SwapChainGenerate();
+	//深度バッファの生成
+	void CreateDepthStencilTextureResource();
+	//各種デスクリプターヒープの生成
+	void DescriptorHeapGenerate();
+	//デスクリプタヒープを生成する
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE heapType, UINT numDescriptors, bool shaderVisible);
+	//レンダーターゲットビューの初期化
+	void RenderTargetViewInitialize();
+	//深度ステンシルビューの初期化
+	void DepthStencilInitialize();
+	//フェンスの生成
+	void FenceGenerate();
+	//ビューポート矩形の初期化
+	void ViewportRectInitialize();
+	//シザリング矩形の初期化
+	void ScissorRectInitialize();
+	//DXCコンパイラの生成
+	void DXCCompilerGenerate();
+	//ImGuiの初期化
+	void ImGuiInitialize();
 
+/// <summary>
+/// SRVの指定番号のCPUデスクリプタハンドルを取得する
+/// </summary>
+	D3D12_CPU_DESCRIPTOR_HANDLE GetSRVCPUDescriptorHandle(uint32_t index);
+
+/// <summary>
+/// SRVの指定番号のGPUデスクリプタハンドルを取得する
+/// </summary>
+	D3D12_GPU_DESCRIPTOR_HANDLE GetSRVGPUDescriptorHandle(uint32_t index);
+
+
+	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(
+		// CompilerするShaderファイルへのパス
+		const std::wstring& filePath,
+		// Compilerに使用するProfile
+		const wchar_t* profile);
+
+	Microsoft::WRL::ComPtr <ID3D12Resource> CreateBufferResource(size_t sizeInBytes);
+
+	Microsoft::WRL::ComPtr <ID3D12Resource> CreateTextureResource(const DirectX::TexMetadata& metadate);
+
+	ID3D12Resource* UploadTextureData(const Microsoft::WRL::ComPtr <ID3D12Resource>& texture, const DirectX::ScratchImage& mipImages);
+
+	static DirectX::ScratchImage LoadTexture(const std::string& filePath);
+
+
+	//getter
+	ID3D12GraphicsCommandList* GetCommandList() const{
+		return commandList.Get();
+	}
+	ID3D12Device* GetDevice() const{
+		return device.Get();
+	}
+
+private:
+	//コマンド関連
+	ID3D12CommandQueue* commandQueue;//コマンドキュー
+	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList;//コマンドリスト
+	ID3D12CommandAllocator* commandAllocator;//コマンドアロケータ
+	//スワップチェーン
+	IDXGISwapChain4* swapChain;
+	DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};//スワップチェーンデスク
+	//深度バッファのリソース
+	ID3D12Resource* depthStencilResource;
+	//DirectX12デバイス
+	Microsoft::WRL::ComPtr<ID3D12Device> device;
+	//DXGIファクトリ
+	Microsoft::WRL::ComPtr<IDXGIFactory7> dxgiFactory;
+	//WindowsAPI
+	WinApp* winApp_ = nullptr;
+	//デスクリプタヒープ
+	Microsoft::WRL::ComPtr <ID3D12DescriptorHeap> rtvDescriptorHeap;
+	Microsoft::WRL::ComPtr <ID3D12DescriptorHeap> srvDescriptorHeap;
+	Microsoft::WRL::ComPtr <ID3D12DescriptorHeap> dsvDescriptorHeap;
+	//デスクリプタヒープのサイズ
+	uint32_t descriptorSizeSRV;
+	uint32_t descriptorSizeRTV;
+	uint32_t descriptorSizeDSV;
+	//デスクリプタハンドル取得関数
+	static D3D12_CPU_DESCRIPTOR_HANDLE  GetCPUDescriptorHandle(const Microsoft::WRL::ComPtr <ID3D12DescriptorHeap>& descriptorHeap, uint32_t descriptorSize, uint32_t index);
+	static D3D12_GPU_DESCRIPTOR_HANDLE  GetGPUDescriptorHandle(const Microsoft::WRL::ComPtr <ID3D12DescriptorHeap>& descriptorHeap, uint32_t descriptorSize, uint32_t index);
+	//RTVDesc
+	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc{};
+	//スワップチェーンリソース
+	std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> swapChainResources;
+	//フェンス
+	Microsoft::WRL::ComPtr <ID3D12Fence> fence;
+	//フェンス値
+	uint64_t fenceValue = 0;
+	//フェンスイベント
+	HANDLE fenceEvent;
+	// ビューポート矩形
+	D3D12_VIEWPORT viewport{};
+	// シザー矩形
+	D3D12_RECT scissorRect{};
+	//DXCコンパイラ用
+	Microsoft::WRL::ComPtr <IDxcUtils> dxcUtils;
+	Microsoft::WRL::ComPtr <IDxcCompiler3> dxcCompiler;
+	Microsoft::WRL::ComPtr <IDxcIncludeHandler> includeHandler;
+	// RTVを2つ作るのでディスクリプタを2つ用意
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[2];
+	//barrier
+	D3D12_RESOURCE_BARRIER barrier{};
 };
 
