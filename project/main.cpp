@@ -22,16 +22,20 @@
 #pragma comment(lib,"dinput8.lib")
 #pragma comment(lib,"dxguid.lib")
 
-
 #include "Vector2.h"
 #include "Vector3.h"
 #include "Vector4.h"
 #include "Matrix4x4.h"
 #include "Matrix3x3.h"
+#include "Transform.h"
+#include "Math.h"
 #include "Input.h"
 #include "WinApp.h"
 #include "DirectXCommon.h"
 #include "D3DResourceLeadChecker.h"
+#include "SpriteCommon.h"
+#include "Sprite.h"
+#include "TextureManager.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -65,12 +69,6 @@ struct VertexData {
 	Vector3 normal;
 };
 
-struct Transform {
-	Vector3 scale;
-	Vector3 rotate;
-	Vector3 translate;
-};
-
 struct Material {
 	Vector4 color;
 	int32_t enableLighting;
@@ -96,19 +94,6 @@ struct ModelData{
 struct MatrialData{
 	std::string textureFilePath;
 };
-
-float Length(const Vector3& v) {
-	return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-}
-
-Vector3 Normalize(const Vector3& v) {
-	float len = Length(v);
-	if (len < 1e-6f) {
-		return { 0.0f, 0.0f, 0.0f };
-	}
-	float inv = 1.0f / len;
-	return { v.x * inv, v.y * inv, v.z * inv };
-}
 
 void DrawImGui(BlendMode &currentBlendMode){
 	const char* blendModeNames[] = {
@@ -257,6 +242,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	dxCommon = new DirectXCommon();
 	dxCommon->Initialize(winApp);
 
+	TextureManager::GetInstance()->Initialize(dxCommon);
 	HRESULT hr;
 
 	// ウィンドウを表示する
@@ -278,6 +264,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	input->Initialize(winApp);
 
 	
+
+	SpriteCommon* spriteCommon = nullptr;
+	//スプライト共通部の初期化
+	spriteCommon = new SpriteCommon;
+	spriteCommon->Initialize(dxCommon);
 
 	D3D12_DESCRIPTOR_RANGE descriptorRange[1] = {};
 	descriptorRange[0].BaseShaderRegister = 0;
@@ -917,6 +908,17 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	D3D12_CPU_DESCRIPTOR_HANDLE instancingSrvHandleCPU = dxCommon->GetSRVCPUDescriptorHandle(3);
 	D3D12_GPU_DESCRIPTOR_HANDLE instancingSrvHandleGPU = dxCommon->GetSRVGPUDescriptorHandle(3);
 	dxCommon->GetDevice()->CreateShaderResourceView(instancingResource.Get(), &instancingSrvDesc, instancingSrvHandleCPU);
+
+
+	std::vector<Sprite*> sprites;
+	for(uint32_t i = 0; i < 5; ++i){
+		Sprite* sprite = new Sprite();
+		sprite->Initialize(spriteCommon);
+		sprite->SetPosition({ float(i * 200),0.0f });
+		sprite->SetSize({ 100.0f,100.0f });
+		sprites.push_back(sprite);
+	}
+
 	// ウィンドウの×ボタンが押されるまでループ
 	while (true) {
 
@@ -966,7 +968,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			ImGui::DragFloat("intensity", &directionalLightData->intensity, 0.1f,0.0f,10.0f);
 		}
 
-		directionalLightData->direction = Normalize(directionalLightData->direction);
+		directionalLightData->direction = Math::Normalize(directionalLightData->direction);
 
 		// === カメラ操作 ===
 		if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -997,7 +999,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		ImGui::End();
 
-
+		for(Sprite* sprite : sprites){
+			sprite->Update();
+		}
 
 		//ゲーム処理
 		/*transform.rotate.y += 0.03f;*/
@@ -1039,7 +1043,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		ImGui::Render();
 
+		//DirectXの描画準備。全ての描画に共通のグラフィックスコマンドを積む
 		dxCommon->PreDraw();
+
+		//Spriteの描画準備。Spriteの描画に共通のグラフィックスコマンドを積む
+		spriteCommon->SetCommonRenderState();
 
 		// RootSignatureを設定。PSOに設定しているけど別途設定も必要
 		dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignatureForInstancing);
@@ -1092,6 +1100,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			//描画
 			dxCommon->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);
 		}
+		for(Sprite* sprite : sprites){
+			sprite->Draw();
+		}
 
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), dxCommon->GetCommandList());
 
@@ -1124,7 +1135,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 #endif
 	winApp->Finalize();
+	TextureManager::GetInstance()->Finalize();
 
+	for(Sprite* sprite : sprites){
+	delete sprite;
+	sprite = nullptr;
+	}
+	delete spriteCommon;
+	spriteCommon = nullptr;
 	delete input;
 	input = nullptr;
 	delete winApp;

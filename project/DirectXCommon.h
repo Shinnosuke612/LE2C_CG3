@@ -51,6 +51,8 @@ public:
 	void DXCCompilerGenerate();
 	//ImGuiの初期化
 	void ImGuiInitialize();
+	//実行から待ち、リセットを行う関数
+	void ExecuteCommandListAndWait();
 
 /// <summary>
 /// SRVの指定番号のCPUデスクリプタハンドルを取得する
@@ -74,8 +76,6 @@ public:
 	Microsoft::WRL::ComPtr <ID3D12Resource> CreateTextureResource(const DirectX::TexMetadata& metadate);
 
 	ID3D12Resource* UploadTextureData(const Microsoft::WRL::ComPtr <ID3D12Resource>& texture, const DirectX::ScratchImage& mipImages);
-
-	static DirectX::ScratchImage LoadTexture(const std::string& filePath);
 
 
 	//getter
@@ -135,5 +135,9 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[2];
 	//barrier
 	D3D12_RESOURCE_BARRIER barrier{};
+	public:
+
+		//最大SRV数(最大テクスチャ枚数)
+		static const uint32_t kMaxSRVCount;
 };
 
