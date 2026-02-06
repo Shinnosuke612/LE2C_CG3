@@ -12,30 +12,11 @@
 #include <d3d12.h> 
 
 class Object3dCommon;
+class Model;
 
 class Object3d{
 private://インナークラス
-	//頂点データ
-	struct VertexData{
-		Vector4 position;
-		Vector2 texcoord;
-		Vector3 normal;
-	};
-	struct MaterialData{
-		std::string textureFilePath;
-		uint32_t textureIndex = 0;
-	};
-	struct ModelData{
-		std::vector<VertexData> vertices;
-		MaterialData material;
-	};
-	//マテリアルデータ
-	struct Material{
-		Vector4 color;
-		int32_t enableLighting;
-		float padding[3];
-		Matrix4x4 uvTransform;
-	};
+
 	//座標変換行列データ
 	struct TransformationMatrix{
 		Matrix4x4 WVP;
@@ -55,17 +36,21 @@ public: //公開メンバ関数
 	void Update();
 	//描画
 	void Draw();
+	//setter
+	void SetModel(Model* model){
+		this->model = model;
+	}
+	// setter
+	void SetScale(const Vector3& scale){ transform.scale = scale; }
+	void SetRotate(const Vector3& rotate){ transform.rotate = rotate; }
+	void SetTranslate(const Vector3& translate){transform.translate = translate;}
 
+	// getter（参照返しが軽くて安全）
+	const Vector3& GetScale() const{return transform.scale;}
+	const Vector3& GetRotate() const{return transform.rotate;}
+	const Vector3& GetTranslate() const{return transform.translate;}
 private: //非公開メンバ関数
-	// .mtlファイルの読み取り
-	static MaterialData LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename);
-	// .objファイルの読み取り
-	static ModelData LoadObjFile(const std::string& directoryPath, const std::string& filename);
 
-	//頂点リソース作成関数
-	void CreateVertexResource();
-	//マテリアルリソース作成関数
-	void CreateMaterialResource();
 	//座標変換行列用リソース作成関数
 	void CreateTransformationMatrixResource();
 	//並行光源用リソース作成関数
@@ -76,28 +61,19 @@ private://メンバ変数
 	Transform cameraTransform;
 
 	Object3dCommon* object3dCommon = nullptr;
-	//objファイルのデータ
-	ModelData modelData;
-	//バッファリソース
-	ID3D12Resource* vertexResource;
-	//バッファリソース内のデータを指すポインタ
-	VertexData* vertexData = nullptr;
-	//バッファリソースの使い道を補足するバッファビュー
-	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 
-	//バッファリソース
-	ID3D12Resource* materialResource;
-	//バッファリソース内のデータおw指すポインタ
-	Material* materialData = nullptr;
 
 	//バッファリソース
 	ID3D12Resource* transformationMatrixResource;
 	//バッファリソース内のデータおw指すポインタ
 	TransformationMatrix* transformationMatrixData = nullptr;
-	
+
 	//バッファリソース
 	ID3D12Resource* directionalLightResource;
 	//バッファリソース内のデータおw指すポインタ
 	DirectionalLight* directionalLightData = nullptr;
+
+	//見た目用のモデル
+	Model* model = nullptr;
 };
 

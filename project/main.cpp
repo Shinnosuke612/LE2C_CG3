@@ -38,6 +38,8 @@
 #include "TextureManager.h"
 #include "Object3dCommon.h"
 #include "Object3d.h"
+#include "ModelCommon.h"
+#include "Model.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -278,6 +280,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	//3Dオブジェクト共通部の初期化
 	object3dCommon = new Object3dCommon;
 	object3dCommon->Initialize(dxCommon);
+
+	ModelCommon* modelCommon = nullptr;
+	//モデル共通部の初期化
+	modelCommon = new ModelCommon;
+	modelCommon->Initialize(dxCommon);
 
 	D3D12_DESCRIPTOR_RANGE descriptorRange[1] = {};
 	descriptorRange[0].BaseShaderRegister = 0;
@@ -931,8 +938,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		sprites.push_back(sprite);
 	}
 
+	Model* model = new Model();
+	model->Initialize(modelCommon);
+
 	Object3d* object3d = new Object3d();
 	object3d->Initialize(object3dCommon);
+	object3d->SetModel(model);
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (true) {

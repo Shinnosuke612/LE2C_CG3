@@ -28,6 +28,8 @@
     <ClCompile Include="WinApp.cpp" />
     <ClCompile Include="Object3dCommon.cpp" />
     <ClCompile Include="Object3d.cpp" />
+    <ClCompile Include="Model.cpp" />
+    <ClCompile Include="ModelCommon.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3DResourceLeadChecker.h" />
@@ -56,6 +58,8 @@
     <ClInclude Include="WinApp.h" />
     <ClInclude Include="Object3dCommon.h" />
     <ClInclude Include="Object3d.h" />
+    <ClInclude Include="Model.h" />
+    <ClInclude Include="ModelCommon.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />
