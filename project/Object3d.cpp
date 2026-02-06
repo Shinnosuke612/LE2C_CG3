@@ -2,6 +2,7 @@
 #include "Object3dCommon.h"
 #include "DirectXCommon.h"
 #include "TextureManager.h"
+#include "ModelManager.h"
 #include "Model.h"
 
 void Object3d::Initialize(Object3dCommon* object3dCommon){
@@ -42,6 +43,11 @@ void Object3d::Draw(){
 	if(model){
 		model->Draw();
 	}
+}
+
+void Object3d::SetModel(const std::string& filePath){
+//モデルを検索してセットする
+	model = ModelManager::GetInstance()->FindModel(filePath);
 }
 
 

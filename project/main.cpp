@@ -40,6 +40,7 @@
 #include "Object3d.h"
 #include "ModelCommon.h"
 #include "Model.h"
+#include "ModelManager.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -249,6 +250,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	TextureManager::GetInstance()->Initialize(dxCommon);
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
+
+	ModelManager::GetInstance()->Initialize(dxCommon);
+	ModelManager::GetInstance()->LoadModel("plane.obj");
+	
 	HRESULT hr;
 
 	// ウィンドウを表示する
@@ -938,12 +943,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		sprites.push_back(sprite);
 	}
 
-	Model* model = new Model();
-	model->Initialize(modelCommon);
 
 	Object3d* object3d = new Object3d();
 	object3d->Initialize(object3dCommon);
-	object3d->SetModel(model);
+	object3d->SetModel("plane.obj");
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (true) {
@@ -1168,6 +1171,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 #endif
 	winApp->Finalize();
 	TextureManager::GetInstance()->Finalize();
+	ModelManager::GetInstance()->Finalize();
 
 	for(Sprite* sprite : sprites){
 	delete sprite;

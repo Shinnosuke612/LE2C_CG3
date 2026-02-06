@@ -44,6 +44,7 @@ public: //公開メンバ関数
 	void SetScale(const Vector3& scale){ transform.scale = scale; }
 	void SetRotate(const Vector3& rotate){ transform.rotate = rotate; }
 	void SetTranslate(const Vector3& translate){transform.translate = translate;}
+	void SetModel(const std::string& filePath);
 
 	// getter（参照返しが軽くて安全）
 	const Vector3& GetScale() const{return transform.scale;}

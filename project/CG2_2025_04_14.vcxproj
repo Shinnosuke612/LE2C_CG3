@@ -175,6 +175,7 @@ copy "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\dxil.dll" "$(O
     <ClCompile Include="Matrix\Matrix4x4.cpp" />
     <ClCompile Include="Model.cpp" />
     <ClCompile Include="ModelCommon.cpp" />
+    <ClCompile Include="ModelManager.cpp" />
     <ClCompile Include="Object3d.cpp" />
     <ClCompile Include="Object3dCommon.cpp" />
     <ClCompile Include="Sprite.cpp" />
@@ -223,6 +224,7 @@ copy "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\dxil.dll" "$(O
     <ClInclude Include="Matrix\Matrix4x4.h" />
     <ClInclude Include="Model.h" />
     <ClInclude Include="ModelCommon.h" />
+    <ClInclude Include="ModelManager.h" />
     <ClInclude Include="Object3d.h" />
     <ClInclude Include="Object3dCommon.h" />
     <ClInclude Include="Sprite.h" />

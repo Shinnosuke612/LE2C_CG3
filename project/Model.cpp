@@ -2,9 +2,9 @@
 #include "ModelCommon.h"
 #include "DirectXCommon.h"
 #include "TextureManager.h"
-void Model::Initialize(ModelCommon* modelCommon){
+void Model::Initialize(ModelCommon* modelCommon, const std::string& directoryPath, const std::string& filename){
 	this->modelCommon = modelCommon;
-		modelData = LoadObjFile("resources", "plane.obj");
+		modelData = LoadObjFile(directoryPath, filename);
 	CreateVertexResource();
 	CreateMaterialResource();
 

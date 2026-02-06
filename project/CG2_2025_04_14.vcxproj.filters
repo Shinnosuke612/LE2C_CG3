@@ -30,6 +30,7 @@
     <ClCompile Include="Object3d.cpp" />
     <ClCompile Include="Model.cpp" />
     <ClCompile Include="ModelCommon.cpp" />
+    <ClCompile Include="ModelManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3DResourceLeadChecker.h" />
@@ -60,6 +61,7 @@
     <ClInclude Include="Object3d.h" />
     <ClInclude Include="Model.h" />
     <ClInclude Include="ModelCommon.h" />
+    <ClInclude Include="ModelManager.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />
