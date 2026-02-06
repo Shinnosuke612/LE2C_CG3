@@ -913,7 +913,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 
 	std::vector<Sprite*> sprites;
-	for(uint32_t i = 0; i < 6; ++i){
+	for(uint32_t i = 0; i < 1; ++i){
 		Sprite* sprite = new Sprite();
 		if(i % 2 == 1){
 			sprite->Initialize(spriteCommon, "resources/monsterBall.png");
@@ -921,7 +921,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			sprite->Initialize(spriteCommon, "resources/uvChecker.png");
 		}
 		sprite->SetPosition({ float(i * 200),0.0f });
-		sprite->SetSize({ 100.0f,100.0f });
 		sprites.push_back(sprite);
 	}
 
