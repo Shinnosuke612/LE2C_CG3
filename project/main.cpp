@@ -932,7 +932,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	}
 
 	Object3d* object3d = new Object3d();
-	object3d->Initialize();
+	object3d->Initialize(object3dCommon);
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (true) {
@@ -1017,7 +1017,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		for(Sprite* sprite : sprites){
 			sprite->Update();
 		}
-
+		object3d->Update();
 		//ゲーム処理
 		/*transform.rotate.y += 0.03f;*/
 		Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
@@ -1061,8 +1061,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		//DirectXの描画準備。全ての描画に共通のグラフィックスコマンドを積む
 		dxCommon->PreDraw();
 
-		//Spriteの描画準備。Spriteの描画に共通のグラフィックスコマンドを積む
-		spriteCommon->SetCommonRenderState();
 
 //		// RootSignatureを設定。PSOに設定しているけど別途設定も必要
 //		dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignatureForInstancing);
@@ -1114,11 +1112,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 //		dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 		object3dCommon->SetCommonRenderState();
+		object3d->Draw();
 
 		//if (isDrawSprite) {
 		//	//描画
 		//	dxCommon->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);
 		//}
+		//Spriteの描画準備。Spriteの描画に共通のグラフィックスコマンドを積む
+
+		spriteCommon->SetCommonRenderState();
 		for(Sprite* sprite : sprites){
 			sprite->Draw();
 		}
