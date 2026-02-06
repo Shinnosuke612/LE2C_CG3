@@ -36,6 +36,8 @@
 #include "SpriteCommon.h"
 #include "Sprite.h"
 #include "TextureManager.h"
+#include "Object3dCommon.h"
+#include "Object3d.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -271,6 +273,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	//スプライト共通部の初期化
 	spriteCommon = new SpriteCommon;
 	spriteCommon->Initialize(dxCommon);
+
+	Object3dCommon* object3dCommon = nullptr;
+	//3Dオブジェクト共通部の初期化
+	object3dCommon = new Object3dCommon;
+	object3dCommon->Initialize(dxCommon);
 
 	D3D12_DESCRIPTOR_RANGE descriptorRange[1] = {};
 	descriptorRange[0].BaseShaderRegister = 0;
@@ -924,6 +931,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		sprites.push_back(sprite);
 	}
 
+	Object3d* object3d = new Object3d();
+	object3d->Initialize();
+
 	// ウィンドウの×ボタンが押されるまでループ
 	while (true) {
 
@@ -1054,54 +1064,56 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		//Spriteの描画準備。Spriteの描画に共通のグラフィックスコマンドを積む
 		spriteCommon->SetCommonRenderState();
 
-		// RootSignatureを設定。PSOに設定しているけど別途設定も必要
-		dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignatureForInstancing);
-		dxCommon->GetCommandList()->SetPipelineState(graphicsPipelineStateForInstancing); // PSOを設定
-
-		dxCommon->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView); // VBVを設定
-
-		//commandList->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
-
-		//commandList->SetGraphicsRootConstantBufferView(1, wvpResource->GetGPUVirtualAddress());
-
-		//commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
-
-		/*commandList->SetGraphicsRootDescriptorTable(2, useMonsterBall ? textureSrvHandleGPU2 : textureSrvHandleGPU);*/
-
-//		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1,instancingSrvHandleGPU);
+//		// RootSignatureを設定。PSOに設定しているけど別途設定も必要
+//		dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignatureForInstancing);
+//		dxCommon->GetCommandList()->SetPipelineState(graphicsPipelineStateForInstancing); // PSOを設定
 //
-//		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress()); // PS b0
-//		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1, instancingSrvHandleGPU);                   // VS t0
-///*		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);        */              // PS t0
-//		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress()); // PS b1
+//		dxCommon->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView); // VBVを設定
 //
-//		// 形状を設定。PSOに設定しているものとは本来別。同じものを設定することを考えておけば良い
+//		//commandList->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
+//
+//		//commandList->SetGraphicsRootConstantBufferView(1, wvpResource->GetGPUVirtualAddress());
+//
+//		//commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
+//
+//		/*commandList->SetGraphicsRootDescriptorTable(2, useMonsterBall ? textureSrvHandleGPU2 : textureSrvHandleGPU);*/
+//
+////		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1,instancingSrvHandleGPU);
+////
+////		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress()); // PS b0
+////		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1, instancingSrvHandleGPU);                   // VS t0
+/////*		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);        */              // PS t0
+////		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress()); // PS b1
+////
+////		// 形状を設定。PSOに設定しているものとは本来別。同じものを設定することを考えておけば良い
+////		dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+////
+////		// 描画！（DrawCall／ドローコール）。3頂点で1つのインスタンス。インスタンスについては今後
+////		dxCommon->GetCommandList()->DrawInstanced(UINT(modelData.vertices.size()), kNumInstance, 0, 0);
+//
+//		//二つ目のモデルの描画
+//		//commandList->SetGraphicsRootConstantBufferView(1, wvpResource2->GetGPUVirtualAddress());
+//		//commandList->IASetVertexBuffers(0, 1, &vertexBufferView2); // VBVを設定
+//		//commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
+//
+//		//Spriteの描画。変更が必要なものだけ変更する
+//				// RootSignatureを設定。PSOに設定しているけど別途設定も必要
+//		dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature);
+//		dxCommon->GetCommandList()->SetPipelineState(graphicsPipelineState); // PSOを設定
+//		dxCommon->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferViewSprite); // VBVを設定
+//
+//		dxCommon->GetCommandList()->IASetIndexBuffer(&indexBufferViewSprite); // VBVを設定
+//
+//		//TransformationMatrixCBufferの場所を限定
+//		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceSprite->GetGPUVirtualAddress());
+//
+//		//dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
+//
+//		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResourceSprite->GetGPUVirtualAddress());
+//
 //		dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-//
-//		// 描画！（DrawCall／ドローコール）。3頂点で1つのインスタンス。インスタンスについては今後
-//		dxCommon->GetCommandList()->DrawInstanced(UINT(modelData.vertices.size()), kNumInstance, 0, 0);
 
-		//二つ目のモデルの描画
-		//commandList->SetGraphicsRootConstantBufferView(1, wvpResource2->GetGPUVirtualAddress());
-		//commandList->IASetVertexBuffers(0, 1, &vertexBufferView2); // VBVを設定
-		//commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
-
-		//Spriteの描画。変更が必要なものだけ変更する
-				// RootSignatureを設定。PSOに設定しているけど別途設定も必要
-		dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature);
-		dxCommon->GetCommandList()->SetPipelineState(graphicsPipelineState); // PSOを設定
-		dxCommon->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferViewSprite); // VBVを設定
-
-		dxCommon->GetCommandList()->IASetIndexBuffer(&indexBufferViewSprite); // VBVを設定
-
-		//TransformationMatrixCBufferの場所を限定
-		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceSprite->GetGPUVirtualAddress());
-
-		//dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
-
-		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResourceSprite->GetGPUVirtualAddress());
-
-		dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		object3dCommon->SetCommonRenderState();
 
 		//if (isDrawSprite) {
 		//	//描画

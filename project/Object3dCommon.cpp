@@ -1,18 +1,20 @@
-#include "SpriteCommon.h"
+#include "Object3dCommon.h"
 #include "DirectXCommon.h"
 #include "Logger.h"
-void SpriteCommon::Initialize(DirectXCommon* dxCommon){
+
+void Object3dCommon::Initialize(DirectXCommon* dxCommon){
 	dxCommon_ = dxCommon;
+
 	GenerateGraphicsPipeline();
 }
 
-void SpriteCommon::SetCommonRenderState(){
+void Object3dCommon::SetCommonRenderState(){
 	dxCommon_->GetCommandList()->SetGraphicsRootSignature(rootSignature_.Get());
 	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipelineState_.Get());
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
-void SpriteCommon::MakeRootSignature(){
+void Object3dCommon::MakeRootSignature(){
 	HRESULT hr;
 	D3D12_DESCRIPTOR_RANGE descriptorRange[1] = {};
 	descriptorRange[0].BaseShaderRegister = 0;
@@ -59,14 +61,14 @@ void SpriteCommon::MakeRootSignature(){
 	}
 
 	// バイナリを元に生成
-	
+
 	hr = dxCommon_->GetDevice()->CreateRootSignature(0,
-													signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(),
-													IID_PPV_ARGS(&rootSignature_));
+													 signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(),
+													 IID_PPV_ARGS(&rootSignature_));
 	assert(SUCCEEDED(hr));
 }
 
-void SpriteCommon::GenerateGraphicsPipeline(){
+void Object3dCommon::GenerateGraphicsPipeline(){
 	MakeRootSignature();
 	HRESULT hr;
 	//DepthStencilStateの設定
@@ -140,11 +142,11 @@ void SpriteCommon::GenerateGraphicsPipeline(){
 
 	// Shaderをコンパイルする
 	Microsoft::WRL::ComPtr <IDxcBlob> vertexShaderBlob = dxCommon_->CompileShader(L"resources/shaders/Object3D.VS.hlsl",
-																				 L"vs_6_0");
+																				  L"vs_6_0");
 	assert(vertexShaderBlob != nullptr);
 
 	Microsoft::WRL::ComPtr <IDxcBlob> pixelShaderBlob = dxCommon_->CompileShader(L"resources/shaders/Object3D.PS.hlsl",
-																				L"ps_6_0");
+																				 L"ps_6_0");
 	assert(pixelShaderBlob != nullptr);
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC graphicsPipelineStateDesc{};
@@ -173,13 +175,14 @@ void SpriteCommon::GenerateGraphicsPipeline(){
 	graphicsPipelineStateDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
 	//実際に生成
+
 	hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(&graphicsPipelineStateDesc,
-															IID_PPV_ARGS(&graphicsPipelineState_));
+															 IID_PPV_ARGS(&graphicsPipelineState_));
 	assert(SUCCEEDED(hr));
 
 }
 
-inline D3D12_STATIC_SAMPLER_DESC SpriteCommon::MakeStaticSamplerS0(){
+inline D3D12_STATIC_SAMPLER_DESC Object3dCommon::MakeStaticSamplerS0(){
 	D3D12_STATIC_SAMPLER_DESC s{};
 	s.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 	s.AddressU = s.AddressV = s.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;

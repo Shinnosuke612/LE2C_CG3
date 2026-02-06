@@ -2,17 +2,17 @@
 #include <d3dx12.h>
 class DirectXCommon;
 
-class SpriteCommon{
-
-public://公開メンバ関数
-
+class Object3dCommon{
+public: //メンバ関数
 	//初期化
 	void Initialize(DirectXCommon* dxCommon);
 	//共通描画設定
 	void SetCommonRenderState();
 
 public://ゲッター
-	DirectXCommon* GetDxCommon() const{ return dxCommon_; }
+	DirectXCommon* GetDxCommon() const{
+		return dxCommon_;
+	}
 
 private://非公開メンバ関数
 
