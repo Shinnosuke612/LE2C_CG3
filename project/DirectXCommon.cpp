@@ -8,6 +8,8 @@
 using namespace Microsoft::WRL;
 using namespace Logger;
 
+const uint32_t DirectXCommon::kMaxSRVCount = 512;
+
 void DirectXCommon::Initialize(WinApp* winApp){
 	//NULL検出
 	assert(winApp);
@@ -317,7 +319,7 @@ void DirectXCommon::DescriptorHeapGenerate(){
 	rtvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 2, false);
 
 	//SRV用のヒープでディスクリプタの数は128。SRVはshader内で触るものなので、shederVisibleはture
-	srvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 128, true);
+	srvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kMaxSRVCount, true);
 
 	//DSV用のヒープでディスクリプタの数は1。DSVはShader内で触るものではないので、ShaderVisibleはfalse
 	dsvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false);
@@ -434,6 +436,27 @@ void DirectXCommon::ImGuiInitialize(){
 						*(&srvDescriptorHeap),
 						srvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 						srvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+}
+
+void DirectXCommon::ExecuteCommandListAndWait(){
+	HRESULT hr = commandList->Close();
+	assert(SUCCEEDED(hr));
+
+	ID3D12CommandList* lists[] = { commandList.Get() };
+	commandQueue->ExecuteCommandLists(1, lists);
+
+	++fenceValue;
+	commandQueue->Signal(fence.Get(), fenceValue);
+
+	if(fence->GetCompletedValue() < fenceValue){
+		fence->SetEventOnCompletion(fenceValue, fenceEvent);
+		WaitForSingleObject(fenceEvent, INFINITE);
+	}
+
+	hr = commandAllocator->Reset();
+	assert(SUCCEEDED(hr));
+	hr = commandList->Reset(commandAllocator, nullptr);
+	assert(SUCCEEDED(hr));
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE DirectXCommon::GetSRVCPUDescriptorHandle(uint32_t index){
@@ -609,23 +632,6 @@ ID3D12Resource* DirectXCommon::UploadTextureData(const Microsoft::WRL::ComPtr <I
 	// 中間リソースを呼び出し元に返す
 	// Detach で ComPtr から所有権を手放し、生ポインタだけ返す
 	return intermediateResource.Detach();
-
-}
-
-DirectX::ScratchImage DirectXCommon::LoadTexture(const std::string& filePath){
-	//テクスチャを読み込んでプログラムで扱えるようにする
-	DirectX::ScratchImage image{};
-	std::wstring filePathW = StringUtility::ConvertString(filePath);
-	HRESULT hr = DirectX::LoadFromWICFile(filePathW.c_str(), DirectX::WIC_FLAGS_FORCE_SRGB, nullptr, image);
-	assert(SUCCEEDED(hr));
-
-	//ミニマップの作成
-	DirectX::ScratchImage mipImages{};
-	hr = DirectX::GenerateMipMaps(image.GetImages(), image.GetImageCount(), image.GetMetadata(), DirectX::TEX_FILTER_SRGB, 0, mipImages);
-	assert(SUCCEEDED(hr));
-
-	//ミニマップ付きのデータを返す
-	return mipImages;
 
 }
 
