@@ -243,6 +243,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	dxCommon->Initialize(winApp);
 
 	TextureManager::GetInstance()->Initialize(dxCommon);
+	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
+	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 	HRESULT hr;
 
 	// ウィンドウを表示する
@@ -518,17 +520,17 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 											 IID_PPV_ARGS(&graphicsPipelineStateForInstancing));
 	assert(SUCCEEDED(hr));
 
-	//Textureを読んで転送する
-	DirectX::ScratchImage mipImages = dxCommon->LoadTexture("resources/uvChecker.png");
-	const DirectX::TexMetadata& metadata = mipImages.GetMetadata();
-	ID3D12Resource* textureResource = *&dxCommon->CreateTextureResource(metadata);
-	ID3D12Resource* intermediaResource = dxCommon->UploadTextureData(textureResource, mipImages);
+	////Textureを読んで転送する
+	//DirectX::ScratchImage mipImages = dxCommon->LoadTexture("resources/uvChecker.png");
+	//const DirectX::TexMetadata& metadata = mipImages.GetMetadata();
+	//ID3D12Resource* textureResource = *&dxCommon->CreateTextureResource(metadata);
+	//ID3D12Resource* intermediaResource = dxCommon->UploadTextureData(textureResource, mipImages);
 
-	//二枚目のTextureを読んで転送する
-	DirectX::ScratchImage mipImages2 = dxCommon->LoadTexture("resources/fence.png");
-	const DirectX::TexMetadata& metadata2 = mipImages2.GetMetadata();
-	ID3D12Resource* textureResource2 = *&dxCommon->CreateTextureResource(metadata2);
-	ID3D12Resource* intermediaResource2 = dxCommon->UploadTextureData(textureResource2, mipImages2);
+	////二枚目のTextureを読んで転送する
+	//DirectX::ScratchImage mipImages2 = dxCommon->LoadTexture("resources/fence.png");
+	//const DirectX::TexMetadata& metadata2 = mipImages2.GetMetadata();
+	//ID3D12Resource* textureResource2 = *&dxCommon->CreateTextureResource(metadata2);
+	//ID3D12Resource* intermediaResource2 = dxCommon->UploadTextureData(textureResource2, mipImages2);
 
 	//マテリアル用のリソースを作る。今回はカラー1つ分のサイズを用意する
 	ID3D12Resource* materialResource = *&dxCommon->CreateBufferResource(sizeof(Material));
@@ -867,34 +869,34 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	bool isDrawSprite = true;
 	bool useMonsterBall = true;
 
-	//metaDataを基にSRVの設定
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-	srvDesc.Format = metadata.format;
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MipLevels = UINT(metadata.mipLevels);
+	////metaDataを基にSRVの設定
+	//D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+	//srvDesc.Format = metadata.format;
+	//srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	//srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	//srvDesc.Texture2D.MipLevels = UINT(metadata.mipLevels);
 
-	//SRVを作成するDescriptorHeapの設定
-	D3D12_CPU_DESCRIPTOR_HANDLE textureSrvHandleCPU = dxCommon->GetSRVCPUDescriptorHandle(0);
-	D3D12_GPU_DESCRIPTOR_HANDLE textureSrvHandleGPU = dxCommon->GetSRVGPUDescriptorHandle(0);
-	//先頭はImGuiが使っているのでその次を使う
-	textureSrvHandleCPU.ptr += dxCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	textureSrvHandleGPU.ptr += dxCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	//SRVの作成
-	dxCommon->GetDevice()->CreateShaderResourceView(textureResource, &srvDesc, textureSrvHandleCPU);
+	////SRVを作成するDescriptorHeapの設定
+	//D3D12_CPU_DESCRIPTOR_HANDLE textureSrvHandleCPU = dxCommon->GetSRVCPUDescriptorHandle(0);
+	//D3D12_GPU_DESCRIPTOR_HANDLE textureSrvHandleGPU = dxCommon->GetSRVGPUDescriptorHandle(0);
+	////先頭はImGuiが使っているのでその次を使う
+	//textureSrvHandleCPU.ptr += dxCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	//textureSrvHandleGPU.ptr += dxCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	////SRVの作成
+	//dxCommon->GetDevice()->CreateShaderResourceView(textureResource, &srvDesc, textureSrvHandleCPU);
 
-	//metaDataを基に二個目のSRVの設定
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc2{};
-	srvDesc2.Format = metadata2.format;
-	srvDesc2.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc2.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc2.Texture2D.MipLevels = UINT(metadata2.mipLevels);
+	////metaDataを基に二個目のSRVの設定
+	//D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc2{};
+	//srvDesc2.Format = metadata2.format;
+	//srvDesc2.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	//srvDesc2.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	//srvDesc2.Texture2D.MipLevels = UINT(metadata2.mipLevels);
 
-	//SRVを作成するDescriptorHeapの設定
-	D3D12_CPU_DESCRIPTOR_HANDLE textureSrvHandleCPU2 = dxCommon->GetSRVCPUDescriptorHandle(2);
-	D3D12_GPU_DESCRIPTOR_HANDLE textureSrvHandleGPU2 = dxCommon->GetSRVGPUDescriptorHandle(2);
+	////SRVを作成するDescriptorHeapの設定
+	//D3D12_CPU_DESCRIPTOR_HANDLE textureSrvHandleCPU2 = dxCommon->GetSRVCPUDescriptorHandle(2);
+	//D3D12_GPU_DESCRIPTOR_HANDLE textureSrvHandleGPU2 = dxCommon->GetSRVGPUDescriptorHandle(2);
 
-	dxCommon->GetDevice()->CreateShaderResourceView(textureResource2, &srvDesc2, textureSrvHandleCPU2);
+	//dxCommon->GetDevice()->CreateShaderResourceView(textureResource2, &srvDesc2, textureSrvHandleCPU2);
 
 	//StructuredBuffer用のSRVの設定
 	D3D12_SHADER_RESOURCE_VIEW_DESC instancingSrvDesc{};
@@ -911,9 +913,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 
 	std::vector<Sprite*> sprites;
-	for(uint32_t i = 0; i < 5; ++i){
+	for(uint32_t i = 0; i < 6; ++i){
 		Sprite* sprite = new Sprite();
-		sprite->Initialize(spriteCommon);
+		if(i % 2 == 1){
+			sprite->Initialize(spriteCommon, "resources/monsterBall.png");
+		} else{
+			sprite->Initialize(spriteCommon, "resources/uvChecker.png");
+		}
 		sprite->SetPosition({ float(i * 200),0.0f });
 		sprite->SetSize({ 100.0f,100.0f });
 		sprites.push_back(sprite);
@@ -1063,18 +1069,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		/*commandList->SetGraphicsRootDescriptorTable(2, useMonsterBall ? textureSrvHandleGPU2 : textureSrvHandleGPU);*/
 
-		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1,instancingSrvHandleGPU);
-
-		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress()); // PS b0
-		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1, instancingSrvHandleGPU);                   // VS t0
-		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);                      // PS t0
-		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress()); // PS b1
-
-		// 形状を設定。PSOに設定しているものとは本来別。同じものを設定することを考えておけば良い
-		dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-		// 描画！（DrawCall／ドローコール）。3頂点で1つのインスタンス。インスタンスについては今後
-		dxCommon->GetCommandList()->DrawInstanced(UINT(modelData.vertices.size()), kNumInstance, 0, 0);
+//		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1,instancingSrvHandleGPU);
+//
+//		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress()); // PS b0
+//		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1, instancingSrvHandleGPU);                   // VS t0
+///*		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);        */              // PS t0
+//		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress()); // PS b1
+//
+//		// 形状を設定。PSOに設定しているものとは本来別。同じものを設定することを考えておけば良い
+//		dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+//
+//		// 描画！（DrawCall／ドローコール）。3頂点で1つのインスタンス。インスタンスについては今後
+//		dxCommon->GetCommandList()->DrawInstanced(UINT(modelData.vertices.size()), kNumInstance, 0, 0);
 
 		//二つ目のモデルの描画
 		//commandList->SetGraphicsRootConstantBufferView(1, wvpResource2->GetGPUVirtualAddress());
@@ -1092,14 +1098,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		//TransformationMatrixCBufferの場所を限定
 		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceSprite->GetGPUVirtualAddress());
 
-		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
+		//dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
 
 		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResourceSprite->GetGPUVirtualAddress());
 
-		if (isDrawSprite) {
-			//描画
-			dxCommon->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);
-		}
+		dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		//if (isDrawSprite) {
+		//	//描画
+		//	dxCommon->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);
+		//}
 		for(Sprite* sprite : sprites){
 			sprite->Draw();
 		}
@@ -1129,7 +1137,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	pixelShaderBlob->Release();
 	vertexShaderBlob->Release();
 	materialResource->Release();
-	intermediaResource->Release();
+	//intermediaResource->Release();
 
 #ifdef _DEBUG
 

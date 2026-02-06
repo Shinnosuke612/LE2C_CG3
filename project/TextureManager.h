@@ -24,11 +24,6 @@ private:
 	TextureManager(TextureManager&) = delete;
 	TextureManager& operator=(TextureManager&) = delete;
 
-/// <summary>
-/// テクスチャファイルの読み込み
-/// </summary>
-	void LoadTexture(const std::string& filePath);
-
 public:
 	//初期化
 	void Initialize(DirectXCommon* directXCommon);
@@ -41,7 +36,12 @@ public:
 	uint32_t GetTextureIndexByFilePath(const std::string& filePath);
 
 	//テクスチャ番号からGPUハンドルを取得
-	D3D12_GPU_DESCRIPTOR_HANDLE GerSrvHandleGPU(uint32_t textureIndex);
+	D3D12_GPU_DESCRIPTOR_HANDLE GetSrvHandleGPU(uint32_t textureIndex);
+
+	/// <summary>
+/// テクスチャファイルの読み込み
+/// </summary>
+	void LoadTexture(const std::string& filePath);
 private:
 	//テクスチャデータ
 	std::vector<TextureData> textureDatas;

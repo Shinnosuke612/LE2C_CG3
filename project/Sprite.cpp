@@ -4,11 +4,11 @@
 #include "TextureManager.h"
 void Sprite::Initialize(SpriteCommon* spriteCommon, std::string textureFilePath){
 	transform = { {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f} };
-	spriteCommon_ = spriteCommon;
+	this->spriteCommon_ = spriteCommon;
 	MakeVertexData();
 	MakeMaterialData();
 	MakeTransformationMatrixData();
-	textureIndex = TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath);
+	this->textureIndex = TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath);
 }
 
 void Sprite::Update(){
@@ -67,7 +67,7 @@ void Sprite::Draw(){
 
 	spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
 
-	spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(2, TextureManager::GetInstance()->GerSrvHandleGPU(textureIndex));
+	spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(2, TextureManager::GetInstance()->GetSrvHandleGPU(textureIndex));
 	//描画
 	spriteCommon_->GetDxCommon()->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);
 }
@@ -103,8 +103,6 @@ void Sprite::MakeVertexData(){
 void Sprite::MakeMaterialData(){
 	//マテリアルリソースを作る
 	materialResource = *&spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(Material));
-	//マテリアルデータを書き込む
-	Material* materialData = nullptr;
 	//書き込むためのアドレスを取得
 	materialResource->Map(0, nullptr, reinterpret_cast<void**>(&materialData));
 	//今回は赤を書き込んでる

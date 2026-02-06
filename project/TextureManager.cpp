@@ -31,7 +31,7 @@ void TextureManager::LoadTexture(const std::string& filePath){
 	assert(SUCCEEDED(hr));
 
 	//テクスチャデータを追加
-	textureDatas.reserve(textureDatas.size() + 1);
+	textureDatas.resize(textureDatas.size() + 1);
 	//追加したテクスチャデータの参照を取得する
 	TextureData& textureData = textureDatas.back();
 
@@ -46,6 +46,13 @@ void TextureManager::LoadTexture(const std::string& filePath){
 	textureData.srvHandleGPU = dxCommon->GetSRVGPUDescriptorHandle(srvIndex);
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+	srvDesc.Format = textureData.metadata.format;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MipLevels = UINT(textureData.metadata.mipLevels);
+
+	dxCommon->GetDevice()->CreateShaderResourceView(
+		textureData.resource.Get(), &srvDesc, textureData.srvHandleCPU);
 
 	//SRVを作成するDescriptorHeapの設定
 	D3D12_CPU_DESCRIPTOR_HANDLE textureSrvHandleCPU = dxCommon->GetSRVCPUDescriptorHandle(0);
@@ -53,9 +60,13 @@ void TextureManager::LoadTexture(const std::string& filePath){
 	//先頭はImGuiが使っているのでその次を使う
 	textureSrvHandleCPU.ptr += dxCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	textureSrvHandleGPU.ptr += dxCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	//SRVの作成
+	//データの転送
 	dxCommon->GetDevice()->CreateShaderResourceView(textureData.resource.Get(), &srvDesc, textureData.srvHandleCPU);
-	Microsoft::WRL::ComPtr<ID3D12Resource> intermediateResource = dxCommon->UploadTextureData(&textureData, mipImages);
+	// ここは textureData.resource を渡す（TextureData* じゃない）
+	Microsoft::WRL::ComPtr<ID3D12Resource> intermediateResource;
+	intermediateResource.Attach(
+		dxCommon->UploadTextureData(textureData.resource, mipImages)
+	);
 
 	//簡単に実装するためLoadTexture内で完結する(要改善)
 	dxCommon->ExecuteCommandListAndWait();
@@ -77,9 +88,9 @@ uint32_t TextureManager::GetTextureIndexByFilePath(const std::string& filePath){
 	return 0;
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE TextureManager::GerSrvHandleGPU(uint32_t textureIndex){
+D3D12_GPU_DESCRIPTOR_HANDLE TextureManager::GetSrvHandleGPU(uint32_t textureIndex){
 	//範囲外指定違反チェック
-	assert(textureIndex < kSRVIndexTop);
+	assert(textureIndex < textureDatas.size());
 
 	TextureData& textureData = textureDatas[textureIndex];
 	return textureData.srvHandleGPU;
