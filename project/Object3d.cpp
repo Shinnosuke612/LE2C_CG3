@@ -4,6 +4,7 @@
 #include "TextureManager.h"
 #include "ModelManager.h"
 #include "Model.h"
+#include "Camera.h"
 
 void Object3d::Initialize(Object3dCommon* object3dCommon){
 	this->object3dCommon = object3dCommon;
@@ -15,16 +16,20 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 
 	//Transform変数を作る
 	transform = { {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f} };
-	cameraTransform = { {1.0f,1.0f,1.0f},{0.3f,0.0f,0.0f},{0.0f,4.0f,-10.0f} };
+	this->camera = object3dCommon->GetDefaultCamera();
 }
 
 void Object3d::Update(){
 	Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
-	Matrix4x4 cameraMatrix = MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate);
-	Matrix4x4 viewMatrix = Inverse(cameraMatrix);
-	Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(0.45f, float(WinApp::kClientWidth) / float(WinApp::kClientHeight), 0.1f, 100.0f);
-	Matrix4x4 viewProjectionMatirx = Multiply(viewMatrix, projectionMatrix);
-	Matrix4x4 worldViewProjectionMatrix = Multiply(worldMatrix, viewProjectionMatirx);
+
+	Matrix4x4 worldViewProjectionMatrix;
+	if(camera){
+		const Matrix4x4& viewProjectionMatrix = camera->GetViewProjectionMatrix();
+		worldViewProjectionMatrix = Multiply(worldMatrix, viewProjectionMatrix);
+	} else{
+		worldViewProjectionMatrix = worldMatrix;
+	}
+	
 
 	transformationMatrixData->WVP = worldViewProjectionMatrix;
 	transformationMatrixData->World = worldMatrix;

@@ -41,6 +41,7 @@
 #include "ModelCommon.h"
 #include "Model.h"
 #include "ModelManager.h"
+#include "Camera.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -281,10 +282,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	spriteCommon = new SpriteCommon;
 	spriteCommon->Initialize(dxCommon);
 
+	Camera* camera = new Camera();
+	camera->SetRotate({ 0.0f,0.0f,0.0f });
+	camera->SetTranslate({ 0.0f,0.0f,-10.0f });
+
 	Object3dCommon* object3dCommon = nullptr;
 	//3Dオブジェクト共通部の初期化
 	object3dCommon = new Object3dCommon;
 	object3dCommon->Initialize(dxCommon);
+	object3dCommon->SetDefaultCamera(camera);
 
 	ModelCommon* modelCommon = nullptr;
 	//モデル共通部の初期化
@@ -1028,6 +1034,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		ImGui::End();
 
+		camera->Update();
 		for(Sprite* sprite : sprites){
 			sprite->Update();
 		}
@@ -1136,7 +1143,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		spriteCommon->SetCommonRenderState();
 		for(Sprite* sprite : sprites){
-			sprite->Draw();
+			//sprite->Draw();
 		}
 
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), dxCommon->GetCommandList());

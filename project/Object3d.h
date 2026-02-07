@@ -13,6 +13,7 @@
 
 class Object3dCommon;
 class Model;
+class Camera;
 
 class Object3d{
 private://インナークラス
@@ -45,6 +46,7 @@ public: //公開メンバ関数
 	void SetRotate(const Vector3& rotate){ transform.rotate = rotate; }
 	void SetTranslate(const Vector3& translate){transform.translate = translate;}
 	void SetModel(const std::string& filePath);
+	void SetCamera(Camera* camera){ this->camera = camera; }
 
 	// getter（参照返しが軽くて安全）
 	const Vector3& GetScale() const{return transform.scale;}
@@ -59,7 +61,6 @@ private: //非公開メンバ関数
 
 private://メンバ変数
 	Transform transform;
-	Transform cameraTransform;
 
 	Object3dCommon* object3dCommon = nullptr;
 
@@ -76,5 +77,7 @@ private://メンバ変数
 
 	//見た目用のモデル
 	Model* model = nullptr;
+	//カメラ
+	Camera* camera = nullptr;
 };
 
