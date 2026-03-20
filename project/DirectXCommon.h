@@ -54,16 +54,6 @@ public:
 	//実行から待ち、リセットを行う関数
 	void ExecuteCommandListAndWait();
 
-/// <summary>
-/// SRVの指定番号のCPUデスクリプタハンドルを取得する
-/// </summary>
-	D3D12_CPU_DESCRIPTOR_HANDLE GetSRVCPUDescriptorHandle(uint32_t index);
-
-/// <summary>
-/// SRVの指定番号のGPUデスクリプタハンドルを取得する
-/// </summary>
-	D3D12_GPU_DESCRIPTOR_HANDLE GetSRVGPUDescriptorHandle(uint32_t index);
-
 
 	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(
 		// CompilerするShaderファイルへのパス
@@ -104,10 +94,8 @@ private:
 	WinApp* winApp_ = nullptr;
 	//デスクリプタヒープ
 	Microsoft::WRL::ComPtr <ID3D12DescriptorHeap> rtvDescriptorHeap;
-	Microsoft::WRL::ComPtr <ID3D12DescriptorHeap> srvDescriptorHeap;
 	Microsoft::WRL::ComPtr <ID3D12DescriptorHeap> dsvDescriptorHeap;
 	//デスクリプタヒープのサイズ
-	uint32_t descriptorSizeSRV;
 	uint32_t descriptorSizeRTV;
 	uint32_t descriptorSizeDSV;
 	//デスクリプタハンドル取得関数
@@ -135,9 +123,5 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[2];
 	//barrier
 	D3D12_RESOURCE_BARRIER barrier{};
-	public:
-
-		//最大SRV数(最大テクスチャ枚数)
-		static const uint32_t kMaxSRVCount;
 };
 

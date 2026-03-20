@@ -86,8 +86,8 @@ private://メンバ変数
 	//バッファリソースの使い道wp補足するバッファビュー
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	//テクスチャ番号
-	uint32_t textureIndex = 0;
+	//テクスチャのファイルパス
+	std::string textureFilePath_;
 
 	Transform transform;
 

@@ -32,6 +32,7 @@
     <ClCompile Include="ModelCommon.cpp" />
     <ClCompile Include="ModelManager.cpp" />
     <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="SrvManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3DResourceLeadChecker.h" />
@@ -64,6 +65,7 @@
     <ClInclude Include="ModelCommon.h" />
     <ClInclude Include="ModelManager.h" />
     <ClInclude Include="Camera.h" />
+    <ClInclude Include="SrvManager.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />
