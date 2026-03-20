@@ -1,6 +1,7 @@
 #pragma once
 #include <d3dx12.h>
 class DirectXCommon;
+class Camera;
 
 class Object3dCommon{
 public: //メンバ関数
@@ -9,10 +10,15 @@ public: //メンバ関数
 	//共通描画設定
 	void SetCommonRenderState();
 
-public://ゲッター
-	DirectXCommon* GetDxCommon() const{
-		return dxCommon_;
-	}
+public:
+	
+	//setter
+	void SetDefaultCamera(Camera* camera){ this->defaultCamera = camera; }
+
+	//getter
+	DirectXCommon* GetDxCommon() const{return dxCommon_;}
+	Camera* GetDefaultCamera() const{ return defaultCamera; }
+
 
 private://非公開メンバ関数
 
@@ -31,6 +37,8 @@ private://メンバ変数
 	//ルートシグネチャ
 	Microsoft::WRL::ComPtr < ID3D12RootSignature> rootSignature_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState_ = nullptr;
+	//デフォルトカメラ
+	Camera* defaultCamera = nullptr;
 private://メンバクラス
 	enum class BlendMode{
 		//!< ブレンドなし

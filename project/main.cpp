@@ -41,6 +41,8 @@
 #include "ModelCommon.h"
 #include "Model.h"
 #include "ModelManager.h"
+#include "Camera.h"
+#include "SrvManager.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -247,12 +249,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	dxCommon = new DirectXCommon();
 	dxCommon->Initialize(winApp);
 
-	TextureManager::GetInstance()->Initialize(dxCommon);
-	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
-	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 
-	ModelManager::GetInstance()->Initialize(dxCommon);
-	ModelManager::GetInstance()->LoadModel("plane.obj");
 	
 	HRESULT hr;
 
@@ -275,21 +272,41 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	input->Initialize(winApp);
 
 	
+#pragma region 基盤システムの初期化
 
 	SpriteCommon* spriteCommon = nullptr;
 	//スプライト共通部の初期化
 	spriteCommon = new SpriteCommon;
 	spriteCommon->Initialize(dxCommon);
 
+	Camera* camera = new Camera();
+	camera->SetRotate({ 0.0f,0.0f,0.0f });
+	camera->SetTranslate({ 0.0f,0.0f,-10.0f });
+
 	Object3dCommon* object3dCommon = nullptr;
 	//3Dオブジェクト共通部の初期化
 	object3dCommon = new Object3dCommon;
 	object3dCommon->Initialize(dxCommon);
+	object3dCommon->SetDefaultCamera(camera);
 
 	ModelCommon* modelCommon = nullptr;
 	//モデル共通部の初期化
 	modelCommon = new ModelCommon;
 	modelCommon->Initialize(dxCommon);
+
+	SrvManager* srvManager = nullptr;
+	//SRVマネージャーの初期化
+	srvManager = new SrvManager();
+	srvManager->Initialize(dxCommon);
+
+	TextureManager::GetInstance()->Initialize(dxCommon,srvManager);
+	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
+	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
+
+	ModelManager::GetInstance()->Initialize(dxCommon);
+	ModelManager::GetInstance()->LoadModel("plane.obj");
+	
+#pragma endregion
 
 	D3D12_DESCRIPTOR_RANGE descriptorRange[1] = {};
 	descriptorRange[0].BaseShaderRegister = 0;
@@ -926,8 +943,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	instancingSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 	instancingSrvDesc.Buffer.NumElements = kNumInstance;
 	instancingSrvDesc.Buffer.StructureByteStride = sizeof(TransformationMatrix);
-	D3D12_CPU_DESCRIPTOR_HANDLE instancingSrvHandleCPU = dxCommon->GetSRVCPUDescriptorHandle(3);
-	D3D12_GPU_DESCRIPTOR_HANDLE instancingSrvHandleGPU = dxCommon->GetSRVGPUDescriptorHandle(3);
+	D3D12_CPU_DESCRIPTOR_HANDLE instancingSrvHandleCPU = srvManager->GetCPUDescriptorHandle(3);
+	D3D12_GPU_DESCRIPTOR_HANDLE instancingSrvHandleGPU = srvManager->GetGPUDescriptorHandle(3);
 	dxCommon->GetDevice()->CreateShaderResourceView(instancingResource.Get(), &instancingSrvDesc, instancingSrvHandleCPU);
 
 
@@ -947,6 +964,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Object3d* object3d = new Object3d();
 	object3d->Initialize(object3dCommon);
 	object3d->SetModel("plane.obj");
+
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui::StyleColorsDark();
+
+	ImGui_ImplWin32_Init(winApp->GetHwnd());
+	ImGui_ImplDX12_Init(
+		dxCommon->GetDevice(),
+		2,
+		DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+		srvManager->GetDescriptorHeap(),
+		srvManager->GetCPUDescriptorHandle(0),
+		srvManager->GetGPUDescriptorHandle(0)
+	);
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (true) {
@@ -1028,6 +1059,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		ImGui::End();
 
+		camera->Update();
 		for(Sprite* sprite : sprites){
 			sprite->Update();
 		}
@@ -1074,6 +1106,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		//DirectXの描画準備。全ての描画に共通のグラフィックスコマンドを積む
 		dxCommon->PreDraw();
+		srvManager->PreDraw();
 
 
 //		// RootSignatureを設定。PSOに設定しているけど別途設定も必要
@@ -1136,7 +1169,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		spriteCommon->SetCommonRenderState();
 		for(Sprite* sprite : sprites){
-			sprite->Draw();
+			//sprite->Draw();
 		}
 
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), dxCommon->GetCommandList());

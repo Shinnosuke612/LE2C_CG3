@@ -8,7 +8,7 @@ void Sprite::Initialize(SpriteCommon* spriteCommon, std::string textureFilePath)
 	MakeVertexData();
 	MakeMaterialData();
 	MakeTransformationMatrixData();
-	this->textureIndex = TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath);
+	this->textureFilePath_ = textureFilePath;
 	AdjustTextureSize();
 }
 
@@ -31,7 +31,7 @@ void Sprite::Update(){
 	}
 
 	const DirectX::TexMetadata& metadata =
-		TextureManager::GetInstance()->GetMetaData(textureIndex);
+		TextureManager::GetInstance()->GetMetaData(textureFilePath_);
 	float tex_left = textureLeftTop_.x / metadata.width;
 	float tex_right = (textureLeftTop_.x + textureSize_.x) / metadata.width;
 	float tex_top = textureLeftTop_.y / metadata.height;
@@ -92,7 +92,7 @@ void Sprite::Draw(){
 
 	spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
 
-	spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(2, TextureManager::GetInstance()->GetSrvHandleGPU(textureIndex));
+	spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(2, TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_));
 	//描画
 	spriteCommon_->GetDxCommon()->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);
 }
@@ -149,7 +149,7 @@ void Sprite::MakeTransformationMatrixData(){
 }
 
 void Sprite::AdjustTextureSize(){
-	const DirectX::TexMetadata& metadata = TextureManager::GetInstance()->GetMetaData(textureIndex);
+	const DirectX::TexMetadata& metadata = TextureManager::GetInstance()->GetMetaData(textureFilePath_);
 
 	textureSize_.x = static_cast<float>(metadata.width);
 	textureSize_.y = static_cast<float>(metadata.height);

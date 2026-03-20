@@ -10,9 +10,6 @@ void Model::Initialize(ModelCommon* modelCommon, const std::string& directoryPat
 
 	// .objの参照していrテクスチャファイル読み込み
 	TextureManager::GetInstance()->LoadTexture(modelData.material.textureFilePath);
-	//読み込んだテクスチャ番号を取得
-	modelData.material.textureIndex =
-		TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath);
 }
 void Model::Draw(){
 	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
@@ -25,7 +22,7 @@ void Model::Draw(){
 
 	// SRVのDescriptorTableの先頭を設定（TextureManagerから取得）
 	commandList->SetGraphicsRootDescriptorTable(
-		2, TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureIndex)
+		2, TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureFilePath)
 	);
 
 	// 描画！
