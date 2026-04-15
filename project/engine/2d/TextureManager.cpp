@@ -1,6 +1,6 @@
 #include "TextureManager.h"
-#include "DirectXCommon.h"
-#include "SrvManager.h"
+#include "../../DirectXCommon.h"
+#include "../../SrvManager.h"
 TextureManager* TextureManager::instance = nullptr;
 
 uint32_t TextureManager::kSRVIndexTop = 1;

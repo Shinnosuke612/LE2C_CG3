@@ -1,7 +1,7 @@
 #pragma once
 #include <cassert>
 #include <Windows.h>
-#include "WinApp.h"
+#include "../base/WinApp.h"
 //入力
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>

@@ -1,6 +1,6 @@
 #include "Sprite.h"
 #include "SpriteCommon.h"
-#include "DirectXCommon.h"
+#include "../base/DirectXCommon.h"
 #include "TextureManager.h"
 void Sprite::Initialize(SpriteCommon* spriteCommon, std::string textureFilePath){
 	transform = { {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f} };

@@ -1,6 +1,6 @@
 #include "SpriteCommon.h"
-#include "DirectXCommon.h"
-#include "Logger.h"
+#include "../../DirectXCommon.h"
+#include "../../Logger.h"
 void SpriteCommon::Initialize(DirectXCommon* dxCommon){
 	dxCommon_ = dxCommon;
 	GenerateGraphicsPipeline();
