@@ -181,6 +181,9 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClCompile Include="engine\utility\StringUtility.cpp" />
     <ClCompile Include="engine\2d\TextureManager.cpp" />
     <ClCompile Include="engine\base\WinApp.cpp" />
+    <ClCompile Include="engine\3d\ParticleCommon.cpp" />
+    <ClCompile Include="engine\3d\ParticleManager.cpp" />
+    <ClCompile Include="engine\3d\ParticleEmitter.cpp" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="resources\shaders\Object3D.PS.hlsl">
@@ -232,6 +235,9 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClInclude Include="engine\utility\StringUtility.h" />
     <ClInclude Include="engine\2d\TextureManager.h" />
     <ClInclude Include="engine\math\Transform.h" />
+    <ClInclude Include="engine\3d\ParticleCommon.h" />
+    <ClInclude Include="engine\3d\ParticleManager.h" />
+    <ClInclude Include="engine\3d\ParticleEmitter.h" />
     <ClInclude Include="Vector\Vector2.h" />
     <ClInclude Include="Vector\Vector3.h" />
     <ClInclude Include="Vector\Vector4.h" />

@@ -1,0 +1,195 @@
+#include "ParticleCommon.h"
+#include "../base/DirectXCommon.h"
+#include "../utility/Logger.h"
+#include <cassert>
+#include <array>
+
+void ParticleCommon::Initialize(DirectXCommon* dxCommon){
+	dxCommon_ = dxCommon;
+	GenerateGraphicsPipeline();
+	CreateVertexResource();
+}
+
+void ParticleCommon::SetCommonRenderState(){
+	auto* commandList = dxCommon_->GetCommandList();
+	commandList->SetGraphicsRootSignature(rootSignature_.Get());
+	commandList->SetPipelineState(graphicsPipelineState_.Get());
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
+}
+
+void ParticleCommon::MakeRootSignature(){
+	HRESULT hr;
+
+	D3D12_DESCRIPTOR_RANGE descriptorRanges[2] = {};
+
+	// VS: t0 StructuredBuffer<TransformationMatrix>
+	descriptorRanges[0].BaseShaderRegister = 0;
+	descriptorRanges[0].NumDescriptors = 1;
+	descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descriptorRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	// PS: t0 Texture2D
+	descriptorRanges[1].BaseShaderRegister = 0;
+	descriptorRanges[1].NumDescriptors = 1;
+	descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descriptorRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER rootParameters[4] = {};
+
+	// b0 : Material (PS)
+	rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[0].Descriptor.ShaderRegister = 0;
+
+	// t0 : TransformationMatrix structured buffer (VS)
+	rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+	rootParameters[1].DescriptorTable.pDescriptorRanges = &descriptorRanges[0];
+	rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
+
+	// t0 : Texture (PS)
+	rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[2].DescriptorTable.pDescriptorRanges = &descriptorRanges[1];
+	rootParameters[2].DescriptorTable.NumDescriptorRanges = 1;
+
+	// b1 : DirectionalLight (PS)
+	rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[3].Descriptor.ShaderRegister = 1;
+
+	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
+	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+	rootSignatureDesc.pParameters = rootParameters;
+	rootSignatureDesc.NumParameters = _countof(rootParameters);
+
+	D3D12_STATIC_SAMPLER_DESC staticSampler = MakeStaticSamplerS0();
+	rootSignatureDesc.pStaticSamplers = &staticSampler;
+	rootSignatureDesc.NumStaticSamplers = 1;
+
+	ID3DBlob* signatureBlob = nullptr;
+	ID3DBlob* errorBlob = nullptr;
+	hr = D3D12SerializeRootSignature(
+		&rootSignatureDesc,
+		D3D_ROOT_SIGNATURE_VERSION_1,
+		&signatureBlob,
+		&errorBlob
+	);
+	if(FAILED(hr)){
+		if(errorBlob){
+			Logger::Log(reinterpret_cast<char*>(errorBlob->GetBufferPointer()));
+		}
+		assert(false);
+	}
+
+	hr = dxCommon_->GetDevice()->CreateRootSignature(
+		0,
+		signatureBlob->GetBufferPointer(),
+		signatureBlob->GetBufferSize(),
+		IID_PPV_ARGS(&rootSignature_)
+	);
+	assert(SUCCEEDED(hr));
+}
+
+void ParticleCommon::GenerateGraphicsPipeline(){
+	MakeRootSignature();
+
+	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
+	inputElementDescs[0].SemanticName = "POSITION";
+	inputElementDescs[0].SemanticIndex = 0;
+	inputElementDescs[0].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	inputElementDescs[0].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+
+	inputElementDescs[1].SemanticName = "TEXCOORD";
+	inputElementDescs[1].SemanticIndex = 0;
+	inputElementDescs[1].Format = DXGI_FORMAT_R32G32_FLOAT;
+	inputElementDescs[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+
+	inputElementDescs[2].SemanticName = "NORMAL";
+	inputElementDescs[2].SemanticIndex = 0;
+	inputElementDescs[2].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+	inputElementDescs[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+
+	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc{};
+	inputLayoutDesc.pInputElementDescs = inputElementDescs;
+	inputLayoutDesc.NumElements = _countof(inputElementDescs);
+
+	D3D12_BLEND_DESC blendDesc{};
+	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	blendDesc.RenderTarget[0].BlendEnable = TRUE;
+	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+
+	D3D12_RASTERIZER_DESC rasterizerDesc{};
+	rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
+	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+
+	D3D12_DEPTH_STENCIL_DESC depthStencilDesc{};
+	depthStencilDesc.DepthEnable = true;
+	depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+
+	auto vertexShaderBlob = dxCommon_->CompileShader(L"resources/shaders/Particle.VS.hlsl", L"vs_6_0");
+	assert(vertexShaderBlob != nullptr);
+
+	auto pixelShaderBlob = dxCommon_->CompileShader(L"resources/shaders/Particle.PS.hlsl", L"ps_6_0");
+	assert(pixelShaderBlob != nullptr);
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
+	desc.pRootSignature = rootSignature_.Get();
+	desc.InputLayout = inputLayoutDesc;
+	desc.VS = { vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize() };
+	desc.PS = { pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize() };
+	desc.BlendState = blendDesc;
+	desc.RasterizerState = rasterizerDesc;
+	desc.DepthStencilState = depthStencilDesc;
+	desc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	desc.NumRenderTargets = 1;
+	desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	desc.SampleDesc.Count = 1;
+	desc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
+
+	HRESULT hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&desc,
+		IID_PPV_ARGS(&graphicsPipelineState_)
+	);
+	assert(SUCCEEDED(hr));
+}
+
+void ParticleCommon::CreateVertexResource(){
+	// 板ポリ 2枚三角形
+	std::array<VertexData, 6> vertices = {
+		VertexData{ {-0.5f, -0.5f, 0.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, -1.0f} },
+		VertexData{ {-0.5f,  0.5f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, -1.0f} },
+		VertexData{ { 0.5f, -0.5f, 0.0f, 1.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, -1.0f} },
+
+		VertexData{ { 0.5f, -0.5f, 0.0f, 1.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, -1.0f} },
+		VertexData{ {-0.5f,  0.5f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, -1.0f} },
+		VertexData{ { 0.5f,  0.5f, 0.0f, 1.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, -1.0f} },
+	};
+
+	vertexResource_ = dxCommon_->CreateBufferResource(sizeof(VertexData) * vertices.size());
+	vertexBufferView_.BufferLocation = vertexResource_->GetGPUVirtualAddress();
+	vertexBufferView_.SizeInBytes = UINT(sizeof(VertexData) * vertices.size());
+	vertexBufferView_.StrideInBytes = sizeof(VertexData);
+
+	vertexResource_->Map(0, nullptr, reinterpret_cast<void**>(&vertexData_));
+	std::memcpy(vertexData_, vertices.data(), sizeof(VertexData) * vertices.size());
+}
+
+inline D3D12_STATIC_SAMPLER_DESC ParticleCommon::MakeStaticSamplerS0(){
+	D3D12_STATIC_SAMPLER_DESC s{};
+	s.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	s.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	s.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	s.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	s.ShaderRegister = 0;
+	s.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	return s;
+}

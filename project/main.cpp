@@ -43,6 +43,9 @@
 #include "engine/3d/ModelManager.h"
 #include "engine/3d/Camera.h"
 #include "engine/3d/SrvManager.h"
+#include "engine/3d/ParticleCommon.h"
+#include "engine/3d/ParticleManager.h"
+#include "engine/3d/ParticleEmitter.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -306,6 +309,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	ModelManager::GetInstance()->Initialize(dxCommon);
 	ModelManager::GetInstance()->LoadModel("plane.obj");
 	
+	ParticleCommon particleCommon;
+	particleCommon.Initialize(dxCommon);
+	particleCommon.SetDefaultCamera(camera);
+
+	ParticleManager particleManager;
+	particleManager.Initialize(&particleCommon, srvManager);
+	particleManager.SetCamera(camera);
+	particleManager.CreateParticleGroup("particle", "resources/uvChecker.png");
+
+	ParticleEmitter emitter;
+	emitter.Initialize(&particleManager, "particle");
+	emitter.SetTranslate({ 0.0f, 0.0f, 0.0f });
+	emitter.SetCount(4);
+	emitter.SetFrequency(0.3f);
+
+	emitter.SetSpawnSize({ 1.0f, 0.5f, 1.0f });
+
 #pragma endregion
 
 	D3D12_DESCRIPTOR_RANGE descriptorRange[1] = {};
@@ -1060,6 +1080,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		ImGui::End();
 
 		camera->Update();
+
+		emitter.Update();
+		particleManager.Update();
+
 		for(Sprite* sprite : sprites){
 			sprite->Update();
 		}
@@ -1161,6 +1185,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		object3dCommon->SetCommonRenderState();
 		object3d->Draw();
 
+
+		particleManager.Draw();
 		//if (isDrawSprite) {
 		//	//描画
 		//	dxCommon->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);
