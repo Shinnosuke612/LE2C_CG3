@@ -1,7 +1,7 @@
 #include "Model.h"
 #include "ModelCommon.h"
-#include "DirectXCommon.h"
-#include "TextureManager.h"
+#include "../base/DirectXCommon.h"
+#include "../2d/TextureManager.h"
 void Model::Initialize(ModelCommon* modelCommon, const std::string& directoryPath, const std::string& filename){
 	this->modelCommon = modelCommon;
 		modelData = LoadObjFile(directoryPath, filename);

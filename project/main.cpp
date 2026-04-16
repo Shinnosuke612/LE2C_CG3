@@ -22,27 +22,30 @@
 #pragma comment(lib,"dinput8.lib")
 #pragma comment(lib,"dxguid.lib")
 
-#include "Vector2.h"
-#include "Vector3.h"
-#include "Vector4.h"
+#include "engine/math/Vector2.h"
+#include "engine/math/Vector3.h"
+#include "engine/math/Vector4.h"
 #include "Matrix4x4.h"
 #include "Matrix3x3.h"
-#include "Transform.h"
-#include "Math.h"
-#include "Input.h"
-#include "WinApp.h"
-#include "DirectXCommon.h"
-#include "D3DResourceLeadChecker.h"
-#include "SpriteCommon.h"
-#include "Sprite.h"
-#include "TextureManager.h"
-#include "Object3dCommon.h"
-#include "Object3d.h"
-#include "ModelCommon.h"
-#include "Model.h"
-#include "ModelManager.h"
-#include "Camera.h"
-#include "SrvManager.h"
+#include "engine/math/Transform.h"
+#include "engine/math/Math.h"
+#include "engine/io/Input.h"
+#include "engine/base/WinApp.h"
+#include "engine/base/DirectXCommon.h"
+#include "engine/base/D3DResourceLeadChecker.h"
+#include "engine/2d/SpriteCommon.h"
+#include "engine/2d/Sprite.h"
+#include "engine/2d/TextureManager.h"
+#include "engine/3d/Object3dCommon.h"
+#include "engine/3d/Object3d.h"
+#include "engine/3d/ModelCommon.h"
+#include "engine/3d/Model.h"
+#include "engine/3d/ModelManager.h"
+#include "engine/3d/Camera.h"
+#include "engine/3d/SrvManager.h"
+#include "engine/3d/ParticleCommon.h"
+#include "engine/3d/ParticleManager.h"
+#include "engine/3d/ParticleEmitter.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -306,6 +309,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	ModelManager::GetInstance()->Initialize(dxCommon);
 	ModelManager::GetInstance()->LoadModel("plane.obj");
 	
+	ParticleCommon particleCommon;
+	particleCommon.Initialize(dxCommon);
+	particleCommon.SetDefaultCamera(camera);
+
+	ParticleManager particleManager;
+	particleManager.Initialize(&particleCommon, srvManager);
+	particleManager.SetCamera(camera);
+	particleManager.CreateParticleGroup("particle", "resources/uvChecker.png");
+
+	ParticleEmitter emitter;
+	emitter.Initialize(&particleManager, "particle");
+	emitter.SetTranslate({ 0.0f, 0.0f, 0.0f });
+	emitter.SetCount(4);
+	emitter.SetFrequency(0.3f);
+
+	emitter.SetSpawnSize({ 1.0f, 0.5f, 1.0f });
+
 #pragma endregion
 
 	D3D12_DESCRIPTOR_RANGE descriptorRange[1] = {};
@@ -1060,6 +1080,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		ImGui::End();
 
 		camera->Update();
+
+		emitter.Update();
+		particleManager.Update();
+
 		for(Sprite* sprite : sprites){
 			sprite->Update();
 		}
@@ -1161,6 +1185,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		object3dCommon->SetCommonRenderState();
 		object3d->Draw();
 
+
+		particleManager.Draw();
 		//if (isDrawSprite) {
 		//	//描画
 		//	dxCommon->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);

@@ -1,6 +1,6 @@
 #include "DirectXCommon.h"
 #include <cassert>
-#include "externals/DirectXTex/d3dx12.h"
+#include "../../externals/DirectXTex/d3dx12.h"
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
 #include <format>

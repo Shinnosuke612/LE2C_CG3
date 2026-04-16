@@ -4,9 +4,9 @@
 #include <fstream>
 #include <sstream>
 #include <cassert>
-#include "Vector/Vector2.h"
-#include "Vector/Vector3.h"
-#include "Vector/Vector4.h"
+#include "../math/Vector2.h"
+#include "../math/Vector3.h"
+#include "../math/Vector4.h"
 #include "Matrix4x4.h"
 #include <d3d12.h> 
 class ModelCommon;
