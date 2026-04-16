@@ -1,5 +1,5 @@
 #include "ModelManager.h"
-#include "DirectXCommon.h"
+#include "../base/DirectXCommon.h"
 #include "ModelCommon.h"
 #include "Model.h"
 ModelManager* ModelManager::instance = nullptr;

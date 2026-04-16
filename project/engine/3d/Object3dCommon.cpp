@@ -1,6 +1,6 @@
 #include "Object3dCommon.h"
-#include "DirectXCommon.h"
-#include "Logger.h"
+#include "../base/DirectXCommon.h"
+#include "../utility/Logger.h"
 
 void Object3dCommon::Initialize(DirectXCommon* dxCommon){
 	dxCommon_ = dxCommon;
