@@ -25,8 +25,8 @@
 #include "engine/math/Vector2.h"
 #include "engine/math/Vector3.h"
 #include "engine/math/Vector4.h"
-#include "Matrix4x4.h"
-#include "Matrix3x3.h"
+#include "engine/math/Matrix4x4.h"
+#include "engine/math/Matrix3x3.h"
 #include "engine/math/Transform.h"
 #include "engine/math/Math.h"
 #include "engine/io/Input.h"
@@ -990,14 +990,34 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	ImGui::StyleColorsDark();
 
 	ImGui_ImplWin32_Init(winApp->GetHwnd());
-	ImGui_ImplDX12_Init(
-		dxCommon->GetDevice(),
-		2,
-		DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-		srvManager->GetDescriptorHeap(),
-		srvManager->GetCPUDescriptorHandle(0),
-		srvManager->GetGPUDescriptorHandle(0)
-	);
+
+	ImGui_ImplDX12_InitInfo initInfo{};
+	initInfo.Device = dxCommon->GetDevice();
+	initInfo.CommandQueue = dxCommon->GetCommandQueue();
+	initInfo.NumFramesInFlight = 2;
+	initInfo.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	initInfo.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	initInfo.SrvDescriptorHeap = srvManager->GetDescriptorHeap();
+	initInfo.UserData = srvManager;
+
+	// 今回は ImGui フォント用に index 0 を固定使用
+	initInfo.SrvDescriptorAllocFn =
+		[](ImGui_ImplDX12_InitInfo* info,
+		   D3D12_CPU_DESCRIPTOR_HANDLE* outCpu,
+		   D3D12_GPU_DESCRIPTOR_HANDLE* outGpu){
+			   SrvManager* srv = static_cast<SrvManager*>(info->UserData);
+			   *outCpu = srv->GetCPUDescriptorHandle(0);
+			   *outGpu = srv->GetGPUDescriptorHandle(0);
+		};
+
+	initInfo.SrvDescriptorFreeFn =
+		[](ImGui_ImplDX12_InitInfo*,
+		   D3D12_CPU_DESCRIPTOR_HANDLE,
+		   D3D12_GPU_DESCRIPTOR_HANDLE){
+			   // 今回は index 0 を固定使用するので何もしない
+		};
+
+	ImGui_ImplDX12_Init(&initInfo);
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (true) {

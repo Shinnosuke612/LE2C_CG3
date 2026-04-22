@@ -75,6 +75,9 @@ public:
 	ID3D12Device* GetDevice() const{
 		return device.Get();
 	}
+	ID3D12CommandQueue* GetCommandQueue() const{
+		return commandQueue;
+	}
 
 private:
 	//コマンド関連
