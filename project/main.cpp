@@ -47,6 +47,7 @@
 #include "engine/3d/ParticleManager.h"
 #include "engine/3d/ParticleEmitter.h"
 #include "engine/base/ImGuiManager.h"
+#include "engine/audio/Audio.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -306,6 +307,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	//ImGuiマネージャーの初期化
 	ImGuiManager* imguiManager = new ImGuiManager();
 	imguiManager->Initialize(winApp, dxCommon, srvManager);
+
+	//Audioの初期化
+	Audio* audio = new Audio();
+	audio->Initialize();
+
+	Audio::SoundData soundData = audio->SoundLoadWave("resources/fanfare.wav");
 
 	TextureManager::GetInstance()->Initialize(dxCommon,srvManager);
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
@@ -581,17 +588,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 											 IID_PPV_ARGS(&graphicsPipelineStateForInstancing));
 	assert(SUCCEEDED(hr));
 
-	////Textureを読んで転送する
-	//DirectX::ScratchImage mipImages = dxCommon->LoadTexture("resources/uvChecker.png");
-	//const DirectX::TexMetadata& metadata = mipImages.GetMetadata();
-	//ID3D12Resource* textureResource = *&dxCommon->CreateTextureResource(metadata);
-	//ID3D12Resource* intermediaResource = dxCommon->UploadTextureData(textureResource, mipImages);
-
-	////二枚目のTextureを読んで転送する
-	//DirectX::ScratchImage mipImages2 = dxCommon->LoadTexture("resources/fence.png");
-	//const DirectX::TexMetadata& metadata2 = mipImages2.GetMetadata();
-	//ID3D12Resource* textureResource2 = *&dxCommon->CreateTextureResource(metadata2);
-	//ID3D12Resource* intermediaResource2 = dxCommon->UploadTextureData(textureResource2, mipImages2);
 
 	//マテリアル用のリソースを作る。今回はカラー1つ分のサイズを用意する
 	ID3D12Resource* materialResource = *&dxCommon->CreateBufferResource(sizeof(Material));
@@ -674,35 +670,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	transformationMatrixDataSprite->WVP =  MakeIdentity4x4();
 
 	//=============================
-	//球の頂点情報の作成
-	// ============================
-	////分割数
-	//const int kSubdivision = 16;
-	//const float kLonEvery = float(M_PI) * 2.0f / float(kSubdivision); // 経度の１分割あたりの角度
-	//const float kLatEvery = float(M_PI) / float(kSubdivision); // 緯度の１分割あたりの角度
-
-	//// 実際に頂点リソースを作る
-	//const int vertexCount = kSubdivision * kSubdivision * 6;
-	//ID3D12Resource* vertexResource = CreateBufferResource(device, sizeof(VertexData) * vertexCount);
-	//// 頂点バッファビューを作成する
-	//D3D12_VERTEX_BUFFER_VIEW vertexBufferView{};
-	//// リソースの先頭のアドレスから使う
-	//vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress();
-	//// 使用するリソースのサイズは頂点3つ分のサイズ
-	//vertexBufferView.SizeInBytes = sizeof(VertexData) * vertexCount;
-	//// 1頂点あたりのサイズ
-	//vertexBufferView.StrideInBytes = sizeof(VertexData);
-
-	//=============================
 	//Objモデルの頂点情報の作成
 	// ============================
 	ModelData modelData2 = LoadObjFile("resources", "fence.obj");
-	//ID3D12Resource* vertexResource = CreateBufferResource(device, sizeof(VertexData) * modelData.vertices.size());
-	////頂点バッファビューを作成する
-	//D3D12_VERTEX_BUFFER_VIEW vertexBufferView{};
-	//vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress();
-	//vertexBufferView.SizeInBytes = UINT(sizeof(VertexData) * modelData.vertices.size());
-	//vertexBufferView.StrideInBytes = sizeof(VertexData);
+
 	ID3D12Resource* vertexResource2 = *&dxCommon->CreateBufferResource(sizeof(VertexData) * modelData2.vertices.size());
 	//頂点バッファビューを作成する
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView2{};
@@ -763,120 +734,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		instancingData[index].World = MakeIdentity4x4();
 	}
 
-	//int index = 0;
-	//for (int latIndex = 0; latIndex < kSubdivision; ++latIndex) {
-	//	// lat0: 現在の緯度、lat1: 次の緯度
-	//	float lat0 = -float(M_PI) / 2.0f + kLatEvery * float(latIndex);
-	//	float lat1 = -float(M_PI) / 2.0f + kLatEvery * float(latIndex + 1);
-
-	//	for (int lonIndex = 0; lonIndex < kSubdivision; ++lonIndex) {
-	//		// 経度方向も同じく分割
-	//		float lon0 = kLonEvery * float(lonIndex);
-	//		float lon1 = kLonEvery * float(lonIndex + 1);
-
-	//		// 「start」を (latIndex, lonIndex) によって計算
-	//		// 1 つのクワッドにつき頂点 6 つ分のオフセットを使う
-	//		uint32_t start = (latIndex * kSubdivision + lonIndex) * 6;
-
-	//		// ── クワッドを構成する 4 つの頂点をワールド座標上で計算 ──
-	//		//  頂点 p0: (lat0, lon0)
-	//		Vector3 p0;
-	//		p0.x = std::cosf(lat0) * std::cosf(lon0);
-	//		p0.y = std::sinf(lat0);
-	//		p0.z = std::cosf(lat0) * std::sinf(lon0);
-
-	//		//  頂点 p1: (lat1, lon0)
-	//		Vector3 p1;
-	//		p1.x = std::cosf(lat1) * std::cosf(lon0);
-	//		p1.y = std::sinf(lat1);
-	//		p1.z = std::cosf(lat1) * std::sinf(lon0);
-
-	//		//  頂点 p2: (lat0, lon1)
-	//		Vector3 p2;
-	//		p2.x = std::cosf(lat0) * std::cosf(lon1);
-	//		p2.y = std::sinf(lat0);
-	//		p2.z = std::cosf(lat0) * std::sinf(lon1);
-
-	//		//  頂点 p3: (lat1, lon1)
-	//		Vector3 p3;
-	//		p3.x = std::cosf(lat1) * std::cosf(lon1);
-	//		p3.y = std::sinf(lat1);
-	//		p3.z = std::cosf(lat1) * std::sinf(lon1);
-
-	//		// ── テクスチャ座標 (u,v) を [0,1] にマッピング ──
-	//		//  経度方向は lonIndex／kSubdivision、緯度方向は latIndex／kSubdivision を用いる
-	//		float u0 = float(lonIndex) / float(kSubdivision);
-	//		float u1 = float(lonIndex + 1) / float(kSubdivision);
-	//		// v は「南極(-π/2)→北極(+π/2)」を [0,1] に対応させるので、1.0-（latIndex/分割数）とする
-	//		float v0 = 1.0f - float(latIndex) / float(kSubdivision);
-	//		float v1 = 1.0f - float(latIndex + 1) / float(kSubdivision);
-
-	//		// ────────────────────────────────────────────────────────────────────
-	//		// 三角形１： (p0, p1, p2)
-	//		// ────────────────────────────────────────────────────────────────────
-	//		// 頂点 0: p0
-	//		vertexData[start + 0].position = { p0.x, p0.y, p0.z, 1.0f };
-	//		vertexData[start + 0].texcoord = { u0, v0 };
-	//		// 頂点 1: p1
-	//		vertexData[start + 1].position = { p1.x, p1.y, p1.z, 1.0f };
-	//		vertexData[start + 1].texcoord = { u0, v1 };
-	//		// 頂点 2: p2
-	//		vertexData[start + 2].position = { p2.x, p2.y, p2.z, 1.0f };
-	//		vertexData[start + 2].texcoord = { u1, v0 };
-
-	//		// ────────────────────────────────────────────────────────────────────
-	//		// 三角形２： (p2, p1, p3)
-	//		// ────────────────────────────────────────────────────────────────────
-	//		// 頂点 3: p2（再利用）
-	//		vertexData[start + 3].position = { p2.x, p2.y, p2.z, 1.0f };
-	//		vertexData[start + 3].texcoord = { u1, v0 };
-	//		// 頂点 4: p1（再利用）
-	//		vertexData[start + 4].position = { p1.x, p1.y, p1.z, 1.0f };
-	//		vertexData[start + 4].texcoord = { u0, v1 };
-	//		// 頂点 5: p3
-	//		vertexData[start + 5].position = { p3.x, p3.y, p3.z, 1.0f };
-	//		vertexData[start + 5].texcoord = { u1, v1 };
-
-	//		// ※ index を使ったインクリメントは不要。start で直接書き込んでいるので、
-	//		//    もし index 変数を使う場合は「index += 6;」するか、
-	//		//    コメントアウトした以下のようなチェックを行ってもよいです。
-	//		// index += 6;
-
-	//		for (int index = 0; index < 6; index++) {
-	//			vertexData[start + index].normal.x = vertexData[start + index].position.x;
-	//			vertexData[start + index].normal.y = vertexData[start + index].position.y;
-	//			vertexData[start + index].normal.z = vertexData[start + index].position.z;
-	//		}
-	//	}
-	//}
-
-	// 必要ならチェック
-	// assert(index == vertexCount);
-
 	vertexResource->Unmap(0, nullptr);
 	vertexResource2->Unmap(0, nullptr);
 
-
-	//// 左下
-	//vertexData[0].position = { -0.5f, -0.5f, 0.0f, 1.0f };
-	//vertexData[0].texcoord = { 0.0f,1.0f };
-	//// 上
-	//vertexData[1] = { 0.0f,  0.5f, 0.0f, 1.0f };
-	//vertexData[1].texcoord = { 0.5f,0.0f };
-	//// 右下
-	//vertexData[2] = { 0.5f, -0.5f, 0.0f, 1.0f };
-	//vertexData[2].texcoord = { 1.0f,1.0f };
-
-	////二枚目
-	//// 左下
-	//vertexData[3].position = { -0.5f, -0.5f, 0.5f, 1.0f };
-	//vertexData[3].texcoord = { 0.0f,1.0f };
-	//// 上
-	//vertexData[4] = { 0.0f,  0.0f, 0.0f, 1.0f };
-	//vertexData[4].texcoord = { 0.5f,0.0f };
-	//// 右下
-	//vertexData[5] = { 0.5f, -0.5f, -0.5f, 1.0f };
-	//vertexData[5].texcoord = { 1.0f,1.0f };
 
 	//Spriteの頂点データ
 	VertexData* vertexDataSprite = nullptr;
@@ -929,35 +789,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	bool isDrawSprite = true;
 	bool useMonsterBall = true;
-
-	////metaDataを基にSRVの設定
-	//D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-	//srvDesc.Format = metadata.format;
-	//srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	//srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	//srvDesc.Texture2D.MipLevels = UINT(metadata.mipLevels);
-
-	////SRVを作成するDescriptorHeapの設定
-	//D3D12_CPU_DESCRIPTOR_HANDLE textureSrvHandleCPU = dxCommon->GetSRVCPUDescriptorHandle(0);
-	//D3D12_GPU_DESCRIPTOR_HANDLE textureSrvHandleGPU = dxCommon->GetSRVGPUDescriptorHandle(0);
-	////先頭はImGuiが使っているのでその次を使う
-	//textureSrvHandleCPU.ptr += dxCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	//textureSrvHandleGPU.ptr += dxCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	////SRVの作成
-	//dxCommon->GetDevice()->CreateShaderResourceView(textureResource, &srvDesc, textureSrvHandleCPU);
-
-	////metaDataを基に二個目のSRVの設定
-	//D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc2{};
-	//srvDesc2.Format = metadata2.format;
-	//srvDesc2.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	//srvDesc2.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	//srvDesc2.Texture2D.MipLevels = UINT(metadata2.mipLevels);
-
-	////SRVを作成するDescriptorHeapの設定
-	//D3D12_CPU_DESCRIPTOR_HANDLE textureSrvHandleCPU2 = dxCommon->GetSRVCPUDescriptorHandle(2);
-	//D3D12_GPU_DESCRIPTOR_HANDLE textureSrvHandleGPU2 = dxCommon->GetSRVGPUDescriptorHandle(2);
-
-	//dxCommon->GetDevice()->CreateShaderResourceView(textureResource2, &srvDesc2, textureSrvHandleCPU2);
 
 	//StructuredBuffer用のSRVの設定
 	D3D12_SHADER_RESOURCE_VIEW_DESC instancingSrvDesc{};
@@ -1016,6 +847,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			OutputDebugStringA("Trigger 0 \n");
 		}
 
+		if(input->TriggerKey(DIK_1)){
+			audio->SoundPlayWave(soundData);
+		}
 		//================================
 		// ループの用意
 		//================================
@@ -1124,55 +958,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		srvManager->PreDraw();
 
 
-//		// RootSignatureを設定。PSOに設定しているけど別途設定も必要
-//		dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignatureForInstancing);
-//		dxCommon->GetCommandList()->SetPipelineState(graphicsPipelineStateForInstancing); // PSOを設定
-//
-//		dxCommon->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView); // VBVを設定
-//
-//		//commandList->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
-//
-//		//commandList->SetGraphicsRootConstantBufferView(1, wvpResource->GetGPUVirtualAddress());
-//
-//		//commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
-//
-//		/*commandList->SetGraphicsRootDescriptorTable(2, useMonsterBall ? textureSrvHandleGPU2 : textureSrvHandleGPU);*/
-//
-////		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1,instancingSrvHandleGPU);
-////
-////		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress()); // PS b0
-////		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(1, instancingSrvHandleGPU);                   // VS t0
-/////*		dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);        */              // PS t0
-////		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress()); // PS b1
-////
-////		// 形状を設定。PSOに設定しているものとは本来別。同じものを設定することを考えておけば良い
-////		dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-////
-////		// 描画！（DrawCall／ドローコール）。3頂点で1つのインスタンス。インスタンスについては今後
-////		dxCommon->GetCommandList()->DrawInstanced(UINT(modelData.vertices.size()), kNumInstance, 0, 0);
-//
-//		//二つ目のモデルの描画
-//		//commandList->SetGraphicsRootConstantBufferView(1, wvpResource2->GetGPUVirtualAddress());
-//		//commandList->IASetVertexBuffers(0, 1, &vertexBufferView2); // VBVを設定
-//		//commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
-//
-//		//Spriteの描画。変更が必要なものだけ変更する
-//				// RootSignatureを設定。PSOに設定しているけど別途設定も必要
-//		dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature);
-//		dxCommon->GetCommandList()->SetPipelineState(graphicsPipelineState); // PSOを設定
-//		dxCommon->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferViewSprite); // VBVを設定
-//
-//		dxCommon->GetCommandList()->IASetIndexBuffer(&indexBufferViewSprite); // VBVを設定
-//
-//		//TransformationMatrixCBufferの場所を限定
-//		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceSprite->GetGPUVirtualAddress());
-//
-//		//dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
-//
-//		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResourceSprite->GetGPUVirtualAddress());
-//
-//		dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
 		object3dCommon->SetCommonRenderState();
 		object3d->Draw();
 
@@ -1228,6 +1013,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	delete spriteCommon;
 	spriteCommon = nullptr;
 	delete input;
+	audio->SoundUnload(&soundData);
+	audio->Finalize();
+	delete audio;
+	audio = nullptr;
 	input = nullptr;
 	delete winApp;
 	winApp = nullptr;

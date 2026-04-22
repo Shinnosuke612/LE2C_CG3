@@ -155,6 +155,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="engine\Audio\Audio.cpp" />
     <ClCompile Include="engine\3d\Camera.cpp" />
     <ClCompile Include="engine\base\D3DResourceLeadChecker.cpp" />
     <ClCompile Include="engine\base\DirectXCommon.cpp" />
@@ -209,6 +210,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="engine\Audio\Audio.h" />
     <ClInclude Include="engine\3d\Camera.h" />
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
     <ClInclude Include="engine\base\DirectXCommon.h" />

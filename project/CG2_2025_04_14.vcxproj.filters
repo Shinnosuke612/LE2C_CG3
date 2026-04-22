@@ -30,6 +30,7 @@
     <ClCompile Include="engine\3d\ParticleEmitter.cpp" />
     <ClCompile Include="engine\math\Matrix4x4.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
+    <ClCompile Include="engine\Audio\Audio.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
@@ -62,6 +63,7 @@
     <ClInclude Include="engine\math\Vector3.h" />
     <ClInclude Include="engine\math\Vector4.h" />
     <ClInclude Include="engine\base\ImGuiManager.h" />
+    <ClInclude Include="engine\Audio\Audio.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />
