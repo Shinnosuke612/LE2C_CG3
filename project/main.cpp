@@ -46,6 +46,7 @@
 #include "engine/3d/ParticleCommon.h"
 #include "engine/3d/ParticleManager.h"
 #include "engine/3d/ParticleEmitter.h"
+#include "engine/base/ImGuiManager.h"
 
 //デバッグ用のあれこれを使えるようにする
 #include <dbghelp.h>
@@ -301,6 +302,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	//SRVマネージャーの初期化
 	srvManager = new SrvManager();
 	srvManager->Initialize(dxCommon);
+
+	//ImGuiマネージャーの初期化
+	ImGuiManager* imguiManager = new ImGuiManager();
+	imguiManager->Initialize(winApp, dxCommon, srvManager);
 
 	TextureManager::GetInstance()->Initialize(dxCommon,srvManager);
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
@@ -985,46 +990,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	object3d->Initialize(object3dCommon);
 	object3d->SetModel("plane.obj");
 
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGui::StyleColorsDark();
 
-	ImGui_ImplWin32_Init(winApp->GetHwnd());
-
-	ImGui_ImplDX12_InitInfo initInfo{};
-	initInfo.Device = dxCommon->GetDevice();
-	initInfo.CommandQueue = dxCommon->GetCommandQueue();
-	initInfo.NumFramesInFlight = 2;
-	initInfo.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-	initInfo.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	initInfo.SrvDescriptorHeap = srvManager->GetDescriptorHeap();
-	initInfo.UserData = srvManager;
-
-	// 今回は ImGui フォント用に index 0 を固定使用
-	initInfo.SrvDescriptorAllocFn =
-		[](ImGui_ImplDX12_InitInfo* info,
-		   D3D12_CPU_DESCRIPTOR_HANDLE* outCpu,
-		   D3D12_GPU_DESCRIPTOR_HANDLE* outGpu){
-			   SrvManager* srv = static_cast<SrvManager*>(info->UserData);
-			   *outCpu = srv->GetCPUDescriptorHandle(0);
-			   *outGpu = srv->GetGPUDescriptorHandle(0);
-		};
-
-	initInfo.SrvDescriptorFreeFn =
-		[](ImGui_ImplDX12_InitInfo*,
-		   D3D12_CPU_DESCRIPTOR_HANDLE,
-		   D3D12_GPU_DESCRIPTOR_HANDLE){
-			   // 今回は index 0 を固定使用するので何もしない
-		};
-
-	ImGui_ImplDX12_Init(&initInfo);
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (true) {
 
-		ImGui_ImplDX12_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
+		imguiManager->BeginFrame();
 
 		// Windowsのメッセージ処理
 		if(winApp->ProcessMessage()) {
@@ -1218,16 +1189,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			//sprite->Draw();
 		}
 
-		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), dxCommon->GetCommandList());
+		imguiManager->EndFrame();
 
 		dxCommon->PostDraw();
 
 	}
 
 	//ImGuiの終了
-	ImGui_ImplDX12_Shutdown();
-	ImGui_ImplWin32_Shutdown();
-	ImGui::DestroyContext();
+	imguiManager->Finalize();
 
 	//出力ウィンドウへの文字出力
 	OutputDebugStringA("Hello,DirectX!\n");
@@ -1264,6 +1233,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	winApp = nullptr;
 	delete dxCommon;
 	dxCommon = nullptr;
+	delete imguiManager;
+	imguiManager = nullptr;
 
 	delete checker;
 

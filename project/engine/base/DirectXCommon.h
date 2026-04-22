@@ -78,6 +78,9 @@ public:
 	ID3D12CommandQueue* GetCommandQueue() const{
 		return commandQueue;
 	}
+	uint32_t GetSwapChainResourcesNum() const{
+		return static_cast<uint32_t>(swapChainResources.size());
+	}
 
 private:
 	//コマンド関連
