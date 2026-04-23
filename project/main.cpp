@@ -1,27 +1,13 @@
 #include "Game.h"
+#include "engine/base/Framework.h"
 
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-	Game game;
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
+	Framework* game = new Game();
 
-	// ゲームの初期化
-	game.Initialize();
+	game->Run();
 
-	while (true) // ゲームループ
-	{
-		// 毎フレーム更新
-		game.Update();
-
-		// ×ボタンで終了
-		if (game.IsEndRequest()) {
-			break;
-		}
-
-		// 描画
-		game.Draw();
-	}
-
-	// ゲームの終了
-	game.Finalize();
+	delete game;
 
 	return 0;
 }

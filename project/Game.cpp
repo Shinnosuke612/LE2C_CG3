@@ -1,121 +1,107 @@
-#define _USE_MATH_DEFINES
 #include "Game.h"
 
-#include <cmath>
-#include <iostream>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <chrono>
-#include <string>
-#include <format>
-#include <cassert>
-
-#include <vector>
-
-// 入力
-#define DIRECTINPUT_VERSION 0x0800
-#include <dinput.h>
-
-#pragma comment(lib,"dinput8.lib")
-#pragma comment(lib,"dxguid.lib")
-
-#include "engine/io/Input.h"
-#include "engine/base/WinApp.h"
 #include "engine/base/DirectXCommon.h"
-#include "engine/base/D3DResourceLeadChecker.h"
+#include "engine/3d/SrvManager.h"
+#include "engine/base/ImGuiManager.h"
+#include "engine/io/Input.h"
+
 #include "engine/2d/SpriteCommon.h"
 #include "engine/2d/Sprite.h"
 #include "engine/2d/TextureManager.h"
+#include "engine/3d/Camera.h"
 #include "engine/3d/Object3dCommon.h"
 #include "engine/3d/Object3d.h"
-#include "engine/3d/Model.h"
 #include "engine/3d/ModelManager.h"
-#include "engine/3d/Camera.h"
-#include "engine/3d/SrvManager.h"
 #include "engine/3d/ParticleCommon.h"
 #include "engine/3d/ParticleManager.h"
 #include "engine/3d/ParticleEmitter.h"
-#include "engine/base/ImGuiManager.h"
+
+#include "externals/imgui/imgui.h"
 
 void Game::Initialize() {
-	checker_ = new D3DResourceLeadChecker();
+	// 基底クラスの初期化処理
+	Framework::Initialize();
 
-	winApp_ = new WinApp();
-	winApp_->Initialize();
-
-	Logger::Initialize();
-
-	dxCommon_ = new DirectXCommon();
-	dxCommon_->Initialize(winApp_);
-
-	ShowWindow(winApp_->GetHwnd(), SW_SHOW);
-
-	input_ = new Input();
-	input_->Initialize(winApp_);
-
-	spriteCommon_ = new SpriteCommon();
-	spriteCommon_->Initialize(dxCommon_);
+	// ゲーム固有の初期化
 
 	camera_ = new Camera();
 	camera_->SetRotate({ 0.0f,0.0f,0.0f });
 	camera_->SetTranslate({ 0.0f,0.0f,-10.0f });
 
-	object3dCommon_ = new Object3dCommon();
-	object3dCommon_->Initialize(dxCommon_);
 	object3dCommon_->SetDefaultCamera(camera_);
 
-	srvManager_ = new SrvManager();
-	srvManager_->Initialize(dxCommon_);
+	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
+	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 
-	imguiManager_ = new ImGuiManager();
-	imguiManager_->Initialize(winApp_, dxCommon_, srvManager_);
+	ModelManager::GetInstance()->LoadModel("plane.obj");
 
-	audio_ = new Audio();
-	audio_->Initialize();
-
-	TextureManager::GetInstance()->Initialize(dxCommon_, srvManager_);
-
-	ModelManager::GetInstance()->Initialize(dxCommon_);
-
-	particleCommon_ = new ParticleCommon();
-	particleCommon_->Initialize(dxCommon_);
 	particleCommon_->SetDefaultCamera(camera_);
 
 	particleManager_ = new ParticleManager();
 	particleManager_->Initialize(particleCommon_, srvManager_);
+	particleManager_->SetCamera(camera_);
+	particleManager_->CreateParticleGroup("particle", "resources/uvChecker.png");
 
-	isEndRequest_ = false;
+	emitter_ = new ParticleEmitter();
+	emitter_->Initialize(particleManager_, "particle");
+	emitter_->SetTranslate({ 0.0f, 0.0f, 0.0f });
+	emitter_->SetCount(4);
+	emitter_->SetFrequency(0.3f);
+	emitter_->SetSpawnSize({ 1.0f, 0.5f, 1.0f });
+
+	Sprite* sprite = new Sprite();
+	sprite->Initialize(spriteCommon_, "resources/uvChecker.png");
+	sprite->SetPosition({ 0.0f, 0.0f });
+	sprites_.push_back(sprite);
+
+	object3d_ = new Object3d();
+	object3d_->Initialize(object3dCommon_);
+	object3d_->SetModel("plane.obj");
+
+	soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
 }
 
 void Game::Update() {
-	if (winApp_->ProcessMessage()) {
-		isEndRequest_ = true;
+	// 基底クラスの更新処理
+	Framework::Update();
+
+	if (IsEndRequest()) {
 		return;
 	}
 
-	imguiManager_->BeginFrame();
+	// ゲーム固有の更新処理
+	if (input_->TriggerKey(DIK_1)) {
+		audio_->SoundPlayWave(soundData_);
+	}
 
-	input_->Update();
+	ImGui::Begin("Scene Controls");
+	ImGui::End();
 
 	camera_->Update();
 
+	emitter_->Update();
 	particleManager_->Update();
+
+	for (Sprite* sprite : sprites_) {
+		sprite->Update();
+	}
+
+	object3d_->Update();
 }
 
 void Game::Draw() {
-	if (isEndRequest_) {
-		return;
-	}
-
 	dxCommon_->PreDraw();
 	srvManager_->PreDraw();
 
 	object3dCommon_->SetCommonRenderState();
+	object3d_->Draw();
 
 	particleManager_->Draw();
 
 	spriteCommon_->SetCommonRenderState();
+	for (Sprite* sprite : sprites_) {
+		// sprite->Draw();
+	}
 
 	imguiManager_->EndFrame();
 
@@ -123,53 +109,27 @@ void Game::Draw() {
 }
 
 void Game::Finalize() {
-	if (imguiManager_) {
-		imguiManager_->Finalize();
-	}
+	// ゲーム固有の終了処理
+	audio_->SoundUnload(&soundData_);
 
-	if (audio_) {
-		audio_->Finalize();
+	for (Sprite* sprite : sprites_) {
+		delete sprite;
+		sprite = nullptr;
 	}
+	sprites_.clear();
 
-	TextureManager::GetInstance()->Finalize();
-	ModelManager::GetInstance()->Finalize();
+	delete object3d_;
+	object3d_ = nullptr;
+
+	delete emitter_;
+	emitter_ = nullptr;
 
 	delete particleManager_;
 	particleManager_ = nullptr;
 
-	delete particleCommon_;
-	particleCommon_ = nullptr;
-
-	delete imguiManager_;
-	imguiManager_ = nullptr;
-
-	delete srvManager_;
-	srvManager_ = nullptr;
-
-	delete object3dCommon_;
-	object3dCommon_ = nullptr;
-
 	delete camera_;
 	camera_ = nullptr;
 
-	delete spriteCommon_;
-	spriteCommon_ = nullptr;
-
-	delete input_;
-	input_ = nullptr;
-
-	delete audio_;
-	audio_ = nullptr;
-
-	if (winApp_) {
-		winApp_->Finalize();
-	}
-	delete winApp_;
-	winApp_ = nullptr;
-
-	delete dxCommon_;
-	dxCommon_ = nullptr;
-
-	delete checker_;
-	checker_ = nullptr;
+	// 基底クラスの終了処理
+	Framework::Finalize();
 }

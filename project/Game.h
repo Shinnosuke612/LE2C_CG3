@@ -1,57 +1,39 @@
 #pragma once
 #include <vector>
+#include "engine/base/Framework.h"
 #include "engine/audio/Audio.h"
 
-class D3DResourceLeadChecker;
-class WinApp;
-class DirectXCommon;
-class Input;
 class SpriteCommon;
 class Sprite;
 class Camera;
 class Object3dCommon;
 class Object3d;
-class SrvManager;
-class ImGuiManager;
 class ParticleCommon;
 class ParticleManager;
 class ParticleEmitter;
 
-class Game {
+class Game : public Framework {
 public:
 	// 初期化
-	void Initialize();
+	void Initialize() override;
 
 	// 終了
-	void Finalize();
+	void Finalize() override;
 
 	// 毎フレーム更新
-	void Update();
+	void Update() override;
 
 	// 描画
-	void Draw();
-
-	// 終了要求
-	bool IsEndRequest() const {
-		return isEndRequest_;
-	}
+	void Draw() override;
 
 private:
-	D3DResourceLeadChecker* checker_ = nullptr;
-
-	WinApp* winApp_ = nullptr;
-	DirectXCommon* dxCommon_ = nullptr;
-	Input* input_ = nullptr;
-
-	SpriteCommon* spriteCommon_ = nullptr;
 	Camera* camera_ = nullptr;
-	Object3dCommon* object3dCommon_ = nullptr;
-	SrvManager* srvManager_ = nullptr;
-	ImGuiManager* imguiManager_ = nullptr;
-	Audio* audio_ = nullptr;
 
-	ParticleCommon* particleCommon_ = nullptr;
 	ParticleManager* particleManager_ = nullptr;
+	ParticleEmitter* emitter_ = nullptr;
 
-	bool isEndRequest_ = false;
+	Object3d* object3d_ = nullptr;
+	std::vector<Sprite*> sprites_;
+
+	Audio::SoundData soundData_{};
 };

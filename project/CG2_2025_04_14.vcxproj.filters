@@ -32,6 +32,7 @@
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
     <ClCompile Include="Game.cpp" />
+    <ClCompile Include="engine\base\Framework.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
@@ -66,6 +67,7 @@
     <ClInclude Include="engine\base\ImGuiManager.h" />
     <ClInclude Include="engine\Audio\Audio.h" />
     <ClInclude Include="Game.h" />
+    <ClInclude Include="engine\base\Framework.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />

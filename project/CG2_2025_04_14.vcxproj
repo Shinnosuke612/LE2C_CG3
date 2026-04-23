@@ -163,6 +163,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClCompile Include="engine\math\Matrix4x4.cpp" />
     <ClCompile Include="engine\utility\Logger.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
+    <ClCompile Include="engine\base\Framework.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="main.cpp">
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">MaxSpeed</Optimization>
@@ -238,6 +239,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClInclude Include="engine\3d\ParticleManager.h" />
     <ClInclude Include="engine\3d\ParticleEmitter.h" />
     <ClInclude Include="engine\base\ImGuiManager.h" />
+    <ClInclude Include="engine\base\Framework.h" />
     <ClInclude Include="Game.h" />
     <ClInclude Include="Vector\Vector2.h" />
     <ClInclude Include="Vector\Vector3.h" />
