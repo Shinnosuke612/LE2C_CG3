@@ -31,6 +31,7 @@
     <ClCompile Include="engine\math\Matrix4x4.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
+    <ClCompile Include="Game.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
@@ -64,6 +65,7 @@
     <ClInclude Include="engine\math\Vector4.h" />
     <ClInclude Include="engine\base\ImGuiManager.h" />
     <ClInclude Include="engine\Audio\Audio.h" />
+    <ClInclude Include="Game.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />
