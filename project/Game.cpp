@@ -23,42 +23,43 @@ void Game::Initialize() {
 	Framework::Initialize();
 
 	// ゲーム固有の初期化
+	spriteCommon_ = new SpriteCommon();
+	spriteCommon_->Initialize(dxCommon_);
 
 	camera_ = new Camera();
 	camera_->SetRotate({ 0.0f,0.0f,0.0f });
 	camera_->SetTranslate({ 0.0f,0.0f,-10.0f });
 
+	object3dCommon_ = new Object3dCommon();
+	object3dCommon_->Initialize(dxCommon_);
 	object3dCommon_->SetDefaultCamera(camera_);
 
+	TextureManager::GetInstance()->Initialize(dxCommon_, srvManager_);
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 
+	ModelManager::GetInstance()->Initialize(dxCommon_);
 	ModelManager::GetInstance()->LoadModel("plane.obj");
 
+	particleCommon_ = new ParticleCommon();
+	particleCommon_->Initialize(dxCommon_);
 	particleCommon_->SetDefaultCamera(camera_);
 
 	particleManager_ = new ParticleManager();
 	particleManager_->Initialize(particleCommon_, srvManager_);
 	particleManager_->SetCamera(camera_);
-	particleManager_->CreateParticleGroup("particle", "resources/uvChecker.png");
+	particleManager_->CreateParticleGroup("particle", "resources/circle.png");
 
 	emitter_ = new ParticleEmitter();
-	emitter_->Initialize(particleManager_, "particle");
-	emitter_->SetTranslate({ 0.0f, 0.0f, 0.0f });
-	emitter_->SetCount(4);
-	emitter_->SetFrequency(0.3f);
-	emitter_->SetSpawnSize({ 1.0f, 0.5f, 1.0f });
-
-	Sprite* sprite = new Sprite();
-	sprite->Initialize(spriteCommon_, "resources/uvChecker.png");
-	sprite->SetPosition({ 0.0f, 0.0f });
-	sprites_.push_back(sprite);
+	emitter_->Initialize(particleManager_,"particle");
+	emitter_->SetTranslate({ 0.0f, 7.0f, 0.0f });
 
 	object3d_ = new Object3d();
 	object3d_->Initialize(object3dCommon_);
 	object3d_->SetModel("plane.obj");
+	object3d_->SetTranslate({ 0.0f, 0.0f, 0.0f });
 
-	soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
+	 soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
 }
 
 void Game::Update() {
@@ -69,8 +70,7 @@ void Game::Update() {
 		return;
 	}
 
-	// ゲーム固有の更新処理
-	if (input_->TriggerKey(DIK_1)) {
+	if (input_->TriggerKey(DIK_1) && soundData_.pBuffer != nullptr) {
 		audio_->SoundPlayWave(soundData_);
 	}
 
@@ -126,6 +126,18 @@ void Game::Finalize() {
 
 	delete particleManager_;
 	particleManager_ = nullptr;
+
+	delete particleCommon_;
+	particleCommon_ = nullptr;
+
+	TextureManager::GetInstance()->Finalize();
+	ModelManager::GetInstance()->Finalize();
+
+	delete object3dCommon_;
+	object3dCommon_ = nullptr;
+
+	delete spriteCommon_;
+	spriteCommon_ = nullptr;
 
 	delete camera_;
 	camera_ = nullptr;

@@ -34,20 +34,20 @@ public:
 	};
 
 	struct ParticleBehavior{
-		Vector3 baseVelocity = { 0.0f, 0.03f, 0.0f };
+		Vector3 baseVelocity = { 0.0f, -0.8f, 0.0f };
 		Vector3 baseAcceleration = { 0.0f, -0.001f, 0.0f };
 
-		Vector3 velocityRandomRange = { 0.2f, 0.05f, 0.2f };
+		Vector3 velocityRandomRange = { 0.0f, 0.0f, 0.01f };
 		Vector3 accelerationRandomRange = { 0.0f, 0.0f, 0.0f };
 
-		float lifeTimeMin = 0.8f;
-		float lifeTimeMax = 1.2f;
+		float lifeTimeMin = 15.0f;
+		float lifeTimeMax = 15.0f;
 
 		Vector3 startScaleMin = { 1.0f, 1.0f, 1.0f };
 		Vector3 startScaleMax = { 1.0f, 1.0f, 1.0f };
 
-		float swayAmplitude = 0.0f;
-		float swayFrequency = 0.0f;
+		float swayAmplitude = 1.0f;
+		float swayFrequency = 1.0f;
 	};
 
 	struct Particle{

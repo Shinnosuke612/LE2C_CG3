@@ -203,7 +203,7 @@ void ParticleManager::Update(){
 
 void ParticleManager::Draw(){
 	auto* commandList = particleCommon_->GetDxCommon()->GetCommandList();
-
+	particleCommon_->SetBlendMode(ParticleCommon::BlendMode::kBlendModeAdd);
 	particleCommon_->SetCommonRenderState();
 
 	for(auto& [name, group] : particleGroups_){

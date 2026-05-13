@@ -33,9 +33,9 @@ private:
 	ParticleManager::ParticleBehavior behavior_{};
 
 	uint32_t count_ = 1;
-	float frequency_ = 0.1f;
+	float frequency_ = 0.4f;
 	float frequencyTime_ = 0.0f;
 	float deltaTime_ = 1.0f / 60.0f;
 	bool isActive_ = true;
-	Vector3 spawnSize_ = { 0.0f, 0.0f, 0.0f };
+	Vector3 spawnSize_ = { 8.0f, 0.0f, 0.0f };
 };

@@ -4,16 +4,62 @@
 #include <cassert>
 #include <array>
 
+namespace {
+	void ApplyBlendMode(D3D12_BLEND_DESC& blendDesc, ParticleCommon::BlendMode blendMode) {
+		blendDesc = {};
+		blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+		if (blendMode == ParticleCommon::BlendMode::kBlendModeNone) {
+			blendDesc.RenderTarget[0].BlendEnable = FALSE;
+			return;
+		}
+
+		blendDesc.RenderTarget[0].BlendEnable = TRUE;
+
+		if (blendMode == ParticleCommon::BlendMode::kBlendModeNormal) {
+			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+			blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+		}
+		else if (blendMode == ParticleCommon::BlendMode::kBlendModeAdd) {
+			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+			blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+		}
+		else if (blendMode == ParticleCommon::BlendMode::kBlendModeSubtract) {
+			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+			blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_REV_SUBTRACT;
+			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+		}
+		else if (blendMode == ParticleCommon::BlendMode::kBlendModeMultiply) {
+			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ZERO;
+			blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_SRC_COLOR;
+		}
+		else if (blendMode == ParticleCommon::BlendMode::kBlendModeScreen) {
+			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_INV_DEST_COLOR;
+			blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+		}
+
+		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+	}
+}
+
 void ParticleCommon::Initialize(DirectXCommon* dxCommon){
 	dxCommon_ = dxCommon;
 	GenerateGraphicsPipeline();
 	CreateVertexResource();
 }
 
-void ParticleCommon::SetCommonRenderState(){
+void ParticleCommon::SetCommonRenderState() {
 	auto* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
-	commandList->SetPipelineState(graphicsPipelineState_.Get());
+	commandList->SetPipelineState(
+		graphicsPipelineStates_[static_cast<uint32_t>(currentBlendMode_)].Get()
+	);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
 }
@@ -92,9 +138,12 @@ void ParticleCommon::MakeRootSignature(){
 	assert(SUCCEEDED(hr));
 }
 
-void ParticleCommon::GenerateGraphicsPipeline(){
+void ParticleCommon::GenerateGraphicsPipeline() {
 	MakeRootSignature();
 
+	// =========================
+	// InputLayout
+	// =========================
 	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
 	inputElementDescs[0].SemanticName = "POSITION";
 	inputElementDescs[0].SemanticIndex = 0;
@@ -115,37 +164,39 @@ void ParticleCommon::GenerateGraphicsPipeline(){
 	inputLayoutDesc.pInputElementDescs = inputElementDescs;
 	inputLayoutDesc.NumElements = _countof(inputElementDescs);
 
-	D3D12_BLEND_DESC blendDesc{};
-	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	blendDesc.RenderTarget[0].BlendEnable = TRUE;
-	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
-	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
-
+	// =========================
+	// Rasterizer
+	// =========================
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
 
+	// =========================
+	// DepthStencil
+	// =========================
 	D3D12_DEPTH_STENCIL_DESC depthStencilDesc{};
-	depthStencilDesc.DepthEnable = true;
+	depthStencilDesc.DepthEnable = false;
 	depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 	depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 
+	// =========================
+	// Shader
+	// =========================
 	auto vertexShaderBlob = dxCommon_->CompileShader(L"resources/shaders/Particle.VS.hlsl", L"vs_6_0");
 	assert(vertexShaderBlob != nullptr);
 
 	auto pixelShaderBlob = dxCommon_->CompileShader(L"resources/shaders/Particle.PS.hlsl", L"ps_6_0");
 	assert(pixelShaderBlob != nullptr);
 
+	// =========================================================
+	// まず全体共通の PSO 設定を作る
+	// BlendState だけあとで Normal / Add に差し替える
+	// =========================================================
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
 	desc.pRootSignature = rootSignature_.Get();
 	desc.InputLayout = inputLayoutDesc;
 	desc.VS = { vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize() };
 	desc.PS = { pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize() };
-	desc.BlendState = blendDesc;
 	desc.RasterizerState = rasterizerDesc;
 	desc.DepthStencilState = depthStencilDesc;
 	desc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -155,11 +206,53 @@ void ParticleCommon::GenerateGraphicsPipeline(){
 	desc.SampleDesc.Count = 1;
 	desc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
 
-	HRESULT hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
-		&desc,
-		IID_PPV_ARGS(&graphicsPipelineState_)
-	);
-	assert(SUCCEEDED(hr));
+	HRESULT hr;
+
+	// =========================
+	// Normal 用 PSO 作成
+	// =========================
+	{
+		D3D12_BLEND_DESC blendDesc{};
+		blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+		blendDesc.RenderTarget[0].BlendEnable = TRUE;
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+
+		desc.BlendState = blendDesc;
+
+		hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+			&desc,
+			IID_PPV_ARGS(&graphicsPipelineStates_[static_cast<uint32_t>(BlendMode::kBlendModeNormal)])
+		);
+		assert(SUCCEEDED(hr));
+	}
+
+	// =========================
+	// Add 用 PSO 作成
+	// =========================
+	{
+		D3D12_BLEND_DESC blendDesc{};
+		blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+		blendDesc.RenderTarget[0].BlendEnable = TRUE;
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+
+		desc.BlendState = blendDesc;
+
+		hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+			&desc,
+			IID_PPV_ARGS(&graphicsPipelineStates_[static_cast<uint32_t>(BlendMode::kBlendModeAdd)])
+		);
+		assert(SUCCEEDED(hr));
+	}
 }
 
 void ParticleCommon::CreateVertexResource(){

@@ -60,17 +60,14 @@ void Framework::Initialize() {
 }
 
 void Framework::Update() {
-	imguiManager_->BeginFrame();
-
-	// Windowsのメッセージ処理
 	if (winApp_->ProcessMessage()) {
 		endRequest_ = true;
 		return;
 	}
 
 	input_->Update();
+	imguiManager_->BeginFrame();
 }
-
 void Framework::Finalize() {
 	if (imguiManager_) {
 		imguiManager_->Finalize();

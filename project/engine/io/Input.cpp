@@ -38,8 +38,8 @@ bool Input::PushKey(BYTE keyNumber){
 	return false;
 }
 
-bool Input::TriggerKey(BYTE keyNumber){
-	if(!PushKey(keyNumber) && keyPre[keyNumber]){
+bool Input::TriggerKey(BYTE keyNumber) {
+	if (PushKey(keyNumber) && !keyPre[keyNumber]) {
 		return true;
 	}
 	return false;
