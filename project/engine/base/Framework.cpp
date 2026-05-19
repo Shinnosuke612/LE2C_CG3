@@ -4,9 +4,15 @@
 #include "D3DResourceLeadChecker.h"
 #include "WinApp.h"
 #include "DirectXCommon.h"
+#include "ImGuiManager.h"
 #include "../io/Input.h"
 #include "../3d/SrvManager.h"
-#include "ImGuiManager.h"
+#include "../3d/ModelManager.h"
+#include "../3d/Object3dCommon.h"
+#include "../2d/TextureManager.h"
+#include "../2d/SpriteCommon.h"
+#include "../particle/ParticleCommon.h"
+#include "../particle/ParticleManager.h"
 #include "../audio/Audio.h"
 
 void Framework::Run() {
@@ -43,12 +49,19 @@ void Framework::Initialize() {
 	dxCommon_->Initialize(winApp_);
 
 	ShowWindow(winApp_->GetHwnd(), SW_SHOW);
+	srvManager_ = new SrvManager();
+	srvManager_->Initialize(dxCommon_);
+
+	Object3dCommon::GetInstance()->Initialize(dxCommon_);
+	TextureManager::GetInstance()->Initialize(dxCommon_, srvManager_);
+	ModelManager::GetInstance()->Initialize(dxCommon_);
+	SpriteCommon::GetInstance()->Initialize(dxCommon_);
+	particleCommon_ = ParticleCommon::GetInstance();
+	particleCommon_->Initialize(dxCommon_);
+	ParticleManager::GetInstance()->Initialize(particleCommon_, srvManager_);
 
 	input_ = new Input();
 	input_->Initialize(winApp_);
-
-	srvManager_ = new SrvManager();
-	srvManager_->Initialize(dxCommon_);
 
 	imguiManager_ = new ImGuiManager();
 	imguiManager_->Initialize(winApp_, dxCommon_, srvManager_);
@@ -76,6 +89,18 @@ void Framework::Finalize() {
 	if (audio_) {
 		audio_->Finalize();
 	}
+
+	TextureManager::GetInstance()->Finalize();
+	ModelManager::GetInstance()->Finalize();
+	SpriteCommon::DeleteInstance();
+	ParticleManager::GetInstance()->Reset();
+	ParticleManager::DeleteInstance();
+
+	if (particleCommon_) {
+		particleCommon_->ResetState();
+	}
+	ParticleCommon::DeleteInstance();
+	particleCommon_ = nullptr;
 
 	delete audio_;
 	audio_ = nullptr;

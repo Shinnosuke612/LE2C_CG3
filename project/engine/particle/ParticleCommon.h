@@ -10,7 +10,19 @@
 class DirectXCommon;
 class Camera;
 
-class ParticleCommon{
+class ParticleCommon {
+private:
+	static ParticleCommon* instance_;
+
+	ParticleCommon() = default;
+	~ParticleCommon() = default;
+	ParticleCommon(const ParticleCommon&) = delete;
+	ParticleCommon& operator=(const ParticleCommon&) = delete;
+
+public:
+	static ParticleCommon* GetInstance();
+	static void DeleteInstance();
+
 public:
 	struct VertexData{
 		Vector4 position;
@@ -30,6 +42,7 @@ public:
 
 public:
 	void Initialize(DirectXCommon* dxCommon);
+	void ResetState();
 	void SetCommonRenderState();
 
 	void SetDefaultCamera(Camera* camera){ defaultCamera_ = camera; }
@@ -52,6 +65,7 @@ private:
 private:
 	DirectXCommon* dxCommon_ = nullptr;
 	Camera* defaultCamera_ = nullptr;
+	bool isInitialized_ = false;
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineStates_[static_cast<uint32_t>(BlendMode::kCountOfBlendMode)];

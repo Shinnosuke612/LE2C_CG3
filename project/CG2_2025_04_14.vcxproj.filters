@@ -25,14 +25,17 @@
     <ClCompile Include="engine\3d\ModelManager.cpp" />
     <ClCompile Include="engine\3d\Camera.cpp" />
     <ClCompile Include="engine\3d\SrvManager.cpp" />
-    <ClCompile Include="engine\3d\ParticleCommon.cpp" />
-    <ClCompile Include="engine\3d\ParticleManager.cpp" />
-    <ClCompile Include="engine\3d\ParticleEmitter.cpp" />
+    <ClCompile Include="engine\particle\ParticleCommon.cpp" />
+    <ClCompile Include="engine\particle\ParticleManager.cpp" />
+    <ClCompile Include="engine\particle\ParticleEmitter.cpp" />
     <ClCompile Include="engine\math\Matrix4x4.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
-    <ClCompile Include="Game.cpp" />
+    <ClCompile Include="engine\scene\Game.cpp" />
     <ClCompile Include="engine\base\Framework.cpp" />
+    <ClCompile Include="engine\scene\GamePlayScene.cpp" />
+    <ClCompile Include="engine\scene\BaseScene.cpp" />
+    <ClCompile Include="engine\scene\TitleScene.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
@@ -56,9 +59,9 @@
     <ClInclude Include="engine\3d\ModelManager.h" />
     <ClInclude Include="engine\3d\Camera.h" />
     <ClInclude Include="engine\3d\SrvManager.h" />
-    <ClInclude Include="engine\3d\ParticleCommon.h" />
-    <ClInclude Include="engine\3d\ParticleManager.h" />
-    <ClInclude Include="engine\3d\ParticleEmitter.h" />
+    <ClInclude Include="engine\particle\ParticleCommon.h" />
+    <ClInclude Include="engine\particle\ParticleManager.h" />
+    <ClInclude Include="engine\particle\ParticleEmitter.h" />
     <ClInclude Include="engine\math\Matrix3x3.h" />
     <ClInclude Include="engine\math\Matrix4x4.h" />
     <ClInclude Include="engine\math\Vector2.h" />
@@ -66,8 +69,11 @@
     <ClInclude Include="engine\math\Vector4.h" />
     <ClInclude Include="engine\base\ImGuiManager.h" />
     <ClInclude Include="engine\Audio\Audio.h" />
-    <ClInclude Include="Game.h" />
+    <ClInclude Include="engine\scene\Game.h" />
     <ClInclude Include="engine\base\Framework.h" />
+    <ClInclude Include="engine\scene\GamePlayScene.h" />
+    <ClInclude Include="engine\scene\BaseScene.h" />
+    <ClInclude Include="engine\scene\TitleScene.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />

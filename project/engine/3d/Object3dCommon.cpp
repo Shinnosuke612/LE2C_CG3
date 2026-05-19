@@ -1,8 +1,21 @@
 #include "Object3dCommon.h"
 #include "../base/DirectXCommon.h"
 #include "../utility/Logger.h"
+#include <cassert>
 
-void Object3dCommon::Initialize(DirectXCommon* dxCommon){
+Object3dCommon* Object3dCommon::GetInstance() {
+	static Object3dCommon instance;
+	return &instance;
+}
+
+void Object3dCommon::Initialize(DirectXCommon* dxCommon) {
+	assert(dxCommon);
+
+	// 同じ DirectXCommon で初期化済みなら何もしない
+	if (dxCommon_ == dxCommon && graphicsPipelineState_) {
+		return;
+	}
+
 	dxCommon_ = dxCommon;
 
 	GenerateGraphicsPipeline();
@@ -150,7 +163,7 @@ void Object3dCommon::GenerateGraphicsPipeline(){
 	assert(pixelShaderBlob != nullptr);
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC graphicsPipelineStateDesc{};
-	graphicsPipelineStateDesc.pRootSignature = *&rootSignature_; // RootSignature
+	graphicsPipelineStateDesc.pRootSignature = rootSignature_.Get(); // RootSignature
 	graphicsPipelineStateDesc.InputLayout = inputLayoutDesc;  // InputLayout
 	graphicsPipelineStateDesc.VS = { vertexShaderBlob->GetBufferPointer(),
 									 vertexShaderBlob->GetBufferSize() }; // VertexShader

@@ -1,10 +1,21 @@
 #pragma once
 #include <d3dx12.h>
+#include <wrl.h>
 class DirectXCommon;
 
 class SpriteCommon{
+private:
+	static SpriteCommon* instance_;
 
+	SpriteCommon() = default;
+	~SpriteCommon() = default;
+	SpriteCommon(const SpriteCommon&) = delete;
+	SpriteCommon& operator=(const SpriteCommon&) = delete;
 public://公開メンバ関数
+
+	// インスタンス取得 / 削除
+	static SpriteCommon* GetInstance();
+	static void DeleteInstance();
 
 	//初期化
 	void Initialize(DirectXCommon* dxCommon);
@@ -31,6 +42,7 @@ private://メンバ変数
 	//ルートシグネチャ
 	Microsoft::WRL::ComPtr < ID3D12RootSignature> rootSignature_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState_ = nullptr;
+	bool isInitialized_ = false;
 private://メンバクラス
 	enum class BlendMode{
 		//!< ブレンドなし

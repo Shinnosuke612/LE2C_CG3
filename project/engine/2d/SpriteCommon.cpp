@@ -1,9 +1,30 @@
 #include "SpriteCommon.h"
 #include "../base/DirectXCommon.h"
 #include "../utility/Logger.h"
-void SpriteCommon::Initialize(DirectXCommon* dxCommon){
+#include <cassert>
+
+SpriteCommon* SpriteCommon::instance_ = nullptr;
+
+SpriteCommon* SpriteCommon::GetInstance() {
+	if (instance_ == nullptr) {
+		instance_ = new SpriteCommon();
+	}
+	return instance_;
+}
+
+void SpriteCommon::DeleteInstance() {
+	delete instance_;
+	instance_ = nullptr;
+}
+
+void SpriteCommon::Initialize(DirectXCommon* dxCommon) {
+	if (isInitialized_) {
+		return;
+	}
+
 	dxCommon_ = dxCommon;
 	GenerateGraphicsPipeline();
+	isInitialized_ = true;
 }
 
 void SpriteCommon::SetCommonRenderState(){
@@ -54,7 +75,9 @@ void SpriteCommon::MakeRootSignature(){
 	hr = D3D12SerializeRootSignature(&descriptionRootSignature,
 									 D3D_ROOT_SIGNATURE_VERSION_1, &signatureBlob, &errorBlob);
 	if(FAILED(hr)){
-		Logger::Log(reinterpret_cast<char*>(errorBlob->GetBufferPointer()));
+		if (errorBlob) {
+			Logger::Log(reinterpret_cast<char*>(errorBlob->GetBufferPointer()));
+		}
 		assert(false);
 	}
 

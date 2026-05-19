@@ -155,6 +155,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="engine\scene\BaseScene.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
     <ClCompile Include="engine\3d\Camera.cpp" />
     <ClCompile Include="engine\base\D3DResourceLeadChecker.cpp" />
@@ -164,7 +165,8 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClCompile Include="engine\utility\Logger.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
     <ClCompile Include="engine\base\Framework.cpp" />
-    <ClCompile Include="Game.cpp" />
+    <ClCompile Include="engine\scene\Game.cpp" />
+    <ClCompile Include="engine\scene\GamePlayScene.cpp" />
     <ClCompile Include="main.cpp">
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">MaxSpeed</Optimization>
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</WholeProgramOptimization>
@@ -181,9 +183,10 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClCompile Include="engine\utility\StringUtility.cpp" />
     <ClCompile Include="engine\2d\TextureManager.cpp" />
     <ClCompile Include="engine\base\WinApp.cpp" />
-    <ClCompile Include="engine\3d\ParticleCommon.cpp" />
-    <ClCompile Include="engine\3d\ParticleManager.cpp" />
-    <ClCompile Include="engine\3d\ParticleEmitter.cpp" />
+    <ClCompile Include="engine\particle\ParticleCommon.cpp" />
+    <ClCompile Include="engine\particle\ParticleManager.cpp" />
+    <ClCompile Include="engine\particle\ParticleEmitter.cpp" />
+    <ClCompile Include="engine\scene\TitleScene.cpp" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="resources\shaders\Object3D.PS.hlsl">
@@ -212,6 +215,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="engine\scene\BaseScene.h" />
     <ClInclude Include="engine\Audio\Audio.h" />
     <ClInclude Include="engine\3d\Camera.h" />
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
@@ -235,12 +239,14 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClInclude Include="engine\utility\StringUtility.h" />
     <ClInclude Include="engine\2d\TextureManager.h" />
     <ClInclude Include="engine\math\Transform.h" />
-    <ClInclude Include="engine\3d\ParticleCommon.h" />
-    <ClInclude Include="engine\3d\ParticleManager.h" />
-    <ClInclude Include="engine\3d\ParticleEmitter.h" />
+    <ClInclude Include="engine\particle\ParticleCommon.h" />
+    <ClInclude Include="engine\particle\ParticleManager.h" />
+    <ClInclude Include="engine\particle\ParticleEmitter.h" />
     <ClInclude Include="engine\base\ImGuiManager.h" />
     <ClInclude Include="engine\base\Framework.h" />
-    <ClInclude Include="Game.h" />
+    <ClInclude Include="engine\scene\Game.h" />
+    <ClInclude Include="engine\scene\GamePlayScene.h" />
+    <ClInclude Include="engine\scene\TitleScene.h" />
     <ClInclude Include="Vector\Vector2.h" />
     <ClInclude Include="Vector\Vector3.h" />
     <ClInclude Include="Vector\Vector4.h" />

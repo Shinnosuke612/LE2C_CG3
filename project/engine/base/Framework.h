@@ -7,6 +7,10 @@ class Input;
 class SrvManager;
 class ImGuiManager;
 class Audio;
+class ParticleCommon;
+class Object3dCommon;
+class SpriteCommon;
+class Camera;
 
 class Framework {
 public:
@@ -44,4 +48,5 @@ protected:
 	SrvManager* srvManager_ = nullptr;
 	ImGuiManager* imguiManager_ = nullptr;
 	Audio* audio_ = nullptr;
+	ParticleCommon* particleCommon_ = nullptr;
 };

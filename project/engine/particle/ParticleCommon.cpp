@@ -3,6 +3,21 @@
 #include "../utility/Logger.h"
 #include <cassert>
 #include <array>
+#include <cstring>
+
+ParticleCommon* ParticleCommon::instance_ = nullptr;
+
+ParticleCommon* ParticleCommon::GetInstance() {
+	if (instance_ == nullptr) {
+		instance_ = new ParticleCommon();
+	}
+	return instance_;
+}
+
+void ParticleCommon::DeleteInstance() {
+	delete instance_;
+	instance_ = nullptr;
+}
 
 namespace {
 	void ApplyBlendMode(D3D12_BLEND_DESC& blendDesc, ParticleCommon::BlendMode blendMode) {
@@ -48,13 +63,28 @@ namespace {
 	}
 }
 
-void ParticleCommon::Initialize(DirectXCommon* dxCommon){
+void ParticleCommon::Initialize(DirectXCommon* dxCommon) {
+	if (isInitialized_) {
+		return;
+	}
+
 	dxCommon_ = dxCommon;
 	GenerateGraphicsPipeline();
 	CreateVertexResource();
+
+	currentBlendMode_ = BlendMode::kBlendModeNormal;
+	defaultCamera_ = nullptr;
+	isInitialized_ = true;
+}
+
+void ParticleCommon::ResetState() {
+	defaultCamera_ = nullptr;
+	currentBlendMode_ = BlendMode::kBlendModeNormal;
 }
 
 void ParticleCommon::SetCommonRenderState() {
+	assert(dxCommon_ != nullptr);
+
 	auto* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
 	commandList->SetPipelineState(
@@ -208,49 +238,20 @@ void ParticleCommon::GenerateGraphicsPipeline() {
 
 	HRESULT hr;
 
-	// =========================
-	// Normal 用 PSO 作成
-	// =========================
-	{
+	// 全BlendMode用 PSO 作成
+	for (uint32_t i = 0; i < static_cast<uint32_t>(BlendMode::kCountOfBlendMode); ++i) {
+		BlendMode blendMode = static_cast<BlendMode>(i);
+
 		D3D12_BLEND_DESC blendDesc{};
-		blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-		blendDesc.RenderTarget[0].BlendEnable = TRUE;
-		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
-		blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-		blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+		ApplyBlendMode(blendDesc, blendMode);
 
 		desc.BlendState = blendDesc;
 
 		hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 			&desc,
-			IID_PPV_ARGS(&graphicsPipelineStates_[static_cast<uint32_t>(BlendMode::kBlendModeNormal)])
+			IID_PPV_ARGS(&graphicsPipelineStates_[i])
 		);
-		assert(SUCCEEDED(hr));
-	}
 
-	// =========================
-	// Add 用 PSO 作成
-	// =========================
-	{
-		D3D12_BLEND_DESC blendDesc{};
-		blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-		blendDesc.RenderTarget[0].BlendEnable = TRUE;
-		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
-		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
-		blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-		blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
-
-		desc.BlendState = blendDesc;
-
-		hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
-			&desc,
-			IID_PPV_ARGS(&graphicsPipelineStates_[static_cast<uint32_t>(BlendMode::kBlendModeAdd)])
-		);
 		assert(SUCCEEDED(hr));
 	}
 }
