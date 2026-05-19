@@ -4,6 +4,7 @@
 
 class Camera;
 class ParticleEmitter;
+class Input;
 
 class TitleScene : public BaseScene
 {
@@ -16,4 +17,5 @@ public:
 private:
 	Camera* camera_ = nullptr;
 	std::vector<ParticleEmitter*> emitters_;
+	Input* input = nullptr;
 };

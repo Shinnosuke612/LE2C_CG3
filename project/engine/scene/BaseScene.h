@@ -1,5 +1,7 @@
 #pragma once
 
+class SceneManager;
+
 // シーン基底クラス
 class BaseScene
 {
@@ -19,4 +21,10 @@ public:
 
 	// 描画
 	virtual void Draw() = 0;
+
+	virtual void SetSceneManager(SceneManager* sceneManager) { sceneManager_ = sceneManager; }
+
+
+protected:
+	SceneManager* sceneManager_ = nullptr;
 };

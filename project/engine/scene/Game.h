@@ -1,6 +1,6 @@
 #pragma once
-#include <vector>
 #include "../base/Framework.h"
+#include "SceneManager.h"
 
 class BaseScene;
 
@@ -12,6 +12,7 @@ public:
 	void Draw() override;
 
 private:
-	BaseScene* scene_ = nullptr;
+	SceneManager* sceneManager_ = nullptr;
+
 
 };

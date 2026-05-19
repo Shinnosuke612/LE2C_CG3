@@ -1,11 +1,13 @@
 #include "TitleScene.h"
+#include "../externals/imgui/imgui.h"
+#include "SceneManager.h"
 
 #include "../3d/Camera.h"
 #include "../3d/Object3dCommon.h"
 #include "../particle/ParticleManager.h"
 #include "../particle/ParticleEmitter.h"
-
-#include "../externals/imgui/imgui.h"
+#include "../io/Input.h"
+#include "GamePlayScene.h"
 
 void TitleScene::Initialize()
 {
@@ -227,6 +229,11 @@ void TitleScene::Finalize()
 
 void TitleScene::Update()
 {
+	if (Input::GetInstance()->TriggerKey(DIK_RETURN)) {
+		BaseScene* scene = new GamePlayScene;
+		sceneManager_->SetNextScene(scene);
+	}
+
 	ImGui::Begin("Title Scene");
 	ImGui::Text("TitleScene");
 	ImGui::Text("Particles are running.");

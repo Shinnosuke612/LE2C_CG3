@@ -60,8 +60,8 @@ void Framework::Initialize() {
 	particleCommon_->Initialize(dxCommon_);
 	ParticleManager::GetInstance()->Initialize(particleCommon_, srvManager_);
 
-	input_ = new Input();
-	input_->Initialize(winApp_);
+	input_ = Input::GetInstance();
+	input_->GetInstance()->Initialize(winApp_);
 
 	imguiManager_ = new ImGuiManager();
 	imguiManager_->Initialize(winApp_, dxCommon_, srvManager_);
@@ -111,8 +111,7 @@ void Framework::Finalize() {
 	delete srvManager_;
 	srvManager_ = nullptr;
 
-	delete input_;
-	input_ = nullptr;
+	Input::GetInstance()->Finalize();
 
 	delete dxCommon_;
 	dxCommon_ = nullptr;

@@ -21,8 +21,10 @@ void Game::Initialize() {
 	// 基底クラスの初期化処理
 	Framework::Initialize();
 
-	scene_ = new TitleScene();
-	scene_->Initialize();
+	sceneManager_ = new SceneManager();
+
+	BaseScene* scene = new TitleScene();
+	sceneManager_->SetNextScene(scene);
 }
 
 void Game::Update() {
@@ -33,9 +35,7 @@ void Game::Update() {
 		return;
 	}
 
-	if (scene_) {
-		scene_->Update();
-	}
+	sceneManager_->Update();
 
 }
 
@@ -43,9 +43,8 @@ void Game::Draw() {
 	dxCommon_->PreDraw();
 	srvManager_->PreDraw();
 	Object3dCommon::GetInstance()->SetCommonRenderState();
-	if (scene_) {
-		scene_->Draw();
-	}
+
+	sceneManager_->Draw();
 
 	imguiManager_->EndFrame();
 
@@ -54,10 +53,9 @@ void Game::Draw() {
 
 void Game::Finalize() {
 
-	if (scene_) {
-		scene_->Finalize();
-		delete scene_;
-		scene_ = nullptr;
+	if (sceneManager_) {
+		delete sceneManager_;
+		sceneManager_ = nullptr;
 	}
 
 	// 基底クラスの終了処理
