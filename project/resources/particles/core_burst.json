@@ -1,0 +1,139 @@
+{
+  "behavior": {
+    "color": {
+      "endColorMax": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "endColorMin": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "mode": "OverLife",
+      "randomColorChangeIntervalMax": 0.3499999940395355,
+      "randomColorChangeIntervalMin": 0.15000000596046448,
+      "randomColorLerpSpeed": 6.0,
+      "randomColorMax": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "randomColorMin": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "startColorMax": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "startColorMin": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "life": {
+      "enableLifeFade": true,
+      "fadeOutStartRatio": 0.6499999761581421,
+      "lifeTimeMax": 1.7999999523162842,
+      "lifeTimeMin": 1.2000000476837158
+    },
+    "motion": {
+      "linear": {
+        "accelerationRandomRange": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "baseAcceleration": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "baseVelocity": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "velocityRandomRange": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mode": "VortexInward",
+      "sway": {
+        "amplitude": 0.0,
+        "frequency": 0.0
+      },
+      "vortex": {
+        "angularSpeedMax": 0.5,
+        "angularSpeedMin": 0.5,
+        "axis": "Z",
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "inwardSpeedMax": -1.2000000476837158,
+        "inwardSpeedMin": -1.7999999523162842,
+        "verticalSpeedMax": 0.0,
+        "verticalSpeedMin": 0.0
+      }
+    },
+    "render": {
+      "billboardMode": "Billboard"
+    },
+    "scale": {
+      "enableScaleOverLife": true,
+      "endScaleMax": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "endScaleMin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "startScaleMax": [
+        4.0,
+        4.0,
+        4.0
+      ],
+      "startScaleMin": [
+        4.0,
+        4.0,
+        4.0
+      ]
+    }
+  },
+  "blendMode": "Multiply",
+  "emitter": {
+    "count": 12,
+    "frequency": 0.03999999910593033,
+    "isActive": true,
+    "spawnSize": [
+      0.15000000596046448,
+      0.15000000596046448,
+      0.0
+    ],
+    "translate": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "name": "CoreBurst",
+  "textureFilePath": "resources/circleEntity.png"
+}

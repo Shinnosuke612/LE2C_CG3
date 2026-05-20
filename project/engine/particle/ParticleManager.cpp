@@ -142,6 +142,31 @@ void ParticleManager::CreateParticleGroup(const std::string& name, const std::st
 	particleGroups_.emplace(name, std::move(group));
 }
 
+bool ParticleManager::HasParticleGroup(const std::string& name) const {
+	return particleGroups_.contains(name);
+}
+
+void ParticleManager::ClearParticleGroup(const std::string& name) {
+	auto it = particleGroups_.find(name);
+	if (it == particleGroups_.end()) {
+		return;
+	}
+
+	it->second.particles.clear();
+	it->second.instanceCount = 0;
+}
+
+void ParticleManager::CreateParticleGroupIfNeeded(
+	const std::string& name,
+	const std::string& textureFilePath
+) {
+	if (HasParticleGroup(name)) {
+		return;
+	}
+
+	CreateParticleGroup(name, textureFilePath);
+}
+
 void ParticleManager::InitializeParticleLife(Particle& particle, const ParticleBehavior& behavior) {
 	particle.currentTime = 0.0f;
 	particle.lifeTime = RandomRange(behavior.life.lifeTimeMin, behavior.life.lifeTimeMax);

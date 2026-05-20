@@ -2,6 +2,7 @@
 #include "BaseScene.h"
 #include <vector>
 #include "../audio/Audio.h"
+#include "../particle/ParticleEffectResource.h"
 
 class SpriteCommon;
 class Sprite;
@@ -34,5 +35,8 @@ private:
 	Object3d* object3d_ = nullptr;
 	std::vector<Sprite*> sprites_;
 	Audio::SoundData soundData_{};
+	
+	ParticleEffectDesc editingEffect_{};
+	ParticleEmitter* previewEmitter_ = nullptr;
 };
 

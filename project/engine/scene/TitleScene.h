@@ -1,6 +1,8 @@
 #pragma once
 #include <vector>
 #include "BaseScene.h"
+#include "../particle/ParticleEffectResource.h"
+#include "../particle/ParticleEffectEditor.h"
 
 class Camera;
 class ParticleEmitter;
@@ -18,4 +20,8 @@ private:
 	Camera* camera_ = nullptr;
 	std::vector<ParticleEmitter*> emitters_;
 	Input* input = nullptr;
+
+	ParticleEffectDesc editingEffect_{};
+	ParticleEffectEditor particleEffectEditor_;
+	ParticleEmitter* previewEmitter_ = nullptr;
 };

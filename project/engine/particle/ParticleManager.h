@@ -247,6 +247,13 @@ public:
 
 	void CreateParticleGroup(const std::string& name, const std::string& textureFilePath);
 
+	bool HasParticleGroup(const std::string& name) const;
+	void ClearParticleGroup(const std::string& name);
+	void CreateParticleGroupIfNeeded(
+		const std::string& name,
+		const std::string& textureFilePath
+	);
+
 	void Emit(
 		const std::string& name,
 		const Vector3& position,

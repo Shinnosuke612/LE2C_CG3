@@ -1,9 +1,13 @@
 #pragma once
+#include <cstdint>
 #include <string>
-#include "../math/Vector3.h"
-#include "ParticleManager.h"
-#include "ParticleCommon.h"
 
+#include "ParticleCommon.h"
+#include "ParticleEmitter.h"
+#include "ParticleManager.h"
+#include "../math/Vector3.h"
+
+// Particleそのものではなく、ParticleGroup + Emitter + Behavior の「レシピ」を保存するための構造体
 struct ParticleEmitterDesc {
 	Vector3 translate = { 0.0f, 0.0f, 0.0f };
 	Vector3 spawnSize = { 1.0f, 1.0f, 1.0f };
@@ -16,9 +20,25 @@ struct ParticleEffectDesc {
 	std::string name = "newParticle";
 	std::string textureFilePath = "resources/circle.png";
 
-	ParticleCommon::BlendMode blendMode =
-		ParticleCommon::BlendMode::kBlendModeAdd;
+	ParticleCommon::BlendMode blendMode = ParticleCommon::BlendMode::kBlendModeAdd;
 
 	ParticleEmitterDesc emitter;
 	ParticleManager::ParticleBehavior behavior;
 };
+
+namespace ParticleEffectResource {
+
+bool Load(const std::string& filePath, ParticleEffectDesc& outEffect);
+bool Save(const std::string& filePath, const ParticleEffectDesc& effect);
+
+// ParticleManager側にGroupを用意し、BlendModeを反映する
+// clearParticlesがtrueなら、既存粒子だけ消してから使う
+void PrepareParticleGroup(const ParticleEffectDesc& effect, bool clearParticles = true);
+
+// 既存Emitterに設定を流し込む
+void ApplyToEmitter(ParticleEmitter& emitter, const ParticleEffectDesc& effect);
+
+// new ParticleEmitterして返す。所有権は呼び出し側
+ParticleEmitter* CreateEmitter(const ParticleEffectDesc& effect);
+
+} // namespace ParticleEffectResource

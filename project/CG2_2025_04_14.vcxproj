@@ -155,6 +155,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="engine\particle\ParticleEffectEditor.cpp" />
     <ClCompile Include="engine\scene\BaseScene.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
     <ClCompile Include="engine\3d\Camera.cpp" />
@@ -217,6 +218,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="engine\particle\ParticleEffectEditor.h" />
     <ClInclude Include="engine\scene\BaseScene.h" />
     <ClInclude Include="engine\Audio\Audio.h" />
     <ClInclude Include="engine\3d\Camera.h" />
