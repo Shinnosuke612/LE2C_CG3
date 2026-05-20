@@ -26,11 +26,13 @@ private://インナークラス
 		MaterialData material;
 	};
 	//マテリアルデータ
-	struct Material{
+	struct Material {
 		Vector4 color;
 		int32_t enableLighting;
 		float padding[3];
 		Matrix4x4 uvTransform;
+		float shininess;
+		float padding2[3];
 	};
 private://非公開メンバ関数
 	// .mtlファイルの読み取り

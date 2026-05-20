@@ -70,7 +70,7 @@ Model::ModelData Model::LoadObjFile(const std::string& directoryPath, const std:
 		if(identifier == "v"){
 			Vector4 position;
 			s >> position.x >> position.y >> position.z;
-			position.x *= 1;
+			position.x *= -1.0f;
 			position.w = 1.0f;
 			positions.push_back(position);
 		} else if(identifier == "vt"){
@@ -81,7 +81,7 @@ Model::ModelData Model::LoadObjFile(const std::string& directoryPath, const std:
 		} else if(identifier == "vn"){
 			Vector3 normal;
 			s >> normal.x >> normal.y >> normal.z;
-			normal.x *= -1;
+			normal.x *= -1.0f;
 			normals.push_back(normal);
 		} else if(identifier == "f"){
 			VertexData triangle[3];
@@ -101,10 +101,11 @@ Model::ModelData Model::LoadObjFile(const std::string& directoryPath, const std:
 				Vector4 position = positions[elementIndices[0] - 1];
 				Vector2 texcoord = texcoords[elementIndices[1] - 1];
 				Vector3 normal = normals[elementIndices[2] - 1];
-				VertexData vertex = { position, texcoord,normal };
-				modelData.vertices.push_back(vertex);
 				triangle[faceVertex] = { position,texcoord,normal };
 			}
+			modelData.vertices.push_back(triangle[2]);
+			modelData.vertices.push_back(triangle[1]);
+			modelData.vertices.push_back(triangle[0]);
 		} else if(identifier == "mtllib"){
 			std::string materialFilename;
 			s >> materialFilename;
@@ -137,4 +138,6 @@ void Model::CreateMaterialResource(){
 	materialData->enableLighting = true;
 	//uvTransform行列を単位行列で初期化
 	materialData->uvTransform = MakeIdentity4x4();
+
+	materialData->shininess = 40.0f;
 }

@@ -23,11 +23,10 @@ private://インナークラス
 		Matrix4x4 WVP;
 		Matrix4x4 World;
 	};
-	//並行光源
-	struct DirectionalLight{
-		Vector4 color; //!< ライトの色
-		Vector3 direction; //!< ライトの向き
-		float intensity; //!< 輝度
+
+	struct CameraForGPU {
+		Vector3 worldPosition;
+		float padding;
 	};
 
 public: //公開メンバ関数
@@ -56,9 +55,8 @@ private: //非公開メンバ関数
 
 	//座標変換行列用リソース作成関数
 	void CreateTransformationMatrixResource();
-	//並行光源用リソース作成関数
-	void CreateDirectionalLightResource();
 
+	void CreateCameraResource();
 private://メンバ変数
 	Transform transform;
 
@@ -70,14 +68,12 @@ private://メンバ変数
 	//バッファリソース内のデータおw指すポインタ
 	TransformationMatrix* transformationMatrixData = nullptr;
 
-	//バッファリソース
-	ID3D12Resource* directionalLightResource;
-	//バッファリソース内のデータおw指すポインタ
-	DirectionalLight* directionalLightData = nullptr;
-
 	//見た目用のモデル
 	Model* model = nullptr;
 	//カメラ
 	Camera* camera = nullptr;
+
+	ID3D12Resource* cameraResource;
+	CameraForGPU* cameraData = nullptr;
 };
 

@@ -1,5 +1,7 @@
 #pragma once
 #include <d3dx12.h>
+#include "../math/Vector3.h"
+#include "../math/Vector4.h"
 class DirectXCommon;
 class Camera;
 
@@ -17,6 +19,10 @@ public: //メンバ関数
 	void Initialize(DirectXCommon* dxCommon);
 	//共通描画設定
 	void SetCommonRenderState();
+
+	void SetLightColor(const Vector4& color);
+	void SetLightDirection(const Vector3& direction);
+	void SetLightIntensity(float intensity);
 
 public:
 	
@@ -40,7 +46,15 @@ private://非公開メンバ関数
 	// どこか共通ヘルパに
 	inline D3D12_STATIC_SAMPLER_DESC MakeStaticSamplerS0();
 
+	void CreateDirectionalLightResource();
+
 private://メンバ変数
+
+	struct DirectionalLight {
+		Vector4 color;
+		Vector3 direction;
+		float intensity;
+	};
 
 	//処理用にDirectXCommonを保持する
 	DirectXCommon* dxCommon_ = nullptr;
@@ -49,6 +63,9 @@ private://メンバ変数
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState_ = nullptr;
 	//デフォルトカメラ
 	Camera* defaultCamera = nullptr;
+
+	ID3D12Resource* directionalLightResource_ = nullptr;
+	DirectionalLight* directionalLightData_ = nullptr;
 private://メンバクラス
 	enum class BlendMode{
 		//!< ブレンドなし

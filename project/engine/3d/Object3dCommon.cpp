@@ -18,13 +18,35 @@ void Object3dCommon::Initialize(DirectXCommon* dxCommon) {
 
 	dxCommon_ = dxCommon;
 
+	CreateDirectionalLightResource();
+
+	GenerateGraphicsPipeline();
+
 	GenerateGraphicsPipeline();
 }
 
-void Object3dCommon::SetCommonRenderState(){
+void Object3dCommon::SetCommonRenderState() {
 	dxCommon_->GetCommandList()->SetGraphicsRootSignature(rootSignature_.Get());
 	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipelineState_.Get());
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	// 世界ライトをObject3D用PixelShaderの b1 に送る
+	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
+		3,
+		directionalLightResource_->GetGPUVirtualAddress()
+	);
+}
+
+void Object3dCommon::SetLightColor(const Vector4& color) {
+	directionalLightData_->color = color;
+}
+
+void Object3dCommon::SetLightDirection(const Vector3& direction) {
+	directionalLightData_->direction = direction;
+}
+
+void Object3dCommon::SetLightIntensity(float intensity) {
+	directionalLightData_->intensity = intensity;
 }
 
 void Object3dCommon::MakeRootSignature(){
@@ -42,7 +64,7 @@ void Object3dCommon::MakeRootSignature(){
 
 
 	//RootParameter作成、複数指定できるので配列。
-	D3D12_ROOT_PARAMETER rootParameters[4] = {};
+	D3D12_ROOT_PARAMETER rootParameters[5] = {};
 	rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParameters[0].Descriptor.ShaderRegister = 0;
@@ -56,6 +78,9 @@ void Object3dCommon::MakeRootSignature(){
 	rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParameters[3].Descriptor.ShaderRegister = 1;
+	rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[4].Descriptor.ShaderRegister = 2;
 
 	descriptionRootSignature.pParameters = rootParameters;
 	descriptionRootSignature.NumParameters = _countof(rootParameters);
@@ -149,7 +174,7 @@ void Object3dCommon::GenerateGraphicsPipeline(){
 	// RasterizerStateの設定
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	// 裏面（時計回り）を表示しない
-	rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
+	rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
 	// 三角形の中を塗りつぶす
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
 
@@ -202,4 +227,18 @@ inline D3D12_STATIC_SAMPLER_DESC Object3dCommon::MakeStaticSamplerS0(){
 	s.ShaderRegister = 0; // s0
 	s.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	return s;
+}
+
+void Object3dCommon::CreateDirectionalLightResource() {
+	directionalLightResource_ = *&dxCommon_->CreateBufferResource(sizeof(DirectionalLight));
+
+	directionalLightResource_->Map(
+		0,
+		nullptr,
+		reinterpret_cast<void**>(&directionalLightData_)
+	);
+
+	directionalLightData_->color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	directionalLightData_->direction = { 0.0f, -1.0f, 0.0f };
+	directionalLightData_->intensity = 1.0f;
 }

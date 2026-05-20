@@ -33,6 +33,7 @@ private:
 	ParticleEmitter* emitter_ = nullptr;
 
 	Object3d* object3d_ = nullptr;
+	Object3d* plane_ = nullptr;
 	std::vector<Sprite*> sprites_;
 	Audio::SoundData soundData_{};
 	

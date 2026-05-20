@@ -25,14 +25,18 @@ void GamePlayScene::Initialize()
 	// ゲーム固有の初期化
 
 	camera_ = new Camera();
-	camera_->SetRotate({ 0.0f,0.0f,0.0f });
-	camera_->SetTranslate({ 0.0f,0.0f,-10.0f });
+	camera_->SetOrbitMode(true);
+	camera_->SetOrbitTarget({ 0.0f, 0.0f, 0.0f });
+	camera_->SetOrbitDistance(10.0f);
+	camera_->SetOrbitAngle(0.0f, 0.0f);
+	camera_->Update();
 
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
 	ParticleManager::GetInstance()->SetCamera(camera_);
 
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
+	ModelManager::GetInstance()->LoadModel("terrain.obj");
 	ModelManager::GetInstance()->LoadModel("plane.obj");
 
 	ParticleEffectDesc gameplayEffect{};
@@ -46,8 +50,17 @@ void GamePlayScene::Initialize()
 
 	object3d_ = new Object3d();
 	object3d_->Initialize(Object3dCommon::GetInstance());
-	object3d_->SetModel("plane.obj");
+	object3d_->SetModel("terrain.obj");
 	object3d_->SetTranslate({ 0.0f, 0.0f, 0.0f });
+
+	plane_ = new Object3d();
+	plane_->Initialize(Object3dCommon::GetInstance());
+	plane_->SetModel("plane.obj");
+	plane_->SetTranslate({ 0.0f, 7.0f, 0.0f });
+
+	Object3dCommon::GetInstance()->SetLightDirection({ 0.0f, -1.0f, 0.0f });
+	Object3dCommon::GetInstance()->SetLightColor({ 0.4f, 0.9f, 0.6f, 1.0f });
+	Object3dCommon::GetInstance()->SetLightIntensity(0.2f);
 
 	//soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
 }
@@ -61,6 +74,9 @@ void GamePlayScene::Finalize()
 
 	delete object3d_;
 	object3d_ = nullptr;
+
+	delete plane_;
+	plane_ = nullptr;
 
 	delete emitter_;
 	emitter_ = nullptr;
@@ -79,6 +95,7 @@ void GamePlayScene::Update()
 	ImGui::Begin("Scene Controls");
 	ImGui::End();
 
+	camera_->DrawImGui("Camera");
 	camera_->Update();
 
 	emitter_->Update();
@@ -89,10 +106,12 @@ void GamePlayScene::Update()
 	}
 
 	object3d_->Update();
+	plane_->Update();
 }
 
 void GamePlayScene::Draw()
 {
 	object3d_->Draw();
-	ParticleManager::GetInstance()->Draw();
+	plane_->Draw();
+	//ParticleManager::GetInstance()->Draw();
 }

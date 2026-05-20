@@ -10,9 +10,7 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 	this->object3dCommon = object3dCommon;
 
 	CreateTransformationMatrixResource();
-	CreateDirectionalLightResource();
-
-	
+	CreateCameraResource();
 
 	//Transform変数を作る
 	transform = { {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f} };
@@ -33,6 +31,10 @@ void Object3d::Update(){
 
 	transformationMatrixData->WVP = worldViewProjectionMatrix;
 	transformationMatrixData->World = worldMatrix;
+
+	if (camera) {
+		cameraData->worldPosition = camera->GetTranslate();
+	}
 }
 
 void Object3d::Draw(){
@@ -42,8 +44,7 @@ void Object3d::Draw(){
 	// 座標変換行列CBufferの場所を設定
 	commandList->SetGraphicsRootConstantBufferView(1, transformationMatrixResource->GetGPUVirtualAddress());
 
-	// 平行光源CBufferの場所を設定
-	commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
+	commandList->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
 
 	if(model){
 		model->Draw();
@@ -67,13 +68,9 @@ void Object3d::CreateTransformationMatrixResource(){
 	transformationMatrixData->World = MakeIdentity4x4();
 }
 
-void Object3d::CreateDirectionalLightResource(){
-	//平行光源のリソースを作る
-	directionalLightResource = *&object3dCommon->GetDxCommon()->CreateBufferResource(sizeof(DirectionalLight));
-	//書き込むためのアドレス取得
-	directionalLightResource->Map(0, nullptr, reinterpret_cast<void**>(&directionalLightData));
-	//平行光源の設定
-	directionalLightData->color = { 1.0f,1.0f,1.0f,1.0f };
-	directionalLightData->direction = { 0.0f,-1.0f,0.0f };
-	directionalLightData->intensity = 1.0f;
+void Object3d::CreateCameraResource() {
+	cameraResource = *&object3dCommon->GetDxCommon()->CreateBufferResource(sizeof(CameraForGPU));
+	cameraResource->Map(0, nullptr, reinterpret_cast<void**>(&cameraData));
+	cameraData->worldPosition = { 0.0f, 0.0f, -10.0f };
+	cameraData->padding = 0.0f;
 }

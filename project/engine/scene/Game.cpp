@@ -23,7 +23,7 @@ void Game::Initialize() {
 
 	sceneManager_ = new SceneManager();
 
-	BaseScene* scene = new TitleScene();
+	BaseScene* scene = new GamePlayScene();
 	sceneManager_->SetNextScene(scene);
 }
 
