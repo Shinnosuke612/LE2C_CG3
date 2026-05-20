@@ -200,6 +200,8 @@ void Object3dCommon::GenerateGraphicsPipeline(){
 	// 三角形の中を塗りつぶす
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
 
+	rasterizerDesc.DepthClipEnable = TRUE;
+
 	// Shaderをコンパイルする
 	Microsoft::WRL::ComPtr <IDxcBlob> vertexShaderBlob = dxCommon_->CompileShader(L"resources/shaders/Object3D.VS.hlsl",
 																				  L"vs_6_0");

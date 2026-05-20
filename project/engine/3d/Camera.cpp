@@ -2,18 +2,22 @@
 #include "Camera.h"
 
 #include "../externals/imgui/imgui.h"
+#include "../math/Math.h"
 
 #include <algorithm>
 #include <cmath>
 
 void Camera::Update() {
 
-    if (isOrbitMode_) {
-        UpdateOrbitTransform();
-    }
+	if (isOrbitMode_) {
+		UpdateOrbitMouseControl();
+		UpdateOrbitTransform();
+	}
+	else {
+		worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
+		viewMatrix = Inverse(worldMatrix);
+	}
 
-	worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
-	viewMatrix = Inverse(worldMatrix);
 	projectionMatrix = MakePerspectiveFovMatrix(fovY_, aspectRatio_, nearClip_, farClip_);
 	viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 }
@@ -28,20 +32,56 @@ void Camera::UpdateOrbitTransform() {
 	const float cosYaw = std::cos(orbitYaw_);
 	const float sinYaw = std::sin(orbitYaw_);
 
+	// orbitTarget_ を中心にしたカメラ位置
 	transform.translate = {
 		orbitTarget_.x + sinYaw * cosPitch * orbitDistance_,
 		orbitTarget_.y + sinPitch * orbitDistance_,
 		orbitTarget_.z - cosYaw * cosPitch * orbitDistance_
 	};
 
-	// このエンジンではカメラが +Z 方向を見る前提としている想定
+	// 回転角から向きを作らず、必ず target を見る方向を作る
+	Vector3 forward = Math::Normalize(Math::Subtract(orbitTarget_, transform.translate));
+	if (Math::Length(forward) < 0.000001f) {
+		forward = { 0.0f, 0.0f, 1.0f };
+	}
+
+	const Vector3 worldUp = { 0.0f, 1.0f, 0.0f };
+
+	Vector3 right = Math::Normalize(Math::Cross(worldUp, forward));
+	if (Math::Length(right) < 0.000001f) {
+		right = { 1.0f, 0.0f, 0.0f };
+	}
+
+	Vector3 up = Math::Cross(forward, right);
+
+	worldMatrix = MakeIdentity4x4();
+
+	worldMatrix.m[0][0] = right.x;
+	worldMatrix.m[0][1] = right.y;
+	worldMatrix.m[0][2] = right.z;
+
+	worldMatrix.m[1][0] = up.x;
+	worldMatrix.m[1][1] = up.y;
+	worldMatrix.m[1][2] = up.z;
+
+	worldMatrix.m[2][0] = forward.x;
+	worldMatrix.m[2][1] = forward.y;
+	worldMatrix.m[2][2] = forward.z;
+
+	worldMatrix.m[3][0] = transform.translate.x;
+	worldMatrix.m[3][1] = transform.translate.y;
+	worldMatrix.m[3][2] = transform.translate.z;
+	worldMatrix.m[3][3] = 1.0f;
+
+	viewMatrix = Inverse(worldMatrix);
+
+	// ImGui表示用。実際のOrbit向きは worldMatrix で作っている
 	transform.rotate = {
 		orbitPitch_,
 		-orbitYaw_,
 		0.0f
 	};
 }
-
 Camera::Camera()
     : transform{ {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f} }
     , fovY_(0.45f)
@@ -133,4 +173,69 @@ void Camera::DrawImGui(const char* label) {
 	}
 
 	ImGui::PopID();
+}
+
+void Camera::UpdateOrbitMouseControl() {
+
+	if (ImGui::GetCurrentContext() == nullptr) {
+		return;
+	}
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	// ImGui操作中はカメラを動かさない
+	if (io.WantCaptureMouse) {
+		return;
+	}
+
+	const float rotateSpeed = 0.005f;
+	const float zoomSpeed = 0.15f;
+	const float panSpeed = orbitDistance_ * 0.0015f;
+
+	// 右ドラッグ：中心点を保ったまま回転
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+		orbitYaw_ += io.MouseDelta.x * rotateSpeed;
+		orbitPitch_ += io.MouseDelta.y * rotateSpeed;
+	}
+
+	// ホイール：ズーム
+	if (io.MouseWheel != 0.0f) {
+		orbitDistance_ *= (1.0f - io.MouseWheel * zoomSpeed);
+		orbitDistance_ = std::clamp(orbitDistance_, orbitMinDistance_, 1000.0f);
+	}
+
+	// 中ドラッグ：中心点を平行移動
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+
+		const float cosPitch = std::cos(orbitPitch_);
+		const float sinPitch = std::sin(orbitPitch_);
+		const float cosYaw = std::cos(orbitYaw_);
+		const float sinYaw = std::sin(orbitYaw_);
+
+		Vector3 eye = {
+			orbitTarget_.x + sinYaw * cosPitch * orbitDistance_,
+			orbitTarget_.y + sinPitch * orbitDistance_,
+			orbitTarget_.z - cosYaw * cosPitch * orbitDistance_
+		};
+
+		Vector3 forward = Math::Normalize(Math::Subtract(orbitTarget_, eye));
+		if (Math::Length(forward) < 0.000001f) {
+			forward = { 0.0f, 0.0f, 1.0f };
+		}
+
+		const Vector3 worldUp = { 0.0f, 1.0f, 0.0f };
+
+		Vector3 right = Math::Normalize(Math::Cross(worldUp, forward));
+		if (Math::Length(right) < 0.000001f) {
+			right = { 1.0f, 0.0f, 0.0f };
+		}
+
+		Vector3 up = Math::Cross(forward, right);
+
+		Vector3 moveRight = Math::Multiply(right, -io.MouseDelta.x * panSpeed);
+		Vector3 moveUp = Math::Multiply(up, io.MouseDelta.y * panSpeed);
+		Vector3 move = Math::Add(moveRight, moveUp);
+
+		orbitTarget_ = Math::Add(orbitTarget_, move);
+	}
 }

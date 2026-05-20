@@ -51,6 +51,10 @@ public://メンバ関数
 	float GetAspectRatio() const{ return aspectRatio_; }
 	float GetNearClip() const{ return nearClip_; }
 	float GetFarClip() const{ return farClip_; }
+
+private:
+	void UpdateOrbitMouseControl();
+
 private:
 	Transform transform;
 	Matrix4x4 worldMatrix;

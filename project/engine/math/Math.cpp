@@ -14,4 +14,36 @@ namespace Math{
 		float inv = 1.0f / len;
 		return { v.x * inv, v.y * inv, v.z * inv };
 	}
+
+	Vector3 Math::Add(const Vector3& v1, const Vector3& v2) {
+		return {
+			v1.x + v2.x,
+			v1.y + v2.y,
+			v1.z + v2.z
+		};
+	}
+
+	Vector3 Math::Subtract(const Vector3& v1, const Vector3& v2) {
+		return {
+			v1.x - v2.x,
+			v1.y - v2.y,
+			v1.z - v2.z
+		};
+	}
+
+	Vector3 Math::Multiply(const Vector3& v, float scalar) {
+		return {
+			v.x * scalar,
+			v.y * scalar,
+			v.z * scalar
+		};
+	}
+
+	Vector3 Math::Cross(const Vector3& v1, const Vector3& v2) {
+		return {
+			v1.y * v2.z - v1.z * v2.y,
+			v1.z * v2.x - v1.x * v2.z,
+			v1.x * v2.y - v1.y * v2.x
+		};
+	}
 }
