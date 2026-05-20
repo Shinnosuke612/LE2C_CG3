@@ -79,6 +79,14 @@ void Framework::Update() {
 	}
 
 	input_->Update();
+	if (input_->TriggerKey(DIK_F11)) {
+		winApp_->ToggleFullscreen();
+
+		dxCommon_->ResizeSwapChain(
+			winApp_->GetClientWidth(),
+			winApp_->GetClientHeight()
+		);
+	}
 	imguiManager_->BeginFrame();
 }
 void Framework::Finalize() {

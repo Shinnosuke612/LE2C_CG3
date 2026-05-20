@@ -80,3 +80,73 @@ bool WinApp::ProcessMessage(){
 	}
 	return false;
 }
+
+uint32_t WinApp::GetClientWidth() const {
+	RECT clientRect{};
+	GetClientRect(hwnd, &clientRect);
+	return static_cast<uint32_t>(clientRect.right - clientRect.left);
+}
+
+uint32_t WinApp::GetClientHeight() const {
+	RECT clientRect{};
+	GetClientRect(hwnd, &clientRect);
+	return static_cast<uint32_t>(clientRect.bottom - clientRect.top);
+}
+
+void WinApp::ToggleFullscreen() {
+	SetFullscreen(!isFullscreen_);
+}
+
+void WinApp::SetFullscreen(bool fullscreen) {
+	if (isFullscreen_ == fullscreen || hwnd == nullptr) {
+		return;
+	}
+
+	if (fullscreen) {
+		// 元のウィンドウ状態を保存
+		GetWindowRect(hwnd, &windowedRect_);
+		windowedStyle_ = GetWindowLongPtr(hwnd, GWL_STYLE);
+
+		// 今いるモニターのサイズを取得
+		MONITORINFO monitorInfo{};
+		monitorInfo.cbSize = sizeof(MONITORINFO);
+
+		HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+		GetMonitorInfo(monitor, &monitorInfo);
+
+		// 枠なしウィンドウに変更
+		SetWindowLongPtr(
+			hwnd,
+			GWL_STYLE,
+			windowedStyle_ & ~WS_OVERLAPPEDWINDOW
+		);
+
+		SetWindowPos(
+			hwnd,
+			HWND_TOP,
+			monitorInfo.rcMonitor.left,
+			monitorInfo.rcMonitor.top,
+			monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+			monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
+			SWP_NOOWNERZORDER | SWP_FRAMECHANGED
+		);
+
+		isFullscreen_ = true;
+	}
+	else {
+		// 元のウィンドウスタイルへ戻す
+		SetWindowLongPtr(hwnd, GWL_STYLE, windowedStyle_);
+
+		SetWindowPos(
+			hwnd,
+			nullptr,
+			windowedRect_.left,
+			windowedRect_.top,
+			windowedRect_.right - windowedRect_.left,
+			windowedRect_.bottom - windowedRect_.top,
+			SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED
+		);
+
+		isFullscreen_ = false;
+	}
+}

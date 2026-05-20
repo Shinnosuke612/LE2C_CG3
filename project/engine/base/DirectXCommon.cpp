@@ -14,6 +14,9 @@ void DirectXCommon::Initialize(WinApp* winApp){
 	//メンバ変数に記録
 	winApp_ = winApp;
 	
+	clientWidth_ = winApp_->GetClientWidth();
+	clientHeight_ = winApp_->GetClientHeight();
+
 	//デバイスの生成
 	DeviceInitialize();
 	//コマンド関連の初期化
@@ -261,8 +264,8 @@ void DirectXCommon::SwapChainGenerate(){
 
 	// スワップチェーンを生成する
 	swapChain = nullptr;
-	swapChainDesc.Width = WinApp::kClientWidth;  // 画面の幅。ウィンドウのクライアント領域を同じものにしておく
-	swapChainDesc.Height = WinApp::kClientHeight;  // 画面の高さ。ウィンドウのクライアント領域を同じものにしておく
+	swapChainDesc.Width = clientWidth_; // 画面の幅。ウィンドウのクライアント領域を同じものにしておく
+	swapChainDesc.Height = clientHeight_;  // 画面の高さ。ウィンドウのクライアント領域を同じものにしておく
 	swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;  // 色の形式
 	swapChainDesc.SampleDesc.Count = 1;  // マルチサンプルしない
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;  // 描画のターゲットとして利用する
@@ -278,8 +281,8 @@ void DirectXCommon::SwapChainGenerate(){
 void DirectXCommon::CreateDepthStencilTextureResource(){
 	//生成するリソースの設定
 	D3D12_RESOURCE_DESC resourceDesc{};
-	resourceDesc.Width = winApp_->kClientWidth;
-	resourceDesc.Height = winApp_->kClientHeight;
+	resourceDesc.Width = clientWidth_;
+	resourceDesc.Height = clientHeight_;
 	resourceDesc.MipLevels = 1;
 	resourceDesc.DepthOrArraySize = 1;
 	resourceDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -386,8 +389,8 @@ void DirectXCommon::FenceGenerate(){
 
 void DirectXCommon::ViewportRectInitialize(){
 	// クライアント領域のサイズと一緒にして画面全体に表示
-	viewport.Width = WinApp::kClientWidth;
-	viewport.Height = WinApp::kClientHeight;
+	viewport.Width = static_cast<float>(clientWidth_);
+	viewport.Height = static_cast<float>(clientHeight_);
 	viewport.TopLeftX = 0;
 	viewport.TopLeftY = 0;
 	viewport.MinDepth = 0.0f;
@@ -397,9 +400,9 @@ void DirectXCommon::ViewportRectInitialize(){
 void DirectXCommon::ScissorRectInitialize(){
 	// 基本的にビューポートと同じ矩形が構成されるようにする
 	scissorRect.left = 0;
-	scissorRect.right = WinApp::kClientWidth;
+	scissorRect.right = static_cast<LONG>(clientWidth_);
 	scissorRect.top = 0;
-	scissorRect.bottom = WinApp::kClientHeight;
+	scissorRect.bottom = static_cast<LONG>(clientHeight_);
 }
 
 void DirectXCommon::DXCCompilerGenerate(){
@@ -619,6 +622,55 @@ ID3D12Resource* DirectXCommon::UploadTextureData(const Microsoft::WRL::ComPtr <I
 	// Detach で ComPtr から所有権を手放し、生ポインタだけ返す
 	return intermediateResource.Detach();
 
+}
+
+void DirectXCommon::ResizeSwapChain(uint32_t width, uint32_t height) {
+	if (width == 0 || height == 0) {
+		return;
+	}
+
+	if (clientWidth_ == width && clientHeight_ == height) {
+		return;
+	}
+
+	assert(swapChain);
+	assert(device);
+
+	// GPUが古いバックバッファを使い終わるまで待つ
+	ExecuteCommandListAndWait();
+
+	// 既存のバックバッファ参照を解放
+	for (auto& resource : swapChainResources) {
+		resource.Reset();
+	}
+
+	// DepthStencilも作り直すので解放
+	if (depthStencilResource) {
+		depthStencilResource->Release();
+		depthStencilResource = nullptr;
+	}
+
+	clientWidth_ = width;
+	clientHeight_ = height;
+
+	swapChainDesc.Width = width;
+	swapChainDesc.Height = height;
+
+	HRESULT hr = swapChain->ResizeBuffers(
+		static_cast<UINT>(swapChainResources.size()),
+		width,
+		height,
+		swapChainDesc.Format,
+		0
+	);
+	assert(SUCCEEDED(hr));
+
+	// RTV / DSV / Viewport / Scissor を作り直す
+	RenderTargetViewInitialize();
+	CreateDepthStencilTextureResource();
+	DepthStencilInitialize();
+	ViewportRectInitialize();
+	ScissorRectInitialize();
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE DirectXCommon::GetGPUDescriptorHandle(const Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>& descriptorHeap, uint32_t descriptorSize, uint32_t index){

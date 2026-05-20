@@ -82,6 +82,12 @@ public:
 		return static_cast<uint32_t>(swapChainResources.size());
 	}
 
+	// 画面サイズ変更
+	void ResizeSwapChain(uint32_t width, uint32_t height);
+
+	uint32_t GetClientWidth() const { return clientWidth_; }
+	uint32_t GetClientHeight() const { return clientHeight_; }
+
 private:
 	//コマンド関連
 	ID3D12CommandQueue* commandQueue;//コマンドキュー
@@ -129,5 +135,8 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[2];
 	//barrier
 	D3D12_RESOURCE_BARRIER barrier{};
+
+	uint32_t clientWidth_ = WinApp::kClientWidth;
+	uint32_t clientHeight_ = WinApp::kClientHeight;
 };
 

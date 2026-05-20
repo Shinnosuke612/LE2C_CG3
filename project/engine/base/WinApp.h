@@ -26,10 +26,23 @@ public:
 		return wc.hInstance;
 	}
 
+	// ボーダーレスフルスクリーン切り替え
+	void ToggleFullscreen();
+	void SetFullscreen(bool fullscreen);
+
+	bool IsFullscreen() const { return isFullscreen_; }
+
+	uint32_t GetClientWidth() const;
+	uint32_t GetClientHeight() const;
+
 private:
 	//ウィンドウハンドル
 	HWND hwnd = nullptr;
 	//ウィンドウクラスの設定
 	WNDCLASS wc{};
+
+	bool isFullscreen_ = false;
+	RECT windowedRect_{};
+	LONG_PTR windowedStyle_ = WS_OVERLAPPEDWINDOW;
 };
 
