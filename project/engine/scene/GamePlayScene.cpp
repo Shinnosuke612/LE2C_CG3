@@ -51,7 +51,8 @@ void GamePlayScene::Initialize()
 	object3d_ = new Object3d();
 	object3d_->Initialize(Object3dCommon::GetInstance());
 	object3d_->SetModel("terrain.obj");
-	object3d_->SetTranslate({ 0.0f, 0.0f, 0.0f });
+	object3d_->SetTranslate({ 0.0f, -5.0f, 0.0f });
+	object3d_->SetScale({ 5.0f, 5.0f, 5.0f });
 
 	plane_ = new Object3d();
 	plane_->Initialize(Object3dCommon::GetInstance());
@@ -61,6 +62,47 @@ void GamePlayScene::Initialize()
 	Object3dCommon::GetInstance()->SetLightDirection({ 0.0f, -1.0f, 0.0f });
 	Object3dCommon::GetInstance()->SetLightColor({ 0.4f, 0.9f, 0.6f, 1.0f });
 	Object3dCommon::GetInstance()->SetLightIntensity(0.2f);
+
+	// 世界ライトの設置
+	{
+		Object3dCommon* object3dCommon = Object3dCommon::GetInstance();
+
+		// PointLight：その位置から周囲へ光るライト
+		Object3dCommon::PointLight pointLight{};
+		pointLight.color = { 1.0f, 0.85f, 0.65f, 1.0f };
+		pointLight.position = { 20.0f, 3.0f, 0.0f };
+		pointLight.intensity = 2.0f;
+		pointLight.radius = 8.0f;
+		pointLight.decay = 1.0f;
+		pointLight.enable = true;
+		pointLight.padding = 0.0f;
+
+		object3dCommon->SetPointLight(pointLight);
+
+		// SpotLight：位置と向きを持つ、懐中電灯のようなライト
+		Object3dCommon::SpotLight spotLight{};
+		spotLight.color = { 0.75f, 0.85f, 1.0f, 1.0f };
+		spotLight.position = { -20.0f, 5.0f, 0.0f };
+		spotLight.intensity = 4.0f;
+
+		// ライトが照らす向き
+		// この例では {0,5,-6} から原点方向を見る感じ
+		spotLight.direction = { 0.0f, -0.65f, 0.76f };
+
+		spotLight.distance = 15.0f;
+		spotLight.decay = 1.0f;
+
+		// 外側の角度 cos(45度) くらい
+		spotLight.cosAngle = 0.70710678f;
+
+		// 内側の角度 cos(30度) くらい
+		// cosFalloffStart の方が cosAngle より大きい値になる
+		spotLight.cosFalloffStart = 0.86602540f;
+
+		spotLight.enable = true;
+
+		object3dCommon->SetSpotLight(spotLight);
+	}
 
 	//soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
 }

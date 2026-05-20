@@ -1,90 +1,201 @@
 #include "Object3D.hlsli"
 
-Texture2D<float4> gTexture : register(t0);
+Texture2D gTexture : register(t0);
 SamplerState gSampler : register(s0);
 
-struct Material
+cbuffer MaterialCB : register(b0)
 {
-    float4 color;
-    int enableLighting;
-    float3 padding;
-    float4x4 uvTransform;
-    float shininess;
-    float3 padding2;
+    float4 gMaterialColor;
+    int gEnableLighting;
+    float3 gMaterialPadding;
+    float4x4 gUvTransform;
+    float gMaterialShininess;
+    float3 gMaterialPadding2;
 };
-ConstantBuffer<Material> gMaterial : register(b0);
 
-struct DirectionalLight
+cbuffer LightingCB : register(b1)
 {
-    float4 color; //<! ライトの色
-    float3 direction; //!< ライトの向き
-    float intensity; //!< 輝度
-};
-ConstantBuffer<DirectionalLight> gDirectionalLight : register(b1);
+    // DirectionalLight
+    float4 gDirectionalLightColor;
+    float3 gDirectionalLightDirection;
+    float gDirectionalLightIntensity;
+    int gDirectionalLightEnable;
+    float3 gDirectionalLightPadding;
 
-struct Camera
-{
-    float3 worldPosition;
+    // PointLight
+    float4 gPointLightColor;
+    float3 gPointLightPosition;
+    float gPointLightIntensity;
+    float gPointLightRadius;
+    float gPointLightDecay;
+    int gPointLightEnable;
+    float gPointLightPadding;
+
+    // SpotLight
+    float4 gSpotLightColor;
+    float3 gSpotLightPosition;
+    float gSpotLightIntensity;
+    float3 gSpotLightDirection;
+    float gSpotLightDistance;
+    float gSpotLightDecay;
+    float gSpotLightCosAngle;
+    float gSpotLightCosFalloffStart;
+    int gSpotLightEnable;
 };
-ConstantBuffer<Camera> gCamera : register(b2);
+
+cbuffer CameraCB : register(b2)
+{
+    float3 gCameraWorldPosition;
+    float gCameraPadding;
+};
 
 struct PixelShaderOutput
 {
     float4 color : SV_TARGET0;
 };
+
+float3 CalcLight(
+    float3 baseColor,
+    float3 lightColor,
+    float lightIntensity,
+    float3 toLight,
+    float attenuation,
+    float3 normal,
+    float3 toEye)
+{
+    float NdotL = dot(normal, toLight);
+    float halfLambert = pow(saturate(NdotL * 0.5f + 0.5f), 2.0f);
+
+    float3 diffuse =
+        baseColor *
+        lightColor *
+        halfLambert *
+        lightIntensity *
+        attenuation;
+
+    float3 halfVector = normalize(toLight + toEye);
+    float NdotH = saturate(dot(normal, halfVector));
+    float specularPow = pow(NdotH, max(gMaterialShininess, 1.0f));
+
+    float3 specular =
+        lightColor *
+        lightIntensity *
+        specularPow *
+        attenuation;
+
+    return diffuse + specular;
+}
+
 PixelShaderOutput main(VertexShaderOutput input)
 {
     PixelShaderOutput output;
-    output.color = gMaterial.color;
-    float4 textureColor = gTexture.Sample(gSampler, input.texcoord);
-    output.color = gMaterial.color * textureColor;
-    float4 transformedUV = mul(float4(input.texcoord, 0.0f, 1.0f), gMaterial.uvTransform);
-    textureColor = gTexture.Sample(gSampler, transformedUV.xy);
+
+    float4 transformedUV = mul(float4(input.texcoord, 0.0f, 1.0f), gUvTransform);
+    float4 textureColor = gTexture.Sample(gSampler, transformedUV.xy);
+
     if (textureColor.a <= 0.5f)
     {
         discard;
     }
-    if (gMaterial.enableLighting != 0)
+
+    float3 baseColor = gMaterialColor.rgb * textureColor.rgb;
+
+    if (gEnableLighting != 0)
     {
         float3 normal = normalize(input.normal);
+        float3 toEye = normalize(gCameraWorldPosition - input.worldPosition);
 
-    // ライト方向
-        float3 lightDirection = normalize(gDirectionalLight.direction);
-        float3 toLight = -lightDirection;
-    // 拡散反射 Half Lambert
-        float NdotL = dot(normal, toLight);
-        float cos = pow(saturate(NdotL * 0.5f + 0.5f), 2.0f);
+        float3 result = float3(0.0f, 0.0f, 0.0f);
 
-        float3 diffuse =
-        gMaterial.color.rgb *
-        textureColor.rgb *
-        gDirectionalLight.color.rgb *
-        cos *
-        gDirectionalLight.intensity;
+        // DirectionalLight
+        if (gDirectionalLightEnable != 0)
+        {
+            // direction は「光が進む向き」として扱う
+            float3 toLight = normalize(-gDirectionalLightDirection);
 
-    // カメラ方向
-        float3 toEye = normalize(gCamera.worldPosition - input.worldPosition);
+            result += CalcLight(
+                baseColor,
+                gDirectionalLightColor.rgb,
+                gDirectionalLightIntensity,
+                toLight,
+                1.0f,
+                normal,
+                toEye
+            );
+        }
 
-    // 鏡面反射
-        float3 halfVector = normalize(-gDirectionalLight.direction + toEye);
-        float NDotH = dot(normalize(input.normal), halfVector);
-        float specularPow = pow(saturate(NDotH), gMaterial.shininess);
+        // PointLight
+        if (gPointLightEnable != 0)
+        {
+            float3 pointToLight = gPointLightPosition - input.worldPosition;
+            float distanceToPointLight = length(pointToLight);
+            float radius = max(gPointLightRadius, 0.001f);
 
-        float3 specular =
-        gDirectionalLight.color.rgb *
-        gDirectionalLight.intensity *
-        specularPow *
-        float3(1.0f, 1.0f, 1.0f);
-        output.color.rgb = diffuse + specular;
-        output.color.a = gMaterial.color.a * textureColor.a;
+            if (distanceToPointLight < radius)
+            {
+                float3 toLight = pointToLight / max(distanceToPointLight, 0.001f);
+                float attenuation = pow(saturate(1.0f - distanceToPointLight / radius), gPointLightDecay);
+
+                result += CalcLight(
+                    baseColor,
+                    gPointLightColor.rgb,
+                    gPointLightIntensity,
+                    toLight,
+                    attenuation,
+                    normal,
+                    toEye
+                );
+            }
+        }
+
+        // SpotLight
+        if (gSpotLightEnable != 0)
+        {
+            float3 spotToLight = gSpotLightPosition - input.worldPosition;
+            float distanceToSpotLight = length(spotToLight);
+            float spotDistance = max(gSpotLightDistance, 0.001f);
+
+            if (distanceToSpotLight < spotDistance)
+            {
+                float3 toLight = spotToLight / max(distanceToSpotLight, 0.001f);
+
+                // direction は「ライトが照らす向き」として扱う
+                float3 fromLightToPixel = -toLight;
+                float spotCos = dot(normalize(gSpotLightDirection), fromLightToPixel);
+
+                float spotFactor = smoothstep(
+                    gSpotLightCosAngle,
+                    gSpotLightCosFalloffStart,
+                    spotCos
+                );
+
+                float distanceFactor = pow(saturate(1.0f - distanceToSpotLight / spotDistance), gSpotLightDecay);
+                float attenuation = spotFactor * distanceFactor;
+
+                result += CalcLight(
+                    baseColor,
+                    gSpotLightColor.rgb,
+                    gSpotLightIntensity,
+                    toLight,
+                    attenuation,
+                    normal,
+                    toEye
+                );
+            }
+        }
+
+        output.color.rgb = result;
+        output.color.a = gMaterialColor.a * textureColor.a;
     }
     else
     {
-        output.color = gMaterial.color * textureColor;
+        output.color = gMaterialColor * textureColor;
     }
-    if (output.color.a == 0)
+
+    if (output.color.a == 0.0f)
     {
         discard;
     }
+
     return output;
 }

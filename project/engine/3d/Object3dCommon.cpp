@@ -18,9 +18,7 @@ void Object3dCommon::Initialize(DirectXCommon* dxCommon) {
 
 	dxCommon_ = dxCommon;
 
-	CreateDirectionalLightResource();
-
-	GenerateGraphicsPipeline();
+	CreateLightingResource();
 
 	GenerateGraphicsPipeline();
 }
@@ -30,23 +28,47 @@ void Object3dCommon::SetCommonRenderState() {
 	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipelineState_.Get());
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	// 世界ライトをObject3D用PixelShaderの b1 に送る
+	// Object3D用PixelShaderの LightingCB : register(b1)
 	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
 		3,
-		directionalLightResource_->GetGPUVirtualAddress()
+		lightingResource_->GetGPUVirtualAddress()
 	);
 }
 
 void Object3dCommon::SetLightColor(const Vector4& color) {
-	directionalLightData_->color = color;
+	lightingData_->directionalLight.color = color;
 }
 
 void Object3dCommon::SetLightDirection(const Vector3& direction) {
-	directionalLightData_->direction = direction;
+	lightingData_->directionalLight.direction = direction;
 }
 
 void Object3dCommon::SetLightIntensity(float intensity) {
-	directionalLightData_->intensity = intensity;
+	lightingData_->directionalLight.intensity = intensity;
+}
+
+void Object3dCommon::SetDirectionalLight(const DirectionalLight& light) {
+	lightingData_->directionalLight = light;
+}
+
+void Object3dCommon::SetPointLight(const PointLight& light) {
+	lightingData_->pointLight = light;
+}
+
+void Object3dCommon::SetSpotLight(const SpotLight& light) {
+	lightingData_->spotLight = light;
+}
+
+Object3dCommon::DirectionalLight* Object3dCommon::GetDirectionalLight() {
+	return &lightingData_->directionalLight;
+}
+
+Object3dCommon::PointLight* Object3dCommon::GetPointLight() {
+	return &lightingData_->pointLight;
+}
+
+Object3dCommon::SpotLight* Object3dCommon::GetSpotLight() {
+	return &lightingData_->spotLight;
 }
 
 void Object3dCommon::MakeRootSignature(){
@@ -229,16 +251,46 @@ inline D3D12_STATIC_SAMPLER_DESC Object3dCommon::MakeStaticSamplerS0(){
 	return s;
 }
 
-void Object3dCommon::CreateDirectionalLightResource() {
-	directionalLightResource_ = *&dxCommon_->CreateBufferResource(sizeof(DirectionalLight));
+void Object3dCommon::CreateLightingResource() {
+	lightingResource_ = *&dxCommon_->CreateBufferResource(sizeof(LightingForGPU));
 
-	directionalLightResource_->Map(
+	lightingResource_->Map(
 		0,
 		nullptr,
-		reinterpret_cast<void**>(&directionalLightData_)
+		reinterpret_cast<void**>(&lightingData_)
 	);
 
-	directionalLightData_->color = { 1.0f, 1.0f, 1.0f, 1.0f };
-	directionalLightData_->direction = { 0.0f, -1.0f, 0.0f };
-	directionalLightData_->intensity = 1.0f;
+	// DirectionalLight
+	lightingData_->directionalLight.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	lightingData_->directionalLight.direction = { 0.0f, -1.0f, 0.0f };
+	lightingData_->directionalLight.intensity = 1.0f;
+	lightingData_->directionalLight.enable = true;
+	lightingData_->directionalLight.padding[0] = 0.0f;
+	lightingData_->directionalLight.padding[1] = 0.0f;
+	lightingData_->directionalLight.padding[2] = 0.0f;
+
+	// PointLight
+	lightingData_->pointLight.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	lightingData_->pointLight.position = { 0.0f, 2.0f, -3.0f };
+	lightingData_->pointLight.intensity = 1.0f;
+	lightingData_->pointLight.radius = 5.0f;
+	lightingData_->pointLight.decay = 1.0f;
+	lightingData_->pointLight.enable = false;
+	lightingData_->pointLight.padding = 0.0f;
+
+	// SpotLight
+	lightingData_->spotLight.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	lightingData_->spotLight.position = { 0.0f, 4.0f, -5.0f };
+	lightingData_->spotLight.intensity = 1.0f;
+	lightingData_->spotLight.direction = { 0.0f, -1.0f, 1.0f };
+	lightingData_->spotLight.distance = 10.0f;
+	lightingData_->spotLight.decay = 1.0f;
+
+	// 外側の角度。cos(45度)相当
+	lightingData_->spotLight.cosAngle = 0.70710678f;
+
+	// 内側の角度。cos(30度)相当
+	lightingData_->spotLight.cosFalloffStart = 0.86602540f;
+
+	lightingData_->spotLight.enable = false;
 }

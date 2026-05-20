@@ -20,18 +20,63 @@ public: //メンバ関数
 	//共通描画設定
 	void SetCommonRenderState();
 
-	void SetLightColor(const Vector4& color);
-	void SetLightDirection(const Vector3& direction);
-	void SetLightIntensity(float intensity);
+public:
+
+	struct DirectionalLight {
+		Vector4 color;
+		Vector3 direction;
+		float intensity;
+		int32_t enable;
+		float padding[3];
+	};
+
+	struct PointLight {
+		Vector4 color;
+		Vector3 position;
+		float intensity;
+		float radius;
+		float decay;
+		int32_t enable;
+		float padding;
+	};
+
+	struct SpotLight {
+		Vector4 color;
+		Vector3 position;
+		float intensity;
+		Vector3 direction;
+		float distance;
+		float decay;
+		float cosAngle;
+		float cosFalloffStart;
+		int32_t enable;
+	};
+
+	struct LightingForGPU {
+		DirectionalLight directionalLight;
+		PointLight pointLight;
+		SpotLight spotLight;
+	};
 
 public:
 	
 	//setter
 	void SetDefaultCamera(Camera* camera){ this->defaultCamera = camera; }
 
+	void SetLightColor(const Vector4& color);
+	void SetLightDirection(const Vector3& direction);
+	void SetLightIntensity(float intensity);
+
+	void SetDirectionalLight(const DirectionalLight& light);
+	void SetPointLight(const PointLight& light);
+	void SetSpotLight(const SpotLight& light);
+
 	//getter
 	DirectXCommon* GetDxCommon() const{return dxCommon_;}
 	Camera* GetDefaultCamera() const{ return defaultCamera; }
+	DirectionalLight* GetDirectionalLight();
+	PointLight* GetPointLight();
+	SpotLight* GetSpotLight();
 
 
 private://非公開メンバ関数
@@ -46,15 +91,9 @@ private://非公開メンバ関数
 	// どこか共通ヘルパに
 	inline D3D12_STATIC_SAMPLER_DESC MakeStaticSamplerS0();
 
-	void CreateDirectionalLightResource();
+	void CreateLightingResource();
 
 private://メンバ変数
-
-	struct DirectionalLight {
-		Vector4 color;
-		Vector3 direction;
-		float intensity;
-	};
 
 	//処理用にDirectXCommonを保持する
 	DirectXCommon* dxCommon_ = nullptr;
@@ -64,8 +103,8 @@ private://メンバ変数
 	//デフォルトカメラ
 	Camera* defaultCamera = nullptr;
 
-	ID3D12Resource* directionalLightResource_ = nullptr;
-	DirectionalLight* directionalLightData_ = nullptr;
+	ID3D12Resource* lightingResource_ = nullptr;
+	LightingForGPU* lightingData_ = nullptr;
 private://メンバクラス
 	enum class BlendMode{
 		//!< ブレンドなし
