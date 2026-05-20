@@ -33,3 +33,9 @@ float Cofactor(const Matrix4x4& m, int row, int col);
 float Determinant(const Matrix4x4& m);
 
 Matrix4x4 Inverse(const Matrix4x4& m);
+
+Matrix4x4 MakeBillboardMatrix(
+	const Matrix4x4& cameraWorldMatrix,
+	const Vector3& scale,
+	const Vector3& translate
+);

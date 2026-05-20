@@ -12,8 +12,10 @@
 void TitleScene::Initialize()
 {
 	camera_ = new Camera();
-	camera_->SetRotate({ 0.0f, 0.0f, 0.0f });
-	camera_->SetTranslate({ 0.0f, 0.0f, -10.0f });
+	camera_->SetOrbitMode(true);
+	camera_->SetOrbitTarget({ 0.0f, 0.0f, 0.0f });
+	camera_->SetOrbitDistance(10.0f);
+	camera_->SetOrbitAngle(0.0f, 0.2f);
 	camera_->Update();
 
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
@@ -84,6 +86,11 @@ void TitleScene::Initialize()
 		"titleVortexStar",
 		"resources/circle.png"
 	);
+	
+	ParticleManager::GetInstance()->SetGroupBlendMode(
+		"titleVortexStar",
+		ParticleCommon::BlendMode::kBlendModeAdd
+	);
 
 	ParticleManager::ParticleBehavior vortexStarBehavior{};
 
@@ -98,18 +105,12 @@ void TitleScene::Initialize()
 	vortexStarBehavior.scale.startScaleMax = { 0.16f, 0.16f, 0.16f };
 
 	// 渦に吸い込まれる動き
-	vortexStarBehavior.motion.mode = ParticleManager::MovementMode::kVortexInward;
+	vortexStarBehavior.motion.mode = ParticleManager::MovementMode::kLinear;
 
 	vortexStarBehavior.motion.vortex.center = { 0.0f, 0.0f, 0.0f };
 
-	vortexStarBehavior.motion.vortex.angularSpeedMin = 1.0f;
-	vortexStarBehavior.motion.vortex.angularSpeedMax = 1.0f;
-
-	vortexStarBehavior.motion.vortex.inwardSpeedMin = -3.8f;
-	vortexStarBehavior.motion.vortex.inwardSpeedMax = -3.8f;
-
-	vortexStarBehavior.motion.vortex.verticalSpeedMin = 0.45f;
-	vortexStarBehavior.motion.vortex.verticalSpeedMax = 0.45f;
+	vortexStarBehavior.motion.linear.baseVelocity = { 0.0f, 0.0f, 0.0f };
+	vortexStarBehavior.motion.linear.velocityRandomRange = { 10.0f, 10.0f, 10.0f };
 
 	// 渦側も揺れなし。回転自体が動きになる
 	vortexStarBehavior.motion.sway.amplitude = 0.0f;
@@ -134,9 +135,9 @@ void TitleScene::Initialize()
 	vortexStarEmitter->SetTranslate({ 0.0f, 0.0f, 0.0f });
 
 	// XZに広く出すと、中心へ吸い込まれる渦になる
-	vortexStarEmitter->SetSpawnSize({ 9.0f, 3.5f, 9.0f });
+	vortexStarEmitter->SetSpawnSize({ 0.0f, 0.0f, 0.0f });
 
-	vortexStarEmitter->SetCount(4);
+	vortexStarEmitter->SetCount(6);
 	vortexStarEmitter->SetFrequency(0.05f);
 
 	vortexStarEmitter->SetBehavior(vortexStarBehavior);
@@ -145,6 +146,11 @@ void TitleScene::Initialize()
 	ParticleManager::GetInstance()->CreateParticleGroup(
 		"titleCoreBurst",
 		"resources/circleEntity.png"
+	);
+
+	ParticleManager::GetInstance()->SetGroupBlendMode(
+		"titleCoreBurst",
+		ParticleCommon::BlendMode::kBlendModeMultiply
 	);
 
 	ParticleManager::ParticleBehavior coreBurstBehavior{};
@@ -196,6 +202,8 @@ void TitleScene::Initialize()
 	coreBurstBehavior.color.endColorMin = { 0.00f, 0.00f, 0.0f, 1.0f };
 	coreBurstBehavior.color.endColorMax = { 0.00f, 0.00f, 0.0f, 1.0f };
 
+	coreBurstBehavior.render.billboardMode = ParticleManager::BillboardMode::kBillboard;
+
 	ParticleEmitter* coreBurstEmitter = new ParticleEmitter();
 	coreBurstEmitter->Initialize(
 		ParticleManager::GetInstance(),
@@ -239,6 +247,7 @@ void TitleScene::Update()
 	ImGui::Text("Particles are running.");
 	ImGui::End();
 
+	camera_->DrawImGui("Main Camera");
 	camera_->Update();
 
 	for (ParticleEmitter* emitter : emitters_) {

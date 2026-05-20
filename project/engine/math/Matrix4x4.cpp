@@ -1,4 +1,5 @@
 #include "Matrix4x4.h"
+#include "Math.h"
 
 Matrix4x4 Multiply(const Matrix4x4& m1, const Matrix4x4& m2) {
 	Matrix4x4 result = {};
@@ -229,6 +230,55 @@ Matrix4x4 Inverse(const Matrix4x4& m) {
 	for (int i = 0; i < 4; ++i)
 		for (int j = 0; j < 4; ++j)
 			result.m[i][j] = Cofactor(m, j, i) * invDet;
+
+	return result;
+}
+
+Matrix4x4 MakeBillboardMatrix(
+	const Matrix4x4& cameraWorldMatrix,
+	const Vector3& scale,
+	const Vector3& translate
+) {
+	Vector3 right = {
+		cameraWorldMatrix.m[0][0],
+		cameraWorldMatrix.m[0][1],
+		cameraWorldMatrix.m[0][2]
+	};
+
+	Vector3 up = {
+		cameraWorldMatrix.m[1][0],
+		cameraWorldMatrix.m[1][1],
+		cameraWorldMatrix.m[1][2]
+	};
+
+	Vector3 forward = {
+		cameraWorldMatrix.m[2][0],
+		cameraWorldMatrix.m[2][1],
+		cameraWorldMatrix.m[2][2]
+	};
+
+	right = Math::Normalize(right);
+	up = Math::Normalize(up);
+	forward = Math::Normalize(forward);
+
+	Matrix4x4 result = MakeIdentity4x4();
+
+	result.m[0][0] = right.x * scale.x;
+	result.m[0][1] = right.y * scale.x;
+	result.m[0][2] = right.z * scale.x;
+
+	result.m[1][0] = up.x * scale.y;
+	result.m[1][1] = up.y * scale.y;
+	result.m[1][2] = up.z * scale.y;
+
+	result.m[2][0] = forward.x * scale.z;
+	result.m[2][1] = forward.y * scale.z;
+	result.m[2][2] = forward.z * scale.z;
+
+	result.m[3][0] = translate.x;
+	result.m[3][1] = translate.y;
+	result.m[3][2] = translate.z;
+	result.m[3][3] = 1.0f;
 
 	return result;
 }

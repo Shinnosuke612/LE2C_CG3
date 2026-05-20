@@ -1,5 +1,8 @@
 #include "GamePlayScene.h"
 
+#include "TitleScene.h"
+#include "SceneManager.h"
+
 #include "../base/DirectXCommon.h"
 #include "../3d/SrvManager.h"
 #include "../base/ImGuiManager.h"
@@ -125,9 +128,10 @@ void GamePlayScene::Finalize()
 
 void GamePlayScene::Update()
 {
-	//if (input_->TriggerKey(DIK_1) && soundData_.pBuffer != nullptr) {
-	//	audio_->SoundPlayWave(soundData_);
-	//}
+	if (Input::GetInstance()->TriggerKey(DIK_RETURN)) {
+		BaseScene* scene = new TitleScene;
+		sceneManager_->SetNextScene(scene);
+	}
 
 	ImGui::Begin("Scene Controls");
 	ImGui::End();

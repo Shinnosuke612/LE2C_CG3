@@ -10,7 +10,8 @@
 #include "../math/Transform.h"
 #include "../math/Matrix4x4.h"
 
-class ParticleCommon;
+#include "ParticleCommon.h"
+
 class SrvManager;
 class Camera;
 
@@ -145,11 +146,21 @@ public:
 		float randomColorLerpSpeed = 6.0f;
 	};
 
+	enum class BillboardMode {
+		kNone,
+		kBillboard,
+	};
+
+	struct ParticleRenderDesc {
+		BillboardMode billboardMode = BillboardMode::kBillboard;
+	};
+
 	struct ParticleBehavior {
 		ParticleLifeDesc life;
 		ParticleScaleDesc scale;
 		ParticleMotionDesc motion;
 		ParticleColorDesc color;
+		ParticleRenderDesc render;
 	};
 
 	struct Particle {
@@ -202,6 +213,8 @@ public:
 		float vortexInwardSpeed = 0.0f;
 		float vortexVerticalSpeed = 0.0f;
 		float vortexHeightOffset = 0.0f;
+
+		BillboardMode billboardMode = BillboardMode::kBillboard;
 	};
 
 private:
@@ -219,6 +232,8 @@ private:
 
 		uint32_t instanceSrvIndex = 0;
 		uint32_t instanceCount = 0;
+
+		ParticleCommon::BlendMode blendMode = ParticleCommon::BlendMode::kBlendModeAdd;
 	};
 
 public:
@@ -241,6 +256,8 @@ public:
 	);
 
 	void SetCamera(Camera* camera) { camera_ = camera; }
+
+	void SetGroupBlendMode(const std::string& name, ParticleCommon::BlendMode blendMode);
 
 private:
 	void CreateDirectionalLightResource();

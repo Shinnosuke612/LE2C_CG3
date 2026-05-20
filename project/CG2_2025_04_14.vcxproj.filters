@@ -37,6 +37,7 @@
     <ClCompile Include="engine\scene\BaseScene.cpp" />
     <ClCompile Include="engine\scene\TitleScene.cpp" />
     <ClCompile Include="engine\scene\SceneManager.cpp" />
+    <ClCompile Include="engine\particle\ParticleEffectResource.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
@@ -76,6 +77,7 @@
     <ClInclude Include="engine\scene\BaseScene.h" />
     <ClInclude Include="engine\scene\TitleScene.h" />
     <ClInclude Include="engine\scene\SceneManager.h" />
+    <ClInclude Include="engine\particle\ParticleEffectResource.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />

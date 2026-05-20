@@ -47,6 +47,16 @@ void ParticleManager::Reset() {
 	camera_ = nullptr;
 }
 
+void ParticleManager::SetGroupBlendMode(
+	const std::string& name,
+	ParticleCommon::BlendMode blendMode
+) {
+	auto it = particleGroups_.find(name);
+	assert(it != particleGroups_.end());
+
+	it->second.blendMode = blendMode;
+}
+
 void ParticleManager::CreateDirectionalLightResource() {
 	directionalLightResource_ = particleCommon_->GetDxCommon()->CreateBufferResource(sizeof(DirectionalLight));
 	directionalLightResource_->Map(0, nullptr, reinterpret_cast<void**>(&directionalLightData_));
@@ -326,6 +336,8 @@ void ParticleManager::Emit(
 		InitializeParticleMotion(particle, behavior);
 		InitializeParticleColor(particle, behavior);
 
+		particle.billboardMode = behavior.render.billboardMode;
+
 		group.particles.push_back(particle);
 	}
 }
@@ -520,12 +532,22 @@ void ParticleManager::Update() {
 				break;
 			}
 
-			Matrix4x4 worldMatrix = MakeAffineMatrix(
-				particle.transform.scale,
-				particle.transform.rotate,
-				particle.transform.translate
-			);
+			Matrix4x4 worldMatrix{};
 
+			if (particle.billboardMode == BillboardMode::kBillboard) {
+				worldMatrix = MakeBillboardMatrix(
+					camera_->GetWorldMatrix(),
+					particle.transform.scale,
+					particle.transform.translate
+				);
+			}
+			else {
+				worldMatrix = MakeAffineMatrix(
+					particle.transform.scale,
+					particle.transform.rotate,
+					particle.transform.translate
+				);
+			}
 			Matrix4x4 wvp = Multiply(worldMatrix, camera_->GetViewProjectionMatrix());
 
 			group.instancingData[group.instanceCount].World = worldMatrix;
@@ -538,29 +560,30 @@ void ParticleManager::Update() {
 }
 
 void ParticleManager::Draw() {
-	assert(particleCommon_);
-	assert(srvManager_);
-	assert(directionalLightResource_);
-
 	auto* commandList = particleCommon_->GetDxCommon()->GetCommandList();
-
-	particleCommon_->SetBlendMode(ParticleCommon::BlendMode::kBlendModeMultiply);
-	particleCommon_->SetCommonRenderState();
 
 	for (auto& [name, group] : particleGroups_) {
 		if (group.instanceCount == 0) {
 			continue;
 		}
 
+		// ParticleGroupごとにBlendModeを切り替える
+		particleCommon_->SetBlendMode(group.blendMode);
+		particleCommon_->SetCommonRenderState();
+
+		// b0 Material
 		commandList->SetGraphicsRootConstantBufferView(
 			0,
 			group.materialResource->GetGPUVirtualAddress()
 		);
 
+		// VS t0 StructuredBuffer<TransformationMatrix>
 		srvManager_->SetGraphicsRootDescriptorTable(1, group.instanceSrvIndex);
 
+		// PS t0 Texture2D
 		srvManager_->SetGraphicsRootDescriptorTable(2, group.textureSrvIndex);
 
+		// b1 DirectionalLight
 		commandList->SetGraphicsRootConstantBufferView(
 			3,
 			directionalLightResource_->GetGPUVirtualAddress()

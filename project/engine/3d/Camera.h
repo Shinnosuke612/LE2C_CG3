@@ -10,6 +10,21 @@ class Camera{
 public://メンバ関数
 	//更新
 	void Update();
+	void UpdateOrbitTransform();
+
+	// ImGui表示
+	void DrawImGui(const char* label = "Camera");
+
+	// OrbitCamera設定
+	void SetOrbitMode(bool isOrbitMode) { isOrbitMode_ = isOrbitMode; }
+	bool IsOrbitMode() const { return isOrbitMode_; }
+
+	void SetOrbitTarget(const Vector3& target) { orbitTarget_ = target; }
+	void SetOrbitDistance(float distance) { orbitDistance_ = distance; }
+	void SetOrbitAngle(float yaw, float pitch) {
+		orbitYaw_ = yaw;
+		orbitPitch_ = pitch;
+	}
 
 	//デフォルトコンストラクタ
 	Camera();
@@ -46,5 +61,17 @@ private:
 	float nearClip_ = 0.1f;
 	float farClip_ = 100.0f;
 	Matrix4x4 viewProjectionMatrix;
+
+	bool isOrbitMode_ = false;
+
+	Vector3 orbitTarget_ = { 0.0f, 0.0f, 0.0f };
+	float orbitDistance_ = 10.0f;
+
+	// radian
+	float orbitYaw_ = 0.0f;
+	float orbitPitch_ = 0.0f;
+
+	float orbitMinDistance_ = 0.1f;
+	float orbitMaxPitch_ = 1.55f;
 };
 
