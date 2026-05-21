@@ -63,7 +63,7 @@ private:
 	float fovY_ = 0.45f;                                  // 水平方向視野角…ではなく通常これは「縦FOV」(rad)
 	float aspectRatio_ = float(WinApp::kClientWidth) / float(WinApp::kClientHeight);
 	float nearClip_ = 0.1f;
-	float farClip_ = 100.0f;
+	float farClip_ = 1000.0f;
 	Matrix4x4 viewProjectionMatrix;
 
 	bool isOrbitMode_ = false;

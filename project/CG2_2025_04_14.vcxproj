@@ -168,6 +168,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClCompile Include="engine\base\Framework.cpp" />
     <ClCompile Include="engine\scene\Game.cpp" />
     <ClCompile Include="engine\scene\GamePlayScene.cpp" />
+    <ClCompile Include="engine\3d\LightManager.cpp" />
     <ClCompile Include="main.cpp">
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">MaxSpeed</Optimization>
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</WholeProgramOptimization>
@@ -263,6 +264,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClInclude Include="engine\scene\TitleScene.h" />
     <ClInclude Include="engine\scene\SceneManager.h" />
     <ClInclude Include="engine\particle\ParticleEffectResource.h" />
+    <ClInclude Include="engine\3d\LightManager.h" />
     <ClInclude Include="Vector\Vector2.h" />
     <ClInclude Include="Vector\Vector3.h" />
     <ClInclude Include="Vector\Vector4.h" />

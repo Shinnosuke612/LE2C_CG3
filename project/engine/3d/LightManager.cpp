@@ -1,0 +1,486 @@
+#include "LightManager.h"
+
+#include "../base/DirectXCommon.h"
+#include "../externals/imgui/imgui.h"
+#include "../externals/nlohmann/json.hpp"
+
+#include "../math/math.h"
+#include <algorithm>
+#include <cassert>
+#include <fstream>
+
+using json = nlohmann::json;
+
+namespace {
+	json ToJson(const Vector3& v) {
+		return json::array({ v.x, v.y, v.z });
+	}
+
+	json ToJson(const Vector4& v) {
+		return json::array({ v.x, v.y, v.z, v.w });
+	}
+
+	Vector3 ToVector3(const json& j, const Vector3& defaultValue) {
+		if (!j.is_array() || j.size() < 3) {
+			return defaultValue;
+		}
+
+		return {
+			j[0].get<float>(),
+			j[1].get<float>(),
+			j[2].get<float>()
+		};
+	}
+
+	Vector4 ToVector4(const json& j, const Vector4& defaultValue) {
+		if (!j.is_array() || j.size() < 4) {
+			return defaultValue;
+		}
+
+		return {
+			j[0].get<float>(),
+			j[1].get<float>(),
+			j[2].get<float>(),
+			j[3].get<float>()
+		};
+	}
+}
+
+void LightManager::Initialize(DirectXCommon* dxCommon, const std::string& jsonPath) {
+	assert(dxCommon);
+
+	dxCommon_ = dxCommon;
+	jsonPath_ = jsonPath;
+
+	lightingResource_ = dxCommon_->CreateBufferResource(sizeof(LightingForGPU));
+	lightingResource_->Map(0, nullptr, reinterpret_cast<void**>(&lightingData_));
+
+	Reset();
+
+	if (!jsonPath_.empty()) {
+		LoadFromJson(jsonPath_);
+	}
+
+	SyncToGPU();
+}
+
+void LightManager::Reset() {
+	directionalLight_.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	directionalLight_.direction = { 0.0f, -1.0f, 0.0f };
+	directionalLight_.intensity = 1.0f;
+	directionalLight_.enable = true;
+	directionalLight_.padding[0] = 0.0f;
+	directionalLight_.padding[1] = 0.0f;
+	directionalLight_.padding[2] = 0.0f;
+
+	pointLights_.clear();
+	spotLights_.clear();
+
+	SyncToGPU();
+}
+
+void LightManager::Bind(ID3D12GraphicsCommandList* commandList, UINT rootParameterIndex) {
+	assert(commandList);
+	assert(lightingResource_);
+
+	commandList->SetGraphicsRootConstantBufferView(
+		rootParameterIndex,
+		lightingResource_->GetGPUVirtualAddress()
+	);
+}
+
+void LightManager::SyncToGPU() {
+	if (!lightingData_) {
+		return;
+	}
+
+	*lightingData_ = {};
+
+	lightingData_->directionalLight = directionalLight_;
+
+	const uint32_t pointCount = std::min<uint32_t>(
+		static_cast<uint32_t>(pointLights_.size()),
+		kMaxPointLights
+	);
+
+	const uint32_t spotCount = std::min<uint32_t>(
+		static_cast<uint32_t>(spotLights_.size()),
+		kMaxSpotLights
+	);
+
+	lightingData_->pointLightCount = static_cast<int32_t>(pointCount);
+	lightingData_->spotLightCount = static_cast<int32_t>(spotCount);
+
+	for (uint32_t i = 0; i < pointCount; ++i) {
+		lightingData_->pointLights[i] = pointLights_[i];
+	}
+
+	for (uint32_t i = 0; i < spotCount; ++i) {
+		lightingData_->spotLights[i] = spotLights_[i];
+
+		if (Math::Length(lightingData_->spotLights[i].direction) > 0.000001f) {
+			lightingData_->spotLights[i].direction = Math::Normalize(lightingData_->spotLights[i].direction);
+		}
+		else {
+			lightingData_->spotLights[i].direction = { 0.0f, -1.0f, 0.0f };
+		}
+	}
+}
+
+LightManager::PointLight LightManager::MakeDefaultPointLight() const {
+	PointLight light{};
+	light.color = { 1.0f, 0.85f, 0.65f, 1.0f };
+	light.position = { 0.0f, 3.0f, -3.0f };
+	light.intensity = 2.0f;
+	light.radius = 8.0f;
+	light.decay = 1.0f;
+	light.enable = true;
+	light.padding = 0.0f;
+	return light;
+}
+
+LightManager::SpotLight LightManager::MakeDefaultSpotLight() const {
+	SpotLight light{};
+	light.color = { 0.75f, 0.85f, 1.0f, 1.0f };
+	light.position = { 0.0f, 5.0f, -6.0f };
+	light.intensity = 4.0f;
+	light.direction = { 0.0f, -0.65f, 0.76f };
+	light.distance = 15.0f;
+	light.decay = 1.0f;
+	light.cosAngle = 0.70710678f;
+	light.cosFalloffStart = 0.86602540f;
+	light.enable = true;
+	return light;
+}
+
+void LightManager::AddPointLight(const PointLight& light) {
+	if (pointLights_.size() >= kMaxPointLights) {
+		return;
+	}
+
+	pointLights_.push_back(light);
+	SyncToGPU();
+}
+
+void LightManager::AddSpotLight(const SpotLight& light) {
+	if (spotLights_.size() >= kMaxSpotLights) {
+		return;
+	}
+
+	spotLights_.push_back(light);
+	SyncToGPU();
+}
+
+void LightManager::RemovePointLight(size_t index) {
+	if (index >= pointLights_.size()) {
+		return;
+	}
+
+	pointLights_.erase(pointLights_.begin() + index);
+	SyncToGPU();
+}
+
+void LightManager::RemoveSpotLight(size_t index) {
+	if (index >= spotLights_.size()) {
+		return;
+	}
+
+	spotLights_.erase(spotLights_.begin() + index);
+	SyncToGPU();
+}
+
+void LightManager::ClearPointLights() {
+	pointLights_.clear();
+	SyncToGPU();
+}
+
+void LightManager::ClearSpotLights() {
+	spotLights_.clear();
+	SyncToGPU();
+}
+
+bool LightManager::LoadFromJson(const std::string& jsonPath) {
+	std::ifstream file(jsonPath);
+	if (!file.is_open()) {
+		return false;
+	}
+
+	json root;
+	file >> root;
+
+	if (root.contains("directionalLight")) {
+		const json& j = root["directionalLight"];
+
+		directionalLight_.color = ToVector4(j.value("color", json::array()), directionalLight_.color);
+		directionalLight_.direction = ToVector3(j.value("direction", json::array()), directionalLight_.direction);
+		directionalLight_.intensity = j.value("intensity", directionalLight_.intensity);
+		directionalLight_.enable = j.value("enable", directionalLight_.enable);
+	}
+
+	pointLights_.clear();
+	if (root.contains("pointLights") && root["pointLights"].is_array()) {
+		for (const json& j : root["pointLights"]) {
+			if (pointLights_.size() >= kMaxPointLights) {
+				break;
+			}
+
+			PointLight light = MakeDefaultPointLight();
+			light.color = ToVector4(j.value("color", json::array()), light.color);
+			light.position = ToVector3(j.value("position", json::array()), light.position);
+			light.intensity = j.value("intensity", light.intensity);
+			light.radius = j.value("radius", light.radius);
+			light.decay = j.value("decay", light.decay);
+			light.enable = j.value("enable", light.enable);
+			light.padding = 0.0f;
+
+			pointLights_.push_back(light);
+		}
+	}
+
+	spotLights_.clear();
+	if (root.contains("spotLights") && root["spotLights"].is_array()) {
+		for (const json& j : root["spotLights"]) {
+			if (spotLights_.size() >= kMaxSpotLights) {
+				break;
+			}
+
+			SpotLight light = MakeDefaultSpotLight();
+			light.color = ToVector4(j.value("color", json::array()), light.color);
+			light.position = ToVector3(j.value("position", json::array()), light.position);
+			light.intensity = j.value("intensity", light.intensity);
+			light.direction = ToVector3(j.value("direction", json::array()), light.direction);
+			light.distance = j.value("distance", light.distance);
+			light.decay = j.value("decay", light.decay);
+			light.cosAngle = j.value("cosAngle", light.cosAngle);
+			light.cosFalloffStart = j.value("cosFalloffStart", light.cosFalloffStart);
+			light.enable = j.value("enable", light.enable);
+
+			spotLights_.push_back(light);
+		}
+	}
+
+	jsonPath_ = jsonPath;
+	SyncToGPU();
+	return true;
+}
+
+bool LightManager::SaveToJson(const std::string& jsonPath) const {
+	json root;
+
+	root["directionalLight"] = {
+		{ "color", ToJson(directionalLight_.color) },
+		{ "direction", ToJson(directionalLight_.direction) },
+		{ "intensity", directionalLight_.intensity },
+		{ "enable", directionalLight_.enable }
+	};
+
+	root["pointLights"] = json::array();
+	for (const PointLight& light : pointLights_) {
+		root["pointLights"].push_back({
+			{ "color", ToJson(light.color) },
+			{ "position", ToJson(light.position) },
+			{ "intensity", light.intensity },
+			{ "radius", light.radius },
+			{ "decay", light.decay },
+			{ "enable", light.enable }
+			});
+	}
+
+	root["spotLights"] = json::array();
+	for (const SpotLight& light : spotLights_) {
+		root["spotLights"].push_back({
+			{ "color", ToJson(light.color) },
+			{ "position", ToJson(light.position) },
+			{ "intensity", light.intensity },
+			{ "direction", ToJson(light.direction) },
+			{ "distance", light.distance },
+			{ "decay", light.decay },
+			{ "cosAngle", light.cosAngle },
+			{ "cosFalloffStart", light.cosFalloffStart },
+			{ "enable", light.enable }
+			});
+	}
+
+	std::ofstream file(jsonPath);
+	if (!file.is_open()) {
+		return false;
+	}
+
+	file << root.dump(4);
+	return true;
+}
+
+void LightManager::DrawImGui() {
+	if (!lightingData_) {
+		return;
+	}
+
+	bool changed = false;
+
+	ImGui::Begin("Light Manager");
+
+	ImGui::Text("Json: %s", jsonPath_.empty() ? "(none)" : jsonPath_.c_str());
+
+	if (ImGui::Button("Load")) {
+		if (!jsonPath_.empty()) {
+			LoadFromJson(jsonPath_);
+		}
+	}
+
+	ImGui::SameLine();
+
+	if (ImGui::Button("Save")) {
+		if (!jsonPath_.empty()) {
+			SaveToJson(jsonPath_);
+		}
+	}
+
+	ImGui::SameLine();
+
+	if (ImGui::Button("Reset")) {
+		Reset();
+		changed = true;
+	}
+
+	if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+		bool enable = directionalLight_.enable != 0;
+		if (ImGui::Checkbox("Directional Enable", &enable)) {
+			directionalLight_.enable = enable;
+			changed = true;
+		}
+
+		changed |= ImGui::ColorEdit3("Directional Color", &directionalLight_.color.x);
+		if (ImGui::DragFloat3("Directional Direction", &directionalLight_.direction.x, 0.01f, -1.0f, 1.0f)) {
+			if (Math::Length(directionalLight_.direction) > 0.000001f) {
+				directionalLight_.direction = Math::Normalize(directionalLight_.direction);
+			}
+			else {
+				directionalLight_.direction = { 0.0f, -1.0f, 0.0f };
+			}
+
+			changed = true;
+		}
+
+		ImGui::Text("Directional Direction Length: %.3f", Math::Length(directionalLight_.direction));
+		changed |= ImGui::DragFloat("Directional Intensity", &directionalLight_.intensity, 0.05f, 0.0f, 20.0f);
+	}
+
+	if (ImGui::CollapsingHeader("Point Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::Button("Add Point Light")) {
+			AddPointLight(MakeDefaultPointLight());
+			changed = true;
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Clear Point Lights")) {
+			ClearPointLights();
+			changed = true;
+		}
+
+		for (size_t i = 0; i < pointLights_.size(); ++i) {
+			ImGui::PushID(static_cast<int>(i));
+
+			std::string label = "Point Light " + std::to_string(i);
+			if (ImGui::TreeNode(label.c_str())) {
+				PointLight& light = pointLights_[i];
+
+				bool enable = light.enable != 0;
+				if (ImGui::Checkbox("Enable", &enable)) {
+					light.enable = enable;
+					changed = true;
+				}
+
+				changed |= ImGui::ColorEdit3("Color", &light.color.x);
+				changed |= ImGui::DragFloat3("Position", &light.position.x, 0.1f);
+				changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 30.0f);
+				changed |= ImGui::DragFloat("Radius", &light.radius, 0.1f, 0.1f, 100.0f);
+				changed |= ImGui::DragFloat("Decay", &light.decay, 0.05f, 0.0f, 10.0f);
+
+				if (ImGui::Button("Remove")) {
+					RemovePointLight(i);
+					changed = true;
+					ImGui::TreePop();
+					ImGui::PopID();
+					break;
+				}
+
+				ImGui::TreePop();
+			}
+
+			ImGui::PopID();
+		}
+	}
+
+	if (ImGui::CollapsingHeader("Spot Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::Button("Add Spot Light")) {
+			AddSpotLight(MakeDefaultSpotLight());
+			changed = true;
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Clear Spot Lights")) {
+			ClearSpotLights();
+			changed = true;
+		}
+
+		for (size_t i = 0; i < spotLights_.size(); ++i) {
+			ImGui::PushID(static_cast<int>(i));
+
+			std::string label = "Spot Light " + std::to_string(i);
+			if (ImGui::TreeNode(label.c_str())) {
+				SpotLight& light = spotLights_[i];
+
+				bool enable = light.enable != 0;
+				if (ImGui::Checkbox("Enable", &enable)) {
+					light.enable = enable;
+					changed = true;
+				}
+
+				changed |= ImGui::ColorEdit3("Color", &light.color.x);
+				changed |= ImGui::DragFloat3("Position", &light.position.x, 0.1f);
+				if (ImGui::DragFloat3("Direction", &light.direction.x, 0.01f, -1.0f, 1.0f)) {
+					if (Math::Length(light.direction) > 0.000001f) {
+						light.direction = Math::Normalize(light.direction);
+					}
+					else {
+						light.direction = { 0.0f, -1.0f, 0.0f };
+					}
+
+					changed = true;
+				}
+
+				ImGui::Text("Direction Length: %.3f", Math::Length(light.direction));
+				changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 30.0f);
+				changed |= ImGui::DragFloat("Distance", &light.distance, 0.1f, 0.1f, 100.0f);
+				changed |= ImGui::DragFloat("Decay", &light.decay, 0.05f, 0.0f, 10.0f);
+				changed |= ImGui::DragFloat("CosAngle", &light.cosAngle, 0.01f, -1.0f, 1.0f);
+				changed |= ImGui::DragFloat("CosFalloffStart", &light.cosFalloffStart, 0.01f, -1.0f, 1.0f);
+
+				if (light.cosFalloffStart < light.cosAngle) {
+					light.cosFalloffStart = light.cosAngle;
+					changed = true;
+				}
+
+				if (ImGui::Button("Remove")) {
+					RemoveSpotLight(i);
+					changed = true;
+					ImGui::TreePop();
+					ImGui::PopID();
+					break;
+				}
+
+				ImGui::TreePop();
+			}
+
+			ImGui::PopID();
+		}
+	}
+
+	ImGui::End();
+
+	if (changed) {
+		SyncToGPU();
+	}
+}

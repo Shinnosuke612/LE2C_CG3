@@ -1,8 +1,10 @@
 #pragma once
 #include "BaseScene.h"
 #include <vector>
+#include <memory>
 #include "../audio/Audio.h"
 #include "../particle/ParticleEffectResource.h"
+#include "../3d/LightManager.h"
 
 class SpriteCommon;
 class Sprite;
@@ -39,5 +41,6 @@ private:
 	
 	ParticleEffectDesc editingEffect_{};
 	ParticleEmitter* previewEmitter_ = nullptr;
+	std::unique_ptr<LightManager> lightManager_;
 };
 

@@ -3,50 +3,60 @@
 Texture2D gTexture : register(t0);
 SamplerState gSampler : register(s0);
 
+static const int kMaxPointLights = 16;
+static const int kMaxSpotLights = 8;
+
 cbuffer MaterialCB : register(b0)
 {
     float4 gMaterialColor;
     int gEnableLighting;
     float3 gMaterialPadding;
     float4x4 gUvTransform;
-    float gMaterialShininess;
-    float3 gMaterialPadding2;
+};
+
+struct DirectionalLight
+{
+    float4 color;
+    float3 direction;
+    float intensity;
+    int enable;
+    float3 padding;
+};
+
+struct PointLight
+{
+    float4 color;
+    float3 position;
+    float intensity;
+    float radius;
+    float decay;
+    int enable;
+    float padding;
+};
+
+struct SpotLight
+{
+    float4 color;
+    float3 position;
+    float intensity;
+    float3 direction;
+    float distance;
+    float decay;
+    float cosAngle;
+    float cosFalloffStart;
+    int enable;
 };
 
 cbuffer LightingCB : register(b1)
 {
-    // DirectionalLight
-    float4 gDirectionalLightColor;
-    float3 gDirectionalLightDirection;
-    float gDirectionalLightIntensity;
-    int gDirectionalLightEnable;
-    float3 gDirectionalLightPadding;
+    DirectionalLight gDirectionalLight;
 
-    // PointLight
-    float4 gPointLightColor;
-    float3 gPointLightPosition;
-    float gPointLightIntensity;
-    float gPointLightRadius;
-    float gPointLightDecay;
-    int gPointLightEnable;
-    float gPointLightPadding;
+    int gPointLightCount;
+    int gSpotLightCount;
+    float2 gLightingPadding;
 
-    // SpotLight
-    float4 gSpotLightColor;
-    float3 gSpotLightPosition;
-    float gSpotLightIntensity;
-    float3 gSpotLightDirection;
-    float gSpotLightDistance;
-    float gSpotLightDecay;
-    float gSpotLightCosAngle;
-    float gSpotLightCosFalloffStart;
-    int gSpotLightEnable;
-};
-
-cbuffer CameraCB : register(b2)
-{
-    float3 gCameraWorldPosition;
-    float gCameraPadding;
+    PointLight gPointLights[kMaxPointLights];
+    SpotLight gSpotLights[kMaxSpotLights];
 };
 
 struct PixelShaderOutput
@@ -54,36 +64,18 @@ struct PixelShaderOutput
     float4 color : SV_TARGET0;
 };
 
-float3 CalcLight(
+float3 CalcHalfLambertDiffuse(
     float3 baseColor,
     float3 lightColor,
     float lightIntensity,
-    float3 toLight,
-    float attenuation,
     float3 normal,
-    float3 toEye)
+    float3 toLight,
+    float attenuation)
 {
     float NdotL = dot(normal, toLight);
     float halfLambert = pow(saturate(NdotL * 0.5f + 0.5f), 2.0f);
 
-    float3 diffuse =
-        baseColor *
-        lightColor *
-        halfLambert *
-        lightIntensity *
-        attenuation;
-
-    float3 halfVector = normalize(toLight + toEye);
-    float NdotH = saturate(dot(normal, halfVector));
-    float specularPow = pow(NdotH, max(gMaterialShininess, 1.0f));
-
-    float3 specular =
-        lightColor *
-        lightIntensity *
-        specularPow *
-        attenuation;
-
-    return diffuse + specular;
+    return baseColor * lightColor * lightIntensity * halfLambert * attenuation;
 }
 
 PixelShaderOutput main(VertexShaderOutput input)
@@ -98,88 +90,99 @@ PixelShaderOutput main(VertexShaderOutput input)
         discard;
     }
 
-    float3 baseColor = gMaterialColor.rgb * textureColor.rgb;
-
     if (gEnableLighting != 0)
     {
         float3 normal = normalize(input.normal);
-        float3 toEye = normalize(gCameraWorldPosition - input.worldPosition);
+        float3 baseColor = gMaterialColor.rgb * textureColor.rgb;
 
         float3 result = float3(0.0f, 0.0f, 0.0f);
 
-        // DirectionalLight
-        if (gDirectionalLightEnable != 0)
+        if (gDirectionalLight.enable != 0)
         {
-            // direction は「光が進む向き」として扱う
-            float3 toLight = normalize(-gDirectionalLightDirection);
+            float3 toLight = normalize(-gDirectionalLight.direction);
 
-            result += CalcLight(
+            result += CalcHalfLambertDiffuse(
                 baseColor,
-                gDirectionalLightColor.rgb,
-                gDirectionalLightIntensity,
-                toLight,
-                1.0f,
+                gDirectionalLight.color.rgb,
+                gDirectionalLight.intensity,
                 normal,
-                toEye
+                toLight,
+                1.0f
             );
         }
 
-        // PointLight
-        if (gPointLightEnable != 0)
+        for (int i = 0; i < gPointLightCount; ++i)
         {
-            float3 pointToLight = gPointLightPosition - input.worldPosition;
-            float distanceToPointLight = length(pointToLight);
-            float radius = max(gPointLightRadius, 0.001f);
+            PointLight light = gPointLights[i];
 
-            if (distanceToPointLight < radius)
+            if (light.enable == 0)
             {
-                float3 toLight = pointToLight / max(distanceToPointLight, 0.001f);
-                float attenuation = pow(saturate(1.0f - distanceToPointLight / radius), gPointLightDecay);
+                continue;
+            }
 
-                result += CalcLight(
+            float3 pointToLight = light.position - input.worldPosition;
+            float distanceToLight = length(pointToLight);
+            float radius = max(light.radius, 0.001f);
+
+            if (distanceToLight < radius)
+            {
+                float3 toLight = pointToLight / max(distanceToLight, 0.001f);
+                float attenuation = pow(
+                    saturate(1.0f - distanceToLight / radius),
+                    max(light.decay, 0.001f)
+                );
+
+                result += CalcHalfLambertDiffuse(
                     baseColor,
-                    gPointLightColor.rgb,
-                    gPointLightIntensity,
-                    toLight,
-                    attenuation,
+                    light.color.rgb,
+                    light.intensity,
                     normal,
-                    toEye
+                    toLight,
+                    attenuation
                 );
             }
         }
 
-        // SpotLight
-        if (gSpotLightEnable != 0)
+        for (int i = 0; i < gSpotLightCount; ++i)
         {
-            float3 spotToLight = gSpotLightPosition - input.worldPosition;
-            float distanceToSpotLight = length(spotToLight);
-            float spotDistance = max(gSpotLightDistance, 0.001f);
+            SpotLight light = gSpotLights[i];
 
-            if (distanceToSpotLight < spotDistance)
+            if (light.enable == 0)
             {
-                float3 toLight = spotToLight / max(distanceToSpotLight, 0.001f);
+                continue;
+            }
 
-                // direction は「ライトが照らす向き」として扱う
+            float3 spotToLight = light.position - input.worldPosition;
+            float distanceToLight = length(spotToLight);
+            float spotDistance = max(light.distance, 0.001f);
+
+            if (distanceToLight < spotDistance)
+            {
+                float3 toLight = spotToLight / max(distanceToLight, 0.001f);
+
                 float3 fromLightToPixel = -toLight;
-                float spotCos = dot(normalize(gSpotLightDirection), fromLightToPixel);
+                float spotCos = dot(normalize(light.direction), fromLightToPixel);
 
-                float spotFactor = smoothstep(
-                    gSpotLightCosAngle,
-                    gSpotLightCosFalloffStart,
+                float angleFactor = smoothstep(
+                    light.cosAngle,
+                    light.cosFalloffStart,
                     spotCos
                 );
 
-                float distanceFactor = pow(saturate(1.0f - distanceToSpotLight / spotDistance), gSpotLightDecay);
-                float attenuation = spotFactor * distanceFactor;
+                float distanceFactor = pow(
+                    saturate(1.0f - distanceToLight / spotDistance),
+                    max(light.decay, 0.001f)
+                );
 
-                result += CalcLight(
+                float attenuation = angleFactor * distanceFactor;
+
+                result += CalcHalfLambertDiffuse(
                     baseColor,
-                    gSpotLightColor.rgb,
-                    gSpotLightIntensity,
-                    toLight,
-                    attenuation,
+                    light.color.rgb,
+                    light.intensity,
                     normal,
-                    toEye
+                    toLight,
+                    attenuation
                 );
             }
         }

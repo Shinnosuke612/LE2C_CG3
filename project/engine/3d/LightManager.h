@@ -1,0 +1,107 @@
+#pragma once
+
+#include <array>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <wrl.h>
+#include <d3d12.h>
+
+#include "../math/Vector3.h"
+#include "../math/Vector4.h"
+
+class DirectXCommon;
+
+class LightManager {
+public:
+	static const uint32_t kMaxPointLights = 16;
+	static const uint32_t kMaxSpotLights = 8;
+
+	struct DirectionalLight {
+		Vector4 color;
+		Vector3 direction;
+		float intensity;
+		int32_t enable;
+		float padding[3];
+	};
+
+	struct PointLight {
+		Vector4 color;
+		Vector3 position;
+		float intensity;
+		float radius;
+		float decay;
+		int32_t enable;
+		float padding;
+	};
+
+	struct SpotLight {
+		Vector4 color;
+		Vector3 position;
+		float intensity;
+		Vector3 direction;
+		float distance;
+		float decay;
+		float cosAngle;
+		float cosFalloffStart;
+		int32_t enable;
+	};
+
+	struct LightingForGPU {
+		DirectionalLight directionalLight;
+
+		int32_t pointLightCount;
+		int32_t spotLightCount;
+		float padding[2];
+
+		PointLight pointLights[kMaxPointLights];
+		SpotLight spotLights[kMaxSpotLights];
+	};
+
+public:
+	void Initialize(DirectXCommon* dxCommon, const std::string& jsonPath = "");
+	void Reset();
+
+	void Bind(ID3D12GraphicsCommandList* commandList, UINT rootParameterIndex);
+	void DrawImGui();
+
+	void SetJsonPath(const std::string& jsonPath) { jsonPath_ = jsonPath; }
+
+	bool LoadFromJson(const std::string& jsonPath);
+	bool SaveToJson(const std::string& jsonPath) const;
+
+	void AddPointLight(const PointLight& light);
+	void AddSpotLight(const SpotLight& light);
+
+	void RemovePointLight(size_t index);
+	void RemoveSpotLight(size_t index);
+
+	void ClearPointLights();
+	void ClearSpotLights();
+
+	void SyncToGPU();
+
+	DirectionalLight& GetDirectionalLight() { return directionalLight_; }
+	std::vector<PointLight>& GetPointLights() { return pointLights_; }
+	std::vector<SpotLight>& GetSpotLights() { return spotLights_; }
+
+	const DirectionalLight& GetDirectionalLight() const { return directionalLight_; }
+	const std::vector<PointLight>& GetPointLights() const { return pointLights_; }
+	const std::vector<SpotLight>& GetSpotLights() const { return spotLights_; }
+
+private:
+	PointLight MakeDefaultPointLight() const;
+	SpotLight MakeDefaultSpotLight() const;
+
+private:
+	DirectXCommon* dxCommon_ = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> lightingResource_;
+	LightingForGPU* lightingData_ = nullptr;
+
+	std::string jsonPath_;
+
+	DirectionalLight directionalLight_{};
+	std::vector<PointLight> pointLights_;
+	std::vector<SpotLight> spotLights_;
+};
