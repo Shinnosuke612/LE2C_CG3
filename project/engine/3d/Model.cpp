@@ -2,16 +2,19 @@
 #include "ModelCommon.h"
 #include "../base/DirectXCommon.h"
 #include "../2d/TextureManager.h"
-void Model::Initialize(ModelCommon* modelCommon, const std::string& directoryPath, const std::string& filename){
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+void Model::Initialize(ModelCommon* modelCommon, const std::string& directoryPath, const std::string& filename) {
 	this->modelCommon = modelCommon;
-		modelData = LoadObjFile(directoryPath, filename);
+	modelData = LoadModelFile(directoryPath, filename);
 	CreateVertexResource();
 	CreateMaterialResource();
 
 	// .objの参照していrテクスチャファイル読み込み
 	TextureManager::GetInstance()->LoadTexture(modelData.material.textureFilePath);
 }
-void Model::Draw(){
+void Model::Draw() {
 	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
 	// VertexBufferViewを設定
 	commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
@@ -28,19 +31,19 @@ void Model::Draw(){
 	// 描画！
 	commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
 }
-Model::MaterialData Model::LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename){
+Model::MaterialData Model::LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename) {
 	MaterialData materialData;      // 構築するMaterialData
 	std::string line;               // 1行分
 	std::ifstream file(directoryPath + "/" + filename); // ファイルを開く
 	assert(file.is_open());         // 開けなかったら止める（資料準拠）
 
-	while(std::getline(file, line)){
+	while (std::getline(file, line)) {
 		std::string identifier;
 		std::istringstream s(line);
 		s >> identifier;
 
 		// 必要なのはTextureなので map_Kd だけ処理する
-		if(identifier == "map_Kd"){
+		if (identifier == "map_Kd") {
 			std::string textureFilename;
 			s >> textureFilename;
 
@@ -52,71 +55,59 @@ Model::MaterialData Model::LoadMaterialTemplateFile(const std::string& directory
 	return materialData;
 }
 
-Model::ModelData Model::LoadObjFile(const std::string& directoryPath, const std::string& filename){
+Model::ModelData Model::LoadModelFile(const std::string& directoryPath, const std::string& filename) {
+
+	Assimp::Importer importer;
+	std::string filePath = directoryPath + "/" + filename;
+	const aiScene* scene = importer.ReadFile(filePath.c_str(), aiProcess_FlipWindingOrder | aiProcess_FlipUVs);
+	assert(scene->HasMeshes());
+
 	ModelData modelData; //構築するModelData
 	std::vector<Vector4> positions;//位置
 	std::vector<Vector3> normals;//法線
 	std::vector<Vector2> texcoords;//テクスチャ座標
 	std::string line;//ファイルから読んだ１行を格納するもの
 
-	std::ifstream file(directoryPath + "/" + filename);
-	assert(file.is_open());
+	modelData.rootNode = ReadNode(scene->mRootNode);
 
-	while(std::getline(file, line)){
-		std::string identifier;
-		std::istringstream s(line);
-		s >> identifier;
+	for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
+		aiMesh* mesh = scene->mMeshes[meshIndex];
+		assert(mesh->HasNormals());
+		assert(mesh->HasTextureCoords(0));
 
-		if(identifier == "v"){
-			Vector4 position;
-			s >> position.x >> position.y >> position.z;
-			position.x *= -1.0f;
-			position.w = 1.0f;
-			positions.push_back(position);
-		} else if(identifier == "vt"){
-			Vector2 texcoord;
-			s >> texcoord.x >> texcoord.y;
-			texcoord.y = 1.0f - texcoord.y;
-			texcoords.push_back(texcoord);
-		} else if(identifier == "vn"){
-			Vector3 normal;
-			s >> normal.x >> normal.y >> normal.z;
-			normal.x *= -1.0f;
-			normals.push_back(normal);
-		} else if(identifier == "f"){
-			VertexData triangle[3];
-			//面は三角限定。その他は未対応
-			for(int32_t faceVertex = 0; faceVertex < 3; ++faceVertex){
-				std::string vertexDefinition;
-				s >> vertexDefinition;
-				//頂点の要素へのIndexは「位置/UV/法線」で格納されているので、分解してIndexを取得する
-				std::istringstream v(vertexDefinition);
-				uint32_t elementIndices[3];
-				for(int32_t element = 0; element < 3; ++element){
-					std::string index;
-					std::getline(v, index, '/');
-					elementIndices[element] = std::stoi(index);
-				}
-				//要素へのIndexから、実際の要素の値を取得して頂点を構築する
-				Vector4 position = positions[elementIndices[0] - 1];
-				Vector2 texcoord = texcoords[elementIndices[1] - 1];
-				Vector3 normal = normals[elementIndices[2] - 1];
-				triangle[faceVertex] = { position,texcoord,normal };
+		for (uint32_t faceIndex = 0; faceIndex < mesh->mNumFaces; ++faceIndex) {
+			aiFace& face = mesh->mFaces[faceIndex];
+			assert(face.mNumIndices == 3); // 三角形以外は非対応
+			for (uint32_t element = 0; element < face.mNumIndices; ++element) {
+				uint32_t vertexIndex = face.mIndices[element];
+				aiVector3D position = mesh->mVertices[vertexIndex];
+				aiVector3D normal = mesh->mNormals[vertexIndex];
+				aiVector3D texcoord = mesh->mTextureCoords[0][vertexIndex];
+				VertexData vertex;
+				vertex.position = Vector4(position.x, position.y, position.z, 1.0f);
+				vertex.normal = Vector3(normal.x, normal.y, normal.z);
+				vertex.texcoord = Vector2(texcoord.x, texcoord.y);
+
+				vertex.position = Vector4(-position.x, position.y, position.z, 1.0f);
+				vertex.normal = Vector3(-normal.x, normal.y, normal.z);
+				vertex.texcoord = Vector2(texcoord.x, texcoord.y);
+				modelData.vertices.push_back(vertex);
 			}
-			modelData.vertices.push_back(triangle[2]);
-			modelData.vertices.push_back(triangle[1]);
-			modelData.vertices.push_back(triangle[0]);
-		} else if(identifier == "mtllib"){
-			std::string materialFilename;
-			s >> materialFilename;
-			modelData.material = LoadMaterialTemplateFile(directoryPath, materialFilename);
 		}
+	}
 
+	for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex) {
+		aiMaterial* material = scene->mMaterials[materialIndex];
+		if (material->GetTextureCount(aiTextureType_DIFFUSE) != 0) {
+			aiString textureFilePath;
+			material->GetTexture(aiTextureType_DIFFUSE, 0, &textureFilePath);
+			modelData.material.textureFilePath = directoryPath + "/" + textureFilePath.C_Str();
+		}
 	}
 	return modelData;
 }
 
-void Model::CreateVertexResource(){
+void Model::CreateVertexResource() {
 	vertexResource = *&modelCommon->GetDxCommon()->CreateBufferResource(sizeof(VertexData) * modelData.vertices.size());
 
 	vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress();
@@ -127,7 +118,7 @@ void Model::CreateVertexResource(){
 	std::memcpy(vertexData, modelData.vertices.data(), sizeof(VertexData) * modelData.vertices.size());
 }
 
-void Model::CreateMaterialResource(){
+void Model::CreateMaterialResource() {
 	//マテリアル用のリソースを作る。今回はカラー1つ分のサイズを用意する
 	materialResource = *&modelCommon->GetDxCommon()->CreateBufferResource(sizeof(Material));
 	//書き込むためのアドレスを取得
@@ -140,4 +131,22 @@ void Model::CreateMaterialResource(){
 	materialData->uvTransform = MakeIdentity4x4();
 
 	materialData->shininess = 40.0f;
+}
+
+Model::Node Model::ReadNode(aiNode* aiNode)
+{
+	Node result;
+	aiMatrix4x4 aiLocalMatrix = aiNode->mTransformation;
+	aiLocalMatrix.Transpose();
+	for (int row = 0; row < 4; ++row) {
+		for (int column = 0; column < 4; ++column) {
+			result.localMatrix.m[row][column] = aiLocalMatrix[row][column];
+		}
+	}
+	result.name = aiNode->mName.C_Str();
+	result.children.resize(aiNode->mNumChildren);
+	for (uint32_t childIndex = 0; childIndex < aiNode->mNumChildren; ++childIndex) {
+		result.children[childIndex] = ReadNode(aiNode->mChildren[childIndex]);
+	}
+	return result;
 }

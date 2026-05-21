@@ -10,6 +10,7 @@
 #include "../math/Matrix4x4.h"
 #include <d3d12.h> 
 class ModelCommon;
+class aiNode;
 class Model{
 private://インナークラス
 	//頂点データ
@@ -18,12 +19,20 @@ private://インナークラス
 		Vector2 texcoord;
 		Vector3 normal;
 	};
+
+	struct Node {
+		Matrix4x4 localMatrix;
+		std::string name;
+		std::vector<Node> children;
+	};
+
 	struct MaterialData{
 		std::string textureFilePath;
 	};
 	struct ModelData{
 		std::vector<VertexData> vertices;
 		MaterialData material;
+		Node rootNode;
 	};
 	//マテリアルデータ
 	struct Material {
@@ -38,17 +47,22 @@ private://非公開メンバ関数
 	// .mtlファイルの読み取り
 	static MaterialData LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename);
 	// .objファイルの読み取り
-	static ModelData LoadObjFile(const std::string& directoryPath, const std::string& filename);
+	ModelData LoadModelFile(const std::string& directoryPath, const std::string& filename);
 
 	//頂点リソース作成関数
 	void CreateVertexResource();
 	//マテリアルリソース作成関数
 	void CreateMaterialResource();
+
+	Node ReadNode(aiNode* aiNode);
 public://公開メンバ関数
 	//初期化
 	void Initialize(ModelCommon* modelCommon,const std::string& directoryPath, const std::string& filename);
 	//描画
 	void Draw();
+
+	// getter
+	const Matrix4x4& GetRootNodeLocalMatrix() const { return modelData.rootNode.localMatrix; }
 private:
 	//ModelCommonのポインタ
 	ModelCommon* modelCommon;

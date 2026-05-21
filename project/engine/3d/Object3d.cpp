@@ -20,17 +20,23 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 void Object3d::Update(){
 	Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
 
-	Matrix4x4 worldViewProjectionMatrix;
-	if(camera){
-		const Matrix4x4& viewProjectionMatrix = camera->GetViewProjectionMatrix();
-		worldViewProjectionMatrix = Multiply(worldMatrix, viewProjectionMatrix);
-	} else{
-		worldViewProjectionMatrix = worldMatrix;
+	// ModelのRootNode行列を適用する
+	Matrix4x4 modelWorldMatrix = worldMatrix;
+	if (model) {
+		modelWorldMatrix = Multiply(model->GetRootNodeLocalMatrix(), worldMatrix);
 	}
-	
+
+	Matrix4x4 worldViewProjectionMatrix;
+	if (camera) {
+		const Matrix4x4& viewProjectionMatrix = camera->GetViewProjectionMatrix();
+		worldViewProjectionMatrix = Multiply(modelWorldMatrix, viewProjectionMatrix);
+	}
+	else {
+		worldViewProjectionMatrix = modelWorldMatrix;
+	}
 
 	transformationMatrixData->WVP = worldViewProjectionMatrix;
-	transformationMatrixData->World = worldMatrix;
+	transformationMatrixData->World = modelWorldMatrix;
 
 	if (camera) {
 		cameraData->worldPosition = camera->GetTranslate();

@@ -38,7 +38,7 @@ void GamePlayScene::Initialize()
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 	ModelManager::GetInstance()->LoadModel("terrain.obj");
-	ModelManager::GetInstance()->LoadModel("plane.obj");
+	ModelManager::GetInstance()->LoadModel("plane.gltf");
 
 	ParticleEffectDesc gameplayEffect{};
 
@@ -53,11 +53,11 @@ void GamePlayScene::Initialize()
 	object3d_->Initialize(Object3dCommon::GetInstance());
 	object3d_->SetModel("terrain.obj");
 	object3d_->SetTranslate({ 0.0f, -5.0f, 0.0f });
-	object3d_->SetScale({ 5.0f, 5.0f, 5.0f });
+	object3d_->SetScale({ 10.0f, 10.0f, 10.0f });
 
 	plane_ = new Object3d();
 	plane_->Initialize(Object3dCommon::GetInstance());
-	plane_->SetModel("plane.obj");
+	plane_->SetModel("plane.gltf");
 	plane_->SetTranslate({ 0.0f, 7.0f, 0.0f });
 
 	lightManager_ = std::make_unique<LightManager>();
@@ -108,7 +108,6 @@ void GamePlayScene::Draw()
 			3
 		);
 	}
-
 	object3d_->Draw();
 	plane_->Draw();
 	//ParticleManager::GetInstance()->Draw();
