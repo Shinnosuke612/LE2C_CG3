@@ -33,6 +33,13 @@ void SceneManager::Draw()
 	scene_->Draw();
 }
 
+void SceneManager::DrawShadow()
+{
+	if (scene_) {
+		scene_->DrawShadow();
+	}
+}
+
 SceneManager::~SceneManager()
 {
 	scene_->Finalize();

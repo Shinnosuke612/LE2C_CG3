@@ -29,6 +29,10 @@ private://インナークラス
 		float padding;
 	};
 
+	struct ShadowTransformationMatrix {
+		Matrix4x4 WVP;
+	};
+
 public: //公開メンバ関数
 	//初期化
 	void Initialize(Object3dCommon* object3dCommon);
@@ -36,6 +40,7 @@ public: //公開メンバ関数
 	void Update();
 	//描画
 	void Draw();
+	void DrawShadow(const Matrix4x4& lightViewProjection);
 	//setter
 	void SetModel(Model* model){
 		this->model = model;
@@ -57,6 +62,7 @@ private: //非公開メンバ関数
 	void CreateTransformationMatrixResource();
 
 	void CreateCameraResource();
+	void CreateShadowTransformationMatrixResource();
 private://メンバ変数
 	Transform transform;
 
@@ -67,6 +73,8 @@ private://メンバ変数
 	ID3D12Resource* transformationMatrixResource;
 	//バッファリソース内のデータおw指すポインタ
 	TransformationMatrix* transformationMatrixData = nullptr;
+	ID3D12Resource* shadowTransformationMatrixResource = nullptr;
+	ShadowTransformationMatrix* shadowTransformationMatrixData = nullptr;
 
 	//見た目用のモデル
 	Model* model = nullptr;

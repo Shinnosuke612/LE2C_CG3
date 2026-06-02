@@ -8,6 +8,7 @@ public:
 	void Update();
 
 	void Draw();
+	void DrawShadow();
 
 	void SetNextScene(BaseScene* nextScene) { nextScene_ = nextScene; }
 

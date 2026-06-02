@@ -19,6 +19,7 @@ public: //メンバ関数
 	void Initialize(DirectXCommon* dxCommon);
 	//共通描画設定
 	void SetCommonRenderState();
+	void SetShadowRenderState();
 
 public:
 	
@@ -43,6 +44,8 @@ private://非公開メンバ関数
 
 	// Skybox用グラフィックパイプラインの生成
 	void GenerateSkyboxGraphicsPipeline();
+	void GenerateShadowGraphicsPipeline();
+	void MakeShadowRootSignature();
 
 	// どこか共通ヘルパに
 	inline D3D12_STATIC_SAMPLER_DESC MakeStaticSamplerS0();
@@ -56,6 +59,8 @@ private://メンバ変数
 	//ルートシグネチャ
 	Microsoft::WRL::ComPtr < ID3D12RootSignature> rootSignature_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> shadowRootSignature_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> shadowPipelineState_ = nullptr;
 	//デフォルトカメラ
 	Camera* defaultCamera = nullptr;
 

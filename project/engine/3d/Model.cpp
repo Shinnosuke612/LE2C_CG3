@@ -31,6 +31,14 @@ void Model::Draw() {
 	// 描画！
 	commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
 }
+
+void Model::DrawForShadow() {
+	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
+	commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
+}
+
 Model::MaterialData Model::LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename) {
 	MaterialData materialData;      // 構築するMaterialData
 	std::string line;               // 1行分

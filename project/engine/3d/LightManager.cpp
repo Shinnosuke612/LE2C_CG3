@@ -72,9 +72,12 @@ void LightManager::Reset() {
 	directionalLight_.padding[0] = 0.0f;
 	directionalLight_.padding[1] = 0.0f;
 	directionalLight_.padding[2] = 0.0f;
+	directionalShadowSettings_ = MakeDefaultShadowSettings(true);
 
 	pointLights_.clear();
 	spotLights_.clear();
+	pointShadowSettings_.clear();
+	spotShadowSettings_.clear();
 
 	SyncToGPU();
 }
@@ -153,12 +156,22 @@ LightManager::SpotLight LightManager::MakeDefaultSpotLight() const {
 	return light;
 }
 
+LightManager::ShadowSettings LightManager::MakeDefaultShadowSettings(bool enable) const {
+	ShadowSettings settings{};
+	settings.enable = enable;
+	settings.bias = 0.0025f;
+	settings.normalBias = 0.02f;
+	settings.strength = 0.55f;
+	return settings;
+}
+
 void LightManager::AddPointLight(const PointLight& light) {
 	if (pointLights_.size() >= kMaxPointLights) {
 		return;
 	}
 
 	pointLights_.push_back(light);
+	pointShadowSettings_.push_back(MakeDefaultShadowSettings(false));
 	SyncToGPU();
 }
 
@@ -168,6 +181,7 @@ void LightManager::AddSpotLight(const SpotLight& light) {
 	}
 
 	spotLights_.push_back(light);
+	spotShadowSettings_.push_back(MakeDefaultShadowSettings(false));
 	SyncToGPU();
 }
 
@@ -177,6 +191,9 @@ void LightManager::RemovePointLight(size_t index) {
 	}
 
 	pointLights_.erase(pointLights_.begin() + index);
+	if (index < pointShadowSettings_.size()) {
+		pointShadowSettings_.erase(pointShadowSettings_.begin() + index);
+	}
 	SyncToGPU();
 }
 
@@ -186,16 +203,21 @@ void LightManager::RemoveSpotLight(size_t index) {
 	}
 
 	spotLights_.erase(spotLights_.begin() + index);
+	if (index < spotShadowSettings_.size()) {
+		spotShadowSettings_.erase(spotShadowSettings_.begin() + index);
+	}
 	SyncToGPU();
 }
 
 void LightManager::ClearPointLights() {
 	pointLights_.clear();
+	pointShadowSettings_.clear();
 	SyncToGPU();
 }
 
 void LightManager::ClearSpotLights() {
 	spotLights_.clear();
+	spotShadowSettings_.clear();
 	SyncToGPU();
 }
 
@@ -215,9 +237,18 @@ bool LightManager::LoadFromJson(const std::string& jsonPath) {
 		directionalLight_.direction = ToVector3(j.value("direction", json::array()), directionalLight_.direction);
 		directionalLight_.intensity = j.value("intensity", directionalLight_.intensity);
 		directionalLight_.enable = j.value("enable", directionalLight_.enable);
+
+		if (j.contains("shadow")) {
+			const json& shadow = j["shadow"];
+			directionalShadowSettings_.enable = shadow.value("enable", directionalShadowSettings_.enable);
+			directionalShadowSettings_.bias = shadow.value("bias", directionalShadowSettings_.bias);
+			directionalShadowSettings_.normalBias = shadow.value("normalBias", directionalShadowSettings_.normalBias);
+			directionalShadowSettings_.strength = shadow.value("strength", directionalShadowSettings_.strength);
+		}
 	}
 
 	pointLights_.clear();
+	pointShadowSettings_.clear();
 	if (root.contains("pointLights") && root["pointLights"].is_array()) {
 		for (const json& j : root["pointLights"]) {
 			if (pointLights_.size() >= kMaxPointLights) {
@@ -234,10 +265,21 @@ bool LightManager::LoadFromJson(const std::string& jsonPath) {
 			light.padding = 0.0f;
 
 			pointLights_.push_back(light);
+
+			ShadowSettings shadow = MakeDefaultShadowSettings(false);
+			if (j.contains("shadow")) {
+				const json& shadowJson = j["shadow"];
+				shadow.enable = shadowJson.value("enable", shadow.enable);
+				shadow.bias = shadowJson.value("bias", shadow.bias);
+				shadow.normalBias = shadowJson.value("normalBias", shadow.normalBias);
+				shadow.strength = shadowJson.value("strength", shadow.strength);
+			}
+			pointShadowSettings_.push_back(shadow);
 		}
 	}
 
 	spotLights_.clear();
+	spotShadowSettings_.clear();
 	if (root.contains("spotLights") && root["spotLights"].is_array()) {
 		for (const json& j : root["spotLights"]) {
 			if (spotLights_.size() >= kMaxSpotLights) {
@@ -256,6 +298,16 @@ bool LightManager::LoadFromJson(const std::string& jsonPath) {
 			light.enable = j.value("enable", light.enable);
 
 			spotLights_.push_back(light);
+
+			ShadowSettings shadow = MakeDefaultShadowSettings(false);
+			if (j.contains("shadow")) {
+				const json& shadowJson = j["shadow"];
+				shadow.enable = shadowJson.value("enable", shadow.enable);
+				shadow.bias = shadowJson.value("bias", shadow.bias);
+				shadow.normalBias = shadowJson.value("normalBias", shadow.normalBias);
+				shadow.strength = shadowJson.value("strength", shadow.strength);
+			}
+			spotShadowSettings_.push_back(shadow);
 		}
 	}
 
@@ -271,23 +323,41 @@ bool LightManager::SaveToJson(const std::string& jsonPath) const {
 		{ "color", ToJson(directionalLight_.color) },
 		{ "direction", ToJson(directionalLight_.direction) },
 		{ "intensity", directionalLight_.intensity },
-		{ "enable", directionalLight_.enable }
+		{ "enable", directionalLight_.enable },
+		{ "shadow", {
+			{ "enable", directionalShadowSettings_.enable },
+			{ "bias", directionalShadowSettings_.bias },
+			{ "normalBias", directionalShadowSettings_.normalBias },
+			{ "strength", directionalShadowSettings_.strength }
+		} }
 	};
 
 	root["pointLights"] = json::array();
-	for (const PointLight& light : pointLights_) {
+	for (size_t i = 0; i < pointLights_.size(); ++i) {
+		const PointLight& light = pointLights_[i];
+		const ShadowSettings shadow =
+			i < pointShadowSettings_.size() ? pointShadowSettings_[i] : MakeDefaultShadowSettings(false);
 		root["pointLights"].push_back({
 			{ "color", ToJson(light.color) },
 			{ "position", ToJson(light.position) },
 			{ "intensity", light.intensity },
 			{ "radius", light.radius },
 			{ "decay", light.decay },
-			{ "enable", light.enable }
+			{ "enable", light.enable },
+			{ "shadow", {
+				{ "enable", shadow.enable },
+				{ "bias", shadow.bias },
+				{ "normalBias", shadow.normalBias },
+				{ "strength", shadow.strength }
+			} }
 			});
 	}
 
 	root["spotLights"] = json::array();
-	for (const SpotLight& light : spotLights_) {
+	for (size_t i = 0; i < spotLights_.size(); ++i) {
+		const SpotLight& light = spotLights_[i];
+		const ShadowSettings shadow =
+			i < spotShadowSettings_.size() ? spotShadowSettings_[i] : MakeDefaultShadowSettings(false);
 		root["spotLights"].push_back({
 			{ "color", ToJson(light.color) },
 			{ "position", ToJson(light.position) },
@@ -297,7 +367,13 @@ bool LightManager::SaveToJson(const std::string& jsonPath) const {
 			{ "decay", light.decay },
 			{ "cosAngle", light.cosAngle },
 			{ "cosFalloffStart", light.cosFalloffStart },
-			{ "enable", light.enable }
+			{ "enable", light.enable },
+			{ "shadow", {
+				{ "enable", shadow.enable },
+				{ "bias", shadow.bias },
+				{ "normalBias", shadow.normalBias },
+				{ "strength", shadow.strength }
+			} }
 			});
 	}
 
@@ -308,6 +384,25 @@ bool LightManager::SaveToJson(const std::string& jsonPath) const {
 
 	file << root.dump(4);
 	return true;
+}
+
+void LightManager::DrawShadowSettingsImGui(const char* label, ShadowSettings& settings, bool canRender) {
+	if (ImGui::TreeNode(label)) {
+		bool enable = settings.enable != 0;
+		if (ImGui::Checkbox("Shadow Enable", &enable)) {
+			settings.enable = enable;
+		}
+
+		if (!canRender) {
+			ImGui::Text("Point shadows are reserved. Use sparingly because they need 6 shadow renders per light.");
+		}
+
+		ImGui::DragFloat("Shadow Bias", &settings.bias, 0.0001f, 0.0f, 0.05f, "%.5f");
+		ImGui::DragFloat("Normal Bias", &settings.normalBias, 0.001f, 0.0f, 0.2f, "%.4f");
+		ImGui::DragFloat("Shadow Strength", &settings.strength, 0.01f, 0.0f, 1.0f);
+
+		ImGui::TreePop();
+	}
 }
 
 void LightManager::DrawImGui() {
@@ -363,6 +458,7 @@ void LightManager::DrawImGui() {
 
 		ImGui::Text("Directional Direction Length: %.3f", Math::Length(directionalLight_.direction));
 		changed |= ImGui::DragFloat("Directional Intensity", &directionalLight_.intensity, 0.05f, 0.0f, 20.0f);
+		DrawShadowSettingsImGui("Directional Shadow", directionalShadowSettings_, true);
 	}
 
 	if (ImGui::CollapsingHeader("Point Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -396,6 +492,9 @@ void LightManager::DrawImGui() {
 				changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 30.0f);
 				changed |= ImGui::DragFloat("Radius", &light.radius, 0.1f, 0.1f, 100.0f);
 				changed |= ImGui::DragFloat("Decay", &light.decay, 0.05f, 0.0f, 10.0f);
+				if (i < pointShadowSettings_.size()) {
+					DrawShadowSettingsImGui("Point Shadow", pointShadowSettings_[i], false);
+				}
 
 				if (ImGui::Button("Remove")) {
 					RemovePointLight(i);
@@ -457,6 +556,9 @@ void LightManager::DrawImGui() {
 				changed |= ImGui::DragFloat("Decay", &light.decay, 0.05f, 0.0f, 10.0f);
 				changed |= ImGui::DragFloat("CosAngle", &light.cosAngle, 0.01f, -1.0f, 1.0f);
 				changed |= ImGui::DragFloat("CosFalloffStart", &light.cosFalloffStart, 0.01f, -1.0f, 1.0f);
+				if (i < spotShadowSettings_.size()) {
+					DrawShadowSettingsImGui("Spot Shadow", spotShadowSettings_[i], true);
+				}
 
 				if (light.cosFalloffStart < light.cosAngle) {
 					light.cosFalloffStart = light.cosAngle;

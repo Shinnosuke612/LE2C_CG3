@@ -9,6 +9,7 @@
     <FxCompile Include="resources\shaders\Sprite.PS.hlsl" />
     <FxCompile Include="resources\shaders\Skybox.VS.hlsl" />
     <FxCompile Include="resources\shaders\Skybox.PS.hlsl" />
+    <FxCompile Include="resources\shaders\ShadowMap.VS.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="engine\base\D3DResourceLeadChecker.cpp" />
@@ -44,6 +45,7 @@
     <ClCompile Include="engine\particle\ParticleEffectResource.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectEditor.cpp" />
     <ClCompile Include="engine\3d\LightManager.cpp" />
+    <ClCompile Include="engine\3d\ShadowManager.cpp" />
     <ClCompile Include="engine\3d\Skybox.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -87,6 +89,7 @@
     <ClInclude Include="engine\particle\ParticleEffectResource.h" />
     <ClInclude Include="engine\particle\ParticleEffectEditor.h" />
     <ClInclude Include="engine\3d\LightManager.h" />
+    <ClInclude Include="engine\3d\ShadowManager.h" />
     <ClInclude Include="engine\3d\Skybox.h" />
   </ItemGroup>
   <ItemGroup>

@@ -60,6 +60,7 @@ public://公開メンバ関数
 	void Initialize(ModelCommon* modelCommon,const std::string& directoryPath, const std::string& filename);
 	//描画
 	void Draw();
+	void DrawForShadow();
 
 	// getter
 	const Matrix4x4& GetRootNodeLocalMatrix() const { return modelData.rootNode.localMatrix; }

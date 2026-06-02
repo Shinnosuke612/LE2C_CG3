@@ -5,6 +5,7 @@
 #include "../audio/Audio.h"
 #include "../particle/ParticleEffectResource.h"
 #include "../3d/LightManager.h"
+#include "../3d/ShadowManager.h"
 
 class SpriteCommon;
 class Sprite;
@@ -29,6 +30,7 @@ public: //メンバ関数
 
 	//描画
 	void Draw() override;
+	void DrawShadow() override;
 
 private:
 	SpriteCommon* spriteCommon_ = nullptr;
@@ -37,12 +39,14 @@ private:
 
 	Object3d* object3d_ = nullptr;
 	Object3d* plane_ = nullptr;
+	Object3d* axis = nullptr;
 	std::vector<Sprite*> sprites_;
 	Audio::SoundData soundData_{};
 	
 	ParticleEffectDesc editingEffect_{};
 	ParticleEmitter* previewEmitter_ = nullptr;
 	std::unique_ptr<LightManager> lightManager_;
+	std::unique_ptr<ShadowManager> shadowManager_;
 	Skybox* skybox_ = nullptr;
 };
 

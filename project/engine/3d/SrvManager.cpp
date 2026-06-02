@@ -1,7 +1,15 @@
 #include "SrvManager.h"
+#include <cassert>
 const uint32_t SrvManager::kMaxSRVCount = 512;
+SrvManager* SrvManager::instance_ = nullptr;
+
+SrvManager* SrvManager::GetInstance() {
+	assert(instance_);
+	return instance_;
+}
 
 void SrvManager::Initialize(DirectXCommon* dxCommon){
+	instance_ = this;
 	this->directXCommon = dxCommon;
 	//デスクリプタヒープの生成
 	descriptorHeap = directXCommon->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kMaxSRVCount, true);
@@ -46,6 +54,17 @@ srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 srvDesc.Texture2D.MipLevels = MipLevels;
 
 directXCommon->GetDevice()->CreateShaderResourceView(pResource, &srvDesc, GetCPUDescriptorHandle(srvIndex));
+}
+
+void SrvManager::CreateSRVforTexture2DArray(uint32_t srvIndex, ID3D12Resource* pResource, DXGI_FORMAT Format, UINT MipLevels, UINT arraySize) {
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+	srvDesc.Format = Format;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+	srvDesc.Texture2DArray.MipLevels = MipLevels;
+	srvDesc.Texture2DArray.ArraySize = arraySize;
+
+	directXCommon->GetDevice()->CreateShaderResourceView(pResource, &srvDesc, GetCPUDescriptorHandle(srvIndex));
 }
 
 void SrvManager::CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResource, UINT numElements, UINT structureByteStride){

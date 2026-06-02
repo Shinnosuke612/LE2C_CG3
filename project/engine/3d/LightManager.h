@@ -58,6 +58,13 @@ public:
 		SpotLight spotLights[kMaxSpotLights];
 	};
 
+	struct ShadowSettings {
+		int32_t enable = false;
+		float bias = 0.0025f;
+		float normalBias = 0.02f;
+		float strength = 0.55f;
+	};
+
 public:
 	void Initialize(DirectXCommon* dxCommon, const std::string& jsonPath = "");
 	void Reset();
@@ -84,14 +91,22 @@ public:
 	DirectionalLight& GetDirectionalLight() { return directionalLight_; }
 	std::vector<PointLight>& GetPointLights() { return pointLights_; }
 	std::vector<SpotLight>& GetSpotLights() { return spotLights_; }
+	ShadowSettings& GetDirectionalShadowSettings() { return directionalShadowSettings_; }
+	std::vector<ShadowSettings>& GetPointShadowSettings() { return pointShadowSettings_; }
+	std::vector<ShadowSettings>& GetSpotShadowSettings() { return spotShadowSettings_; }
 
 	const DirectionalLight& GetDirectionalLight() const { return directionalLight_; }
 	const std::vector<PointLight>& GetPointLights() const { return pointLights_; }
 	const std::vector<SpotLight>& GetSpotLights() const { return spotLights_; }
+	const ShadowSettings& GetDirectionalShadowSettings() const { return directionalShadowSettings_; }
+	const std::vector<ShadowSettings>& GetPointShadowSettings() const { return pointShadowSettings_; }
+	const std::vector<ShadowSettings>& GetSpotShadowSettings() const { return spotShadowSettings_; }
 
 private:
 	PointLight MakeDefaultPointLight() const;
 	SpotLight MakeDefaultSpotLight() const;
+	ShadowSettings MakeDefaultShadowSettings(bool enable) const;
+	void DrawShadowSettingsImGui(const char* label, ShadowSettings& settings, bool canRender);
 
 private:
 	DirectXCommon* dxCommon_ = nullptr;
@@ -104,4 +119,7 @@ private:
 	DirectionalLight directionalLight_{};
 	std::vector<PointLight> pointLights_;
 	std::vector<SpotLight> spotLights_;
+	ShadowSettings directionalShadowSettings_{};
+	std::vector<ShadowSettings> pointShadowSettings_;
+	std::vector<ShadowSettings> spotShadowSettings_;
 };

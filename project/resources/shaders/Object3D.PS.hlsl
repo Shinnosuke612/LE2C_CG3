@@ -1,7 +1,9 @@
 #include "Object3D.hlsli"
 
 Texture2D gTexture : register(t0);
+Texture2DArray gShadowMaps : register(t1);
 SamplerState gSampler : register(s0);
+SamplerState gShadowSampler : register(s1);
 
 static const int kMaxPointLights = 16;
 static const int kMaxSpotLights = 8;
@@ -59,6 +61,23 @@ cbuffer LightingCB : register(b1)
     SpotLight gSpotLights[kMaxSpotLights];
 };
 
+struct ShadowInfo
+{
+    float4x4 viewProjection;
+    int enable;
+    int mapIndex;
+    float bias;
+    float normalBias;
+    float strength;
+    float3 padding;
+};
+
+cbuffer ShadowCB : register(b3)
+{
+    ShadowInfo gDirectionalShadow;
+    ShadowInfo gSpotShadows[kMaxSpotLights];
+};
+
 struct PixelShaderOutput
 {
     float4 color : SV_TARGET0;
@@ -76,6 +95,62 @@ float3 CalcHalfLambertDiffuse(
     float halfLambert = pow(saturate(NdotL * 0.5f + 0.5f), 2.0f);
 
     return baseColor * lightColor * lightIntensity * halfLambert * attenuation;
+}
+
+float CalcShadowVisibility(ShadowInfo shadow, float3 worldPosition, float3 normal)
+{
+    if (shadow.enable == 0)
+    {
+        return 1.0f;
+    }
+
+    float3 biasedWorldPosition = worldPosition + normal * shadow.normalBias;
+    float4 lightClip = mul(float4(biasedWorldPosition, 1.0f), shadow.viewProjection);
+
+    if (lightClip.w <= 0.0f)
+    {
+        return 1.0f;
+    }
+
+    float3 projected = lightClip.xyz / lightClip.w;
+    float2 shadowUV = float2(projected.x * 0.5f + 0.5f, -projected.y * 0.5f + 0.5f);
+
+    if (shadowUV.x < 0.0f || shadowUV.x > 1.0f ||
+        shadowUV.y < 0.0f || shadowUV.y > 1.0f ||
+        projected.z < 0.0f || projected.z > 1.0f)
+    {
+        return 1.0f;
+    }
+
+    uint width;
+    uint height;
+    uint elements;
+    uint mipLevels;
+    gShadowMaps.GetDimensions(0, width, height, elements, mipLevels);
+    float2 texelSize = 1.0f / float2(width, height);
+
+    float lit = 0.0f;
+    const float receiverDepth = projected.z - shadow.bias;
+
+    [unroll]
+    for (int y = -1; y <= 1; ++y)
+    {
+        [unroll]
+        for (int x = -1; x <= 1; ++x)
+        {
+            float2 offset = float2(x, y) * texelSize;
+            float shadowDepth = gShadowMaps.SampleLevel(
+                gShadowSampler,
+                float3(shadowUV + offset, shadow.mapIndex),
+                0.0f
+            ).r;
+
+            lit += receiverDepth <= shadowDepth ? 1.0f : 0.0f;
+        }
+    }
+
+    lit /= 9.0f;
+    return lerp(1.0f - shadow.strength, 1.0f, lit);
 }
 
 PixelShaderOutput main(VertexShaderOutput input)
@@ -100,6 +175,7 @@ PixelShaderOutput main(VertexShaderOutput input)
         if (gDirectionalLight.enable != 0)
         {
             float3 toLight = normalize(-gDirectionalLight.direction);
+            float shadowVisibility = CalcShadowVisibility(gDirectionalShadow, input.worldPosition, normal);
 
             result += CalcHalfLambertDiffuse(
                 baseColor,
@@ -107,7 +183,7 @@ PixelShaderOutput main(VertexShaderOutput input)
                 gDirectionalLight.intensity,
                 normal,
                 toLight,
-                1.0f
+                shadowVisibility
             );
         }
 
@@ -175,6 +251,7 @@ PixelShaderOutput main(VertexShaderOutput input)
                 );
 
                 float attenuation = angleFactor * distanceFactor;
+                float shadowVisibility = CalcShadowVisibility(gSpotShadows[i], input.worldPosition, normal);
 
                 result += CalcHalfLambertDiffuse(
                     baseColor,
@@ -182,7 +259,7 @@ PixelShaderOutput main(VertexShaderOutput input)
                     light.intensity,
                     normal,
                     toLight,
-                    attenuation
+                    attenuation * shadowVisibility
                 );
             }
         }

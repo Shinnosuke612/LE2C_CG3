@@ -18,6 +18,7 @@
 #include "../particle/ParticleManager.h"
 #include "../particle/ParticleEmitter.h"
 #include "../3d/LightManager.h"
+#include "../3d/ShadowManager.h"
 #include "../3d/Skybox.h"
 
 #include "../externals/imgui/imgui.h"
@@ -39,6 +40,7 @@ void GamePlayScene::Initialize()
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 	ModelManager::GetInstance()->LoadModel("terrain.obj");
+	ModelManager::GetInstance()->LoadModel("axis.obj");
 	ModelManager::GetInstance()->LoadModel("plane.gltf");
 
 	ParticleEffectDesc gameplayEffect{};
@@ -61,6 +63,11 @@ void GamePlayScene::Initialize()
 	plane_->SetModel("plane.gltf");
 	plane_->SetTranslate({ 0.0f, 7.0f, 0.0f });
 
+	axis = new Object3d();
+	axis->Initialize(Object3dCommon::GetInstance());
+	axis->SetModel("axis.obj");
+	axis->SetTranslate({ 0.0f, 6.0f, 0.0f });
+
 	skybox_ = new Skybox();
 	skybox_->Initialize(
 		Object3dCommon::GetInstance(),
@@ -72,6 +79,12 @@ void GamePlayScene::Initialize()
 	lightManager_->Initialize(
 		Object3dCommon::GetInstance()->GetDxCommon(),
 		"resources/lights/gameplay_lights.json"
+	);
+
+	shadowManager_ = std::make_unique<ShadowManager>();
+	shadowManager_->Initialize(
+		Object3dCommon::GetInstance()->GetDxCommon(),
+		SrvManager::GetInstance()
 	);
 
 	//soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
@@ -105,6 +118,7 @@ void GamePlayScene::Update()
 
 	object3d_->Update();
 	plane_->Update();
+	axis->Update();
 	if (skybox_) {
 		skybox_->Update();
 	}
@@ -121,14 +135,42 @@ void GamePlayScene::Draw()
 		);
 	}
 
+	if (shadowManager_) {
+		shadowManager_->Bind(
+			Object3dCommon::GetInstance()->GetDxCommon()->GetCommandList(),
+			5,
+			6
+		);
+	}
+
 	object3d_->Draw();
 	plane_->Draw();
+	axis->Draw();
 
 	if (skybox_) {
 		skybox_->Draw();
 	}
 
 	// ParticleManager::GetInstance()->Draw();
+}
+
+void GamePlayScene::DrawShadow()
+{
+	if (!lightManager_ || !shadowManager_) {
+		return;
+	}
+
+	Object3d* shadowCasters[] = {
+		object3d_,
+		plane_,
+		axis
+	};
+
+	shadowManager_->Render(
+		*lightManager_,
+		shadowCasters,
+		static_cast<uint32_t>(sizeof(shadowCasters) / sizeof(shadowCasters[0]))
+	);
 }
 
 void GamePlayScene::Finalize()
@@ -143,6 +185,9 @@ void GamePlayScene::Finalize()
 
 	delete plane_;
 	plane_ = nullptr;
+
+	delete axis;
+	axis = nullptr;
 
 	delete emitter_;
 	emitter_ = nullptr;

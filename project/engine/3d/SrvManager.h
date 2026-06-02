@@ -3,6 +3,8 @@
 class SrvManager{
 
 public:
+	static SrvManager* GetInstance();
+
 	//初期化
 	void Initialize(DirectXCommon* dxCommon);
 
@@ -16,6 +18,7 @@ public:
 
 	//SRV生成(テクスチャ用)
 	void CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResource, DXGI_FORMAT Format, UINT MipLevels);
+	void CreateSRVforTexture2DArray(uint32_t srvIndex, ID3D12Resource* pResource, DXGI_FORMAT Format, UINT MipLevels, UINT arraySize);
 	//SRV生成(Structured Buffer用)
 	void CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResource, UINT numElements,UINT structureByteStride);
 
@@ -27,6 +30,7 @@ public:
 
 private:
 	DirectXCommon* directXCommon = nullptr;
+	static SrvManager* instance_;
 
 	// 最大SRV数（最大テクスチャ枚数）
 	static const uint32_t kMaxSRVCount;

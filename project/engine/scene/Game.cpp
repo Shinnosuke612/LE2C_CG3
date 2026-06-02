@@ -40,6 +40,8 @@ void Game::Update() {
 }
 
 void Game::Draw() {
+	sceneManager_->DrawShadow();
+
 	dxCommon_->PreDraw();
 	srvManager_->PreDraw();
 	Object3dCommon::GetInstance()->SetCommonRenderState();

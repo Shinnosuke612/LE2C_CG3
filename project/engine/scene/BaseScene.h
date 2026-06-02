@@ -21,6 +21,7 @@ public:
 
 	// 描画
 	virtual void Draw() = 0;
+	virtual void DrawShadow() {}
 
 	virtual void SetSceneManager(SceneManager* sceneManager) { sceneManager_ = sceneManager; }
 

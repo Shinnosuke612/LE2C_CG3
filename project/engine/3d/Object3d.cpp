@@ -11,6 +11,7 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 
 	CreateTransformationMatrixResource();
 	CreateCameraResource();
+	CreateShadowTransformationMatrixResource();
 
 	//Transform変数を作る
 	transform = { {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f} };
@@ -57,6 +58,22 @@ void Object3d::Draw(){
 	}
 }
 
+void Object3d::DrawShadow(const Matrix4x4& lightViewProjection) {
+	if (!model) {
+		return;
+	}
+
+	shadowTransformationMatrixData->WVP = Multiply(transformationMatrixData->World, lightViewProjection);
+
+	auto* commandList = object3dCommon->GetDxCommon()->GetCommandList();
+	commandList->SetGraphicsRootConstantBufferView(
+		0,
+		shadowTransformationMatrixResource->GetGPUVirtualAddress()
+	);
+
+	model->DrawForShadow();
+}
+
 void Object3d::SetModel(const std::string& filePath){
 //モデルを検索してセットする
 	model = ModelManager::GetInstance()->FindModel(filePath);
@@ -72,6 +89,12 @@ void Object3d::CreateTransformationMatrixResource(){
 	//単位行列を書き込んでおく
 	transformationMatrixData->WVP = MakeIdentity4x4();
 	transformationMatrixData->World = MakeIdentity4x4();
+}
+
+void Object3d::CreateShadowTransformationMatrixResource() {
+	shadowTransformationMatrixResource = *&object3dCommon->GetDxCommon()->CreateBufferResource(sizeof(ShadowTransformationMatrix));
+	shadowTransformationMatrixResource->Map(0, nullptr, reinterpret_cast<void**>(&shadowTransformationMatrixData));
+	shadowTransformationMatrixData->WVP = MakeIdentity4x4();
 }
 
 void Object3d::CreateCameraResource() {
