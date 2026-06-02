@@ -19,6 +19,9 @@ public:
 	void Finalize();
 
 private:
+	// ドッキング用の土台を作成
+	void CreateDockSpace();
+
 	WinApp* winApp_ = nullptr;
 	DirectXCommon* dxCommon_ = nullptr;
 	SrvManager* srvManager_ = nullptr;

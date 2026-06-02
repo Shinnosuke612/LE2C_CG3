@@ -22,6 +22,11 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
 	ImGui::StyleColorsDark();
 
 	ImGui_ImplWin32_Init(winApp_->GetHwnd());
@@ -62,6 +67,8 @@ void ImGuiManager::BeginFrame(){
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
+
+	CreateDockSpace();
 }
 
 void ImGuiManager::EndFrame(){
@@ -73,4 +80,13 @@ void ImGuiManager::Finalize(){
 	ImGui_ImplDX12_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
+}
+
+void ImGuiManager::CreateDockSpace(){
+	ImGuiDockNodeFlags dockSpaceFlags = ImGuiDockNodeFlags_PassthruCentralNode;
+	ImGui::DockSpaceOverViewport(
+		ImGui::GetID("MainDockSpace"),
+		ImGui::GetMainViewport(),
+		dockSpaceFlags
+	);
 }

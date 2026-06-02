@@ -29,6 +29,8 @@ public:
 	DirectXCommon* GetDxCommon() const{return dxCommon_;}
 	Camera* GetDefaultCamera() const{ return defaultCamera; }
 
+	// Skybox用描画設定
+	void SetSkyboxRenderState();
 
 private://非公開メンバ関数
 	Object3dCommon() = default;
@@ -38,6 +40,9 @@ private://非公開メンバ関数
 	void MakeRootSignature();
 	//グラフィックパイプラインの生成
 	void GenerateGraphicsPipeline();
+
+	// Skybox用グラフィックパイプラインの生成
+	void GenerateSkyboxGraphicsPipeline();
 
 	// どこか共通ヘルパに
 	inline D3D12_STATIC_SAMPLER_DESC MakeStaticSamplerS0();
@@ -53,6 +58,8 @@ private://メンバ変数
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState_ = nullptr;
 	//デフォルトカメラ
 	Camera* defaultCamera = nullptr;
+
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> skyboxPipelineState_ = nullptr;
 
 private://メンバクラス
 	enum class BlendMode{

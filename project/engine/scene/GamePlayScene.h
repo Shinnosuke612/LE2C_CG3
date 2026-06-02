@@ -11,6 +11,7 @@ class Sprite;
 class Camera;
 class Object3d;
 class ParticleEmitter;
+class Skybox;
 
 class GamePlayScene : public BaseScene
 {
@@ -42,5 +43,6 @@ private:
 	ParticleEffectDesc editingEffect_{};
 	ParticleEmitter* previewEmitter_ = nullptr;
 	std::unique_ptr<LightManager> lightManager_;
+	Skybox* skybox_ = nullptr;
 };
 

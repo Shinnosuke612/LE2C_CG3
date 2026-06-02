@@ -191,6 +191,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClCompile Include="engine\scene\TitleScene.cpp" />
     <ClCompile Include="engine\scene\SceneManager.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectResource.cpp" />
+    <ClCompile Include="engine\3d\Skybox.cpp" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="resources\shaders\Object3D.PS.hlsl">
@@ -225,6 +226,14 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <FxCompile Include="resources\shaders\Sprite.VS.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\Skybox.PS.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\Skybox.VS.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>
   </ItemGroup>
@@ -265,6 +274,7 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
     <ClInclude Include="engine\scene\SceneManager.h" />
     <ClInclude Include="engine\particle\ParticleEffectResource.h" />
     <ClInclude Include="engine\3d\LightManager.h" />
+    <ClInclude Include="engine\3d\Skybox.h" />
     <ClInclude Include="Vector\Vector2.h" />
     <ClInclude Include="Vector\Vector3.h" />
     <ClInclude Include="Vector\Vector4.h" />
@@ -284,6 +294,9 @@ xcopy /Y /D "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(Targe
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </ExcludedFromBuild>
+    </None>
+    <None Include="resources\shaders\Skybox.hlsli">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </None>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

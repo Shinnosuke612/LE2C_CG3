@@ -18,6 +18,7 @@
 #include "../particle/ParticleManager.h"
 #include "../particle/ParticleEmitter.h"
 #include "../3d/LightManager.h"
+#include "../3d/Skybox.h"
 
 #include "../externals/imgui/imgui.h"
 
@@ -60,6 +61,13 @@ void GamePlayScene::Initialize()
 	plane_->SetModel("plane.gltf");
 	plane_->SetTranslate({ 0.0f, 7.0f, 0.0f });
 
+	skybox_ = new Skybox();
+	skybox_->Initialize(
+		Object3dCommon::GetInstance(),
+		"resources/rostock_laage_airport_4k.dds"
+	);
+	skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
+
 	lightManager_ = std::make_unique<LightManager>();
 	lightManager_->Initialize(
 		Object3dCommon::GetInstance()->GetDxCommon(),
@@ -97,10 +105,14 @@ void GamePlayScene::Update()
 
 	object3d_->Update();
 	plane_->Update();
+	if (skybox_) {
+		skybox_->Update();
+	}
 }
 
 void GamePlayScene::Draw()
 {
+	Object3dCommon::GetInstance()->SetCommonRenderState();
 
 	if (lightManager_) {
 		lightManager_->Bind(
@@ -108,9 +120,15 @@ void GamePlayScene::Draw()
 			3
 		);
 	}
+
 	object3d_->Draw();
 	plane_->Draw();
-	//ParticleManager::GetInstance()->Draw();
+
+	if (skybox_) {
+		skybox_->Draw();
+	}
+
+	// ParticleManager::GetInstance()->Draw();
 }
 
 void GamePlayScene::Finalize()
@@ -131,4 +149,7 @@ void GamePlayScene::Finalize()
 
 	delete camera_;
 	camera_ = nullptr;
+
+	delete skybox_;
+	skybox_ = nullptr;
 }
