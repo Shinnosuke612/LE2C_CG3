@@ -5,6 +5,7 @@
 #include "ModelManager.h"
 #include "Model.h"
 #include "Camera.h"
+#include <algorithm>
 
 void Object3d::Initialize(Object3dCommon* object3dCommon){
 	this->object3dCommon = object3dCommon;
@@ -12,6 +13,8 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 	CreateTransformationMatrixResource();
 	CreateCameraResource();
 	CreateShadowTransformationMatrixResource();
+	environmentTextureFilePath_ = "resources/rostock_laage_airport_4k.dds";
+	TextureManager::GetInstance()->LoadTexture(environmentTextureFilePath_);
 
 	//Transform変数を作る
 	transform = { {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f} };
@@ -53,6 +56,11 @@ void Object3d::Draw(){
 
 	commandList->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
 
+	commandList->SetGraphicsRootDescriptorTable(
+		7,
+		TextureManager::GetInstance()->GetSrvHandleGPU(environmentTextureFilePath_)
+	);
+
 	if(model){
 		model->Draw();
 	}
@@ -79,6 +87,18 @@ void Object3d::SetModel(const std::string& filePath){
 	model = ModelManager::GetInstance()->FindModel(filePath);
 }
 
+void Object3d::SetEnvironmentMap(const std::string& textureFilePath, float coefficient) {
+	environmentTextureFilePath_ = textureFilePath;
+	if (!environmentTextureFilePath_.empty()) {
+		TextureManager::GetInstance()->LoadTexture(environmentTextureFilePath_);
+	}
+	SetEnvironmentCoefficient(coefficient);
+}
+
+void Object3d::SetEnvironmentCoefficient(float coefficient) {
+	cameraData->environmentCoefficient = std::clamp(coefficient, 0.0f, 1.0f);
+}
+
 
 
 void Object3d::CreateTransformationMatrixResource(){
@@ -101,5 +121,5 @@ void Object3d::CreateCameraResource() {
 	cameraResource = *&object3dCommon->GetDxCommon()->CreateBufferResource(sizeof(CameraForGPU));
 	cameraResource->Map(0, nullptr, reinterpret_cast<void**>(&cameraData));
 	cameraData->worldPosition = { 0.0f, 0.0f, -10.0f };
-	cameraData->padding = 0.0f;
+	cameraData->environmentCoefficient = 0.0f;
 }

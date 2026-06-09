@@ -2,6 +2,7 @@
 
 Texture2D gTexture : register(t0);
 Texture2DArray gShadowMaps : register(t1);
+TextureCube<float4> gEnvironmentTexture : register(t2);
 SamplerState gSampler : register(s0);
 SamplerState gShadowSampler : register(s1);
 
@@ -59,6 +60,12 @@ cbuffer LightingCB : register(b1)
 
     PointLight gPointLights[kMaxPointLights];
     SpotLight gSpotLights[kMaxSpotLights];
+};
+
+cbuffer CameraCB : register(b2)
+{
+    float3 gCameraWorldPosition;
+    float gEnvironmentCoefficient;
 };
 
 struct ShadowInfo
@@ -270,6 +277,14 @@ PixelShaderOutput main(VertexShaderOutput input)
     else
     {
         output.color = gMaterialColor * textureColor;
+    }
+
+    if (gEnvironmentCoefficient > 0.0f)
+    {
+        float3 cameraToPosition = normalize(input.worldPosition - gCameraWorldPosition);
+        float3 reflectedVector = reflect(cameraToPosition, normalize(input.normal));
+        float3 environmentColor = gEnvironmentTexture.Sample(gSampler, reflectedVector).rgb;
+        output.color.rgb += environmentColor * gEnvironmentCoefficient;
     }
 
     if (output.color.a == 0.0f)

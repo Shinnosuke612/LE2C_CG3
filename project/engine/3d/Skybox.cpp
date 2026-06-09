@@ -70,6 +70,10 @@ void Skybox::Draw() {
 		2,
 		TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_)
 	);
+	commandList->SetGraphicsRootDescriptorTable(
+		7,
+		TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_)
+	);
 
 	commandList->DrawInstanced(vertexCount_, 1, 0, 0);
 }

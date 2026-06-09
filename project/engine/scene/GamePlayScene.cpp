@@ -100,6 +100,12 @@ void GamePlayScene::Initialize()
 		"resources/rostock_laage_airport_4k.dds"
 	);
 	skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
+	if (player_ && player_->GetObject()) {
+		player_->GetObject()->SetEnvironmentMap(
+			"resources/rostock_laage_airport_4k.dds",
+			0.35f
+		);
+	}
 
 	lightManager_ = std::make_unique<LightManager>();
 	lightManager_->Initialize(

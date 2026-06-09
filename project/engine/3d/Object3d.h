@@ -26,7 +26,7 @@ private://インナークラス
 
 	struct CameraForGPU {
 		Vector3 worldPosition;
-		float padding;
+		float environmentCoefficient;
 	};
 
 	struct ShadowTransformationMatrix {
@@ -51,6 +51,8 @@ public: //公開メンバ関数
 	void SetTranslate(const Vector3& translate){transform.translate = translate;}
 	void SetModel(const std::string& filePath);
 	void SetCamera(Camera* camera){ this->camera = camera; }
+	void SetEnvironmentMap(const std::string& textureFilePath, float coefficient);
+	void SetEnvironmentCoefficient(float coefficient);
 
 	// getter（参照返しが軽くて安全）
 	const Vector3& GetScale() const{return transform.scale;}
@@ -85,5 +87,6 @@ private://メンバ変数
 
 	ID3D12Resource* cameraResource;
 	CameraForGPU* cameraData = nullptr;
+	std::string environmentTextureFilePath_;
 };
 
