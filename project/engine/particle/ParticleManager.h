@@ -83,6 +83,11 @@ public:
 		Vector3 endScaleMax = { 1.0f, 1.0f, 1.0f };
 	};
 
+	struct ParticleRotationDesc {
+		Vector3 initialRotationMin = { 0.0f, 0.0f, 0.0f };
+		Vector3 initialRotationMax = { 0.0f, 0.0f, 0.0f };
+	};
+
 	struct ParticleLinearMotionDesc {
 		Vector3 baseVelocity = { 0.0f, -1.8f, 0.0f };
 		Vector3 velocityRandomRange = { 0.0f, 0.0f, 0.01f };
@@ -158,6 +163,7 @@ public:
 	struct ParticleBehavior {
 		ParticleLifeDesc life;
 		ParticleScaleDesc scale;
+		ParticleRotationDesc rotation;
 		ParticleMotionDesc motion;
 		ParticleColorDesc color;
 		ParticleRenderDesc render;

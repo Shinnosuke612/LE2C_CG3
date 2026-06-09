@@ -137,6 +137,11 @@ bool ParticleEffectEditor::DrawImGui(ParticleEffectDesc& effect, ParticleEmitter
 		DragVector3("EndScaleMax", effect.behavior.scale.endScaleMax, 0.01f);
 	}
 
+	if (ImGui::CollapsingHeader("Rotation", ImGuiTreeNodeFlags_DefaultOpen)) {
+		DragVector3("InitialRotationMin", effect.behavior.rotation.initialRotationMin, 0.01f);
+		DragVector3("InitialRotationMax", effect.behavior.rotation.initialRotationMax, 0.01f);
+	}
+
 	if (ImGui::CollapsingHeader("Motion", ImGuiTreeNodeFlags_DefaultOpen)) {
 		ComboMovementMode("MovementMode", effect.behavior.motion.mode);
 

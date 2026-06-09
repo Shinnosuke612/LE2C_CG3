@@ -343,7 +343,10 @@ void ParticleManager::Emit(
 			position.z + spawnOffset.z
 		};
 
-		particle.transform.rotate = { 0.0f, 0.0f, 0.0f };
+		particle.transform.rotate = RandomVector3Range(
+			behavior.rotation.initialRotationMin,
+			behavior.rotation.initialRotationMax
+		);
 		particle.startScale = RandomVector3Range(
 			behavior.scale.startScaleMin,
 			behavior.scale.startScaleMax
@@ -563,7 +566,8 @@ void ParticleManager::Update() {
 				worldMatrix = MakeBillboardMatrix(
 					camera_->GetWorldMatrix(),
 					particle.transform.scale,
-					particle.transform.translate
+					particle.transform.translate,
+					particle.transform.rotate.z
 				);
 			}
 			else {

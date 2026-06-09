@@ -145,6 +145,11 @@ void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 		{ "endScaleMax", ToJson(b.scale.endScaleMax) }
 	};
 
+	j["rotation"] = {
+		{ "initialRotationMin", ToJson(b.rotation.initialRotationMin) },
+		{ "initialRotationMax", ToJson(b.rotation.initialRotationMax) }
+	};
+
 	j["motion"]["mode"] = ToString(b.motion.mode);
 
 	j["motion"]["linear"] = {
@@ -204,6 +209,18 @@ void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
 		b.scale.enableScaleOverLife = scale.value("enableScaleOverLife", b.scale.enableScaleOverLife);
 		if (scale.contains("endScaleMin")) b.scale.endScaleMin = ReadVector3(scale.at("endScaleMin"), b.scale.endScaleMin);
 		if (scale.contains("endScaleMax")) b.scale.endScaleMax = ReadVector3(scale.at("endScaleMax"), b.scale.endScaleMax);
+	}
+
+	if (j.contains("rotation")) {
+		const json& rotation = j.at("rotation");
+		if (rotation.contains("initialRotationMin")) {
+			b.rotation.initialRotationMin =
+				ReadVector3(rotation.at("initialRotationMin"), b.rotation.initialRotationMin);
+		}
+		if (rotation.contains("initialRotationMax")) {
+			b.rotation.initialRotationMax =
+				ReadVector3(rotation.at("initialRotationMax"), b.rotation.initialRotationMax);
+		}
 	}
 
 	if (j.contains("motion")) {

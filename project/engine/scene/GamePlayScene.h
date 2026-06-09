@@ -4,6 +4,7 @@
 #include <memory>
 #include "../audio/Audio.h"
 #include "../particle/ParticleEffectResource.h"
+#include "../particle/ParticleEffectEditor.h"
 #include "../3d/LightManager.h"
 #include "../3d/ShadowManager.h"
 #include "../collision/OBBCollider.h"
@@ -55,6 +56,7 @@ private:
 	
 	ParticleEffectDesc editingEffect_{};
 	ParticleEmitter* previewEmitter_ = nullptr;
+	ParticleEffectEditor particleEffectEditor_;
 	std::unique_ptr<LightManager> lightManager_;
 	std::unique_ptr<ShadowManager> shadowManager_;
 	Skybox* skybox_ = nullptr;

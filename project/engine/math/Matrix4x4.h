@@ -37,5 +37,6 @@ Matrix4x4 Inverse(const Matrix4x4& m);
 Matrix4x4 MakeBillboardMatrix(
 	const Matrix4x4& cameraWorldMatrix,
 	const Vector3& scale,
-	const Vector3& translate
+	const Vector3& translate,
+	float rotateZ = 0.0f
 );

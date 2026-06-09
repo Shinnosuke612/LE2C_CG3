@@ -2,6 +2,7 @@
 #include "Camera.h"
 
 #include "../externals/imgui/imgui.h"
+#include "../io/Input.h"
 #include "../math/Math.h"
 
 #include <algorithm>
@@ -177,38 +178,37 @@ void Camera::DrawImGui(const char* label) {
 
 void Camera::UpdateOrbitMouseControl() {
 
-#ifndef _DEBUG
-	return;
-#else
+#ifdef _DEBUG
 	if (ImGui::GetCurrentContext() == nullptr) {
+		// ImGui未初期化時もゲーム側のマウス入力は使用する
+	}
+	else if (ImGui::GetIO().WantCaptureMouse) {
 		return;
 	}
+#endif
 
-	ImGuiIO& io = ImGui::GetIO();
-
-	// ImGui操作中はカメラを動かさない
-	if (io.WantCaptureMouse) {
-		return;
-	}
+	Input* input = Input::GetInstance();
+	const Vector2 mouseMove = input->GetMouseMove();
+	const float mouseWheel = input->GetMouseWheel();
 
 	const float rotateSpeed = 0.005f;
 	const float zoomSpeed = 0.15f;
 	const float panSpeed = orbitDistance_ * 0.0015f;
 
 	// 右ドラッグ：中心点を保ったまま回転
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
-		orbitYaw_ += io.MouseDelta.x * rotateSpeed;
-		orbitPitch_ += io.MouseDelta.y * rotateSpeed;
+	if (input->PushMouse(Input::MouseButton::Right)) {
+		orbitYaw_ += mouseMove.x * rotateSpeed;
+		orbitPitch_ += mouseMove.y * rotateSpeed;
 	}
 
 	// ホイール：ズーム
-	if (io.MouseWheel != 0.0f) {
-		orbitDistance_ *= (1.0f - io.MouseWheel * zoomSpeed);
+	if (mouseWheel != 0.0f) {
+		orbitDistance_ *= (1.0f - mouseWheel * zoomSpeed);
 		orbitDistance_ = std::clamp(orbitDistance_, orbitMinDistance_, 1000.0f);
 	}
 
 	// 中ドラッグ：中心点を平行移動
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+	if (input->PushMouse(Input::MouseButton::Middle)) {
 
 		const float cosPitch = std::cos(orbitPitch_);
 		const float sinPitch = std::sin(orbitPitch_);
@@ -235,11 +235,10 @@ void Camera::UpdateOrbitMouseControl() {
 
 		Vector3 up = Math::Cross(forward, right);
 
-		Vector3 moveRight = Math::Multiply(right, -io.MouseDelta.x * panSpeed);
-		Vector3 moveUp = Math::Multiply(up, io.MouseDelta.y * panSpeed);
+		Vector3 moveRight = Math::Multiply(right, -mouseMove.x * panSpeed);
+		Vector3 moveUp = Math::Multiply(up, mouseMove.y * panSpeed);
 		Vector3 move = Math::Add(moveRight, moveUp);
 
 		orbitTarget_ = Math::Add(orbitTarget_, move);
 	}
-#endif
 }

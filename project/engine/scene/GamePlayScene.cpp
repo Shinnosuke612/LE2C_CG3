@@ -52,6 +52,17 @@ void GamePlayScene::Initialize()
 		emitter_ = ParticleEffectResource::CreateEmitter(gameplayEffect);
 	}
 
+	if (ParticleEffectResource::Load(
+		"resources/particles/core_burst.json",
+		editingEffect_
+	)) {
+		particleEffectEditor_.Initialize(
+			editingEffect_,
+			"resources/particles/core_burst.json"
+		);
+		previewEmitter_ = ParticleEffectResource::CreateEmitter(editingEffect_);
+	}
+
 	object3d_ = new Object3d();
 	object3d_->Initialize(Object3dCommon::GetInstance());
 	object3d_->SetModel("terrain.obj");
@@ -129,7 +140,16 @@ void GamePlayScene::Update()
 		sceneManager_->SetNextScene(scene);
 	}
 
-	emitter_->Update();
+	if (Input::GetInstance()->TriggerKey(DIK_SPACE) && previewEmitter_) {
+		previewEmitter_->Emit();
+	}
+
+	if (emitter_) {
+		emitter_->Update();
+	}
+	if (previewEmitter_) {
+		previewEmitter_->Update();
+	}
 	ParticleManager::GetInstance()->Update();
 
 #ifdef _DEBUG
@@ -141,6 +161,8 @@ void GamePlayScene::Update()
 	if (lightManager_) {
 		lightManager_->DrawImGui();
 	}
+
+	particleEffectEditor_.DrawImGui(editingEffect_, previewEmitter_);
 #endif
 
 	for (Sprite* sprite : sprites_) {
@@ -211,7 +233,7 @@ void GamePlayScene::Draw()
 		skybox_->Draw();
 	}
 
-	// ParticleManager::GetInstance()->Draw();
+	ParticleManager::GetInstance()->Draw();
 }
 
 void GamePlayScene::DrawShadow()
@@ -277,6 +299,9 @@ void GamePlayScene::Finalize()
 
 	delete emitter_;
 	emitter_ = nullptr;
+
+	delete previewEmitter_;
+	previewEmitter_ = nullptr;
 
 	delete camera_;
 	camera_ = nullptr;

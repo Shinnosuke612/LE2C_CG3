@@ -237,7 +237,8 @@ Matrix4x4 Inverse(const Matrix4x4& m) {
 Matrix4x4 MakeBillboardMatrix(
 	const Matrix4x4& cameraWorldMatrix,
 	const Vector3& scale,
-	const Vector3& translate
+	const Vector3& translate,
+	float rotateZ
 ) {
 	Vector3 right = {
 		cameraWorldMatrix.m[0][0],
@@ -261,15 +262,28 @@ Matrix4x4 MakeBillboardMatrix(
 	up = Math::Normalize(up);
 	forward = Math::Normalize(forward);
 
+	const float cosZ = std::cos(rotateZ);
+	const float sinZ = std::sin(rotateZ);
+	const Vector3 rotatedRight = {
+		right.x * cosZ + up.x * sinZ,
+		right.y * cosZ + up.y * sinZ,
+		right.z * cosZ + up.z * sinZ
+	};
+	const Vector3 rotatedUp = {
+		-right.x * sinZ + up.x * cosZ,
+		-right.y * sinZ + up.y * cosZ,
+		-right.z * sinZ + up.z * cosZ
+	};
+
 	Matrix4x4 result = MakeIdentity4x4();
 
-	result.m[0][0] = right.x * scale.x;
-	result.m[0][1] = right.y * scale.x;
-	result.m[0][2] = right.z * scale.x;
+	result.m[0][0] = rotatedRight.x * scale.x;
+	result.m[0][1] = rotatedRight.y * scale.x;
+	result.m[0][2] = rotatedRight.z * scale.x;
 
-	result.m[1][0] = up.x * scale.y;
-	result.m[1][1] = up.y * scale.y;
-	result.m[1][2] = up.z * scale.y;
+	result.m[1][0] = rotatedUp.x * scale.y;
+	result.m[1][1] = rotatedUp.y * scale.y;
+	result.m[1][2] = rotatedUp.z * scale.y;
 
 	result.m[2][0] = forward.x * scale.z;
 	result.m[2][1] = forward.y * scale.z;
