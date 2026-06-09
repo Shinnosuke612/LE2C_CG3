@@ -1,6 +1,8 @@
 #include "ParticleEffectEditor.h"
 
+#include <algorithm>
 #include <cstring>
+#include <filesystem>
 
 #include "../externals/imgui/imgui.h"
 #include "ParticleEmitter.h"
@@ -68,11 +70,28 @@ void ComboBillboardMode(const char* label, ParticleManager::BillboardMode& mode)
 	}
 }
 
+void ComboPrimitiveType(const char* label, ParticleManager::PrimitiveType& type) {
+	const char* items[] = { "Plane", "Ring" };
+	int current = static_cast<int>(type);
+	if (ImGui::Combo(label, &current, items, IM_ARRAYSIZE(items))) {
+		type = static_cast<ParticleManager::PrimitiveType>(current);
+	}
+}
+
+void ComboRingUvMode(const char* label, ParticleManager::RingUvMode& mode) {
+	const char* items[] = { "Horizontal", "Vertical" };
+	int current = static_cast<int>(mode);
+	if (ImGui::Combo(label, &current, items, IM_ARRAYSIZE(items))) {
+		mode = static_cast<ParticleManager::RingUvMode>(current);
+	}
+}
+
 } // namespace
 
 void ParticleEffectEditor::Initialize(const ParticleEffectDesc& effect, const std::string& filePath) {
 	CopyText(filePath_, sizeof(filePath_), filePath);
 	CopyStringsFromEffect(effect);
+	RefreshEffectFiles();
 	initialized_ = true;
 }
 
@@ -86,7 +105,63 @@ void ParticleEffectEditor::CopyStringsToEffect(ParticleEffectDesc& effect) {
 	effect.textureFilePath = textureFilePath_;
 }
 
-bool ParticleEffectEditor::DrawImGui(ParticleEffectDesc& effect, ParticleEmitter*& previewEmitter) {
+void ParticleEffectEditor::RefreshEffectFiles() {
+	effectFilePaths_.clear();
+	effectFileNames_.clear();
+	selectedEffectIndex_ = -1;
+
+	std::filesystem::path currentPath(filePath_);
+	std::filesystem::path directory = currentPath.parent_path();
+	if (directory.empty()) {
+		directory = "resources/particles";
+	}
+
+	std::error_code error;
+	for (const std::filesystem::directory_entry& entry :
+		std::filesystem::directory_iterator(directory, error)) {
+		if (error) {
+			break;
+		}
+		if (!entry.is_regular_file() || entry.path().extension() != ".json") {
+			continue;
+		}
+
+		effectFilePaths_.push_back(entry.path().generic_string());
+	}
+
+	std::sort(effectFilePaths_.begin(), effectFilePaths_.end());
+	for (size_t index = 0; index < effectFilePaths_.size(); ++index) {
+		const std::filesystem::path path(effectFilePaths_[index]);
+		effectFileNames_.push_back(path.filename().string());
+
+		if (path.lexically_normal() == currentPath.lexically_normal()) {
+			selectedEffectIndex_ = static_cast<int>(index);
+		}
+	}
+}
+
+bool ParticleEffectEditor::LoadEffectFile(
+	const std::string& filePath,
+	ParticleEffectDesc& effect,
+	ParticleEmitter*& previewEmitter
+) {
+	if (!ParticleEffectResource::Load(filePath, effect)) {
+		return false;
+	}
+
+	CopyText(filePath_, sizeof(filePath_), filePath);
+	CopyStringsFromEffect(effect);
+
+	delete previewEmitter;
+	previewEmitter = ParticleEffectResource::CreateEmitter(effect);
+	return true;
+}
+
+bool ParticleEffectEditor::DrawImGui(
+	ParticleEffectDesc& effect,
+	ParticleEmitter*& previewEmitter,
+	const char* windowTitle
+) {
 	if (!initialized_) {
 		Initialize(effect, "resources/particles/newParticle.json");
 	}
@@ -94,7 +169,33 @@ bool ParticleEffectEditor::DrawImGui(ParticleEffectDesc& effect, ParticleEmitter
 	bool applied = false;
 	bool changed = false;
 
-	ImGui::Begin("Particle Effect Editor");
+	ImGui::Begin(windowTitle);
+
+	const char* selectedName =
+		selectedEffectIndex_ >= 0 &&
+		selectedEffectIndex_ < static_cast<int>(effectFileNames_.size())
+		? effectFileNames_[selectedEffectIndex_].c_str()
+		: "(select effect)";
+
+	if (ImGui::BeginCombo("Existing Effect", selectedName)) {
+		for (int index = 0; index < static_cast<int>(effectFileNames_.size()); ++index) {
+			const bool isSelected = selectedEffectIndex_ == index;
+			if (ImGui::Selectable(effectFileNames_[index].c_str(), isSelected)) {
+				if (LoadEffectFile(effectFilePaths_[index], effect, previewEmitter)) {
+					selectedEffectIndex_ = index;
+					applied = true;
+				}
+			}
+			if (isSelected) {
+				ImGui::SetItemDefaultFocus();
+			}
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Refresh List")) {
+		RefreshEffectFiles();
+	}
 
 	ImGui::InputText("FilePath", filePath_, sizeof(filePath_));
 	bool resourceChanged = false;
@@ -193,6 +294,53 @@ bool ParticleEffectEditor::DrawImGui(ParticleEffectDesc& effect, ParticleEmitter
 
 	if (ImGui::CollapsingHeader("Render", ImGuiTreeNodeFlags_DefaultOpen)) {
 		ComboBillboardMode("BillboardMode", effect.behavior.render.billboardMode);
+		ComboPrimitiveType("PrimitiveType", effect.behavior.render.primitiveType);
+		ImGui::DragFloat2(
+			"UVScrollSpeed",
+			&effect.behavior.render.uvScrollSpeed.x,
+			0.01f
+		);
+
+		if (effect.behavior.render.primitiveType == ParticleManager::PrimitiveType::kRing) {
+			int divisions = static_cast<int>(effect.behavior.render.ring.divisions);
+			if (ImGui::DragInt("RingDivisions", &divisions, 1, 3, 256)) {
+				effect.behavior.render.ring.divisions =
+					static_cast<uint32_t>(std::clamp(divisions, 3, 256));
+			}
+			ImGui::DragFloat(
+				"OuterRadius",
+				&effect.behavior.render.ring.outerRadius,
+				0.01f,
+				0.001f,
+				100.0f
+			);
+			ImGui::DragFloat(
+				"InnerRadius",
+				&effect.behavior.render.ring.innerRadius,
+				0.01f,
+				0.0f,
+				100.0f
+			);
+			ImGui::DragFloat(
+				"StartAngle",
+				&effect.behavior.render.ring.startAngle,
+				0.01f
+			);
+			ImGui::DragFloat(
+				"EndAngle",
+				&effect.behavior.render.ring.endAngle,
+				0.01f
+			);
+			ImGui::ColorEdit4(
+				"OuterColor",
+				&effect.behavior.render.ring.outerColor.x
+			);
+			ImGui::ColorEdit4(
+				"InnerColor",
+				&effect.behavior.render.ring.innerColor.x
+			);
+			ComboRingUvMode("RingUV", effect.behavior.render.ring.uvMode);
+		}
 	}
 
 	// 数値編集をリアルタイム反映
@@ -216,11 +364,8 @@ bool ParticleEffectEditor::DrawImGui(ParticleEffectDesc& effect, ParticleEmitter
 	ImGui::SameLine();
 
 	if (ImGui::Button("Load")) {
-		if (ParticleEffectResource::Load(filePath_, effect)) {
-			CopyStringsFromEffect(effect);
-
-			delete previewEmitter;
-			previewEmitter = ParticleEffectResource::CreateEmitter(effect);
+		if (LoadEffectFile(filePath_, effect, previewEmitter)) {
+			RefreshEffectFiles();
 			applied = true;
 		}
 	}

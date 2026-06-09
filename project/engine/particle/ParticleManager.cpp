@@ -9,6 +9,7 @@
 #include <cassert>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <random>
 
 ParticleManager* ParticleManager::instance_ = nullptr;
@@ -55,6 +56,121 @@ void ParticleManager::SetGroupBlendMode(
 	assert(it != particleGroups_.end());
 
 	it->second.blendMode = blendMode;
+}
+
+void ParticleManager::SetGroupRenderDesc(
+	const std::string& name,
+	const ParticleRenderDesc& render
+) {
+	auto it = particleGroups_.find(name);
+	assert(it != particleGroups_.end());
+
+	ParticleGroup& group = it->second;
+	const ParticleRenderDesc& current = group.render;
+	const bool unchanged =
+		current.billboardMode == render.billboardMode &&
+		current.primitiveType == render.primitiveType &&
+		current.uvScrollSpeed.x == render.uvScrollSpeed.x &&
+		current.uvScrollSpeed.y == render.uvScrollSpeed.y &&
+		current.ring.divisions == render.ring.divisions &&
+		current.ring.outerRadius == render.ring.outerRadius &&
+		current.ring.innerRadius == render.ring.innerRadius &&
+		current.ring.startAngle == render.ring.startAngle &&
+		current.ring.endAngle == render.ring.endAngle &&
+		current.ring.outerColor.x == render.ring.outerColor.x &&
+		current.ring.outerColor.y == render.ring.outerColor.y &&
+		current.ring.outerColor.z == render.ring.outerColor.z &&
+		current.ring.outerColor.w == render.ring.outerColor.w &&
+		current.ring.innerColor.x == render.ring.innerColor.x &&
+		current.ring.innerColor.y == render.ring.innerColor.y &&
+		current.ring.innerColor.z == render.ring.innerColor.z &&
+		current.ring.innerColor.w == render.ring.innerColor.w &&
+		current.ring.uvMode == render.ring.uvMode;
+	if (unchanged) {
+		return;
+	}
+
+	group.render = render;
+	CreateGroupVertexResource(group);
+}
+
+void ParticleManager::CreateGroupVertexResource(ParticleGroup& group) {
+	if (group.render.primitiveType == PrimitiveType::kPlane) {
+		group.vertexResource.Reset();
+		group.vertexBufferView = particleCommon_->GetVertexBufferView();
+		group.vertexCount = 6;
+		return;
+	}
+
+	const RingPrimitiveDesc& ring = group.render.ring;
+	const uint32_t divisions = std::clamp(ring.divisions, 3u, 256u);
+	const float outerRadius = (std::max)(ring.outerRadius, 0.001f);
+	const float innerRadius = std::clamp(ring.innerRadius, 0.0f, outerRadius);
+	const float angleRange = ring.endAngle - ring.startAngle;
+
+	std::vector<ParticleCommon::VertexData> vertices;
+	vertices.reserve(static_cast<size_t>(divisions) * 6);
+
+	for (uint32_t index = 0; index < divisions; ++index) {
+		const float t0 = static_cast<float>(index) / static_cast<float>(divisions);
+		const float t1 = static_cast<float>(index + 1) / static_cast<float>(divisions);
+		const float angle0 = ring.startAngle + angleRange * t0;
+		const float angle1 = ring.startAngle + angleRange * t1;
+		const float sin0 = std::sin(angle0);
+		const float cos0 = std::cos(angle0);
+		const float sin1 = std::sin(angle1);
+		const float cos1 = std::cos(angle1);
+
+		const Vector2 outerUv0 =
+			ring.uvMode == RingUvMode::kHorizontal ? Vector2{ t0, 0.0f } : Vector2{ 0.0f, t0 };
+		const Vector2 outerUv1 =
+			ring.uvMode == RingUvMode::kHorizontal ? Vector2{ t1, 0.0f } : Vector2{ 0.0f, t1 };
+		const Vector2 innerUv0 =
+			ring.uvMode == RingUvMode::kHorizontal ? Vector2{ t0, 1.0f } : Vector2{ 1.0f, t0 };
+		const Vector2 innerUv1 =
+			ring.uvMode == RingUvMode::kHorizontal ? Vector2{ t1, 1.0f } : Vector2{ 1.0f, t1 };
+
+		const ParticleCommon::VertexData outer0{
+			{ -sin0 * outerRadius, cos0 * outerRadius, 0.0f, 1.0f },
+			outerUv0, { 0.0f, 0.0f, -1.0f }, ring.outerColor
+		};
+		const ParticleCommon::VertexData outer1{
+			{ -sin1 * outerRadius, cos1 * outerRadius, 0.0f, 1.0f },
+			outerUv1, { 0.0f, 0.0f, -1.0f }, ring.outerColor
+		};
+		const ParticleCommon::VertexData inner0{
+			{ -sin0 * innerRadius, cos0 * innerRadius, 0.0f, 1.0f },
+			innerUv0, { 0.0f, 0.0f, -1.0f }, ring.innerColor
+		};
+		const ParticleCommon::VertexData inner1{
+			{ -sin1 * innerRadius, cos1 * innerRadius, 0.0f, 1.0f },
+			innerUv1, { 0.0f, 0.0f, -1.0f }, ring.innerColor
+		};
+
+		vertices.push_back(outer0);
+		vertices.push_back(outer1);
+		vertices.push_back(inner0);
+		vertices.push_back(inner0);
+		vertices.push_back(outer1);
+		vertices.push_back(inner1);
+	}
+
+	group.vertexResource = particleCommon_->GetDxCommon()->CreateBufferResource(
+		sizeof(ParticleCommon::VertexData) * vertices.size()
+	);
+	ParticleCommon::VertexData* mappedVertices = nullptr;
+	group.vertexResource->Map(0, nullptr, reinterpret_cast<void**>(&mappedVertices));
+	std::memcpy(
+		mappedVertices,
+		vertices.data(),
+		sizeof(ParticleCommon::VertexData) * vertices.size()
+	);
+
+	group.vertexBufferView.BufferLocation = group.vertexResource->GetGPUVirtualAddress();
+	group.vertexBufferView.SizeInBytes =
+		static_cast<UINT>(sizeof(ParticleCommon::VertexData) * vertices.size());
+	group.vertexBufferView.StrideInBytes = sizeof(ParticleCommon::VertexData);
+	group.vertexCount = static_cast<uint32_t>(vertices.size());
 }
 
 void ParticleManager::CreateDirectionalLightResource() {
@@ -138,6 +254,8 @@ void ParticleManager::CreateParticleGroup(const std::string& name, const std::st
 		kMaxInstanceCount,
 		sizeof(TransformationMatrix)
 	);
+	group.render = {};
+	CreateGroupVertexResource(group);
 
 	particleGroups_.emplace(name, std::move(group));
 }
@@ -534,6 +652,12 @@ void ParticleManager::Update() {
 	}
 
 	for (auto& [name, group] : particleGroups_) {
+		group.uvOffset.x += group.render.uvScrollSpeed.x * deltaTime_;
+		group.uvOffset.y += group.render.uvScrollSpeed.y * deltaTime_;
+		group.materialData->uvTransform = MakeIdentity4x4();
+		group.materialData->uvTransform.m[3][0] = group.uvOffset.x;
+		group.materialData->uvTransform.m[3][1] = group.uvOffset.y;
+
 		for (auto& particle : group.particles) {
 			particle.currentTime += deltaTime_;
 
@@ -599,6 +723,7 @@ void ParticleManager::Draw() {
 		// ParticleGroupごとにBlendModeを切り替える
 		particleCommon_->SetBlendMode(group.blendMode);
 		particleCommon_->SetCommonRenderState();
+		commandList->IASetVertexBuffers(0, 1, &group.vertexBufferView);
 
 		// b0 Material
 		commandList->SetGraphicsRootConstantBufferView(
@@ -618,6 +743,6 @@ void ParticleManager::Draw() {
 			directionalLightResource_->GetGPUVirtualAddress()
 		);
 
-		commandList->DrawInstanced(6, group.instanceCount, 0, 0);
+		commandList->DrawInstanced(group.vertexCount, group.instanceCount, 0, 0);
 	}
 }

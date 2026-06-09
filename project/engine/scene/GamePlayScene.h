@@ -55,8 +55,12 @@ private:
 	Audio::SoundData soundData_{};
 	
 	ParticleEffectDesc editingEffect_{};
-	ParticleEmitter* previewEmitter_ = nullptr;
+	ParticleEmitter* editorPreviewEmitter_ = nullptr;
 	ParticleEffectEditor particleEffectEditor_;
+	ParticleEffectDesc planeBurstEffect_{};
+	ParticleEmitter* planeBurstEmitter_ = nullptr;
+	ParticleEffectDesc ringBurstEffect_{};
+	ParticleEmitter* ringBurstEmitter_ = nullptr;
 	std::unique_ptr<LightManager> lightManager_;
 	std::unique_ptr<ShadowManager> shadowManager_;
 	Skybox* skybox_ = nullptr;

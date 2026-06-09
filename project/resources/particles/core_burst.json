@@ -3,14 +3,14 @@
     "color": {
       "endColorMax": [
         1.0,
-        0.8,
-        0.2,
+        0.800000011920929,
+        0.20000000298023224,
         1.0
       ],
       "endColorMin": [
         1.0,
-        0.8,
-        0.2,
+        0.800000011920929,
+        0.20000000298023224,
         1.0
       ],
       "mode": "OverLife",
@@ -45,8 +45,8 @@
     "life": {
       "enableLifeFade": true,
       "fadeOutStartRatio": 0.6499999761581421,
-      "lifeTimeMax": 0.35,
-      "lifeTimeMin": 0.2
+      "lifeTimeMax": 0.3499999940395355,
+      "lifeTimeMin": 0.20000000298023224
     },
     "motion": {
       "linear": {
@@ -71,7 +71,7 @@
           0.0
         ]
       },
-      "mode": "VortexInward",
+      "mode": "Linear",
       "sway": {
         "amplitude": 0.0,
         "frequency": 0.0
@@ -92,52 +92,77 @@
       }
     },
     "render": {
-      "billboardMode": "Billboard"
+      "billboardMode": "Billboard",
+      "primitiveType": "Plane",
+      "ring": {
+        "divisions": 32,
+        "endAngle": 6.2831854820251465,
+        "innerColor": [
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "innerRadius": 0.20000000298023224,
+        "outerColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "outerRadius": 1.0,
+        "startAngle": 0.0,
+        "uvMode": "Horizontal"
+      },
+      "uvScrollSpeed": [
+        0.0,
+        0.0
+      ]
+    },
+    "rotation": {
+      "initialRotationMax": [
+        0.0,
+        0.0,
+        3.1415927410125732
+      ],
+      "initialRotationMin": [
+        0.0,
+        0.0,
+        -3.1415927410125732
+      ]
     },
     "scale": {
       "enableScaleOverLife": true,
       "endScaleMax": [
-        0.02,
-        0.3,
+        0.019999999552965164,
+        0.30000001192092896,
         1.0
       ],
       "endScaleMin": [
-        0.02,
-        0.2,
+        0.019999999552965164,
+        0.20000000298023224,
         1.0
       ],
       "startScaleMax": [
-        0.1,
+        0.10000000149011612,
         3.0,
         1.0
       ],
       "startScaleMin": [
-        0.08,
+        0.07999999821186066,
         1.5,
         1.0
-      ]
-    },
-    "rotation": {
-      "initialRotationMin": [
-        0.0,
-        0.0,
-        -3.1415927
-      ],
-      "initialRotationMax": [
-        0.0,
-        0.0,
-        3.1415927
       ]
     }
   },
   "blendMode": "Add",
   "emitter": {
     "count": 8,
-    "frequency": 0.4,
+    "frequency": 0.4000000059604645,
     "isActive": false,
     "spawnSize": [
-      0.15000000596046448,
-      0.15000000596046448,
+      0.0,
+      0.0,
       0.0
     ],
     "translate": [

@@ -1,5 +1,6 @@
 #include "ParticleEffectResource.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 
@@ -129,6 +130,93 @@ ParticleManager::BillboardMode ToBillboardMode(const std::string& text) {
 	return ParticleManager::BillboardMode::kBillboard;
 }
 
+std::string ToString(ParticleManager::PrimitiveType type) {
+	return type == ParticleManager::PrimitiveType::kRing ? "Ring" : "Plane";
+}
+
+ParticleManager::PrimitiveType ToPrimitiveType(const std::string& text) {
+	return text == "Ring"
+		? ParticleManager::PrimitiveType::kRing
+		: ParticleManager::PrimitiveType::kPlane;
+}
+
+std::string ToString(ParticleManager::RingUvMode mode) {
+	return mode == ParticleManager::RingUvMode::kVertical ? "Vertical" : "Horizontal";
+}
+
+ParticleManager::RingUvMode ToRingUvMode(const std::string& text) {
+	return text == "Vertical"
+		? ParticleManager::RingUvMode::kVertical
+		: ParticleManager::RingUvMode::kHorizontal;
+}
+
+void WriteRender(json& j, const ParticleManager::ParticleRenderDesc& render) {
+	j = {
+		{ "billboardMode", ToString(render.billboardMode) },
+		{ "primitiveType", ToString(render.primitiveType) },
+		{ "uvScrollSpeed", json::array({
+			render.uvScrollSpeed.x,
+			render.uvScrollSpeed.y
+		}) },
+		{ "ring", {
+			{ "divisions", render.ring.divisions },
+			{ "outerRadius", render.ring.outerRadius },
+			{ "innerRadius", render.ring.innerRadius },
+			{ "startAngle", render.ring.startAngle },
+			{ "endAngle", render.ring.endAngle },
+			{ "outerColor", ToJson(render.ring.outerColor) },
+			{ "innerColor", ToJson(render.ring.innerColor) },
+			{ "uvMode", ToString(render.ring.uvMode) }
+		} }
+	};
+}
+
+void ReadRender(const json& j, ParticleManager::ParticleRenderDesc& render) {
+	render.billboardMode =
+		ToBillboardMode(j.value("billboardMode", ToString(render.billboardMode)));
+	render.primitiveType =
+		ToPrimitiveType(j.value("primitiveType", ToString(render.primitiveType)));
+
+	if (j.contains("uvScrollSpeed")) {
+		const json& uvScroll = j.at("uvScrollSpeed");
+		if (uvScroll.is_array() && uvScroll.size() >= 2) {
+			render.uvScrollSpeed = {
+				uvScroll.at(0).get<float>(),
+				uvScroll.at(1).get<float>()
+			};
+		}
+	}
+
+	if (!j.contains("ring")) {
+		return;
+	}
+
+	const json& ring = j.at("ring");
+	render.ring.divisions =
+		std::clamp(ring.value("divisions", render.ring.divisions), 3u, 256u);
+	render.ring.outerRadius =
+		(std::max)(ring.value("outerRadius", render.ring.outerRadius), 0.001f);
+	render.ring.innerRadius = std::clamp(
+		ring.value("innerRadius", render.ring.innerRadius),
+		0.0f,
+		render.ring.outerRadius
+	);
+	render.ring.startAngle = ring.value("startAngle", render.ring.startAngle);
+	render.ring.endAngle = ring.value("endAngle", render.ring.endAngle);
+
+	if (ring.contains("outerColor")) {
+		render.ring.outerColor =
+			ReadVector4(ring.at("outerColor"), render.ring.outerColor);
+	}
+	if (ring.contains("innerColor")) {
+		render.ring.innerColor =
+			ReadVector4(ring.at("innerColor"), render.ring.innerColor);
+	}
+
+	render.ring.uvMode =
+		ToRingUvMode(ring.value("uvMode", ToString(render.ring.uvMode)));
+}
+
 void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 	j["life"] = {
 		{ "lifeTimeMin", b.life.lifeTimeMin },
@@ -188,9 +276,7 @@ void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 		{ "randomColorLerpSpeed", b.color.randomColorLerpSpeed }
 	};
 
-	j["render"] = {
-		{ "billboardMode", ToString(b.render.billboardMode) }
-	};
+	WriteRender(j["render"], b.render);
 }
 
 void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
@@ -272,8 +358,7 @@ void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
 	}
 
 	if (j.contains("render")) {
-		const json& render = j.at("render");
-		b.render.billboardMode = ToBillboardMode(render.value("billboardMode", ToString(b.render.billboardMode)));
+		ReadRender(j.at("render"), b.render);
 	}
 }
 
@@ -355,6 +440,7 @@ void PrepareParticleGroup(const ParticleEffectDesc& effect, bool clearParticles)
 	);
 
 	particleManager->SetGroupBlendMode(effect.name, effect.blendMode);
+	particleManager->SetGroupRenderDesc(effect.name, effect.behavior.render);
 
 	if (clearParticles) {
 		particleManager->ClearParticleGroup(effect.name);

@@ -72,7 +72,19 @@
     },
 
     "render": {
-      "billboardMode": "Billboard"
+      "billboardMode": "Billboard",
+      "primitiveType": "Plane",
+      "uvScrollSpeed": [0.0, 0.0],
+      "ring": {
+        "divisions": 32,
+        "outerRadius": 1.0,
+        "innerRadius": 0.2,
+        "startAngle": 0.0,
+        "endAngle": 6.2831853,
+        "outerColor": [1.0, 1.0, 1.0, 1.0],
+        "innerColor": [1.0, 1.0, 1.0, 0.0],
+        "uvMode": "Horizontal"
+      }
     }
   }
 }

@@ -45,22 +45,35 @@ void GamePlayScene::Initialize()
 
 	ParticleEffectDesc gameplayEffect{};
 
-	if (ParticleEffectResource::Load(
+	/*if (ParticleEffectResource::Load(
 		"resources/particles/fairyParticle.json",
 		gameplayEffect
 	)) {
 		emitter_ = ParticleEffectResource::CreateEmitter(gameplayEffect);
-	}
+	}*/
 
 	if (ParticleEffectResource::Load(
 		"resources/particles/core_burst.json",
-		editingEffect_
+		planeBurstEffect_
 	)) {
+		planeBurstEmitter_ =
+			ParticleEffectResource::CreateEmitter(planeBurstEffect_);
+
+		editingEffect_ = planeBurstEffect_;
 		particleEffectEditor_.Initialize(
 			editingEffect_,
 			"resources/particles/core_burst.json"
 		);
-		previewEmitter_ = ParticleEffectResource::CreateEmitter(editingEffect_);
+		editorPreviewEmitter_ =
+			ParticleEffectResource::CreateEmitter(editingEffect_);
+	}
+
+	if (ParticleEffectResource::Load(
+		"resources/particles/ring_burst.json",
+		ringBurstEffect_
+	)) {
+		ringBurstEmitter_ =
+			ParticleEffectResource::CreateEmitter(ringBurstEffect_);
 	}
 
 	object3d_ = new Object3d();
@@ -140,15 +153,26 @@ void GamePlayScene::Update()
 		sceneManager_->SetNextScene(scene);
 	}
 
-	if (Input::GetInstance()->TriggerKey(DIK_SPACE) && previewEmitter_) {
-		previewEmitter_->Emit();
+	if (Input::GetInstance()->TriggerKey(DIK_SPACE)) {
+		if (planeBurstEmitter_) {
+			planeBurstEmitter_->Emit();
+		}
+		if (ringBurstEmitter_) {
+			ringBurstEmitter_->Emit();
+		}
 	}
 
 	if (emitter_) {
 		emitter_->Update();
 	}
-	if (previewEmitter_) {
-		previewEmitter_->Update();
+	if (editorPreviewEmitter_) {
+		editorPreviewEmitter_->Update();
+	}
+	if (planeBurstEmitter_) {
+		planeBurstEmitter_->Update();
+	}
+	if (ringBurstEmitter_) {
+		ringBurstEmitter_->Update();
 	}
 	ParticleManager::GetInstance()->Update();
 
@@ -162,7 +186,22 @@ void GamePlayScene::Update()
 		lightManager_->DrawImGui();
 	}
 
-	particleEffectEditor_.DrawImGui(editingEffect_, previewEmitter_);
+	particleEffectEditor_.DrawImGui(
+		editingEffect_,
+		editorPreviewEmitter_,
+		"Particle Effect Editor"
+	);
+
+	if (editingEffect_.name == planeBurstEffect_.name && planeBurstEmitter_) {
+		planeBurstEffect_ = editingEffect_;
+		ParticleEffectResource::PrepareParticleGroup(planeBurstEffect_, false);
+		ParticleEffectResource::ApplyToEmitter(*planeBurstEmitter_, planeBurstEffect_);
+	}
+	else if (editingEffect_.name == ringBurstEffect_.name && ringBurstEmitter_) {
+		ringBurstEffect_ = editingEffect_;
+		ParticleEffectResource::PrepareParticleGroup(ringBurstEffect_, false);
+		ParticleEffectResource::ApplyToEmitter(*ringBurstEmitter_, ringBurstEffect_);
+	}
 #endif
 
 	for (Sprite* sprite : sprites_) {
@@ -300,8 +339,14 @@ void GamePlayScene::Finalize()
 	delete emitter_;
 	emitter_ = nullptr;
 
-	delete previewEmitter_;
-	previewEmitter_ = nullptr;
+	delete editorPreviewEmitter_;
+	editorPreviewEmitter_ = nullptr;
+
+	delete planeBurstEmitter_;
+	planeBurstEmitter_ = nullptr;
+
+	delete ringBurstEmitter_;
+	ringBurstEmitter_ = nullptr;
 
 	delete camera_;
 	camera_ = nullptr;

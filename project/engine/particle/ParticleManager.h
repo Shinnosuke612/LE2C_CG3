@@ -7,6 +7,7 @@
 
 #include "../math/Vector3.h"
 #include "../math/Vector4.h"
+#include "../math/Vector2.h"
 #include "../math/Transform.h"
 #include "../math/Matrix4x4.h"
 
@@ -156,8 +157,32 @@ public:
 		kBillboard,
 	};
 
+	enum class PrimitiveType {
+		kPlane,
+		kRing,
+	};
+
+	enum class RingUvMode {
+		kHorizontal,
+		kVertical,
+	};
+
+	struct RingPrimitiveDesc {
+		uint32_t divisions = 32;
+		float outerRadius = 1.0f;
+		float innerRadius = 0.2f;
+		float startAngle = 0.0f;
+		float endAngle = 6.2831853f;
+		Vector4 outerColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+		Vector4 innerColor = { 1.0f, 1.0f, 1.0f, 0.0f };
+		RingUvMode uvMode = RingUvMode::kHorizontal;
+	};
+
 	struct ParticleRenderDesc {
 		BillboardMode billboardMode = BillboardMode::kBillboard;
+		PrimitiveType primitiveType = PrimitiveType::kPlane;
+		RingPrimitiveDesc ring;
+		Vector2 uvScrollSpeed = { 0.0f, 0.0f };
 	};
 
 	struct ParticleBehavior {
@@ -240,6 +265,11 @@ private:
 		uint32_t instanceCount = 0;
 
 		ParticleCommon::BlendMode blendMode = ParticleCommon::BlendMode::kBlendModeAdd;
+		ParticleRenderDesc render;
+		Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource;
+		D3D12_VERTEX_BUFFER_VIEW vertexBufferView{};
+		uint32_t vertexCount = 0;
+		Vector2 uvOffset{};
 	};
 
 public:
@@ -271,9 +301,11 @@ public:
 	void SetCamera(Camera* camera) { camera_ = camera; }
 
 	void SetGroupBlendMode(const std::string& name, ParticleCommon::BlendMode blendMode);
+	void SetGroupRenderDesc(const std::string& name, const ParticleRenderDesc& render);
 
 private:
 	void CreateDirectionalLightResource();
+	void CreateGroupVertexResource(ParticleGroup& group);
 
 	float RandomRange(float min, float max);
 	Vector3 RandomVector3Range(const Vector3& min, const Vector3& max);
