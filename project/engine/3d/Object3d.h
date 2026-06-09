@@ -56,6 +56,8 @@ public: //公開メンバ関数
 	const Vector3& GetScale() const{return transform.scale;}
 	const Vector3& GetRotate() const{return transform.rotate;}
 	const Vector3& GetTranslate() const{return transform.translate;}
+	const Transform& GetTransform() const { return transform; }
+	Transform& GetTransform() { return transform; }
 private: //非公開メンバ関数
 
 	//座標変換行列用リソース作成関数

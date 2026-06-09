@@ -48,7 +48,9 @@ void Game::Draw() {
 
 	sceneManager_->Draw();
 
+#ifdef _DEBUG
 	imguiManager_->EndFrame();
+#endif
 
 	dxCommon_->PostDraw();
 }

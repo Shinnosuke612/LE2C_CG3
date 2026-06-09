@@ -177,6 +177,9 @@ void Camera::DrawImGui(const char* label) {
 
 void Camera::UpdateOrbitMouseControl() {
 
+#ifndef _DEBUG
+	return;
+#else
 	if (ImGui::GetCurrentContext() == nullptr) {
 		return;
 	}
@@ -238,4 +241,5 @@ void Camera::UpdateOrbitMouseControl() {
 
 		orbitTarget_ = Math::Add(orbitTarget_, move);
 	}
+#endif
 }

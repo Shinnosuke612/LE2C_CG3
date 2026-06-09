@@ -6,6 +6,7 @@
 #include "../particle/ParticleEffectResource.h"
 #include "../3d/LightManager.h"
 #include "../3d/ShadowManager.h"
+#include "../collision/OBBCollider.h"
 
 class SpriteCommon;
 class Sprite;
@@ -13,9 +14,15 @@ class Camera;
 class Object3d;
 class ParticleEmitter;
 class Skybox;
+class Player;
 
 class GamePlayScene : public BaseScene
 {
+private:
+	struct StageObject {
+		Object3d* object = nullptr;
+		OBBCollider collider;
+	};
 
 public: //メンバ関数
 
@@ -40,6 +47,9 @@ private:
 	Object3d* object3d_ = nullptr;
 	Object3d* plane_ = nullptr;
 	Object3d* axis = nullptr;
+	Player* player_ = nullptr;
+	std::vector<StageObject> stageObjects_;
+	std::vector<OBBCollider*> staticColliders_;
 	std::vector<Sprite*> sprites_;
 	Audio::SoundData soundData_{};
 	

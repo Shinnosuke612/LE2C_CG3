@@ -63,8 +63,10 @@ void Framework::Initialize() {
 	input_ = Input::GetInstance();
 	input_->GetInstance()->Initialize(winApp_);
 
+#ifdef _DEBUG
 	imguiManager_ = new ImGuiManager();
 	imguiManager_->Initialize(winApp_, dxCommon_, srvManager_);
+#endif
 
 	audio_ = new Audio();
 	audio_->Initialize();
@@ -87,12 +89,16 @@ void Framework::Update() {
 			winApp_->GetClientHeight()
 		);
 	}
+#ifdef _DEBUG
 	imguiManager_->BeginFrame();
+#endif
 }
 void Framework::Finalize() {
+#ifdef _DEBUG
 	if (imguiManager_) {
 		imguiManager_->Finalize();
 	}
+#endif
 
 	if (audio_) {
 		audio_->Finalize();
@@ -113,8 +119,10 @@ void Framework::Finalize() {
 	delete audio_;
 	audio_ = nullptr;
 
+#ifdef _DEBUG
 	delete imguiManager_;
 	imguiManager_ = nullptr;
+#endif
 
 	delete srvManager_;
 	srvManager_ = nullptr;

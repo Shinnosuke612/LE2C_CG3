@@ -69,15 +69,19 @@ void TitleScene::Update()
 		sceneManager_->SetNextScene(scene);
 	}
 
+#ifdef _DEBUG
 	ImGui::Begin("Title Scene");
 	ImGui::Text("TitleScene");
 	ImGui::Text("Particles are running.");
 	ImGui::End();
 
 	camera_->DrawImGui("Main Camera");
+#endif
 	camera_->Update();
 
+#ifdef _DEBUG
 	particleEffectEditor_.DrawImGui(editingEffect_, previewEmitter_);
+#endif
 
 	if (previewEmitter_) {
 		previewEmitter_->Update();

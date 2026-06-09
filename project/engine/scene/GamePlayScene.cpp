@@ -20,6 +20,7 @@
 #include "../3d/LightManager.h"
 #include "../3d/ShadowManager.h"
 #include "../3d/Skybox.h"
+#include "../player/Player.h"
 
 #include "../externals/imgui/imgui.h"
 
@@ -40,8 +41,7 @@ void GamePlayScene::Initialize()
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 	ModelManager::GetInstance()->LoadModel("terrain.obj");
-	ModelManager::GetInstance()->LoadModel("axis.obj");
-	ModelManager::GetInstance()->LoadModel("plane.gltf");
+	ModelManager::GetInstance()->LoadModel("Cube.obj");
 
 	ParticleEffectDesc gameplayEffect{};
 
@@ -58,15 +58,41 @@ void GamePlayScene::Initialize()
 	object3d_->SetTranslate({ 0.0f, -5.0f, 0.0f });
 	object3d_->SetScale({ 10.0f, 10.0f, 10.0f });
 
-	plane_ = new Object3d();
-	plane_->Initialize(Object3dCommon::GetInstance());
-	plane_->SetModel("plane.gltf");
-	plane_->SetTranslate({ 0.0f, 7.0f, 0.0f });
+	player_ = new Player();
+	player_->Initialize(Object3dCommon::GetInstance(), "Cube.obj");
 
-	axis = new Object3d();
-	axis->Initialize(Object3dCommon::GetInstance());
-	axis->SetModel("axis.obj");
-	axis->SetTranslate({ 0.0f, 6.0f, 0.0f });
+	auto addStageObject =
+		[this](
+			const char* modelName,
+			const Vector3& translate,
+			const Vector3& scale,
+			const Vector3& halfSize,
+			bool collidable
+		) {
+			StageObject stageObject{};
+			stageObject.object = new Object3d();
+			stageObject.object->Initialize(Object3dCommon::GetInstance());
+			stageObject.object->SetModel(modelName);
+			stageObject.object->SetTranslate(translate);
+			stageObject.object->SetScale(scale);
+			stageObject.object->Update();
+
+			stageObject.collider.SetWorldTransform(&stageObject.object->GetTransform());
+			stageObject.collider.SetHalfSize(halfSize);
+
+			stageObjects_.push_back(stageObject);
+			if (collidable) {
+				staticColliders_.push_back(&stageObjects_.back().collider);
+			}
+		};
+
+	stageObjects_.clear();
+	stageObjects_.reserve(4);
+	staticColliders_.clear();
+	addStageObject("Cube.obj", { 0.0f, -0.1f, 0.0f }, { 5.0f, 0.1f, 5.0f }, { 5.0f, 0.1f, 5.0f }, false);
+	addStageObject("Cube.obj", { 0.0f, 2.0f, 5.0f }, { 5.0f, 2.0f, 0.2f }, { 5.0f, 2.0f, 0.2f }, true);
+	addStageObject("Cube.obj", { -5.0f, 2.0f, 0.0f }, { 0.2f, 2.0f, 5.0f }, { 0.2f, 2.0f, 5.0f }, true);
+	addStageObject("Cube.obj", { 3.0f, 0.5f, -2.0f }, { 1.0f, 0.5f, 1.0f }, { 1.0f, 0.5f, 1.0f }, true);
 
 	skybox_ = new Skybox();
 	skybox_->Initialize(
@@ -97,16 +123,15 @@ void GamePlayScene::Update()
 		sceneManager_->SetNextScene(scene);
 	}
 
-	ImGui::Begin("Scene Controls");
-	ImGui::End();
-
-	camera_->DrawImGui("Camera");
-	camera_->Update();
-
 	emitter_->Update();
 	ParticleManager::GetInstance()->Update();
 
 #ifdef _DEBUG
+	ImGui::Begin("Scene Controls");
+	ImGui::End();
+
+	camera_->DrawImGui("Camera");
+
 	if (lightManager_) {
 		lightManager_->DrawImGui();
 	}
@@ -117,8 +142,25 @@ void GamePlayScene::Update()
 	}
 
 	object3d_->Update();
-	plane_->Update();
-	axis->Update();
+	if (plane_) {
+		plane_->Update();
+	}
+	if (axis) {
+		axis->Update();
+	}
+	if (player_) {
+		player_->Update(staticColliders_);
+		Vector3 target = player_->GetPosition();
+		target.y += 0.8f;
+		camera_->SetOrbitTarget(target);
+		camera_->SetOrbitDistance(10.0f);
+	}
+	camera_->Update();
+	for (StageObject& stageObject : stageObjects_) {
+		if (stageObject.object) {
+			stageObject.object->Update();
+		}
+	}
 	if (skybox_) {
 		skybox_->Update();
 	}
@@ -144,8 +186,20 @@ void GamePlayScene::Draw()
 	}
 
 	object3d_->Draw();
-	plane_->Draw();
-	axis->Draw();
+	if (plane_) {
+		plane_->Draw();
+	}
+	if (axis) {
+		axis->Draw();
+	}
+	if (player_) {
+		player_->Draw();
+	}
+	for (StageObject& stageObject : stageObjects_) {
+		if (stageObject.object) {
+			stageObject.object->Draw();
+		}
+	}
 
 	if (skybox_) {
 		skybox_->Draw();
@@ -160,17 +214,30 @@ void GamePlayScene::DrawShadow()
 		return;
 	}
 
-	Object3d* shadowCasters[] = {
-		object3d_,
-		plane_,
-		axis
-	};
-
-	shadowManager_->Render(
-		*lightManager_,
-		shadowCasters,
-		static_cast<uint32_t>(sizeof(shadowCasters) / sizeof(shadowCasters[0]))
-	);
+	std::vector<Object3d*> shadowCasters;
+	shadowCasters.reserve(3 + stageObjects_.size() + (player_ ? 1 : 0));
+	shadowCasters.push_back(object3d_);
+	if (plane_) {
+		shadowCasters.push_back(plane_);
+	}
+	if (axis) {
+		shadowCasters.push_back(axis);
+	}
+	if (player_) {
+		shadowCasters.push_back(player_->GetObject());
+	}
+	for (StageObject& stageObject : stageObjects_) {
+		if (stageObject.object) {
+			shadowCasters.push_back(stageObject.object);
+		}
+	}
+	if (!shadowCasters.empty()) {
+		shadowManager_->Render(
+			*lightManager_,
+			shadowCasters.data(),
+			static_cast<uint32_t>(shadowCasters.size())
+		);
+	}
 }
 
 void GamePlayScene::Finalize()
@@ -188,6 +255,19 @@ void GamePlayScene::Finalize()
 
 	delete axis;
 	axis = nullptr;
+
+	if (player_) {
+		player_->Finalize();
+		delete player_;
+		player_ = nullptr;
+	}
+
+	for (StageObject& stageObject : stageObjects_) {
+		delete stageObject.object;
+		stageObject.object = nullptr;
+	}
+	stageObjects_.clear();
+	staticColliders_.clear();
 
 	delete emitter_;
 	emitter_ = nullptr;
