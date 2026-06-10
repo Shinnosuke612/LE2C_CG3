@@ -69,7 +69,7 @@ void TitleScene::Update()
 		sceneManager_->SetNextScene(scene);
 	}
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	ImGui::Begin("Title Scene");
 	ImGui::Text("TitleScene");
 	ImGui::Text("Particles are running.");
@@ -79,7 +79,7 @@ void TitleScene::Update()
 #endif
 	camera_->Update();
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	particleEffectEditor_.DrawImGui(editingEffect_, previewEmitter_);
 #endif
 

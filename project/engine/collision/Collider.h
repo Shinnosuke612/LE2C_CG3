@@ -2,9 +2,9 @@
 
 #include <cstdint>
 
+#include "../math/Transform.h"
 #include "../math/Vector3.h"
 
-struct Transform;
 class SphereCollider;
 class OBBCollider;
 

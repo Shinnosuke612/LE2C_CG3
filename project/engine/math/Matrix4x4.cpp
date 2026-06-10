@@ -1,5 +1,6 @@
 #include "Matrix4x4.h"
 #include "Math.h"
+#include "Quaternion.h"
 
 Matrix4x4 Multiply(const Matrix4x4& m1, const Matrix4x4& m2) {
 	Matrix4x4 result = {};
@@ -127,6 +128,17 @@ Matrix4x4 MakeAffineMatrix(const Vector3& scale, const Vector3& rotate, const Ve
 	return Multiply(Multiply(scaleMatrix, rotateMatrix), translateMatrix);
 }
 
+Matrix4x4 MakeAffineMatrix(
+	const Vector3& scale,
+	const Quaternion& rotate,
+	const Vector3& translate
+) {
+	const Matrix4x4 scaleMatrix = MakeScaleMatrix(scale);
+	const Matrix4x4 rotateMatrix = MakeRotateMatrix(rotate);
+	const Matrix4x4 translateMatrix = MakeTranslateMatrix(translate);
+	return Multiply(Multiply(scaleMatrix, rotateMatrix), translateMatrix);
+}
+
 Matrix4x4 MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearClip, float farClip) {
 	Matrix4x4 result;
 
@@ -231,6 +243,16 @@ Matrix4x4 Inverse(const Matrix4x4& m) {
 		for (int j = 0; j < 4; ++j)
 			result.m[i][j] = Cofactor(m, j, i) * invDet;
 
+	return result;
+}
+
+Matrix4x4 Transpose(const Matrix4x4& m) {
+	Matrix4x4 result{};
+	for (int row = 0; row < 4; ++row) {
+		for (int column = 0; column < 4; ++column) {
+			result.m[row][column] = m.m[column][row];
+		}
+	}
 	return result;
 }
 

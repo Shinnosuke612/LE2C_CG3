@@ -7,7 +7,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg
 // ウィンドウプロシージャ
 LRESULT CALLBACK WinApp::WindowProc(HWND hwnd, UINT msg,
 							WPARAM wparam, LPARAM lparam){
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	if(ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam)){
 		return 0;
 	}

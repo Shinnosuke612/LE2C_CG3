@@ -2,6 +2,7 @@
 #include "../base/DirectXCommon.h"
 #include "../3d/SrvManager.h"
 #include "../utility/StringUtility.h"
+#include "../utility/Logger.h"
 #include <cassert>
 #include <algorithm>
 #include <filesystem>
@@ -27,11 +28,11 @@ TextureManager* TextureManager::instance = nullptr;
 
 uint32_t TextureManager::kSRVIndexTop = 1;
 
-void TextureManager::LoadTexture(const std::string& filePath) {
+bool TextureManager::LoadTexture(const std::string& filePath) {
 
 	// 読み込み済みテクスチャを検索
 	if (textureDatas.contains(filePath)) {
-		return;
+		return true;
 	}
 
 	assert(srvManager->CanAllocate());
@@ -59,10 +60,73 @@ void TextureManager::LoadTexture(const std::string& filePath) {
 		);
 	}
 
-	assert(SUCCEEDED(hr));
+	if (FAILED(hr)) {
+		Logger::Log("Failed to load texture: " + filePath + "\n");
+		return false;
+	}
+
+	return RegisterTexture(filePath, loadedImage, metadata);
+}
+
+bool TextureManager::LoadTextureFromMemory(
+	const std::string& textureKey,
+	const uint8_t* data,
+	size_t dataSize,
+	bool isDDS
+) {
+	if (textureDatas.contains(textureKey)) {
+		return true;
+	}
+	if (data == nullptr || dataSize == 0) {
+		Logger::Log("Embedded texture data is empty: " + textureKey + "\n");
+		return false;
+	}
+
+	DirectX::ScratchImage loadedImage{};
+	DirectX::TexMetadata metadata{};
+	HRESULT hr = S_OK;
+	if (isDDS) {
+		hr = DirectX::LoadFromDDSMemory(
+			data,
+			dataSize,
+			DirectX::DDS_FLAGS_NONE,
+			&metadata,
+			loadedImage
+		);
+	}
+	else {
+		hr = DirectX::LoadFromWICMemory(
+			data,
+			dataSize,
+			DirectX::WIC_FLAGS_FORCE_SRGB,
+			&metadata,
+			loadedImage
+		);
+	}
+
+	if (FAILED(hr)) {
+		Logger::Log("Failed to load embedded texture: " + textureKey + "\n");
+		return false;
+	}
+
+	return RegisterTexture(textureKey, loadedImage, metadata);
+}
+
+bool TextureManager::RegisterTexture(
+	const std::string& textureKey,
+	const DirectX::ScratchImage& loadedImage,
+	const DirectX::TexMetadata& metadata
+) {
+	if (loadedImage.GetImageCount() == 0 || loadedImage.GetImages() == nullptr) {
+		Logger::Log("Texture contains no images: " + textureKey + "\n");
+		return false;
+	}
+
+	assert(srvManager->CanAllocate());
 
 	DirectX::ScratchImage mipImages{};
 	const DirectX::ScratchImage* uploadImage = &loadedImage;
+	HRESULT hr = S_OK;
 
 	// 圧縮フォーマットは DirectXTex の GenerateMipMaps が直接扱えないことがある
 	if (!DirectX::IsCompressed(metadata.format) && metadata.mipLevels <= 1) {
@@ -74,12 +138,12 @@ void TextureManager::LoadTexture(const std::string& filePath) {
 			0,
 			mipImages
 		);
-		assert(SUCCEEDED(hr));
-
-		uploadImage = &mipImages;
+		if (SUCCEEDED(hr)) {
+			uploadImage = &mipImages;
+		}
 	}
 
-	TextureData& textureData = textureDatas[filePath];
+	TextureData& textureData = textureDatas[textureKey];
 
 	textureData.metadata = uploadImage->GetMetadata();
 	textureData.resource = dxCommon->CreateTextureResource(textureData.metadata);
@@ -114,8 +178,18 @@ void TextureManager::LoadTexture(const std::string& filePath) {
 	intermediateResource.Attach(
 		dxCommon->UploadTextureData(textureData.resource, *uploadImage)
 	);
+	if (!intermediateResource) {
+		textureDatas.erase(textureKey);
+		Logger::Log("Failed to upload texture: " + textureKey + "\n");
+		return false;
+	}
 
 	dxCommon->ExecuteCommandListAndWait();
+	return true;
+}
+
+bool TextureManager::HasTexture(const std::string& textureKey) const {
+	return textureDatas.contains(textureKey);
 }
 
 const DirectX::TexMetadata& TextureManager::GetMetaData(const std::string& filePath){

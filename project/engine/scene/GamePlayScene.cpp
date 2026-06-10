@@ -42,6 +42,8 @@ void GamePlayScene::Initialize()
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 	ModelManager::GetInstance()->LoadModel("terrain.obj");
 	ModelManager::GetInstance()->LoadModel("Cube.obj");
+	ModelManager::GetInstance()->LoadModel("AnimatedCube/AnimatedCube.gltf");
+	ModelManager::GetInstance()->LoadModel("human/walk.gltf");
 
 	ParticleEffectDesc gameplayEffect{};
 
@@ -82,6 +84,29 @@ void GamePlayScene::Initialize()
 	object3d_->SetTranslate({ 0.0f, -5.0f, 0.0f });
 	object3d_->SetScale({ 10.0f, 10.0f, 10.0f });
 
+	animatedCube_ = new Object3d();
+	animatedCube_->Initialize(Object3dCommon::GetInstance());
+	animatedCube_->SetModel("AnimatedCube/AnimatedCube.gltf");
+	animatedCube_->SetTranslate({ 3.0f, 1.5f, -2.0f });
+	animatedCube_->SetScale({ 0.65f, 0.65f, 0.65f });
+	animatedCube_->SetAnimationLoop(true);
+	animatedCube_->SetAnimationSpeed(1.0f);
+
+	human_ = new Object3d();
+	human_->Initialize(Object3dCommon::GetInstance());
+	human_->SetModel("human/walk.gltf");
+	human_->SetTranslate({ -2.0f, 0.0f, -2.0f });
+	human_->SetScale({ 1.0f, 1.0f, 1.0f });
+	human_->SetAnimationLoop(true);
+	human_->SetAnimationSpeed(1.0f);
+	human_->SetEnvironmentMap(
+		"resources/rostock_laage_airport_4k.dds",
+		0.01f
+	);
+
+	Vector3 target = human_->GetTranslate();
+	camera_->SetOrbitTarget(target);
+
 	player_ = new Player();
 	player_->Initialize(Object3dCommon::GetInstance(), "Cube.obj");
 
@@ -113,10 +138,10 @@ void GamePlayScene::Initialize()
 	stageObjects_.clear();
 	stageObjects_.reserve(4);
 	staticColliders_.clear();
-	addStageObject("Cube.obj", { 0.0f, -0.1f, 0.0f }, { 5.0f, 0.1f, 5.0f }, { 5.0f, 0.1f, 5.0f }, false);
-	addStageObject("Cube.obj", { 0.0f, 2.0f, 5.0f }, { 5.0f, 2.0f, 0.2f }, { 5.0f, 2.0f, 0.2f }, true);
-	addStageObject("Cube.obj", { -5.0f, 2.0f, 0.0f }, { 0.2f, 2.0f, 5.0f }, { 0.2f, 2.0f, 5.0f }, true);
-	addStageObject("Cube.obj", { 3.0f, 0.5f, -2.0f }, { 1.0f, 0.5f, 1.0f }, { 1.0f, 0.5f, 1.0f }, true);
+	//addStageObject("Cube.obj", { 0.0f, -0.1f, 0.0f }, { 5.0f, 0.1f, 5.0f }, { 5.0f, 0.1f, 5.0f }, false);
+	//addStageObject("Cube.obj", { 0.0f, 2.0f, 5.0f }, { 5.0f, 2.0f, 0.2f }, { 5.0f, 2.0f, 0.2f }, true);
+	//addStageObject("Cube.obj", { -5.0f, 2.0f, 0.0f }, { 0.2f, 2.0f, 5.0f }, { 0.2f, 2.0f, 5.0f }, true);
+	//addStageObject("Cube.obj", { 3.0f, 0.5f, -2.0f }, { 1.0f, 0.5f, 1.0f }, { 1.0f, 0.5f, 1.0f }, true);
 
 	skybox_ = new Skybox();
 	skybox_->Initialize(
@@ -127,7 +152,7 @@ void GamePlayScene::Initialize()
 	if (player_ && player_->GetObject()) {
 		player_->GetObject()->SetEnvironmentMap(
 			"resources/rostock_laage_airport_4k.dds",
-			0.35f
+			0.01f
 		);
 	}
 
@@ -176,8 +201,97 @@ void GamePlayScene::Update()
 	}
 	ParticleManager::GetInstance()->Update();
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	ImGui::Begin("Scene Controls");
+	if (animatedCube_ && animatedCube_->HasAnimation()) {
+		bool isPlaying = animatedCube_->IsAnimationPlaying();
+		if (ImGui::Checkbox("Play Animation", &isPlaying)) {
+			animatedCube_->SetAnimationPlaying(isPlaying);
+		}
+
+		bool isLooping = animatedCube_->IsAnimationLooping();
+		if (ImGui::Checkbox("Loop Animation", &isLooping)) {
+			animatedCube_->SetAnimationLoop(isLooping);
+		}
+
+		float animationSpeed = animatedCube_->GetAnimationSpeed();
+		if (ImGui::DragFloat(
+			"Animation Speed",
+			&animationSpeed,
+			0.01f,
+			-4.0f,
+			4.0f
+		)) {
+			animatedCube_->SetAnimationSpeed(animationSpeed);
+		}
+
+		if (ImGui::Button("Reset Animation")) {
+			animatedCube_->ResetAnimation();
+		}
+
+		const float duration = animatedCube_->GetAnimationDuration();
+		const float progress = duration > 0.0f
+			? animatedCube_->GetAnimationTime() / duration
+			: 0.0f;
+		ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
+	}
+	ImGui::SeparatorText("Skeleton");
+	ImGui::Checkbox("Show Skeleton", &showSkeletonDebug_);
+	if (showSkeletonDebug_) {
+		ImGui::Checkbox("Show Joint Names", &showJointNames_);
+		ImGui::Checkbox("Show Joint Axes", &showJointAxes_);
+		ImGui::DragFloat(
+			"Joint Radius",
+			&jointRadius_,
+			0.001f,
+			0.002f,
+			0.1f
+		);
+		ImGui::DragFloat(
+			"Joint Axis Length",
+			&jointAxisLength_,
+			0.002f,
+			0.01f,
+			0.5f
+		);
+	}
+	if (human_ && human_->GetSkeleton()) {
+		bool isPlaying = human_->IsAnimationPlaying();
+		if (ImGui::Checkbox("Play Skeleton Animation", &isPlaying)) {
+			human_->SetAnimationPlaying(isPlaying);
+		}
+
+		bool isLooping = human_->IsAnimationLooping();
+		if (ImGui::Checkbox("Loop Skeleton Animation", &isLooping)) {
+			human_->SetAnimationLoop(isLooping);
+		}
+
+		float animationSpeed = human_->GetAnimationSpeed();
+		if (ImGui::DragFloat(
+			"Skeleton Animation Speed",
+			&animationSpeed,
+			0.01f,
+			-4.0f,
+			4.0f
+		)) {
+			human_->SetAnimationSpeed(animationSpeed);
+		}
+
+		if (ImGui::Button("Reset Skeleton Animation")) {
+			human_->ResetAnimation();
+		}
+
+		ImGui::Text(
+			"Joints: %zu",
+			human_->GetSkeleton()->joints.size()
+		);
+
+		const float duration = human_->GetAnimationDuration();
+		const float progress = duration > 0.0f
+			? human_->GetAnimationTime() / duration
+			: 0.0f;
+		ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
+	}
 	ImGui::End();
 
 	camera_->DrawImGui("Camera");
@@ -215,12 +329,15 @@ void GamePlayScene::Update()
 	if (axis) {
 		axis->Update();
 	}
+	if (animatedCube_) {
+		animatedCube_->Update();
+	}
+	if (human_) {
+		human_->Update();
+	}
 	if (player_) {
 		player_->Update(staticColliders_);
-		Vector3 target = player_->GetPosition();
-		target.y += 0.8f;
-		camera_->SetOrbitTarget(target);
-		camera_->SetOrbitDistance(10.0f);
+
 	}
 	camera_->Update();
 	for (StageObject& stageObject : stageObjects_) {
@@ -231,6 +348,17 @@ void GamePlayScene::Update()
 	if (skybox_) {
 		skybox_->Update();
 	}
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (showSkeletonDebug_ && human_) {
+		human_->DrawSkeletonDebug(
+			showJointNames_,
+			showJointAxes_,
+			jointRadius_,
+			jointAxisLength_
+		);
+	}
+#endif
 }
 
 void GamePlayScene::Draw()
@@ -259,6 +387,12 @@ void GamePlayScene::Draw()
 	if (axis) {
 		axis->Draw();
 	}
+	if (animatedCube_) {
+		animatedCube_->Draw();
+	}
+	if (human_) {
+		human_->Draw();
+	}
 	if (player_) {
 		player_->Draw();
 	}
@@ -282,13 +416,19 @@ void GamePlayScene::DrawShadow()
 	}
 
 	std::vector<Object3d*> shadowCasters;
-	shadowCasters.reserve(3 + stageObjects_.size() + (player_ ? 1 : 0));
+	shadowCasters.reserve(4 + stageObjects_.size() + (player_ ? 1 : 0));
 	shadowCasters.push_back(object3d_);
 	if (plane_) {
 		shadowCasters.push_back(plane_);
 	}
 	if (axis) {
 		shadowCasters.push_back(axis);
+	}
+	if (animatedCube_) {
+		shadowCasters.push_back(animatedCube_);
+	}
+	if (human_) {
+		shadowCasters.push_back(human_);
 	}
 	if (player_) {
 		shadowCasters.push_back(player_->GetObject());
@@ -322,6 +462,12 @@ void GamePlayScene::Finalize()
 
 	delete axis;
 	axis = nullptr;
+
+	delete animatedCube_;
+	animatedCube_ = nullptr;
+
+	delete human_;
+	human_ = nullptr;
 
 	if (player_) {
 		player_->Finalize();

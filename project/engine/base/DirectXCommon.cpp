@@ -580,6 +580,10 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateTextureResource(cons
 }
 
 ID3D12Resource* DirectXCommon::UploadTextureData(const Microsoft::WRL::ComPtr <ID3D12Resource>&  texture, const DirectX::ScratchImage& mipImages){
+	if (!texture || mipImages.GetImageCount() == 0 || mipImages.GetImages() == nullptr) {
+		return nullptr;
+	}
+
 	// 1. 転送するサブリソース情報を作成
 	std::vector<D3D12_SUBRESOURCE_DATA> subresources;
 	DirectX::PrepareUpload(
@@ -590,6 +594,9 @@ ID3D12Resource* DirectXCommon::UploadTextureData(const Microsoft::WRL::ComPtr <I
 		subresources);
 
 	const UINT subresourceCount = static_cast<UINT>(subresources.size());
+	if (subresourceCount == 0) {
+		return nullptr;
+	}
 
 	// 2. 中間バッファ(UploadHeap)を作成
 	uint64_t intermediateSize =

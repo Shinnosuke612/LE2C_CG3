@@ -48,6 +48,13 @@ private:
 	Object3d* object3d_ = nullptr;
 	Object3d* plane_ = nullptr;
 	Object3d* axis = nullptr;
+	Object3d* animatedCube_ = nullptr;
+	Object3d* human_ = nullptr;
+	bool showSkeletonDebug_ = true;
+	bool showJointNames_ = false;
+	bool showJointAxes_ = true;
+	float jointRadius_ = 0.018f;
+	float jointAxisLength_ = 0.06f;
 	Player* player_ = nullptr;
 	std::vector<StageObject> stageObjects_;
 	std::vector<OBBCollider*> staticColliders_;

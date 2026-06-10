@@ -3,6 +3,8 @@
   <ItemGroup>
     <FxCompile Include="resources\shaders\Object3D.PS.hlsl" />
     <FxCompile Include="resources\shaders\Object3D.VS.hlsl" />
+    <FxCompile Include="resources\shaders\DebugLine.PS.hlsl" />
+    <FxCompile Include="resources\shaders\DebugLine.VS.hlsl" />
     <FxCompile Include="resources\shaders\Particle.PS.hlsl" />
     <FxCompile Include="resources\shaders\Particle.VS.hlsl" />
     <FxCompile Include="resources\shaders\Sprite.VS.hlsl" />
@@ -10,6 +12,8 @@
     <FxCompile Include="resources\shaders\Skybox.VS.hlsl" />
     <FxCompile Include="resources\shaders\Skybox.PS.hlsl" />
     <FxCompile Include="resources\shaders\ShadowMap.VS.hlsl" />
+    <FxCompile Include="resources\shaders\SkinningObject3D.VS.hlsl" />
+    <FxCompile Include="resources\shaders\SkinningShadowMap.VS.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="engine\collision\Collider.cpp" />
@@ -17,10 +21,12 @@
     <ClCompile Include="engine\collision\CollisionManager.cpp" />
     <ClCompile Include="engine\collision\OBBCollider.cpp" />
     <ClCompile Include="engine\collision\SphereCollider.cpp" />
+    <ClCompile Include="engine\debug\DebugRenderer.cpp" />
     <ClCompile Include="engine\player\Player.cpp" />
     <ClCompile Include="engine\base\D3DResourceLeadChecker.cpp" />
     <ClCompile Include="engine\base\DirectXCommon.cpp" />
     <ClCompile Include="engine\io\Input.cpp" />
+    <ClCompile Include="engine\math\Quaternion.cpp" />
     <ClCompile Include="engine\utility\Logger.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="engine\math\Math.cpp" />
@@ -32,6 +38,9 @@
     <ClCompile Include="engine\3d\Object3dCommon.cpp" />
     <ClCompile Include="engine\3d\Object3d.cpp" />
     <ClCompile Include="engine\3d\Model.cpp" />
+    <ClCompile Include="engine\3d\Animation.cpp" />
+    <ClCompile Include="engine\3d\Skeleton.cpp" />
+    <ClCompile Include="engine\3d\SkinCluster.cpp" />
     <ClCompile Include="engine\3d\ModelCommon.cpp" />
     <ClCompile Include="engine\3d\ModelManager.cpp" />
     <ClCompile Include="engine\3d\Camera.cpp" />
@@ -59,6 +68,7 @@
     <ClInclude Include="engine\collision\CollisionManager.h" />
     <ClInclude Include="engine\collision\OBBCollider.h" />
     <ClInclude Include="engine\collision\SphereCollider.h" />
+    <ClInclude Include="engine\debug\DebugRenderer.h" />
     <ClInclude Include="engine\player\Player.h" />
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
     <ClInclude Include="engine\base\DirectXCommon.h" />
@@ -77,6 +87,9 @@
     <ClInclude Include="engine\3d\Object3dCommon.h" />
     <ClInclude Include="engine\3d\Object3d.h" />
     <ClInclude Include="engine\3d\Model.h" />
+    <ClInclude Include="engine\3d\Animation.h" />
+    <ClInclude Include="engine\3d\Skeleton.h" />
+    <ClInclude Include="engine\3d\SkinCluster.h" />
     <ClInclude Include="engine\3d\ModelCommon.h" />
     <ClInclude Include="engine\3d\ModelManager.h" />
     <ClInclude Include="engine\3d\Camera.h" />
@@ -86,6 +99,7 @@
     <ClInclude Include="engine\particle\ParticleEmitter.h" />
     <ClInclude Include="engine\math\Matrix3x3.h" />
     <ClInclude Include="engine\math\Matrix4x4.h" />
+    <ClInclude Include="engine\math\Quaternion.h" />
     <ClInclude Include="engine\math\Vector2.h" />
     <ClInclude Include="engine\math\Vector3.h" />
     <ClInclude Include="engine\math\Vector4.h" />

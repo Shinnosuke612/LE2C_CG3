@@ -14,6 +14,7 @@
 #include "../particle/ParticleCommon.h"
 #include "../particle/ParticleManager.h"
 #include "../audio/Audio.h"
+#include "../debug/DebugRenderer.h"
 
 void Framework::Run() {
 	// ゲームの初期化
@@ -63,7 +64,9 @@ void Framework::Initialize() {
 	input_ = Input::GetInstance();
 	input_->GetInstance()->Initialize(winApp_);
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	DebugRenderer::GetInstance()->Initialize(dxCommon_);
+
 	imguiManager_ = new ImGuiManager();
 	imguiManager_->Initialize(winApp_, dxCommon_, srvManager_);
 #endif
@@ -89,12 +92,14 @@ void Framework::Update() {
 			winApp_->GetClientHeight()
 		);
 	}
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->BeginFrame();
 #endif
 }
 void Framework::Finalize() {
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	DebugRenderer::GetInstance()->Finalize();
+
 	if (imguiManager_) {
 		imguiManager_->Finalize();
 	}
@@ -119,7 +124,7 @@ void Framework::Finalize() {
 	delete audio_;
 	audio_ = nullptr;
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	delete imguiManager_;
 	imguiManager_ = nullptr;
 #endif

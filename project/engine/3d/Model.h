@@ -4,26 +4,42 @@
 #include <fstream>
 #include <sstream>
 #include <cassert>
+#include <map>
 #include "../math/Vector2.h"
 #include "../math/Vector3.h"
 #include "../math/Vector4.h"
 #include "../math/Matrix4x4.h"
+#include "../math/Transform.h"
+#include "Animation.h"
 #include <d3d12.h> 
 class ModelCommon;
 class aiNode;
 class Model{
+public:
+	struct Node {
+		QuaternionTransform transform;
+		Matrix4x4 localMatrix;
+		std::string name;
+		std::vector<Node> children;
+	};
+
+	struct VertexWeightData {
+		float weight = 0.0f;
+		uint32_t vertexIndex = 0;
+	};
+
+	struct JointWeightData {
+		Matrix4x4 inverseBindPoseMatrix = MakeIdentity4x4();
+		std::vector<VertexWeightData> vertexWeights;
+	};
+
+	using SkinClusterData = std::map<std::string, JointWeightData>;
+
 private://インナークラス
-	//頂点データ
 	struct VertexData{
 		Vector4 position;
 		Vector2 texcoord;
 		Vector3 normal;
-	};
-
-	struct Node {
-		Matrix4x4 localMatrix;
-		std::string name;
-		std::vector<Node> children;
 	};
 
 	struct MaterialData{
@@ -31,8 +47,11 @@ private://インナークラス
 	};
 	struct ModelData{
 		std::vector<VertexData> vertices;
+		std::vector<uint32_t> indices;
 		MaterialData material;
 		Node rootNode;
+		SkinClusterData skinClusterData;
+		bool hasSkinning = false;
 	};
 	//マテリアルデータ
 	struct Material {
@@ -51,6 +70,7 @@ private://非公開メンバ関数
 
 	//頂点リソース作成関数
 	void CreateVertexResource();
+	void CreateIndexResource();
 	//マテリアルリソース作成関数
 	void CreateMaterialResource();
 
@@ -59,11 +79,21 @@ public://公開メンバ関数
 	//初期化
 	void Initialize(ModelCommon* modelCommon,const std::string& directoryPath, const std::string& filename);
 	//描画
-	void Draw();
-	void DrawForShadow();
+	void Draw(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
+	void DrawForShadow(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
 
 	// getter
 	const Matrix4x4& GetRootNodeLocalMatrix() const { return modelData.rootNode.localMatrix; }
+	const Node& GetRootNode() const { return modelData.rootNode; }
+	const Animation& GetAnimation() const { return animation_; }
+	bool HasAnimation() const { return animation_.IsValid(); }
+	bool HasSkinning() const { return modelData.hasSkinning; }
+	uint32_t GetVertexCount() const {
+		return static_cast<uint32_t>(modelData.vertices.size());
+	}
+	const SkinClusterData& GetSkinClusterData() const {
+		return modelData.skinClusterData;
+	}
 private:
 	//ModelCommonのポインタ
 	ModelCommon* modelCommon;
@@ -75,10 +105,14 @@ private:
 	VertexData* vertexData = nullptr;
 	//バッファリソースの使い道を補足するバッファビュー
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
+	ID3D12Resource* indexResource = nullptr;
+	uint32_t* indexData = nullptr;
+	D3D12_INDEX_BUFFER_VIEW indexBufferView{};
 
 	//バッファリソース
 	ID3D12Resource* materialResource;
 	//バッファリソース内のデータおw指すポインタ
 	Material* materialData = nullptr;
+	Animation animation_{};
 };
 

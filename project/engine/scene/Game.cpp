@@ -15,6 +15,7 @@
 #include "../particle/ParticleCommon.h"
 #include "../particle/ParticleManager.h"
 #include "../particle/ParticleEmitter.h"
+#include "../debug/DebugRenderer.h"
 #include "../externals/imgui/imgui.h"
 
 void Game::Initialize() {
@@ -35,11 +36,18 @@ void Game::Update() {
 		return;
 	}
 
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	DebugRenderer::GetInstance()->Clear();
+#endif
+
 	sceneManager_->Update();
 
 }
 
 void Game::Draw() {
+	// 影描画でもスキニングパレットSRVを使うので先に必要
+	srvManager_->PreDraw();
+
 	sceneManager_->DrawShadow();
 
 	dxCommon_->PreDraw();
@@ -48,7 +56,10 @@ void Game::Draw() {
 
 	sceneManager_->Draw();
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	DebugRenderer::GetInstance()->Draw(
+		Object3dCommon::GetInstance()->GetDefaultCamera()
+	);
 	imguiManager_->EndFrame();
 #endif
 

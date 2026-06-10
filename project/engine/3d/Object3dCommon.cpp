@@ -18,8 +18,10 @@ void Object3dCommon::Initialize(DirectXCommon* dxCommon) {
 	dxCommon_ = dxCommon;
 
 	GenerateGraphicsPipeline();
+	GenerateSkinningGraphicsPipeline();
 	GenerateSkyboxGraphicsPipeline();
 	GenerateShadowGraphicsPipeline();
+	GenerateSkinningShadowGraphicsPipeline();
 }
 
 void Object3dCommon::SetCommonRenderState() {
@@ -28,9 +30,21 @@ void Object3dCommon::SetCommonRenderState() {
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
+void Object3dCommon::SetSkinningRenderState() {
+	dxCommon_->GetCommandList()->SetGraphicsRootSignature(rootSignature_.Get());
+	dxCommon_->GetCommandList()->SetPipelineState(skinningPipelineState_.Get());
+	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
 void Object3dCommon::SetShadowRenderState() {
 	dxCommon_->GetCommandList()->SetGraphicsRootSignature(shadowRootSignature_.Get());
 	dxCommon_->GetCommandList()->SetPipelineState(shadowPipelineState_.Get());
+	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
+void Object3dCommon::SetSkinningShadowRenderState() {
+	dxCommon_->GetCommandList()->SetGraphicsRootSignature(shadowRootSignature_.Get());
+	dxCommon_->GetCommandList()->SetPipelineState(skinningShadowPipelineState_.Get());
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
@@ -42,7 +56,7 @@ void Object3dCommon::SetSkyboxRenderState() {
 
 void Object3dCommon::MakeRootSignature(){
 	HRESULT hr;
-	D3D12_DESCRIPTOR_RANGE descriptorRange[3] = {};
+	D3D12_DESCRIPTOR_RANGE descriptorRange[4] = {};
 	descriptorRange[0].BaseShaderRegister = 0;
 	descriptorRange[0].NumDescriptors = 1;
 	descriptorRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -55,6 +69,10 @@ void Object3dCommon::MakeRootSignature(){
 	descriptorRange[2].NumDescriptors = 1;
 	descriptorRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	descriptorRange[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+	descriptorRange[3].BaseShaderRegister = 0;
+	descriptorRange[3].NumDescriptors = 1;
+	descriptorRange[3].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descriptorRange[3].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
 	// RootSignature作成
 	D3D12_ROOT_SIGNATURE_DESC descriptionRootSignature{};
@@ -63,7 +81,7 @@ void Object3dCommon::MakeRootSignature(){
 
 
 	//RootParameter作成、複数指定できるので配列。
-	D3D12_ROOT_PARAMETER rootParameters[8] = {};
+	D3D12_ROOT_PARAMETER rootParameters[9] = {};
 	rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParameters[0].Descriptor.ShaderRegister = 0;
@@ -91,6 +109,10 @@ void Object3dCommon::MakeRootSignature(){
 	rootParameters[7].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParameters[7].DescriptorTable.pDescriptorRanges = &descriptorRange[2];
 	rootParameters[7].DescriptorTable.NumDescriptorRanges = 1;
+	rootParameters[8].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParameters[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+	rootParameters[8].DescriptorTable.pDescriptorRanges = &descriptorRange[3];
+	rootParameters[8].DescriptorTable.NumDescriptorRanges = 1;
 
 	descriptionRootSignature.pParameters = rootParameters;
 	descriptionRootSignature.NumParameters = _countof(rootParameters);
@@ -239,6 +261,95 @@ void Object3dCommon::GenerateGraphicsPipeline(){
 
 }
 
+void Object3dCommon::GenerateSkinningGraphicsPipeline() {
+	D3D12_INPUT_ELEMENT_DESC inputElementDescs[5] = {};
+	inputElementDescs[0].SemanticName = "POSITION";
+	inputElementDescs[0].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	inputElementDescs[0].InputSlot = 0;
+	inputElementDescs[0].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+	inputElementDescs[1].SemanticName = "TEXCOORD";
+	inputElementDescs[1].Format = DXGI_FORMAT_R32G32_FLOAT;
+	inputElementDescs[1].InputSlot = 0;
+	inputElementDescs[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+	inputElementDescs[2].SemanticName = "NORMAL";
+	inputElementDescs[2].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+	inputElementDescs[2].InputSlot = 0;
+	inputElementDescs[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+	inputElementDescs[3].SemanticName = "WEIGHT";
+	inputElementDescs[3].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	inputElementDescs[3].InputSlot = 1;
+	inputElementDescs[3].AlignedByteOffset = 0;
+	inputElementDescs[4].SemanticName = "INDEX";
+	inputElementDescs[4].Format = DXGI_FORMAT_R32G32B32A32_UINT;
+	inputElementDescs[4].InputSlot = 1;
+	inputElementDescs[4].AlignedByteOffset = sizeof(float) * 4;
+
+	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc{};
+	inputLayoutDesc.pInputElementDescs = inputElementDescs;
+	inputLayoutDesc.NumElements = _countof(inputElementDescs);
+
+	D3D12_BLEND_DESC blendDesc{};
+	blendDesc.RenderTarget[0].RenderTargetWriteMask =
+		D3D12_COLOR_WRITE_ENABLE_ALL;
+	blendDesc.RenderTarget[0].BlendEnable = TRUE;
+	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+
+	D3D12_RASTERIZER_DESC rasterizerDesc{};
+	rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
+	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+	rasterizerDesc.DepthClipEnable = TRUE;
+
+	D3D12_DEPTH_STENCIL_DESC depthStencilDesc{};
+	depthStencilDesc.DepthEnable = TRUE;
+	depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+
+	const auto vertexShaderBlob = dxCommon_->CompileShader(
+		L"resources/shaders/SkinningObject3D.VS.hlsl",
+		L"vs_6_0"
+	);
+	const auto pixelShaderBlob = dxCommon_->CompileShader(
+		L"resources/shaders/Object3D.PS.hlsl",
+		L"ps_6_0"
+	);
+	assert(vertexShaderBlob);
+	assert(pixelShaderBlob);
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc{};
+	pipelineDesc.pRootSignature = rootSignature_.Get();
+	pipelineDesc.InputLayout = inputLayoutDesc;
+	pipelineDesc.VS = {
+		vertexShaderBlob->GetBufferPointer(),
+		vertexShaderBlob->GetBufferSize()
+	};
+	pipelineDesc.PS = {
+		pixelShaderBlob->GetBufferPointer(),
+		pixelShaderBlob->GetBufferSize()
+	};
+	pipelineDesc.BlendState = blendDesc;
+	pipelineDesc.RasterizerState = rasterizerDesc;
+	pipelineDesc.DepthStencilState = depthStencilDesc;
+	pipelineDesc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
+	pipelineDesc.PrimitiveTopologyType =
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	pipelineDesc.NumRenderTargets = 1;
+	pipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	pipelineDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	pipelineDesc.SampleDesc.Count = 1;
+
+	const HRESULT hr =
+		dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+			&pipelineDesc,
+			IID_PPV_ARGS(&skinningPipelineState_)
+		);
+	assert(SUCCEEDED(hr));
+}
+
 void Object3dCommon::MakeShadowRootSignature() {
 	HRESULT hr;
 
@@ -246,10 +357,22 @@ void Object3dCommon::MakeShadowRootSignature() {
 	descriptionRootSignature.Flags =
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
-	D3D12_ROOT_PARAMETER rootParameters[1] = {};
+	D3D12_DESCRIPTOR_RANGE paletteRange{};
+	paletteRange.BaseShaderRegister = 0;
+	paletteRange.NumDescriptors = 1;
+	paletteRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	paletteRange.OffsetInDescriptorsFromTableStart =
+		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER rootParameters[2] = {};
 	rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 	rootParameters[0].Descriptor.ShaderRegister = 0;
+	rootParameters[1].ParameterType =
+		D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+	rootParameters[1].DescriptorTable.pDescriptorRanges = &paletteRange;
+	rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
 
 	descriptionRootSignature.pParameters = rootParameters;
 	descriptionRootSignature.NumParameters = _countof(rootParameters);
@@ -336,6 +459,77 @@ void Object3dCommon::GenerateShadowGraphicsPipeline() {
 		&graphicsPipelineStateDesc,
 		IID_PPV_ARGS(&shadowPipelineState_)
 	);
+	assert(SUCCEEDED(hr));
+}
+
+void Object3dCommon::GenerateSkinningShadowGraphicsPipeline() {
+	D3D12_INPUT_ELEMENT_DESC inputElementDescs[5] = {};
+	inputElementDescs[0].SemanticName = "POSITION";
+	inputElementDescs[0].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	inputElementDescs[0].InputSlot = 0;
+	inputElementDescs[0].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+	inputElementDescs[1].SemanticName = "TEXCOORD";
+	inputElementDescs[1].Format = DXGI_FORMAT_R32G32_FLOAT;
+	inputElementDescs[1].InputSlot = 0;
+	inputElementDescs[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+	inputElementDescs[2].SemanticName = "NORMAL";
+	inputElementDescs[2].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+	inputElementDescs[2].InputSlot = 0;
+	inputElementDescs[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+	inputElementDescs[3].SemanticName = "WEIGHT";
+	inputElementDescs[3].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	inputElementDescs[3].InputSlot = 1;
+	inputElementDescs[3].AlignedByteOffset = 0;
+	inputElementDescs[4].SemanticName = "INDEX";
+	inputElementDescs[4].Format = DXGI_FORMAT_R32G32B32A32_UINT;
+	inputElementDescs[4].InputSlot = 1;
+	inputElementDescs[4].AlignedByteOffset = sizeof(float) * 4;
+
+	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc{};
+	inputLayoutDesc.pInputElementDescs = inputElementDescs;
+	inputLayoutDesc.NumElements = _countof(inputElementDescs);
+
+	D3D12_DEPTH_STENCIL_DESC depthStencilDesc{};
+	depthStencilDesc.DepthEnable = TRUE;
+	depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+
+	D3D12_RASTERIZER_DESC rasterizerDesc{};
+	rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
+	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+	rasterizerDesc.DepthClipEnable = TRUE;
+	rasterizerDesc.DepthBias = 1500;
+	rasterizerDesc.SlopeScaledDepthBias = 1.5f;
+	rasterizerDesc.DepthBiasClamp = 0.01f;
+
+	const auto vertexShaderBlob = dxCommon_->CompileShader(
+		L"resources/shaders/SkinningShadowMap.VS.hlsl",
+		L"vs_6_0"
+	);
+	assert(vertexShaderBlob);
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc{};
+	pipelineDesc.pRootSignature = shadowRootSignature_.Get();
+	pipelineDesc.InputLayout = inputLayoutDesc;
+	pipelineDesc.VS = {
+		vertexShaderBlob->GetBufferPointer(),
+		vertexShaderBlob->GetBufferSize()
+	};
+	pipelineDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = 0;
+	pipelineDesc.RasterizerState = rasterizerDesc;
+	pipelineDesc.DepthStencilState = depthStencilDesc;
+	pipelineDesc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
+	pipelineDesc.PrimitiveTopologyType =
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	pipelineDesc.NumRenderTargets = 0;
+	pipelineDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	pipelineDesc.SampleDesc.Count = 1;
+
+	const HRESULT hr =
+		dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+			&pipelineDesc,
+			IID_PPV_ARGS(&skinningShadowPipelineState_)
+		);
 	assert(SUCCEEDED(hr));
 }
 

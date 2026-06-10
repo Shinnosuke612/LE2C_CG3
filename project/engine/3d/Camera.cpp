@@ -178,7 +178,7 @@ void Camera::DrawImGui(const char* label) {
 
 void Camera::UpdateOrbitMouseControl() {
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	if (ImGui::GetCurrentContext() == nullptr) {
 		// ImGui未初期化時もゲーム側のマウス入力は使用する
 	}

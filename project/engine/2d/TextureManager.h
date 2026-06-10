@@ -45,8 +45,21 @@ public:
 	/// <summary>
 /// テクスチャファイルの読み込み
 /// </summary>
-	void LoadTexture(const std::string& filePath);
+	bool LoadTexture(const std::string& filePath);
+	bool HasTexture(const std::string& textureKey) const;
+	bool LoadTextureFromMemory(
+		const std::string& textureKey,
+		const uint8_t* data,
+		size_t dataSize,
+		bool isDDS
+	);
 private:
+	bool RegisterTexture(
+		const std::string& textureKey,
+		const DirectX::ScratchImage& loadedImage,
+		const DirectX::TexMetadata& metadata
+	);
+
 	//DirectXCommonを参照
 	DirectXCommon* dxCommon;
 	//SrvManagerも参照
