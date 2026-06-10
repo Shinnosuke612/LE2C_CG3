@@ -71,10 +71,18 @@ void ComboBillboardMode(const char* label, ParticleManager::BillboardMode& mode)
 }
 
 void ComboPrimitiveType(const char* label, ParticleManager::PrimitiveType& type) {
-	const char* items[] = { "Plane", "Ring" };
+	const char* items[] = { "Plane", "Ring", "Cylinder" };
 	int current = static_cast<int>(type);
 	if (ImGui::Combo(label, &current, items, IM_ARRAYSIZE(items))) {
 		type = static_cast<ParticleManager::PrimitiveType>(current);
+	}
+}
+
+void ComboCullMode(const char* label, ParticleCommon::CullMode& mode) {
+	const char* items[] = { "None", "Back", "Front" };
+	int current = static_cast<int>(mode);
+	if (ImGui::Combo(label, &current, items, IM_ARRAYSIZE(items))) {
+		mode = static_cast<ParticleCommon::CullMode>(current);
 	}
 }
 
@@ -217,15 +225,39 @@ bool ParticleEffectEditor::DrawImGui(
 			changed = true;
 		}
 
-		changed |= ImGui::DragFloat("Frequency", &effect.emitter.frequency, 0.001f, 0.001f, 10.0f);
+		if (!effect.behavior.life.isLooping) {
+			changed |= ImGui::DragFloat(
+				"Frequency",
+				&effect.emitter.frequency,
+				0.001f,
+				0.001f,
+				10.0f
+			);
+		}
 		changed |= ImGui::Checkbox("Active", &effect.emitter.isActive);
 	}
 
 	if (ImGui::CollapsingHeader("Life", ImGuiTreeNodeFlags_DefaultOpen)) {
-		ImGui::DragFloat("LifeTimeMin", &effect.behavior.life.lifeTimeMin, 0.01f, 0.0f, 100.0f);
-		ImGui::DragFloat("LifeTimeMax", &effect.behavior.life.lifeTimeMax, 0.01f, 0.0f, 100.0f);
-		ImGui::Checkbox("EnableLifeFade", &effect.behavior.life.enableLifeFade);
-		ImGui::DragFloat("FadeOutStartRatio", &effect.behavior.life.fadeOutStartRatio, 0.01f, 0.0f, 0.99f);
+		ImGui::Checkbox("Loop", &effect.behavior.life.isLooping);
+		if (effect.behavior.life.isLooping) {
+			ImGui::DragFloat(
+				"LoopDuration",
+				&effect.behavior.life.loopDuration,
+				0.01f,
+				0.001f,
+				100.0f
+			);
+			ImGui::Checkbox(
+				"LoopPingPong",
+				&effect.behavior.life.loopPingPong
+			);
+		}
+		else {
+			ImGui::DragFloat("LifeTimeMin", &effect.behavior.life.lifeTimeMin, 0.01f, 0.0f, 100.0f);
+			ImGui::DragFloat("LifeTimeMax", &effect.behavior.life.lifeTimeMax, 0.01f, 0.0f, 100.0f);
+			ImGui::Checkbox("EnableLifeFade", &effect.behavior.life.enableLifeFade);
+			ImGui::DragFloat("FadeOutStartRatio", &effect.behavior.life.fadeOutStartRatio, 0.01f, 0.0f, 0.99f);
+		}
 	}
 
 	if (ImGui::CollapsingHeader("Scale", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -241,6 +273,17 @@ bool ParticleEffectEditor::DrawImGui(
 	if (ImGui::CollapsingHeader("Rotation", ImGuiTreeNodeFlags_DefaultOpen)) {
 		DragVector3("InitialRotationMin", effect.behavior.rotation.initialRotationMin, 0.01f);
 		DragVector3("InitialRotationMax", effect.behavior.rotation.initialRotationMax, 0.01f);
+		ImGui::Checkbox(
+			"RotationOverTime",
+			&effect.behavior.rotation.enableRotationOverTime
+		);
+		if (effect.behavior.rotation.enableRotationOverTime) {
+			DragVector3(
+				"RotationSpeed",
+				effect.behavior.rotation.rotationSpeed,
+				0.01f
+			);
+		}
 	}
 
 	if (ImGui::CollapsingHeader("Motion", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -300,6 +343,19 @@ bool ParticleEffectEditor::DrawImGui(
 			&effect.behavior.render.uvScrollSpeed.x,
 			0.01f
 		);
+		ImGui::Checkbox("FlipU", &effect.behavior.render.flipU);
+		ImGui::SameLine();
+		ImGui::Checkbox("FlipV", &effect.behavior.render.flipV);
+		ImGui::SliderFloat(
+			"AlphaCutoff",
+			&effect.behavior.render.alphaCutoff,
+			0.0f,
+			1.0f
+		);
+		ComboCullMode("CullMode", effect.behavior.render.cullMode);
+		ImGui::Checkbox("DepthTest", &effect.behavior.render.depthTest);
+		ImGui::SameLine();
+		ImGui::Checkbox("DepthWrite", &effect.behavior.render.depthWrite);
 
 		if (effect.behavior.render.primitiveType == ParticleManager::PrimitiveType::kRing) {
 			int divisions = static_cast<int>(effect.behavior.render.ring.divisions);
@@ -340,6 +396,59 @@ bool ParticleEffectEditor::DrawImGui(
 				&effect.behavior.render.ring.innerColor.x
 			);
 			ComboRingUvMode("RingUV", effect.behavior.render.ring.uvMode);
+		}
+		else if (
+			effect.behavior.render.primitiveType ==
+			ParticleManager::PrimitiveType::kCylinder
+		) {
+			int divisions = static_cast<int>(effect.behavior.render.cylinder.divisions);
+			if (ImGui::DragInt("CylinderDivisions", &divisions, 1, 3, 256)) {
+				effect.behavior.render.cylinder.divisions =
+					static_cast<uint32_t>(std::clamp(divisions, 3, 256));
+			}
+			ImGui::DragFloat(
+				"TopRadius",
+				&effect.behavior.render.cylinder.topRadius,
+				0.01f,
+				0.0f,
+				100.0f
+			);
+			ImGui::DragFloat(
+				"BottomRadius",
+				&effect.behavior.render.cylinder.bottomRadius,
+				0.01f,
+				0.0f,
+				100.0f
+			);
+			ImGui::DragFloat(
+				"Height",
+				&effect.behavior.render.cylinder.height,
+				0.01f,
+				0.001f,
+				100.0f
+			);
+			ImGui::DragFloat(
+				"CylinderStartAngle",
+				&effect.behavior.render.cylinder.startAngle,
+				0.01f
+			);
+			ImGui::DragFloat(
+				"CylinderEndAngle",
+				&effect.behavior.render.cylinder.endAngle,
+				0.01f
+			);
+			ImGui::ColorEdit4(
+				"TopColor",
+				&effect.behavior.render.cylinder.topColor.x
+			);
+			ImGui::ColorEdit4(
+				"BottomColor",
+				&effect.behavior.render.cylinder.bottomColor.x
+			);
+			ComboRingUvMode(
+				"CylinderUV",
+				effect.behavior.render.cylinder.uvMode
+			);
 		}
 	}
 

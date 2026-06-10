@@ -61,6 +61,17 @@ namespace {
 		blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
 		blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
 	}
+
+	D3D12_CULL_MODE ToD3D12CullMode(ParticleCommon::CullMode cullMode) {
+		switch (cullMode) {
+		case ParticleCommon::CullMode::kBack:
+			return D3D12_CULL_MODE_BACK;
+		case ParticleCommon::CullMode::kFront:
+			return D3D12_CULL_MODE_FRONT;
+		default:
+			return D3D12_CULL_MODE_NONE;
+		}
+	}
 }
 
 void ParticleCommon::Initialize(DirectXCommon* dxCommon) {
@@ -73,6 +84,9 @@ void ParticleCommon::Initialize(DirectXCommon* dxCommon) {
 	CreateVertexResource();
 
 	currentBlendMode_ = BlendMode::kBlendModeNormal;
+	currentCullMode_ = CullMode::kNone;
+	currentDepthTest_ = true;
+	currentDepthWrite_ = false;
 	defaultCamera_ = nullptr;
 	isInitialized_ = true;
 }
@@ -80,6 +94,21 @@ void ParticleCommon::Initialize(DirectXCommon* dxCommon) {
 void ParticleCommon::ResetState() {
 	defaultCamera_ = nullptr;
 	currentBlendMode_ = BlendMode::kBlendModeNormal;
+	currentCullMode_ = CullMode::kNone;
+	currentDepthTest_ = true;
+	currentDepthWrite_ = false;
+}
+
+void ParticleCommon::SetRenderState(
+	BlendMode blendMode,
+	CullMode cullMode,
+	bool depthTest,
+	bool depthWrite
+) {
+	currentBlendMode_ = blendMode;
+	currentCullMode_ = cullMode;
+	currentDepthTest_ = depthTest;
+	currentDepthWrite_ = depthWrite;
 }
 
 void ParticleCommon::SetCommonRenderState() {
@@ -88,7 +117,12 @@ void ParticleCommon::SetCommonRenderState() {
 	auto* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
 	commandList->SetPipelineState(
-		graphicsPipelineStates_[static_cast<uint32_t>(currentBlendMode_)].Get()
+		graphicsPipelineStates_
+			[static_cast<uint32_t>(currentBlendMode_)]
+			[static_cast<uint32_t>(currentCullMode_)]
+			[currentDepthTest_ ? 1 : 0]
+			[currentDepthWrite_ ? 1 : 0]
+			.Get()
 	);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
@@ -199,22 +233,6 @@ void ParticleCommon::GenerateGraphicsPipeline() {
 	inputLayoutDesc.NumElements = _countof(inputElementDescs);
 
 	// =========================
-	// Rasterizer
-	// =========================
-	D3D12_RASTERIZER_DESC rasterizerDesc{};
-	rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
-	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
-	rasterizerDesc.DepthClipEnable = TRUE;
-
-	// =========================
-	// DepthStencil
-	// =========================
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc{};
-	depthStencilDesc.DepthEnable = false;
-	depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-	depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-
-	// =========================
 	// Shader
 	// =========================
 	auto vertexShaderBlob = dxCommon_->CompileShader(L"resources/shaders/Particle.VS.hlsl", L"vs_6_0");
@@ -232,8 +250,6 @@ void ParticleCommon::GenerateGraphicsPipeline() {
 	desc.InputLayout = inputLayoutDesc;
 	desc.VS = { vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize() };
 	desc.PS = { pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize() };
-	desc.RasterizerState = rasterizerDesc;
-	desc.DepthStencilState = depthStencilDesc;
 	desc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	desc.NumRenderTargets = 1;
 	desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
@@ -243,21 +259,47 @@ void ParticleCommon::GenerateGraphicsPipeline() {
 
 	HRESULT hr;
 
-	// 全BlendMode用 PSO 作成
-	for (uint32_t i = 0; i < static_cast<uint32_t>(BlendMode::kCountOfBlendMode); ++i) {
-		BlendMode blendMode = static_cast<BlendMode>(i);
-
+	for (uint32_t blendIndex = 0;
+		blendIndex < static_cast<uint32_t>(BlendMode::kCountOfBlendMode);
+		++blendIndex) {
 		D3D12_BLEND_DESC blendDesc{};
-		ApplyBlendMode(blendDesc, blendMode);
-
+		ApplyBlendMode(blendDesc, static_cast<BlendMode>(blendIndex));
 		desc.BlendState = blendDesc;
 
-		hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
-			&desc,
-			IID_PPV_ARGS(&graphicsPipelineStates_[i])
-		);
+		for (uint32_t cullIndex = 0;
+			cullIndex < static_cast<uint32_t>(CullMode::kCount);
+			++cullIndex) {
+			D3D12_RASTERIZER_DESC rasterizerDesc{};
+			rasterizerDesc.CullMode =
+				ToD3D12CullMode(static_cast<CullMode>(cullIndex));
+			rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+			rasterizerDesc.DepthClipEnable = TRUE;
+			desc.RasterizerState = rasterizerDesc;
 
-		assert(SUCCEEDED(hr));
+			for (uint32_t depthTest = 0; depthTest < 2; ++depthTest) {
+				for (uint32_t depthWrite = 0; depthWrite < 2; ++depthWrite) {
+					D3D12_DEPTH_STENCIL_DESC depthStencilDesc{};
+					depthStencilDesc.DepthEnable = depthTest != 0;
+					depthStencilDesc.DepthWriteMask = depthWrite != 0
+						? D3D12_DEPTH_WRITE_MASK_ALL
+						: D3D12_DEPTH_WRITE_MASK_ZERO;
+					depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+					desc.DepthStencilState = depthStencilDesc;
+
+					hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+						&desc,
+						IID_PPV_ARGS(
+							&graphicsPipelineStates_
+								[blendIndex]
+								[cullIndex]
+								[depthTest]
+								[depthWrite]
+						)
+					);
+					assert(SUCCEEDED(hr));
+				}
+			}
+		}
 	}
 }
 
@@ -286,8 +328,8 @@ inline D3D12_STATIC_SAMPLER_DESC ParticleCommon::MakeStaticSamplerS0(){
 	D3D12_STATIC_SAMPLER_DESC s{};
 	s.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 	s.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	s.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	s.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	s.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	s.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 	s.ShaderRegister = 0;
 	s.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	return s;

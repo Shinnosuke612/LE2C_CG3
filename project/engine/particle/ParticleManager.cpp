@@ -67,31 +67,37 @@ void ParticleManager::SetGroupRenderDesc(
 
 	ParticleGroup& group = it->second;
 	const ParticleRenderDesc& current = group.render;
-	const bool unchanged =
-		current.billboardMode == render.billboardMode &&
+	const auto sameColor = [](const Vector4& a, const Vector4& b) {
+		return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
+	};
+	const bool geometryUnchanged =
 		current.primitiveType == render.primitiveType &&
-		current.uvScrollSpeed.x == render.uvScrollSpeed.x &&
-		current.uvScrollSpeed.y == render.uvScrollSpeed.y &&
 		current.ring.divisions == render.ring.divisions &&
 		current.ring.outerRadius == render.ring.outerRadius &&
 		current.ring.innerRadius == render.ring.innerRadius &&
 		current.ring.startAngle == render.ring.startAngle &&
 		current.ring.endAngle == render.ring.endAngle &&
-		current.ring.outerColor.x == render.ring.outerColor.x &&
-		current.ring.outerColor.y == render.ring.outerColor.y &&
-		current.ring.outerColor.z == render.ring.outerColor.z &&
-		current.ring.outerColor.w == render.ring.outerColor.w &&
-		current.ring.innerColor.x == render.ring.innerColor.x &&
-		current.ring.innerColor.y == render.ring.innerColor.y &&
-		current.ring.innerColor.z == render.ring.innerColor.z &&
-		current.ring.innerColor.w == render.ring.innerColor.w &&
-		current.ring.uvMode == render.ring.uvMode;
-	if (unchanged) {
-		return;
-	}
+		sameColor(current.ring.outerColor, render.ring.outerColor) &&
+		sameColor(current.ring.innerColor, render.ring.innerColor) &&
+		current.ring.uvMode == render.ring.uvMode &&
+		current.cylinder.divisions == render.cylinder.divisions &&
+		current.cylinder.topRadius == render.cylinder.topRadius &&
+		current.cylinder.bottomRadius == render.cylinder.bottomRadius &&
+		current.cylinder.height == render.cylinder.height &&
+		current.cylinder.startAngle == render.cylinder.startAngle &&
+		current.cylinder.endAngle == render.cylinder.endAngle &&
+		sameColor(current.cylinder.topColor, render.cylinder.topColor) &&
+		sameColor(current.cylinder.bottomColor, render.cylinder.bottomColor) &&
+		current.cylinder.uvMode == render.cylinder.uvMode;
 
 	group.render = render;
-	CreateGroupVertexResource(group);
+	group.materialData->alphaCutoff = std::clamp(render.alphaCutoff, 0.0f, 1.0f);
+	group.materialData->flipU = render.flipU ? 1 : 0;
+	group.materialData->flipV = render.flipV ? 1 : 0;
+
+	if (!geometryUnchanged) {
+		CreateGroupVertexResource(group);
+	}
 }
 
 void ParticleManager::CreateGroupVertexResource(ParticleGroup& group) {
@@ -102,57 +108,103 @@ void ParticleManager::CreateGroupVertexResource(ParticleGroup& group) {
 		return;
 	}
 
-	const RingPrimitiveDesc& ring = group.render.ring;
-	const uint32_t divisions = std::clamp(ring.divisions, 3u, 256u);
-	const float outerRadius = (std::max)(ring.outerRadius, 0.001f);
-	const float innerRadius = std::clamp(ring.innerRadius, 0.0f, outerRadius);
-	const float angleRange = ring.endAngle - ring.startAngle;
-
 	std::vector<ParticleCommon::VertexData> vertices;
-	vertices.reserve(static_cast<size_t>(divisions) * 6);
+	if (group.render.primitiveType == PrimitiveType::kRing) {
+		const RingPrimitiveDesc& ring = group.render.ring;
+		const uint32_t divisions = std::clamp(ring.divisions, 3u, 256u);
+		const float outerRadius = (std::max)(ring.outerRadius, 0.001f);
+		const float innerRadius = std::clamp(ring.innerRadius, 0.0f, outerRadius);
+		const float angleRange = ring.endAngle - ring.startAngle;
+		vertices.reserve(static_cast<size_t>(divisions) * 6);
 
-	for (uint32_t index = 0; index < divisions; ++index) {
-		const float t0 = static_cast<float>(index) / static_cast<float>(divisions);
-		const float t1 = static_cast<float>(index + 1) / static_cast<float>(divisions);
-		const float angle0 = ring.startAngle + angleRange * t0;
-		const float angle1 = ring.startAngle + angleRange * t1;
-		const float sin0 = std::sin(angle0);
-		const float cos0 = std::cos(angle0);
-		const float sin1 = std::sin(angle1);
-		const float cos1 = std::cos(angle1);
+		for (uint32_t index = 0; index < divisions; ++index) {
+			const float t0 = static_cast<float>(index) / static_cast<float>(divisions);
+			const float t1 = static_cast<float>(index + 1) / static_cast<float>(divisions);
+			const float angle0 = ring.startAngle + angleRange * t0;
+			const float angle1 = ring.startAngle + angleRange * t1;
+			const float sin0 = std::sin(angle0);
+			const float cos0 = std::cos(angle0);
+			const float sin1 = std::sin(angle1);
+			const float cos1 = std::cos(angle1);
 
-		const Vector2 outerUv0 =
-			ring.uvMode == RingUvMode::kHorizontal ? Vector2{ t0, 0.0f } : Vector2{ 0.0f, t0 };
-		const Vector2 outerUv1 =
-			ring.uvMode == RingUvMode::kHorizontal ? Vector2{ t1, 0.0f } : Vector2{ 0.0f, t1 };
-		const Vector2 innerUv0 =
-			ring.uvMode == RingUvMode::kHorizontal ? Vector2{ t0, 1.0f } : Vector2{ 1.0f, t0 };
-		const Vector2 innerUv1 =
-			ring.uvMode == RingUvMode::kHorizontal ? Vector2{ t1, 1.0f } : Vector2{ 1.0f, t1 };
+			const Vector2 outerUv0 = ring.uvMode == RingUvMode::kHorizontal
+				? Vector2{ t0, 0.0f } : Vector2{ 0.0f, t0 };
+			const Vector2 outerUv1 = ring.uvMode == RingUvMode::kHorizontal
+				? Vector2{ t1, 0.0f } : Vector2{ 0.0f, t1 };
+			const Vector2 innerUv0 = ring.uvMode == RingUvMode::kHorizontal
+				? Vector2{ t0, 1.0f } : Vector2{ 1.0f, t0 };
+			const Vector2 innerUv1 = ring.uvMode == RingUvMode::kHorizontal
+				? Vector2{ t1, 1.0f } : Vector2{ 1.0f, t1 };
 
-		const ParticleCommon::VertexData outer0{
-			{ -sin0 * outerRadius, cos0 * outerRadius, 0.0f, 1.0f },
-			outerUv0, { 0.0f, 0.0f, -1.0f }, ring.outerColor
-		};
-		const ParticleCommon::VertexData outer1{
-			{ -sin1 * outerRadius, cos1 * outerRadius, 0.0f, 1.0f },
-			outerUv1, { 0.0f, 0.0f, -1.0f }, ring.outerColor
-		};
-		const ParticleCommon::VertexData inner0{
-			{ -sin0 * innerRadius, cos0 * innerRadius, 0.0f, 1.0f },
-			innerUv0, { 0.0f, 0.0f, -1.0f }, ring.innerColor
-		};
-		const ParticleCommon::VertexData inner1{
-			{ -sin1 * innerRadius, cos1 * innerRadius, 0.0f, 1.0f },
-			innerUv1, { 0.0f, 0.0f, -1.0f }, ring.innerColor
-		};
+			const ParticleCommon::VertexData outer0{
+				{ -sin0 * outerRadius, cos0 * outerRadius, 0.0f, 1.0f },
+				outerUv0, { 0.0f, 0.0f, -1.0f }, ring.outerColor
+			};
+			const ParticleCommon::VertexData outer1{
+				{ -sin1 * outerRadius, cos1 * outerRadius, 0.0f, 1.0f },
+				outerUv1, { 0.0f, 0.0f, -1.0f }, ring.outerColor
+			};
+			const ParticleCommon::VertexData inner0{
+				{ -sin0 * innerRadius, cos0 * innerRadius, 0.0f, 1.0f },
+				innerUv0, { 0.0f, 0.0f, -1.0f }, ring.innerColor
+			};
+			const ParticleCommon::VertexData inner1{
+				{ -sin1 * innerRadius, cos1 * innerRadius, 0.0f, 1.0f },
+				innerUv1, { 0.0f, 0.0f, -1.0f }, ring.innerColor
+			};
 
-		vertices.push_back(outer0);
-		vertices.push_back(outer1);
-		vertices.push_back(inner0);
-		vertices.push_back(inner0);
-		vertices.push_back(outer1);
-		vertices.push_back(inner1);
+			vertices.insert(vertices.end(), { outer0, outer1, inner0, inner0, outer1, inner1 });
+		}
+	}
+	else {
+		const CylinderPrimitiveDesc& cylinder = group.render.cylinder;
+		const uint32_t divisions = std::clamp(cylinder.divisions, 3u, 256u);
+		const float topRadius = (std::max)(cylinder.topRadius, 0.0f);
+		const float bottomRadius = (std::max)(cylinder.bottomRadius, 0.0f);
+		const float height = (std::max)(cylinder.height, 0.001f);
+		const float angleRange = cylinder.endAngle - cylinder.startAngle;
+		vertices.reserve(static_cast<size_t>(divisions) * 6);
+
+		for (uint32_t index = 0; index < divisions; ++index) {
+			const float t0 = static_cast<float>(index) / static_cast<float>(divisions);
+			const float t1 = static_cast<float>(index + 1) / static_cast<float>(divisions);
+			const float angle0 = cylinder.startAngle + angleRange * t0;
+			const float angle1 = cylinder.startAngle + angleRange * t1;
+			const float sin0 = std::sin(angle0);
+			const float cos0 = std::cos(angle0);
+			const float sin1 = std::sin(angle1);
+			const float cos1 = std::cos(angle1);
+
+			const Vector2 topUv0 = cylinder.uvMode == RingUvMode::kHorizontal
+				? Vector2{ t0, 0.0f } : Vector2{ 0.0f, t0 };
+			const Vector2 topUv1 = cylinder.uvMode == RingUvMode::kHorizontal
+				? Vector2{ t1, 0.0f } : Vector2{ 0.0f, t1 };
+			const Vector2 bottomUv0 = cylinder.uvMode == RingUvMode::kHorizontal
+				? Vector2{ t0, 1.0f } : Vector2{ 1.0f, t0 };
+			const Vector2 bottomUv1 = cylinder.uvMode == RingUvMode::kHorizontal
+				? Vector2{ t1, 1.0f } : Vector2{ 1.0f, t1 };
+
+			const Vector3 normal0 = { -sin0, 0.0f, cos0 };
+			const Vector3 normal1 = { -sin1, 0.0f, cos1 };
+			const ParticleCommon::VertexData top0{
+				{ -sin0 * topRadius, height, cos0 * topRadius, 1.0f },
+				topUv0, normal0, cylinder.topColor
+			};
+			const ParticleCommon::VertexData top1{
+				{ -sin1 * topRadius, height, cos1 * topRadius, 1.0f },
+				topUv1, normal1, cylinder.topColor
+			};
+			const ParticleCommon::VertexData bottom0{
+				{ -sin0 * bottomRadius, 0.0f, cos0 * bottomRadius, 1.0f },
+				bottomUv0, normal0, cylinder.bottomColor
+			};
+			const ParticleCommon::VertexData bottom1{
+				{ -sin1 * bottomRadius, 0.0f, cos1 * bottomRadius, 1.0f },
+				bottomUv1, normal1, cylinder.bottomColor
+			};
+
+			vertices.insert(vertices.end(), { top0, top1, bottom0, bottom0, top1, bottom1 });
+		}
 	}
 
 	group.vertexResource = particleCommon_->GetDxCommon()->CreateBufferResource(
@@ -239,6 +291,9 @@ void ParticleManager::CreateParticleGroup(const std::string& name, const std::st
 	group.materialResource->Map(0, nullptr, reinterpret_cast<void**>(&group.materialData));
 	group.materialData->color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	group.materialData->enableLighting = false;
+	group.materialData->alphaCutoff = 0.0f;
+	group.materialData->flipU = false;
+	group.materialData->flipV = false;
 	group.materialData->uvTransform = MakeIdentity4x4();
 
 	group.instancingResource =
@@ -288,8 +343,12 @@ void ParticleManager::CreateParticleGroupIfNeeded(
 void ParticleManager::InitializeParticleLife(Particle& particle, const ParticleBehavior& behavior) {
 	particle.currentTime = 0.0f;
 	particle.lifeTime = RandomRange(behavior.life.lifeTimeMin, behavior.life.lifeTimeMax);
+	particle.isLooping = behavior.life.isLooping;
+	particle.loopDuration = (std::max)(behavior.life.loopDuration, 0.001f);
+	particle.loopPingPong = behavior.life.loopPingPong;
 
-	particle.enableLifeFade = behavior.life.enableLifeFade;
+	particle.enableLifeFade =
+		!particle.isLooping && behavior.life.enableLifeFade;
 	particle.fadeOutStartRatio = std::clamp(behavior.life.fadeOutStartRatio, 0.0f, 0.99f);
 }
 
@@ -465,6 +524,9 @@ void ParticleManager::Emit(
 			behavior.rotation.initialRotationMin,
 			behavior.rotation.initialRotationMax
 		);
+		particle.enableRotationOverTime =
+			behavior.rotation.enableRotationOverTime;
+		particle.rotationSpeed = behavior.rotation.rotationSpeed;
 		particle.startScale = RandomVector3Range(
 			behavior.scale.startScaleMin,
 			behavior.scale.startScaleMax
@@ -563,8 +625,7 @@ void ParticleManager::UpdateParticleMotion(Particle& particle) {
 }
 
 void ParticleManager::UpdateParticleColor(Particle& particle) {
-	float lifeRatio = particle.currentTime / particle.lifeTime;
-	lifeRatio = std::clamp(lifeRatio, 0.0f, 1.0f);
+	const float lifeRatio = GetAnimationRatio(particle);
 
 	Vector4 baseColor = particle.startColor;
 
@@ -618,7 +679,23 @@ void ParticleManager::UpdateParticleColor(Particle& particle) {
 }
 
 bool ParticleManager::IsDeadParticle(const Particle& particle) const {
+	if (particle.isLooping) {
+		return false;
+	}
 	return particle.currentTime >= particle.lifeTime;
+}
+
+float ParticleManager::GetAnimationRatio(const Particle& particle) const {
+	if (!particle.isLooping) {
+		return std::clamp(particle.currentTime / particle.lifeTime, 0.0f, 1.0f);
+	}
+
+	float ratio = std::fmod(particle.currentTime, particle.loopDuration) /
+		particle.loopDuration;
+	if (particle.loopPingPong) {
+		ratio = ratio < 0.5f ? ratio * 2.0f : (1.0f - ratio) * 2.0f;
+	}
+	return ratio;
 }
 
 Vector3 ParticleManager::LerpVector3(const Vector3& start, const Vector3& end, float t) {
@@ -636,13 +713,32 @@ void ParticleManager::UpdateParticleScale(Particle& particle) {
 		return;
 	}
 
-	float lifeRatio = particle.currentTime / particle.lifeTime;
-	lifeRatio = std::clamp(lifeRatio, 0.0f, 1.0f);
+	const float lifeRatio = GetAnimationRatio(particle);
 
 	particle.transform.scale = LerpVector3(
 		particle.startScale,
 		particle.endScale,
 		lifeRatio
+	);
+}
+
+void ParticleManager::UpdateParticleRotation(Particle& particle) {
+	if (!particle.enableRotationOverTime) {
+		return;
+	}
+
+	constexpr float kTwoPi = 6.2831853f;
+	particle.transform.rotate.x = std::fmod(
+		particle.transform.rotate.x + particle.rotationSpeed.x * deltaTime_,
+		kTwoPi
+	);
+	particle.transform.rotate.y = std::fmod(
+		particle.transform.rotate.y + particle.rotationSpeed.y * deltaTime_,
+		kTwoPi
+	);
+	particle.transform.rotate.z = std::fmod(
+		particle.transform.rotate.z + particle.rotationSpeed.z * deltaTime_,
+		kTwoPi
 	);
 }
 
@@ -662,6 +758,7 @@ void ParticleManager::Update() {
 			particle.currentTime += deltaTime_;
 
 			UpdateParticleMotion(particle);
+			UpdateParticleRotation(particle);
 			UpdateParticleScale(particle);
 			UpdateParticleColor(particle);
 		}
@@ -721,7 +818,12 @@ void ParticleManager::Draw() {
 		}
 
 		// ParticleGroupごとにBlendModeを切り替える
-		particleCommon_->SetBlendMode(group.blendMode);
+		particleCommon_->SetRenderState(
+			group.blendMode,
+			group.render.cullMode,
+			group.render.depthTest,
+			group.render.depthWrite
+		);
 		particleCommon_->SetCommonRenderState();
 		commandList->IASetVertexBuffers(0, 1, &group.vertexBufferView);
 

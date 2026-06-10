@@ -41,6 +41,13 @@ public:
 		kCountOfBlendMode,
 	};
 
+	enum class CullMode {
+		kNone,
+		kBack,
+		kFront,
+		kCount,
+	};
+
 public:
 	void Initialize(DirectXCommon* dxCommon);
 	void ResetState();
@@ -56,6 +63,12 @@ public:
 
 	void SetBlendMode(BlendMode blendMode) { currentBlendMode_ = blendMode; }
 	BlendMode GetBlendMode() const { return currentBlendMode_; }
+	void SetRenderState(
+		BlendMode blendMode,
+		CullMode cullMode,
+		bool depthTest,
+		bool depthWrite
+	);
 
 private:
 	void MakeRootSignature();
@@ -69,8 +82,15 @@ private:
 	bool isInitialized_ = false;
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_ = nullptr;
-	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineStates_[static_cast<uint32_t>(BlendMode::kCountOfBlendMode)];
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineStates_
+		[static_cast<uint32_t>(BlendMode::kCountOfBlendMode)]
+		[static_cast<uint32_t>(CullMode::kCount)]
+		[2]
+		[2];
 	BlendMode currentBlendMode_ = BlendMode::kBlendModeNormal;
+	CullMode currentCullMode_ = CullMode::kNone;
+	bool currentDepthTest_ = true;
+	bool currentDepthWrite_ = false;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource_;
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView_{};

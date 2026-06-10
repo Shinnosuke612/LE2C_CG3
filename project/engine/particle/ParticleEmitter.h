@@ -21,7 +21,7 @@ public:
 	void SetActive(bool isActive){ isActive_ = isActive; }
 
 	void SetSpawnSize(const Vector3& spawnSize){ spawnSize_ = spawnSize; }
-	void SetBehavior(const ParticleManager::ParticleBehavior& behavior){ behavior_ = behavior; }
+	void SetBehavior(const ParticleManager::ParticleBehavior& behavior);
 
 	const Vector3& GetSpawnSize() const{ return spawnSize_; }
 	const ParticleManager::ParticleBehavior& GetBehavior() const{ return behavior_; }
@@ -37,5 +37,6 @@ private:
 	float frequencyTime_ = 0.0f;
 	float deltaTime_ = 1.0f / 60.0f;
 	bool isActive_ = true;
+	bool hasAutoEmittedLoopParticle_ = false;
 	Vector3 spawnSize_ = { 8.0f, 0.0f, 0.0f };
 };

@@ -7,6 +7,9 @@ struct Material
 {
     float4 color;
     int enableLighting;
+    float alphaCutoff;
+    int flipU;
+    int flipV;
     float4x4 uvTransform;
 };
 ConstantBuffer<Material> gMaterial : register(b0);
@@ -27,10 +30,20 @@ PixelShaderOutput main(VertexShaderOutput input)
 {
     PixelShaderOutput output;
 
-    float4 transformedUV = mul(float4(input.texcoord, 0.0f, 1.0f), gMaterial.uvTransform);
+    float2 texcoord = input.texcoord;
+    if (gMaterial.flipU != 0)
+    {
+        texcoord.x = 1.0f - texcoord.x;
+    }
+    if (gMaterial.flipV != 0)
+    {
+        texcoord.y = 1.0f - texcoord.y;
+    }
+
+    float4 transformedUV = mul(float4(texcoord, 0.0f, 1.0f), gMaterial.uvTransform);
     float4 textureColor = gTexture.Sample(gSampler, transformedUV.xy);
 
-    if (textureColor.a <= 0.5f)
+    if (textureColor.a <= gMaterial.alphaCutoff)
     {
         discard;
     }

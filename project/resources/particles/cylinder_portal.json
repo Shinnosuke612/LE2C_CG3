@@ -1,0 +1,212 @@
+{
+  "behavior": {
+    "color": {
+      "endColorMax": [
+        0.800000011920929,
+        0.3499999940395355,
+        1.0,
+        0.550000011920929
+      ],
+      "endColorMin": [
+        0.800000011920929,
+        0.3499999940395355,
+        1.0,
+        0.550000011920929
+      ],
+      "mode": "OverLife",
+      "randomColorChangeIntervalMax": 0.3499999940395355,
+      "randomColorChangeIntervalMin": 0.15000000596046448,
+      "randomColorLerpSpeed": 6.0,
+      "randomColorMax": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "randomColorMin": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "startColorMax": [
+        0.3499999940395355,
+        0.550000011920929,
+        1.0,
+        0.8999999761581421
+      ],
+      "startColorMin": [
+        0.3499999940395355,
+        0.550000011920929,
+        1.0,
+        0.8999999761581421
+      ]
+    },
+    "life": {
+      "enableLifeFade": true,
+      "fadeOutStartRatio": 0.75,
+      "isLooping": true,
+      "lifeTimeMax": 1.100000023841858,
+      "lifeTimeMin": 1.100000023841858,
+      "loopDuration": 2.4000000953674316,
+      "loopPingPong": true
+    },
+    "motion": {
+      "linear": {
+        "accelerationRandomRange": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "baseAcceleration": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "baseVelocity": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "velocityRandomRange": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mode": "Linear",
+      "sway": {
+        "amplitude": 0.0,
+        "frequency": 0.0
+      },
+      "vortex": {
+        "angularSpeedMax": 0.0,
+        "angularSpeedMin": 0.0,
+        "axis": "Y",
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "inwardSpeedMax": 0.0,
+        "inwardSpeedMin": 0.0,
+        "verticalSpeedMax": 0.0,
+        "verticalSpeedMin": 0.0
+      }
+    },
+    "render": {
+      "alphaCutoff": 0.019999999552965164,
+      "billboardMode": "None",
+      "cullMode": "None",
+      "cylinder": {
+        "bottomColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "bottomRadius": 1.0,
+        "divisions": 48,
+        "endAngle": 6.2831854820251465,
+        "height": 2.5999999046325684,
+        "startAngle": 0.0,
+        "topColor": [
+          0.550000011920929,
+          0.75,
+          1.0,
+          0.15000000596046448
+        ],
+        "topRadius": 1.0,
+        "uvMode": "Horizontal"
+      },
+      "depthTest": true,
+      "depthWrite": false,
+      "flipU": false,
+      "flipV": true,
+      "primitiveType": "Cylinder",
+      "ring": {
+        "divisions": 32,
+        "endAngle": 6.2831854820251465,
+        "innerColor": [
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "innerRadius": 0.20000000298023224,
+        "outerColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "outerRadius": 1.0,
+        "startAngle": 0.0,
+        "uvMode": "Horizontal"
+      },
+      "uvScrollSpeed": [
+        0.6499999761581421,
+        0.0
+      ]
+    },
+    "rotation": {
+      "enableRotationOverTime": true,
+      "initialRotationMax": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "initialRotationMin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotationSpeed": [
+        0.0,
+        0.6499999761581421,
+        0.0
+      ]
+    },
+    "scale": {
+      "enableScaleOverLife": true,
+      "endScaleMax": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "endScaleMin": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "startScaleMax": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "startScaleMin": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "blendMode": "Add",
+  "emitter": {
+    "count": 1,
+    "frequency": 1.0,
+    "isActive": true,
+    "spawnSize": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "translate": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "name": "CylinderPortal",
+  "textureFilePath": "resources/gradationLine.png"
+}

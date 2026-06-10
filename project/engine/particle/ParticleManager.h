@@ -39,7 +39,9 @@ public:
 	struct Material {
 		Vector4 color;
 		int32_t enableLighting;
-		float padding[3];
+		float alphaCutoff;
+		int32_t flipU;
+		int32_t flipV;
 		Matrix4x4 uvTransform;
 	};
 
@@ -67,6 +69,10 @@ public:
 	};
 
 	struct ParticleLifeDesc {
+		bool isLooping = false;
+		float loopDuration = 1.0f;
+		bool loopPingPong = true;
+
 		float lifeTimeMin = 1.0f;
 		float lifeTimeMax = 1.0f;
 
@@ -87,6 +93,8 @@ public:
 	struct ParticleRotationDesc {
 		Vector3 initialRotationMin = { 0.0f, 0.0f, 0.0f };
 		Vector3 initialRotationMax = { 0.0f, 0.0f, 0.0f };
+		bool enableRotationOverTime = false;
+		Vector3 rotationSpeed = { 0.0f, 0.0f, 0.0f };
 	};
 
 	struct ParticleLinearMotionDesc {
@@ -160,6 +168,7 @@ public:
 	enum class PrimitiveType {
 		kPlane,
 		kRing,
+		kCylinder,
 	};
 
 	enum class RingUvMode {
@@ -178,11 +187,30 @@ public:
 		RingUvMode uvMode = RingUvMode::kHorizontal;
 	};
 
+	struct CylinderPrimitiveDesc {
+		uint32_t divisions = 32;
+		float topRadius = 1.0f;
+		float bottomRadius = 1.0f;
+		float height = 3.0f;
+		float startAngle = 0.0f;
+		float endAngle = 6.2831853f;
+		Vector4 topColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+		Vector4 bottomColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+		RingUvMode uvMode = RingUvMode::kHorizontal;
+	};
+
 	struct ParticleRenderDesc {
 		BillboardMode billboardMode = BillboardMode::kBillboard;
 		PrimitiveType primitiveType = PrimitiveType::kPlane;
 		RingPrimitiveDesc ring;
+		CylinderPrimitiveDesc cylinder;
 		Vector2 uvScrollSpeed = { 0.0f, 0.0f };
+		bool flipU = false;
+		bool flipV = false;
+		float alphaCutoff = 0.0f;
+		ParticleCommon::CullMode cullMode = ParticleCommon::CullMode::kNone;
+		bool depthTest = true;
+		bool depthWrite = false;
 	};
 
 	struct ParticleBehavior {
@@ -206,6 +234,9 @@ public:
 
 		float currentTime = 0.0f;
 		float lifeTime = 1.0f;
+		bool isLooping = false;
+		float loopDuration = 1.0f;
+		bool loopPingPong = true;
 
 		Vector4 color;
 		Vector4 startColor;
@@ -226,6 +257,8 @@ public:
 
 		bool enableLifeFade = true;
 		float fadeOutStartRatio = 0.7f;
+		bool enableRotationOverTime = false;
+		Vector3 rotationSpeed = { 0.0f, 0.0f, 0.0f };
 
 		MovementMode movementMode = MovementMode::kLinear;
 
@@ -319,8 +352,10 @@ private:
 
 	void UpdateParticleMotion(Particle& particle);
 	void UpdateParticleColor(Particle& particle);
+	void UpdateParticleRotation(Particle& particle);
 
 	bool IsDeadParticle(const Particle& particle) const;
+	float GetAnimationRatio(const Particle& particle) const;
 
 	Vector3 LerpVector3(const Vector3& start, const Vector3& end, float t);
 	void UpdateParticleScale(Particle& particle);

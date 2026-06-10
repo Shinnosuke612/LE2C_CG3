@@ -131,13 +131,17 @@ ParticleManager::BillboardMode ToBillboardMode(const std::string& text) {
 }
 
 std::string ToString(ParticleManager::PrimitiveType type) {
-	return type == ParticleManager::PrimitiveType::kRing ? "Ring" : "Plane";
+	switch (type) {
+	case ParticleManager::PrimitiveType::kRing: return "Ring";
+	case ParticleManager::PrimitiveType::kCylinder: return "Cylinder";
+	default: return "Plane";
+	}
 }
 
 ParticleManager::PrimitiveType ToPrimitiveType(const std::string& text) {
-	return text == "Ring"
-		? ParticleManager::PrimitiveType::kRing
-		: ParticleManager::PrimitiveType::kPlane;
+	if (text == "Ring") return ParticleManager::PrimitiveType::kRing;
+	if (text == "Cylinder") return ParticleManager::PrimitiveType::kCylinder;
+	return ParticleManager::PrimitiveType::kPlane;
 }
 
 std::string ToString(ParticleManager::RingUvMode mode) {
@@ -150,10 +154,30 @@ ParticleManager::RingUvMode ToRingUvMode(const std::string& text) {
 		: ParticleManager::RingUvMode::kHorizontal;
 }
 
+std::string ToString(ParticleCommon::CullMode mode) {
+	switch (mode) {
+	case ParticleCommon::CullMode::kBack: return "Back";
+	case ParticleCommon::CullMode::kFront: return "Front";
+	default: return "None";
+	}
+}
+
+ParticleCommon::CullMode ToCullMode(const std::string& text) {
+	if (text == "Back") return ParticleCommon::CullMode::kBack;
+	if (text == "Front") return ParticleCommon::CullMode::kFront;
+	return ParticleCommon::CullMode::kNone;
+}
+
 void WriteRender(json& j, const ParticleManager::ParticleRenderDesc& render) {
 	j = {
 		{ "billboardMode", ToString(render.billboardMode) },
 		{ "primitiveType", ToString(render.primitiveType) },
+		{ "flipU", render.flipU },
+		{ "flipV", render.flipV },
+		{ "alphaCutoff", render.alphaCutoff },
+		{ "cullMode", ToString(render.cullMode) },
+		{ "depthTest", render.depthTest },
+		{ "depthWrite", render.depthWrite },
 		{ "uvScrollSpeed", json::array({
 			render.uvScrollSpeed.x,
 			render.uvScrollSpeed.y
@@ -167,6 +191,17 @@ void WriteRender(json& j, const ParticleManager::ParticleRenderDesc& render) {
 			{ "outerColor", ToJson(render.ring.outerColor) },
 			{ "innerColor", ToJson(render.ring.innerColor) },
 			{ "uvMode", ToString(render.ring.uvMode) }
+		} },
+		{ "cylinder", {
+			{ "divisions", render.cylinder.divisions },
+			{ "topRadius", render.cylinder.topRadius },
+			{ "bottomRadius", render.cylinder.bottomRadius },
+			{ "height", render.cylinder.height },
+			{ "startAngle", render.cylinder.startAngle },
+			{ "endAngle", render.cylinder.endAngle },
+			{ "topColor", ToJson(render.cylinder.topColor) },
+			{ "bottomColor", ToJson(render.cylinder.bottomColor) },
+			{ "uvMode", ToString(render.cylinder.uvMode) }
 		} }
 	};
 }
@@ -176,6 +211,13 @@ void ReadRender(const json& j, ParticleManager::ParticleRenderDesc& render) {
 		ToBillboardMode(j.value("billboardMode", ToString(render.billboardMode)));
 	render.primitiveType =
 		ToPrimitiveType(j.value("primitiveType", ToString(render.primitiveType)));
+	render.flipU = j.value("flipU", render.flipU);
+	render.flipV = j.value("flipV", render.flipV);
+	render.alphaCutoff =
+		std::clamp(j.value("alphaCutoff", render.alphaCutoff), 0.0f, 1.0f);
+	render.cullMode = ToCullMode(j.value("cullMode", ToString(render.cullMode)));
+	render.depthTest = j.value("depthTest", render.depthTest);
+	render.depthWrite = j.value("depthWrite", render.depthWrite);
 
 	if (j.contains("uvScrollSpeed")) {
 		const json& uvScroll = j.at("uvScrollSpeed");
@@ -187,38 +229,71 @@ void ReadRender(const json& j, ParticleManager::ParticleRenderDesc& render) {
 		}
 	}
 
-	if (!j.contains("ring")) {
-		return;
+	if (j.contains("ring")) {
+		const json& ring = j.at("ring");
+		render.ring.divisions =
+			std::clamp(ring.value("divisions", render.ring.divisions), 3u, 256u);
+		render.ring.outerRadius =
+			(std::max)(ring.value("outerRadius", render.ring.outerRadius), 0.001f);
+		render.ring.innerRadius = std::clamp(
+			ring.value("innerRadius", render.ring.innerRadius),
+			0.0f,
+			render.ring.outerRadius
+		);
+		render.ring.startAngle = ring.value("startAngle", render.ring.startAngle);
+		render.ring.endAngle = ring.value("endAngle", render.ring.endAngle);
+
+		if (ring.contains("outerColor")) {
+			render.ring.outerColor =
+				ReadVector4(ring.at("outerColor"), render.ring.outerColor);
+		}
+		if (ring.contains("innerColor")) {
+			render.ring.innerColor =
+				ReadVector4(ring.at("innerColor"), render.ring.innerColor);
+		}
+
+		render.ring.uvMode =
+			ToRingUvMode(ring.value("uvMode", ToString(render.ring.uvMode)));
 	}
 
-	const json& ring = j.at("ring");
-	render.ring.divisions =
-		std::clamp(ring.value("divisions", render.ring.divisions), 3u, 256u);
-	render.ring.outerRadius =
-		(std::max)(ring.value("outerRadius", render.ring.outerRadius), 0.001f);
-	render.ring.innerRadius = std::clamp(
-		ring.value("innerRadius", render.ring.innerRadius),
-		0.0f,
-		render.ring.outerRadius
-	);
-	render.ring.startAngle = ring.value("startAngle", render.ring.startAngle);
-	render.ring.endAngle = ring.value("endAngle", render.ring.endAngle);
+	if (j.contains("cylinder")) {
+		const json& cylinder = j.at("cylinder");
+		render.cylinder.divisions = std::clamp(
+			cylinder.value("divisions", render.cylinder.divisions),
+			3u,
+			256u
+		);
+		render.cylinder.topRadius =
+			(std::max)(cylinder.value("topRadius", render.cylinder.topRadius), 0.0f);
+		render.cylinder.bottomRadius =
+			(std::max)(cylinder.value("bottomRadius", render.cylinder.bottomRadius), 0.0f);
+		render.cylinder.height =
+			(std::max)(cylinder.value("height", render.cylinder.height), 0.001f);
+		render.cylinder.startAngle =
+			cylinder.value("startAngle", render.cylinder.startAngle);
+		render.cylinder.endAngle =
+			cylinder.value("endAngle", render.cylinder.endAngle);
 
-	if (ring.contains("outerColor")) {
-		render.ring.outerColor =
-			ReadVector4(ring.at("outerColor"), render.ring.outerColor);
-	}
-	if (ring.contains("innerColor")) {
-		render.ring.innerColor =
-			ReadVector4(ring.at("innerColor"), render.ring.innerColor);
-	}
+		if (cylinder.contains("topColor")) {
+			render.cylinder.topColor =
+				ReadVector4(cylinder.at("topColor"), render.cylinder.topColor);
+		}
+		if (cylinder.contains("bottomColor")) {
+			render.cylinder.bottomColor =
+				ReadVector4(cylinder.at("bottomColor"), render.cylinder.bottomColor);
+		}
 
-	render.ring.uvMode =
-		ToRingUvMode(ring.value("uvMode", ToString(render.ring.uvMode)));
+		render.cylinder.uvMode = ToRingUvMode(
+			cylinder.value("uvMode", ToString(render.cylinder.uvMode))
+		);
+	}
 }
 
 void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 	j["life"] = {
+		{ "isLooping", b.life.isLooping },
+		{ "loopDuration", b.life.loopDuration },
+		{ "loopPingPong", b.life.loopPingPong },
 		{ "lifeTimeMin", b.life.lifeTimeMin },
 		{ "lifeTimeMax", b.life.lifeTimeMax },
 		{ "enableLifeFade", b.life.enableLifeFade },
@@ -235,7 +310,9 @@ void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 
 	j["rotation"] = {
 		{ "initialRotationMin", ToJson(b.rotation.initialRotationMin) },
-		{ "initialRotationMax", ToJson(b.rotation.initialRotationMax) }
+		{ "initialRotationMax", ToJson(b.rotation.initialRotationMax) },
+		{ "enableRotationOverTime", b.rotation.enableRotationOverTime },
+		{ "rotationSpeed", ToJson(b.rotation.rotationSpeed) }
 	};
 
 	j["motion"]["mode"] = ToString(b.motion.mode);
@@ -282,6 +359,11 @@ void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
 	if (j.contains("life")) {
 		const json& life = j.at("life");
+		b.life.isLooping = life.value("isLooping", b.life.isLooping);
+		b.life.loopDuration =
+			(std::max)(life.value("loopDuration", b.life.loopDuration), 0.001f);
+		b.life.loopPingPong =
+			life.value("loopPingPong", b.life.loopPingPong);
 		b.life.lifeTimeMin = life.value("lifeTimeMin", b.life.lifeTimeMin);
 		b.life.lifeTimeMax = life.value("lifeTimeMax", b.life.lifeTimeMax);
 		b.life.enableLifeFade = life.value("enableLifeFade", b.life.enableLifeFade);
@@ -306,6 +388,14 @@ void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
 		if (rotation.contains("initialRotationMax")) {
 			b.rotation.initialRotationMax =
 				ReadVector3(rotation.at("initialRotationMax"), b.rotation.initialRotationMax);
+		}
+		b.rotation.enableRotationOverTime = rotation.value(
+			"enableRotationOverTime",
+			b.rotation.enableRotationOverTime
+		);
+		if (rotation.contains("rotationSpeed")) {
+			b.rotation.rotationSpeed =
+				ReadVector3(rotation.at("rotationSpeed"), b.rotation.rotationSpeed);
 		}
 	}
 
