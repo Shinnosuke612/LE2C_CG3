@@ -15,6 +15,7 @@ public:
 		kBoxBlur,
 		kGaussianBlur,
 		kRadialBlur,
+		kNoise,
 		kDissolve,
 		kOutline
 	};
@@ -43,6 +44,10 @@ public:
 		float dissolveEdgeWidth = 0.03f;
 		float dissolvePadding[2]{};
 		float dissolveEdgeColor[4]{ 1.0f, 0.4f, 0.3f, 1.0f };
+		float noiseTime = 0.0f;
+		float noiseAmount = 0.25f;
+		float noiseScale = 1.0f;
+		float noiseSeed = 0.0f;
 	};
 
 	void Initialize(DirectXCommon* dxCommon);
@@ -67,9 +72,10 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> boxBlurPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> gaussianBlurPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> radialBlurPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> noisePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> dissolvePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> outlinePipelineState_;
-	static constexpr uint32_t kMaxDrawsPerFrame = 8;
+	static constexpr uint32_t kMaxDrawsPerFrame = 16;
 	Microsoft::WRL::ComPtr<ID3D12Resource>
 		parameterResources_[kMaxDrawsPerFrame];
 	Parameters* parameterData_[kMaxDrawsPerFrame]{};

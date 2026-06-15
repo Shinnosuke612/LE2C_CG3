@@ -59,6 +59,10 @@ void Game::Update() {
 		return;
 	}
 
+	if (noiseAnimate_) {
+		noiseTime_ += (1.0f / 60.0f) * noiseSpeed_;
+	}
+
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	DebugRenderer::GetInstance()->Clear();
 
@@ -71,6 +75,7 @@ void Game::Update() {
 		boxBlurEnabled_ = false;
 		gaussianBlurEnabled_ = false;
 		radialBlurEnabled_ = false;
+		noiseEnabled_ = false;
 		dissolveEnabled_ = false;
 		outlineEnabled_ = false;
 	}
@@ -196,6 +201,28 @@ void Game::Update() {
 			2,
 			32
 		);
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
+	ImGui::Separator();
+
+	ImGui::PushID("Noise");
+	ImGui::Checkbox("##Enabled", &noiseEnabled_);
+	ImGui::SameLine();
+	if (ImGui::TreeNodeEx(
+		"Noise",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
+		ImGui::Checkbox("Animate", &noiseAnimate_);
+		ImGui::SliderFloat("Amount", &noiseAmount_, 0.0f, 1.0f);
+		ImGui::SliderFloat("Scale", &noiseScale_, 0.25f, 8.0f);
+		if (noiseAnimate_) {
+			ImGui::SliderFloat("Speed", &noiseSpeed_, 0.0f, 10.0f);
+		}
+		ImGui::DragFloat("Seed", &noiseSeed_, 0.01f);
+		if (ImGui::SmallButton("Reset Time")) {
+			noiseTime_ = 0.0f;
+		}
 		ImGui::TreePop();
 	}
 	ImGui::PopID();
@@ -423,6 +450,14 @@ void Game::Draw() {
 			static_cast<uint32_t>(radialBlurSamples_);
 		applyEffect(FullscreenCopy::Effect::kRadialBlur, parameters);
 	}
+	if (noiseEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.noiseTime = noiseTime_;
+		parameters.noiseAmount = noiseAmount_;
+		parameters.noiseScale = noiseScale_;
+		parameters.noiseSeed = noiseSeed_;
+		applyEffect(FullscreenCopy::Effect::kNoise, parameters);
+	}
 	if (dissolveEnabled_) {
 		FullscreenCopy::Parameters parameters{};
 		parameters.dissolveThreshold = dissolveThreshold_;
@@ -500,6 +535,7 @@ int Game::GetEnabledPostEffectCount() const {
 		static_cast<int>(boxBlurEnabled_) +
 		static_cast<int>(gaussianBlurEnabled_) +
 		static_cast<int>(radialBlurEnabled_) +
+		static_cast<int>(noiseEnabled_) +
 		static_cast<int>(dissolveEnabled_) +
 		static_cast<int>(outlineEnabled_);
 }

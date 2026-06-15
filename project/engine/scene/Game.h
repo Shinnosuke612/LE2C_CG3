@@ -25,6 +25,7 @@ private:
 	bool boxBlurEnabled_ = false;
 	bool gaussianBlurEnabled_ = false;
 	bool radialBlurEnabled_ = false;
+	bool noiseEnabled_ = false;
 	bool dissolveEnabled_ = false;
 	bool outlineEnabled_ = false;
 	bool outlineLuminanceEnabled_ = false;
@@ -40,6 +41,12 @@ private:
 	float radialBlurCenter_[2]{ 0.5f, 0.5f };
 	float radialBlurWidth_ = 0.01f;
 	int radialBlurSamples_ = 10;
+	bool noiseAnimate_ = true;
+	float noiseTime_ = 0.0f;
+	float noiseAmount_ = 0.25f;
+	float noiseScale_ = 1.0f;
+	float noiseSpeed_ = 1.0f;
+	float noiseSeed_ = 0.0f;
 	int dissolveMaskIndex_ = 0;
 	float dissolveThreshold_ = 0.0f;
 	float dissolveEdgeWidth_ = 0.03f;

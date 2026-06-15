@@ -64,6 +64,9 @@ void FullscreenCopy::Draw(
 	else if (effect == Effect::kRadialBlur) {
 		pipelineState = radialBlurPipelineState_.Get();
 	}
+	else if (effect == Effect::kNoise) {
+		pipelineState = noisePipelineState_.Get();
+	}
 	else if (effect == Effect::kDissolve) {
 		pipelineState = dissolvePipelineState_.Get();
 	}
@@ -194,6 +197,10 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/RadialBlur.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto noisePixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/Noise.PS.hlsl",
+		L"ps_6_0"
+	);
 	const auto dissolvePixelShader = dxCommon_->CompileShader(
 		L"resources/shaders/Dissolve.PS.hlsl",
 		L"ps_6_0"
@@ -209,6 +216,7 @@ void FullscreenCopy::CreatePipelineState() {
 	assert(boxBlurPixelShader);
 	assert(gaussianBlurPixelShader);
 	assert(radialBlurPixelShader);
+	assert(noisePixelShader);
 	assert(dissolvePixelShader);
 	assert(outlinePixelShader);
 
@@ -300,6 +308,16 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&radialBlurPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		noisePixelShader->GetBufferPointer(),
+		noisePixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&noisePipelineState_)
 	);
 	assert(SUCCEEDED(result));
 
