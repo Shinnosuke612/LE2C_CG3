@@ -24,6 +24,9 @@ private:
 	bool vignetteEnabled_ = false;
 	bool boxBlurEnabled_ = false;
 	bool gaussianBlurEnabled_ = false;
+	bool outlineEnabled_ = false;
+	bool outlineLuminanceEnabled_ = false;
+	bool outlineDepthEnabled_ = true;
 	float vignetteScale_ = 16.0f;
 	float vignettePower_ = 0.8f;
 	float vignetteIntensity_ = 1.0f;
@@ -32,4 +35,10 @@ private:
 	int gaussianBlurKernelSize_ = 3;
 	float gaussianBlurSigma_ = 1.0f;
 	float gaussianBlurStrength_ = 1.0f;
+	float outlineLuminanceWeight_ = 1.0f;
+	float outlineDepthWeight_ = 1.0f;
+	float outlineThreshold_ = 0.1f;
+	float outlineSoftness_ = 0.05f;
+	float outlineThickness_ = 1.0f;
+	float outlineColor_[4]{ 0.0f, 0.0f, 0.0f, 1.0f };
 };

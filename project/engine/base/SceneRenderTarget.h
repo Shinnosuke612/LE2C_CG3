@@ -23,6 +23,7 @@ public:
 	uint32_t GetWidth() const { return width_; }
 	uint32_t GetHeight() const { return height_; }
 	D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpuHandle() const;
+	D3D12_GPU_DESCRIPTOR_HANDLE GetDepthSrvGpuHandle() const;
 
 private:
 	void CreateResources();
@@ -36,7 +37,9 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> dsvHeap_;
 
 	uint32_t srvIndex_ = 0;
+	uint32_t depthSrvIndex_ = 0;
 	uint32_t width_ = 1;
 	uint32_t height_ = 1;
 	bool initialized_ = false;
+	bool depthReadable_ = false;
 };

@@ -19,6 +19,8 @@ void SceneRenderTarget::Initialize(
 	srvManager_ = srvManager;
 	assert(srvManager_->CanAllocate());
 	srvIndex_ = srvManager_->Allocate();
+	assert(srvManager_->CanAllocate());
+	depthSrvIndex_ = srvManager_->Allocate();
 
 	rtvHeap_ = dxCommon_->CreateDescriptorHeap(
 		D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
@@ -48,6 +50,7 @@ void SceneRenderTarget::Resize(uint32_t width, uint32_t height) {
 	height_ = height;
 	colorResource_.Reset();
 	depthResource_.Reset();
+	depthReadable_ = false;
 	CreateResources();
 }
 
@@ -66,6 +69,16 @@ void SceneRenderTarget::Begin() {
 	barrier.Transition.StateAfter =
 		D3D12_RESOURCE_STATE_RENDER_TARGET;
 	dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
+
+	if (depthReadable_) {
+		barrier.Transition.pResource = depthResource_.Get();
+		barrier.Transition.StateBefore =
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		barrier.Transition.StateAfter =
+			D3D12_RESOURCE_STATE_DEPTH_WRITE;
+		dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
+		depthReadable_ = false;
+	}
 
 	const D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle =
 		rtvHeap_->GetCPUDescriptorHandleForHeapStart();
@@ -122,6 +135,13 @@ void SceneRenderTarget::End() {
 	barrier.Transition.StateAfter =
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
+
+	barrier.Transition.pResource = depthResource_.Get();
+	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+	barrier.Transition.StateAfter =
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
+	depthReadable_ = true;
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE SceneRenderTarget::GetSrvGpuHandle() const {
@@ -129,6 +149,14 @@ D3D12_GPU_DESCRIPTOR_HANDLE SceneRenderTarget::GetSrvGpuHandle() const {
 		return {};
 	}
 	return srvManager_->GetGPUDescriptorHandle(srvIndex_);
+}
+
+D3D12_GPU_DESCRIPTOR_HANDLE
+SceneRenderTarget::GetDepthSrvGpuHandle() const {
+	if (!initialized_) {
+		return {};
+	}
+	return srvManager_->GetGPUDescriptorHandle(depthSrvIndex_);
 }
 
 void SceneRenderTarget::CreateResources() {
@@ -177,7 +205,7 @@ void SceneRenderTarget::CreateResources() {
 	depthDesc.Height = height_;
 	depthDesc.DepthOrArraySize = 1;
 	depthDesc.MipLevels = 1;
-	depthDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	depthDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
 	depthDesc.SampleDesc.Count = 1;
 	depthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
@@ -208,6 +236,12 @@ void SceneRenderTarget::CreateResources() {
 		srvIndex_,
 		colorResource_.Get(),
 		DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+		1
+	);
+	srvManager_->CreateSRVforTexture2D(
+		depthSrvIndex_,
+		depthResource_.Get(),
+		DXGI_FORMAT_R24_UNORM_X8_TYPELESS,
 		1
 	);
 }

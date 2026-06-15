@@ -36,6 +36,7 @@ void FullscreenCopy::SetParameters(
 
 void FullscreenCopy::Draw(
 	D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
+	D3D12_GPU_DESCRIPTOR_HANDLE depthTextureHandle,
 	Effect effect
 ) {
 	assert(dxCommon_);
@@ -59,50 +60,69 @@ void FullscreenCopy::Draw(
 	else if (effect == Effect::kGaussianBlur) {
 		pipelineState = gaussianBlurPipelineState_.Get();
 	}
+	else if (effect == Effect::kOutline) {
+		pipelineState = outlinePipelineState_.Get();
+	}
 	commandList->SetPipelineState(pipelineState);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootDescriptorTable(0, textureHandle);
+	commandList->SetGraphicsRootDescriptorTable(1, depthTextureHandle);
 	commandList->SetGraphicsRootConstantBufferView(
-		1,
+		2,
 		parameterResources_[parameterIndex]->GetGPUVirtualAddress()
 	);
 	commandList->DrawInstanced(3, 1, 0, 0);
 }
 
 void FullscreenCopy::CreateRootSignature() {
-	D3D12_DESCRIPTOR_RANGE descriptorRange{};
-	descriptorRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-	descriptorRange.NumDescriptors = 1;
-	descriptorRange.BaseShaderRegister = 0;
-	descriptorRange.OffsetInDescriptorsFromTableStart =
-		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+	D3D12_DESCRIPTOR_RANGE descriptorRanges[2]{};
+	for (uint32_t index = 0; index < 2; ++index) {
+		descriptorRanges[index].RangeType =
+			D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+		descriptorRanges[index].NumDescriptors = 1;
+		descriptorRanges[index].BaseShaderRegister = index;
+		descriptorRanges[index].OffsetInDescriptorsFromTableStart =
+			D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+	}
 
-	D3D12_ROOT_PARAMETER rootParameters[2]{};
+	D3D12_ROOT_PARAMETER rootParameters[3]{};
 	rootParameters[0].ParameterType =
 		D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	rootParameters[0].DescriptorTable.pDescriptorRanges = &descriptorRange;
+	rootParameters[0].DescriptorTable.pDescriptorRanges =
+		&descriptorRanges[0];
 	rootParameters[0].DescriptorTable.NumDescriptorRanges = 1;
 
-	rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[1].ParameterType =
+		D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	rootParameters[1].Descriptor.ShaderRegister = 0;
+	rootParameters[1].DescriptorTable.pDescriptorRanges =
+		&descriptorRanges[1];
+	rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
 
-	D3D12_STATIC_SAMPLER_DESC sampler{};
-	sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-	sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-	sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-	sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-	sampler.ShaderRegister = 0;
-	sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	sampler.MaxLOD = D3D12_FLOAT32_MAX;
+	rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[2].Descriptor.ShaderRegister = 0;
+
+	D3D12_STATIC_SAMPLER_DESC samplers[2]{};
+	for (uint32_t index = 0; index < 2; ++index) {
+		samplers[index].Filter = index == 0
+			? D3D12_FILTER_MIN_MAG_MIP_LINEAR
+			: D3D12_FILTER_MIN_MAG_MIP_POINT;
+		samplers[index].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplers[index].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplers[index].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplers[index].ShaderRegister = index;
+		samplers[index].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+		samplers[index].MaxLOD = D3D12_FLOAT32_MAX;
+	}
 
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 	rootSignatureDesc.pParameters = rootParameters;
 	rootSignatureDesc.NumParameters = _countof(rootParameters);
-	rootSignatureDesc.pStaticSamplers = &sampler;
-	rootSignatureDesc.NumStaticSamplers = 1;
+	rootSignatureDesc.pStaticSamplers = samplers;
+	rootSignatureDesc.NumStaticSamplers = _countof(samplers);
 
 	Microsoft::WRL::ComPtr<ID3DBlob> signatureBlob;
 	Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
@@ -155,12 +175,17 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/GaussianBlur.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto outlinePixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/Outline.PS.hlsl",
+		L"ps_6_0"
+	);
 	assert(vertexShader);
 	assert(copyPixelShader);
 	assert(grayscalePixelShader);
 	assert(vignettePixelShader);
 	assert(boxBlurPixelShader);
 	assert(gaussianBlurPixelShader);
+	assert(outlinePixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -240,6 +265,16 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&gaussianBlurPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		outlinePixelShader->GetBufferPointer(),
+		outlinePixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&outlinePipelineState_)
 	);
 	assert(SUCCEEDED(result));
 }

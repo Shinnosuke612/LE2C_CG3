@@ -66,6 +66,7 @@ void Game::Update() {
 		vignetteEnabled_ = false;
 		boxBlurEnabled_ = false;
 		gaussianBlurEnabled_ = false;
+		outlineEnabled_ = false;
 	}
 	ImGui::TextDisabled("Applied from top to bottom");
 	ImGui::Separator();
@@ -159,6 +160,62 @@ void Game::Update() {
 		ImGui::TreePop();
 	}
 	ImGui::PopID();
+	ImGui::Separator();
+
+	ImGui::PushID("Outline");
+	ImGui::Checkbox("##Enabled", &outlineEnabled_);
+	ImGui::SameLine();
+	if (ImGui::TreeNodeEx(
+		"Outline",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
+		ImGui::TextUnformatted("Sources");
+		ImGui::Checkbox("Luminance", &outlineLuminanceEnabled_);
+		ImGui::SameLine();
+		ImGui::Checkbox("Depth", &outlineDepthEnabled_);
+		if (!outlineLuminanceEnabled_ && !outlineDepthEnabled_) {
+			ImGui::TextDisabled("Enable at least one source");
+		}
+
+		ImGui::SeparatorText("Detection");
+		if (outlineLuminanceEnabled_) {
+			ImGui::SliderFloat(
+				"Luminance Weight",
+				&outlineLuminanceWeight_,
+				0.0f,
+				10.0f
+			);
+		}
+		if (outlineDepthEnabled_) {
+			ImGui::SliderFloat(
+				"Depth Weight",
+				&outlineDepthWeight_,
+				0.0f,
+				10.0f
+			);
+		}
+		ImGui::SliderFloat(
+			"Threshold",
+			&outlineThreshold_,
+			0.0f,
+			2.0f
+		);
+		ImGui::SliderFloat(
+			"Softness",
+			&outlineSoftness_,
+			0.001f,
+			1.0f
+		);
+		ImGui::SliderFloat(
+			"Thickness",
+			&outlineThickness_,
+			1.0f,
+			5.0f
+		);
+		ImGui::ColorEdit4("Color", outlineColor_);
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
 
 	ImGui::EndChild();
 	ImGui::End();
@@ -230,6 +287,8 @@ void Game::Draw() {
 	fullscreenCopy_->BeginFrame();
 	D3D12_GPU_DESCRIPTOR_HANDLE sourceHandle =
 		sceneRenderTarget_->GetSrvGpuHandle();
+	const D3D12_GPU_DESCRIPTOR_HANDLE depthHandle =
+		sceneRenderTarget_->GetDepthSrvGpuHandle();
 	int passIndex = 0;
 	auto applyEffect = [&](
 		FullscreenCopy::Effect effect,
@@ -240,7 +299,7 @@ void Game::Draw() {
 		destination->Begin();
 		srvManager_->PreDraw();
 		fullscreenCopy_->SetParameters(parameters);
-		fullscreenCopy_->Draw(sourceHandle, effect);
+		fullscreenCopy_->Draw(sourceHandle, depthHandle, effect);
 		destination->End();
 		sourceHandle = destination->GetSrvGpuHandle();
 		++passIndex;
@@ -273,6 +332,27 @@ void Game::Draw() {
 		parameters.gaussianSigma = gaussianBlurSigma_;
 		applyEffect(FullscreenCopy::Effect::kGaussianBlur, parameters);
 	}
+	if (outlineEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.outlineLuminanceWeight = outlineLuminanceWeight_;
+		parameters.outlineDepthWeight = outlineDepthWeight_;
+		parameters.outlineThreshold = outlineThreshold_;
+		parameters.outlineSoftness = outlineSoftness_;
+		parameters.outlineThickness = outlineThickness_;
+		Camera* camera =
+			Object3dCommon::GetInstance()->GetDefaultCamera();
+		if (camera) {
+			parameters.cameraNear = camera->GetNearClip();
+			parameters.cameraFar = camera->GetFarClip();
+		}
+		parameters.outlineFlags =
+			(outlineLuminanceEnabled_ ? 1u : 0u) |
+			(outlineDepthEnabled_ ? 2u : 0u);
+		for (uint32_t index = 0; index < 4; ++index) {
+			parameters.outlineColor[index] = outlineColor_[index];
+		}
+		applyEffect(FullscreenCopy::Effect::kOutline, parameters);
+	}
 	if (passIndex == 0) {
 		applyEffect(
 			FullscreenCopy::Effect::kCopy,
@@ -282,7 +362,7 @@ void Game::Draw() {
 
 	dxCommon_->PreDraw();
 	srvManager_->PreDraw();
-	fullscreenCopy_->Draw(sourceHandle);
+	fullscreenCopy_->Draw(sourceHandle, depthHandle);
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->EndFrame();
 #endif
@@ -317,7 +397,8 @@ int Game::GetEnabledPostEffectCount() const {
 		static_cast<int>(grayscaleEnabled_) +
 		static_cast<int>(vignetteEnabled_) +
 		static_cast<int>(boxBlurEnabled_) +
-		static_cast<int>(gaussianBlurEnabled_);
+		static_cast<int>(gaussianBlurEnabled_) +
+		static_cast<int>(outlineEnabled_);
 }
 
 SceneRenderTarget* Game::GetPostProcessOutputTarget() const {

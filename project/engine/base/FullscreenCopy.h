@@ -13,7 +13,8 @@ public:
 		kGrayscale,
 		kVignette,
 		kBoxBlur,
-		kGaussianBlur
+		kGaussianBlur,
+		kOutline
 	};
 
 	struct Parameters {
@@ -24,6 +25,15 @@ public:
 		uint32_t blurRadius = 1;
 		float gaussianSigma = 1.0f;
 		float padding[2]{};
+		float outlineLuminanceWeight = 1.0f;
+		float outlineDepthWeight = 1.0f;
+		float outlineThreshold = 0.1f;
+		float outlineSoftness = 0.05f;
+		float outlineThickness = 1.0f;
+		float cameraNear = 0.1f;
+		float cameraFar = 1000.0f;
+		uint32_t outlineFlags = 0;
+		float outlineColor[4]{ 0.0f, 0.0f, 0.0f, 1.0f };
 	};
 
 	void Initialize(DirectXCommon* dxCommon);
@@ -31,6 +41,7 @@ public:
 	void SetParameters(const Parameters& parameters);
 	void Draw(
 		D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
+		D3D12_GPU_DESCRIPTOR_HANDLE depthTextureHandle,
 		Effect effect = Effect::kCopy
 	);
 
@@ -45,6 +56,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> vignettePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> boxBlurPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> gaussianBlurPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> outlinePipelineState_;
 	static constexpr uint32_t kMaxDrawsPerFrame = 8;
 	Microsoft::WRL::ComPtr<ID3D12Resource>
 		parameterResources_[kMaxDrawsPerFrame];
