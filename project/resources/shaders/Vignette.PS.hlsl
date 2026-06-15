@@ -10,7 +10,8 @@ struct PostProcessParameters
     float vignetteIntensity;
     float blurStrength;
     uint blurRadius;
-    float3 padding;
+    float gaussianSigma;
+    float2 padding;
 };
 ConstantBuffer<PostProcessParameters> gParameters : register(b0);
 

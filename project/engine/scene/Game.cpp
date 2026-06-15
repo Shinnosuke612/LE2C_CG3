@@ -34,13 +34,15 @@ void Game::Initialize() {
 		dxCommon_->GetClientWidth(),
 		dxCommon_->GetClientHeight()
 	);
-	postProcessRenderTarget_ = new SceneRenderTarget();
-	postProcessRenderTarget_->Initialize(
-		dxCommon_,
-		srvManager_,
-		dxCommon_->GetClientWidth(),
-		dxCommon_->GetClientHeight()
-	);
+	for (SceneRenderTarget*& renderTarget : postProcessRenderTargets_) {
+		renderTarget = new SceneRenderTarget();
+		renderTarget->Initialize(
+			dxCommon_,
+			srvManager_,
+			dxCommon_->GetClientWidth(),
+			dxCommon_->GetClientHeight()
+		);
+	}
 	fullscreenCopy_ = new FullscreenCopy();
 	fullscreenCopy_->Initialize(dxCommon_);
 }
@@ -56,20 +58,54 @@ void Game::Update() {
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	DebugRenderer::GetInstance()->Clear();
 
-	ImGui::Begin("Post Process");
-	ImGui::RadioButton("None", &postProcessEffect_, 0);
+	ImGui::Begin("Post Process Stack");
+	ImGui::Text("Active: %d", GetEnabledPostEffectCount());
 	ImGui::SameLine();
-	ImGui::RadioButton("Grayscale", &postProcessEffect_, 1);
+	if (ImGui::SmallButton("Disable All")) {
+		grayscaleEnabled_ = false;
+		vignetteEnabled_ = false;
+		boxBlurEnabled_ = false;
+		gaussianBlurEnabled_ = false;
+	}
+	ImGui::TextDisabled("Applied from top to bottom");
+	ImGui::Separator();
+
+	ImGui::BeginChild("EffectStack", ImVec2(0.0f, 0.0f), true);
+
+	ImGui::PushID("Grayscale");
+	ImGui::Checkbox("##Enabled", &grayscaleEnabled_);
 	ImGui::SameLine();
-	ImGui::RadioButton("Vignette", &postProcessEffect_, 2);
+	ImGui::TextUnformatted("Grayscale");
+	ImGui::PopID();
+	ImGui::Separator();
+
+	ImGui::PushID("Vignette");
+	ImGui::Checkbox("##Enabled", &vignetteEnabled_);
 	ImGui::SameLine();
-	ImGui::RadioButton("Box Blur", &postProcessEffect_, 3);
-	if (postProcessEffect_ == 2) {
+	if (ImGui::TreeNodeEx(
+		"Vignette",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
 		ImGui::SliderFloat("Scale", &vignetteScale_, 0.0f, 32.0f);
 		ImGui::SliderFloat("Power", &vignettePower_, 0.05f, 4.0f);
-		ImGui::SliderFloat("Intensity", &vignetteIntensity_, 0.0f, 1.0f);
+		ImGui::SliderFloat(
+			"Intensity",
+			&vignetteIntensity_,
+			0.0f,
+			1.0f
+		);
+		ImGui::TreePop();
 	}
-	else if (postProcessEffect_ == 3) {
+	ImGui::PopID();
+	ImGui::Separator();
+
+	ImGui::PushID("BoxBlur");
+	ImGui::Checkbox("##Enabled", &boxBlurEnabled_);
+	ImGui::SameLine();
+	if (ImGui::TreeNodeEx(
+		"Box Blur",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
 		const char* kernelNames[] = { "3 x 3", "5 x 5" };
 		int kernelIndex = boxBlurKernelSize_ == 5 ? 1 : 0;
 		if (ImGui::Combo(
@@ -86,7 +122,45 @@ void Game::Update() {
 			0.0f,
 			1.0f
 		);
+		ImGui::TreePop();
 	}
+	ImGui::PopID();
+	ImGui::Separator();
+
+	ImGui::PushID("GaussianBlur");
+	ImGui::Checkbox("##Enabled", &gaussianBlurEnabled_);
+	ImGui::SameLine();
+	if (ImGui::TreeNodeEx(
+		"Gaussian Blur",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
+		const char* kernelNames[] = { "3 x 3", "5 x 5" };
+		int kernelIndex = gaussianBlurKernelSize_ == 5 ? 1 : 0;
+		if (ImGui::Combo(
+			"Kernel",
+			&kernelIndex,
+			kernelNames,
+			IM_ARRAYSIZE(kernelNames)
+		)) {
+			gaussianBlurKernelSize_ = kernelIndex == 1 ? 5 : 3;
+		}
+		ImGui::SliderFloat(
+			"Sigma",
+			&gaussianBlurSigma_,
+			0.1f,
+			5.0f
+		);
+		ImGui::SliderFloat(
+			"Strength",
+			&gaussianBlurStrength_,
+			0.0f,
+			1.0f
+		);
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
+
+	ImGui::EndChild();
 	ImGui::End();
 
 	Camera* editorCamera =
@@ -114,28 +188,32 @@ void Game::Draw() {
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->DrawEditorWorkspace(
-		postProcessRenderTarget_->GetSrvGpuHandle(),
-		postProcessRenderTarget_->GetWidth(),
-		postProcessRenderTarget_->GetHeight(),
+		GetPostProcessOutputTarget()->GetSrvGpuHandle(),
+		GetPostProcessOutputTarget()->GetWidth(),
+		GetPostProcessOutputTarget()->GetHeight(),
 		sceneManager_->GetCurrentSceneName().c_str()
 	);
 	sceneRenderTarget_->Resize(
 		imguiManager_->GetSceneViewWidth(),
 		imguiManager_->GetSceneViewHeight()
 	);
-	postProcessRenderTarget_->Resize(
-		imguiManager_->GetSceneViewWidth(),
-		imguiManager_->GetSceneViewHeight()
-	);
+	for (SceneRenderTarget* renderTarget : postProcessRenderTargets_) {
+		renderTarget->Resize(
+			imguiManager_->GetSceneViewWidth(),
+			imguiManager_->GetSceneViewHeight()
+		);
+	}
 #else
 	sceneRenderTarget_->Resize(
 		dxCommon_->GetClientWidth(),
 		dxCommon_->GetClientHeight()
 	);
-	postProcessRenderTarget_->Resize(
-		dxCommon_->GetClientWidth(),
-		dxCommon_->GetClientHeight()
-	);
+	for (SceneRenderTarget* renderTarget : postProcessRenderTargets_) {
+		renderTarget->Resize(
+			dxCommon_->GetClientWidth(),
+			dxCommon_->GetClientHeight()
+		);
+	}
 #endif
 
 	sceneRenderTarget_->Begin();
@@ -149,36 +227,62 @@ void Game::Draw() {
 #endif
 	sceneRenderTarget_->End();
 
-	postProcessRenderTarget_->Begin();
-	srvManager_->PreDraw();
-	FullscreenCopy::Parameters parameters{};
-	parameters.vignetteScale = vignetteScale_;
-	parameters.vignettePower = vignettePower_;
-	parameters.vignetteIntensity = vignetteIntensity_;
-	parameters.blurStrength = boxBlurStrength_;
-	parameters.blurRadius = boxBlurKernelSize_ == 5 ? 2u : 1u;
-	fullscreenCopy_->SetParameters(parameters);
-	FullscreenCopy::Effect effect = FullscreenCopy::Effect::kCopy;
-	if (postProcessEffect_ == 1) {
-		effect = FullscreenCopy::Effect::kGrayscale;
+	fullscreenCopy_->BeginFrame();
+	D3D12_GPU_DESCRIPTOR_HANDLE sourceHandle =
+		sceneRenderTarget_->GetSrvGpuHandle();
+	int passIndex = 0;
+	auto applyEffect = [&](
+		FullscreenCopy::Effect effect,
+		const FullscreenCopy::Parameters& parameters
+	) {
+		SceneRenderTarget* destination =
+			postProcessRenderTargets_[passIndex % 2];
+		destination->Begin();
+		srvManager_->PreDraw();
+		fullscreenCopy_->SetParameters(parameters);
+		fullscreenCopy_->Draw(sourceHandle, effect);
+		destination->End();
+		sourceHandle = destination->GetSrvGpuHandle();
+		++passIndex;
+	};
+
+	if (grayscaleEnabled_) {
+		applyEffect(
+			FullscreenCopy::Effect::kGrayscale,
+			FullscreenCopy::Parameters{}
+		);
 	}
-	else if (postProcessEffect_ == 2) {
-		effect = FullscreenCopy::Effect::kVignette;
+	if (vignetteEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.vignetteScale = vignetteScale_;
+		parameters.vignettePower = vignettePower_;
+		parameters.vignetteIntensity = vignetteIntensity_;
+		applyEffect(FullscreenCopy::Effect::kVignette, parameters);
 	}
-	else if (postProcessEffect_ == 3) {
-		effect = FullscreenCopy::Effect::kBoxBlur;
+	if (boxBlurEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.blurStrength = boxBlurStrength_;
+		parameters.blurRadius = boxBlurKernelSize_ == 5 ? 2u : 1u;
+		applyEffect(FullscreenCopy::Effect::kBoxBlur, parameters);
 	}
-	fullscreenCopy_->Draw(
-		sceneRenderTarget_->GetSrvGpuHandle(),
-		effect
-	);
-	postProcessRenderTarget_->End();
+	if (gaussianBlurEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.blurStrength = gaussianBlurStrength_;
+		parameters.blurRadius =
+			gaussianBlurKernelSize_ == 5 ? 2u : 1u;
+		parameters.gaussianSigma = gaussianBlurSigma_;
+		applyEffect(FullscreenCopy::Effect::kGaussianBlur, parameters);
+	}
+	if (passIndex == 0) {
+		applyEffect(
+			FullscreenCopy::Effect::kCopy,
+			FullscreenCopy::Parameters{}
+		);
+	}
 
 	dxCommon_->PreDraw();
 	srvManager_->PreDraw();
-	fullscreenCopy_->Draw(
-		postProcessRenderTarget_->GetSrvGpuHandle()
-	);
+	fullscreenCopy_->Draw(sourceHandle);
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->EndFrame();
 #endif
@@ -194,8 +298,10 @@ void Game::Finalize() {
 	delete sceneRenderTarget_;
 	sceneRenderTarget_ = nullptr;
 
-	delete postProcessRenderTarget_;
-	postProcessRenderTarget_ = nullptr;
+	for (SceneRenderTarget*& renderTarget : postProcessRenderTargets_) {
+		delete renderTarget;
+		renderTarget = nullptr;
+	}
 
 	if (sceneManager_) {
 		delete sceneManager_;
@@ -204,4 +310,18 @@ void Game::Finalize() {
 
 	// 基底クラスの終了処理
 	Framework::Finalize();
+}
+
+int Game::GetEnabledPostEffectCount() const {
+	return
+		static_cast<int>(grayscaleEnabled_) +
+		static_cast<int>(vignetteEnabled_) +
+		static_cast<int>(boxBlurEnabled_) +
+		static_cast<int>(gaussianBlurEnabled_);
+}
+
+SceneRenderTarget* Game::GetPostProcessOutputTarget() const {
+	const int effectCount = GetEnabledPostEffectCount();
+	const int passCount = effectCount > 0 ? effectCount : 1;
+	return postProcessRenderTargets_[(passCount - 1) % 2];
 }

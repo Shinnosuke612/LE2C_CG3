@@ -11,21 +11,27 @@ void FullscreenCopy::Initialize(DirectXCommon* dxCommon) {
 	CreateRootSignature();
 	CreatePipelineState();
 
-	parametersResource_ =
-		dxCommon_->CreateBufferResource(sizeof(Parameters));
-	parametersResource_->Map(
-		0,
-		nullptr,
-		reinterpret_cast<void**>(&parametersData_)
-	);
-	*parametersData_ = {};
+	for (uint32_t index = 0; index < kMaxDrawsPerFrame; ++index) {
+		parameterResources_[index] =
+			dxCommon_->CreateBufferResource(sizeof(Parameters));
+		parameterResources_[index]->Map(
+			0,
+			nullptr,
+			reinterpret_cast<void**>(&parameterData_[index])
+		);
+		*parameterData_[index] = {};
+	}
+}
+
+void FullscreenCopy::BeginFrame() {
+	drawIndex_ = 0;
+	pendingParameters_ = {};
 }
 
 void FullscreenCopy::SetParameters(
 	const Parameters& parameters
 ) {
-	assert(parametersData_);
-	*parametersData_ = parameters;
+	pendingParameters_ = parameters;
 }
 
 void FullscreenCopy::Draw(
@@ -33,6 +39,10 @@ void FullscreenCopy::Draw(
 	Effect effect
 ) {
 	assert(dxCommon_);
+	assert(drawIndex_ < kMaxDrawsPerFrame);
+
+	const uint32_t parameterIndex = drawIndex_++;
+	*parameterData_[parameterIndex] = pendingParameters_;
 
 	ID3D12GraphicsCommandList* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
@@ -46,12 +56,15 @@ void FullscreenCopy::Draw(
 	else if (effect == Effect::kBoxBlur) {
 		pipelineState = boxBlurPipelineState_.Get();
 	}
+	else if (effect == Effect::kGaussianBlur) {
+		pipelineState = gaussianBlurPipelineState_.Get();
+	}
 	commandList->SetPipelineState(pipelineState);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootDescriptorTable(0, textureHandle);
 	commandList->SetGraphicsRootConstantBufferView(
 		1,
-		parametersResource_->GetGPUVirtualAddress()
+		parameterResources_[parameterIndex]->GetGPUVirtualAddress()
 	);
 	commandList->DrawInstanced(3, 1, 0, 0);
 }
@@ -138,11 +151,16 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/BoxBlur.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto gaussianBlurPixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/GaussianBlur.PS.hlsl",
+		L"ps_6_0"
+	);
 	assert(vertexShader);
 	assert(copyPixelShader);
 	assert(grayscalePixelShader);
 	assert(vignettePixelShader);
 	assert(boxBlurPixelShader);
+	assert(gaussianBlurPixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -212,6 +230,16 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&boxBlurPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		gaussianBlurPixelShader->GetBufferPointer(),
+		gaussianBlurPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&gaussianBlurPipelineState_)
 	);
 	assert(SUCCEEDED(result));
 }
