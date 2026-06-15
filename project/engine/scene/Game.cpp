@@ -66,6 +66,7 @@ void Game::Update() {
 		vignetteEnabled_ = false;
 		boxBlurEnabled_ = false;
 		gaussianBlurEnabled_ = false;
+		radialBlurEnabled_ = false;
 		outlineEnabled_ = false;
 	}
 	ImGui::TextDisabled("Applied from top to bottom");
@@ -156,6 +157,39 @@ void Game::Update() {
 			&gaussianBlurStrength_,
 			0.0f,
 			1.0f
+		);
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
+	ImGui::Separator();
+
+	ImGui::PushID("RadialBlur");
+	ImGui::Checkbox("##Enabled", &radialBlurEnabled_);
+	ImGui::SameLine();
+	if (ImGui::TreeNodeEx(
+		"Radial Blur",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
+		ImGui::DragFloat2(
+			"Center",
+			radialBlurCenter_,
+			0.005f,
+			0.0f,
+			1.0f,
+			"%.3f"
+		);
+		ImGui::SliderFloat(
+			"Blur Width",
+			&radialBlurWidth_,
+			0.0f,
+			0.1f,
+			"%.4f"
+		);
+		ImGui::SliderInt(
+			"Samples",
+			&radialBlurSamples_,
+			2,
+			32
 		);
 		ImGui::TreePop();
 	}
@@ -332,6 +366,15 @@ void Game::Draw() {
 		parameters.gaussianSigma = gaussianBlurSigma_;
 		applyEffect(FullscreenCopy::Effect::kGaussianBlur, parameters);
 	}
+	if (radialBlurEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.radialBlurCenter[0] = radialBlurCenter_[0];
+		parameters.radialBlurCenter[1] = radialBlurCenter_[1];
+		parameters.radialBlurWidth = radialBlurWidth_;
+		parameters.radialBlurSamples =
+			static_cast<uint32_t>(radialBlurSamples_);
+		applyEffect(FullscreenCopy::Effect::kRadialBlur, parameters);
+	}
 	if (outlineEnabled_) {
 		FullscreenCopy::Parameters parameters{};
 		parameters.outlineLuminanceWeight = outlineLuminanceWeight_;
@@ -398,6 +441,7 @@ int Game::GetEnabledPostEffectCount() const {
 		static_cast<int>(vignetteEnabled_) +
 		static_cast<int>(boxBlurEnabled_) +
 		static_cast<int>(gaussianBlurEnabled_) +
+		static_cast<int>(radialBlurEnabled_) +
 		static_cast<int>(outlineEnabled_);
 }
 

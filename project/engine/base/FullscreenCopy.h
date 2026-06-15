@@ -14,6 +14,7 @@ public:
 		kVignette,
 		kBoxBlur,
 		kGaussianBlur,
+		kRadialBlur,
 		kOutline
 	};
 
@@ -34,6 +35,9 @@ public:
 		float cameraFar = 1000.0f;
 		uint32_t outlineFlags = 0;
 		float outlineColor[4]{ 0.0f, 0.0f, 0.0f, 1.0f };
+		float radialBlurCenter[2]{ 0.5f, 0.5f };
+		float radialBlurWidth = 0.01f;
+		uint32_t radialBlurSamples = 10;
 	};
 
 	void Initialize(DirectXCommon* dxCommon);
@@ -56,6 +60,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> vignettePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> boxBlurPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> gaussianBlurPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> radialBlurPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> outlinePipelineState_;
 	static constexpr uint32_t kMaxDrawsPerFrame = 8;
 	Microsoft::WRL::ComPtr<ID3D12Resource>

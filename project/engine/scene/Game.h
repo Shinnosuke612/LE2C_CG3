@@ -24,6 +24,7 @@ private:
 	bool vignetteEnabled_ = false;
 	bool boxBlurEnabled_ = false;
 	bool gaussianBlurEnabled_ = false;
+	bool radialBlurEnabled_ = false;
 	bool outlineEnabled_ = false;
 	bool outlineLuminanceEnabled_ = false;
 	bool outlineDepthEnabled_ = true;
@@ -35,6 +36,9 @@ private:
 	int gaussianBlurKernelSize_ = 3;
 	float gaussianBlurSigma_ = 1.0f;
 	float gaussianBlurStrength_ = 1.0f;
+	float radialBlurCenter_[2]{ 0.5f, 0.5f };
+	float radialBlurWidth_ = 0.01f;
+	int radialBlurSamples_ = 10;
 	float outlineLuminanceWeight_ = 1.0f;
 	float outlineDepthWeight_ = 1.0f;
 	float outlineThreshold_ = 0.1f;

@@ -60,6 +60,9 @@ void FullscreenCopy::Draw(
 	else if (effect == Effect::kGaussianBlur) {
 		pipelineState = gaussianBlurPipelineState_.Get();
 	}
+	else if (effect == Effect::kRadialBlur) {
+		pipelineState = radialBlurPipelineState_.Get();
+	}
 	else if (effect == Effect::kOutline) {
 		pipelineState = outlinePipelineState_.Get();
 	}
@@ -175,6 +178,10 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/GaussianBlur.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto radialBlurPixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/RadialBlur.PS.hlsl",
+		L"ps_6_0"
+	);
 	const auto outlinePixelShader = dxCommon_->CompileShader(
 		L"resources/shaders/Outline.PS.hlsl",
 		L"ps_6_0"
@@ -185,6 +192,7 @@ void FullscreenCopy::CreatePipelineState() {
 	assert(vignettePixelShader);
 	assert(boxBlurPixelShader);
 	assert(gaussianBlurPixelShader);
+	assert(radialBlurPixelShader);
 	assert(outlinePixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
@@ -265,6 +273,16 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&gaussianBlurPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		radialBlurPixelShader->GetBufferPointer(),
+		radialBlurPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&radialBlurPipelineState_)
 	);
 	assert(SUCCEEDED(result));
 
