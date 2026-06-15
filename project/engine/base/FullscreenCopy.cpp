@@ -37,6 +37,7 @@ void FullscreenCopy::SetParameters(
 void FullscreenCopy::Draw(
 	D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
 	D3D12_GPU_DESCRIPTOR_HANDLE depthTextureHandle,
+	D3D12_GPU_DESCRIPTOR_HANDLE maskTextureHandle,
 	Effect effect
 ) {
 	assert(dxCommon_);
@@ -63,6 +64,9 @@ void FullscreenCopy::Draw(
 	else if (effect == Effect::kRadialBlur) {
 		pipelineState = radialBlurPipelineState_.Get();
 	}
+	else if (effect == Effect::kDissolve) {
+		pipelineState = dissolvePipelineState_.Get();
+	}
 	else if (effect == Effect::kOutline) {
 		pipelineState = outlinePipelineState_.Get();
 	}
@@ -70,16 +74,17 @@ void FullscreenCopy::Draw(
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootDescriptorTable(0, textureHandle);
 	commandList->SetGraphicsRootDescriptorTable(1, depthTextureHandle);
+	commandList->SetGraphicsRootDescriptorTable(2, maskTextureHandle);
 	commandList->SetGraphicsRootConstantBufferView(
-		2,
+		3,
 		parameterResources_[parameterIndex]->GetGPUVirtualAddress()
 	);
 	commandList->DrawInstanced(3, 1, 0, 0);
 }
 
 void FullscreenCopy::CreateRootSignature() {
-	D3D12_DESCRIPTOR_RANGE descriptorRanges[2]{};
-	for (uint32_t index = 0; index < 2; ++index) {
+	D3D12_DESCRIPTOR_RANGE descriptorRanges[3]{};
+	for (uint32_t index = 0; index < 3; ++index) {
 		descriptorRanges[index].RangeType =
 			D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 		descriptorRanges[index].NumDescriptors = 1;
@@ -88,7 +93,7 @@ void FullscreenCopy::CreateRootSignature() {
 			D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 	}
 
-	D3D12_ROOT_PARAMETER rootParameters[3]{};
+	D3D12_ROOT_PARAMETER rootParameters[4]{};
 	rootParameters[0].ParameterType =
 		D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -103,9 +108,16 @@ void FullscreenCopy::CreateRootSignature() {
 		&descriptorRanges[1];
 	rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
 
-	rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[2].ParameterType =
+		D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	rootParameters[2].Descriptor.ShaderRegister = 0;
+	rootParameters[2].DescriptorTable.pDescriptorRanges =
+		&descriptorRanges[2];
+	rootParameters[2].DescriptorTable.NumDescriptorRanges = 1;
+
+	rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[3].Descriptor.ShaderRegister = 0;
 
 	D3D12_STATIC_SAMPLER_DESC samplers[2]{};
 	for (uint32_t index = 0; index < 2; ++index) {
@@ -182,6 +194,10 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/RadialBlur.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto dissolvePixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/Dissolve.PS.hlsl",
+		L"ps_6_0"
+	);
 	const auto outlinePixelShader = dxCommon_->CompileShader(
 		L"resources/shaders/Outline.PS.hlsl",
 		L"ps_6_0"
@@ -193,6 +209,7 @@ void FullscreenCopy::CreatePipelineState() {
 	assert(boxBlurPixelShader);
 	assert(gaussianBlurPixelShader);
 	assert(radialBlurPixelShader);
+	assert(dissolvePixelShader);
 	assert(outlinePixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
@@ -283,6 +300,16 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&radialBlurPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		dissolvePixelShader->GetBufferPointer(),
+		dissolvePixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&dissolvePipelineState_)
 	);
 	assert(SUCCEEDED(result));
 

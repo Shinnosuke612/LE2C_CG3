@@ -8,6 +8,7 @@
 #include "../io/Input.h"
 #include "../2d/Sprite.h"
 #include "../2d/SpriteCommon.h"
+#include "../2d/TextureManager.h"
 #include "../3d/Camera.h"
 #include "../3d/Object3dCommon.h"
 #include "../3d/Object3d.h"
@@ -45,6 +46,9 @@ void Game::Initialize() {
 	}
 	fullscreenCopy_ = new FullscreenCopy();
 	fullscreenCopy_->Initialize(dxCommon_);
+
+	TextureManager::GetInstance()->LoadTexture("resources/noise0.png");
+	TextureManager::GetInstance()->LoadTexture("resources/noise1.png");
 }
 
 void Game::Update() {
@@ -67,6 +71,7 @@ void Game::Update() {
 		boxBlurEnabled_ = false;
 		gaussianBlurEnabled_ = false;
 		radialBlurEnabled_ = false;
+		dissolveEnabled_ = false;
 		outlineEnabled_ = false;
 	}
 	ImGui::TextDisabled("Applied from top to bottom");
@@ -191,6 +196,38 @@ void Game::Update() {
 			2,
 			32
 		);
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
+	ImGui::Separator();
+
+	ImGui::PushID("Dissolve");
+	ImGui::Checkbox("##Enabled", &dissolveEnabled_);
+	ImGui::SameLine();
+	if (ImGui::TreeNodeEx(
+		"Dissolve",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
+		const char* maskNames[] = { "Noise 0", "Noise 1" };
+		ImGui::Combo(
+			"Mask",
+			&dissolveMaskIndex_,
+			maskNames,
+			IM_ARRAYSIZE(maskNames)
+		);
+		ImGui::SliderFloat(
+			"Threshold",
+			&dissolveThreshold_,
+			0.0f,
+			1.0f
+		);
+		ImGui::SliderFloat(
+			"Edge Width",
+			&dissolveEdgeWidth_,
+			0.001f,
+			0.25f
+		);
+		ImGui::ColorEdit4("Edge Color", dissolveEdgeColor_);
 		ImGui::TreePop();
 	}
 	ImGui::PopID();
@@ -323,6 +360,12 @@ void Game::Draw() {
 		sceneRenderTarget_->GetSrvGpuHandle();
 	const D3D12_GPU_DESCRIPTOR_HANDLE depthHandle =
 		sceneRenderTarget_->GetDepthSrvGpuHandle();
+	const char* dissolveMaskPath =
+		dissolveMaskIndex_ == 1
+			? "resources/noise1.png"
+			: "resources/noise0.png";
+	const D3D12_GPU_DESCRIPTOR_HANDLE maskHandle =
+		TextureManager::GetInstance()->GetSrvHandleGPU(dissolveMaskPath);
 	int passIndex = 0;
 	auto applyEffect = [&](
 		FullscreenCopy::Effect effect,
@@ -333,7 +376,12 @@ void Game::Draw() {
 		destination->Begin();
 		srvManager_->PreDraw();
 		fullscreenCopy_->SetParameters(parameters);
-		fullscreenCopy_->Draw(sourceHandle, depthHandle, effect);
+		fullscreenCopy_->Draw(
+			sourceHandle,
+			depthHandle,
+			maskHandle,
+			effect
+		);
 		destination->End();
 		sourceHandle = destination->GetSrvGpuHandle();
 		++passIndex;
@@ -375,6 +423,16 @@ void Game::Draw() {
 			static_cast<uint32_t>(radialBlurSamples_);
 		applyEffect(FullscreenCopy::Effect::kRadialBlur, parameters);
 	}
+	if (dissolveEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.dissolveThreshold = dissolveThreshold_;
+		parameters.dissolveEdgeWidth = dissolveEdgeWidth_;
+		for (uint32_t index = 0; index < 4; ++index) {
+			parameters.dissolveEdgeColor[index] =
+				dissolveEdgeColor_[index];
+		}
+		applyEffect(FullscreenCopy::Effect::kDissolve, parameters);
+	}
 	if (outlineEnabled_) {
 		FullscreenCopy::Parameters parameters{};
 		parameters.outlineLuminanceWeight = outlineLuminanceWeight_;
@@ -405,7 +463,7 @@ void Game::Draw() {
 
 	dxCommon_->PreDraw();
 	srvManager_->PreDraw();
-	fullscreenCopy_->Draw(sourceHandle, depthHandle);
+	fullscreenCopy_->Draw(sourceHandle, depthHandle, maskHandle);
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->EndFrame();
 #endif
@@ -442,6 +500,7 @@ int Game::GetEnabledPostEffectCount() const {
 		static_cast<int>(boxBlurEnabled_) +
 		static_cast<int>(gaussianBlurEnabled_) +
 		static_cast<int>(radialBlurEnabled_) +
+		static_cast<int>(dissolveEnabled_) +
 		static_cast<int>(outlineEnabled_);
 }
 

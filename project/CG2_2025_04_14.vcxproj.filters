@@ -126,6 +126,7 @@
     <None Include=".editorconfig" />
     <None Include="resources\shaders\BoxBlur.PS.hlsl" />
     <None Include="resources\shaders\CopyImage.PS.hlsl" />
+    <None Include="resources\shaders\Dissolve.PS.hlsl" />
     <None Include="resources\shaders\Fullscreen.hlsli" />
     <None Include="resources\shaders\Fullscreen.VS.hlsl" />
     <None Include="resources\shaders\GaussianBlur.PS.hlsl" />

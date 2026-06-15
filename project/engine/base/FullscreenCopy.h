@@ -15,6 +15,7 @@ public:
 		kBoxBlur,
 		kGaussianBlur,
 		kRadialBlur,
+		kDissolve,
 		kOutline
 	};
 
@@ -38,6 +39,10 @@ public:
 		float radialBlurCenter[2]{ 0.5f, 0.5f };
 		float radialBlurWidth = 0.01f;
 		uint32_t radialBlurSamples = 10;
+		float dissolveThreshold = 0.0f;
+		float dissolveEdgeWidth = 0.03f;
+		float dissolvePadding[2]{};
+		float dissolveEdgeColor[4]{ 1.0f, 0.4f, 0.3f, 1.0f };
 	};
 
 	void Initialize(DirectXCommon* dxCommon);
@@ -46,6 +51,7 @@ public:
 	void Draw(
 		D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
 		D3D12_GPU_DESCRIPTOR_HANDLE depthTextureHandle,
+		D3D12_GPU_DESCRIPTOR_HANDLE maskTextureHandle,
 		Effect effect = Effect::kCopy
 	);
 
@@ -61,6 +67,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> boxBlurPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> gaussianBlurPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> radialBlurPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> dissolvePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> outlinePipelineState_;
 	static constexpr uint32_t kMaxDrawsPerFrame = 8;
 	Microsoft::WRL::ComPtr<ID3D12Resource>
