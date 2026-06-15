@@ -279,6 +279,7 @@ void ImGuiManager::BuildDefaultLayout() {
 	ImGui::DockBuilderDockWindow("Title Scene", rightId);
 	ImGui::DockBuilderDockWindow("Light Manager", rightId);
 	ImGui::DockBuilderDockWindow("Particle Effect Editor", rightId);
+	ImGui::DockBuilderDockWindow("Post Process", rightId);
 	ImGui::DockBuilderDockWindow("Project", bottomId);
 	ImGui::DockBuilderDockWindow("Console", bottomId);
 	ImGui::DockBuilderFinish(dockSpaceId);

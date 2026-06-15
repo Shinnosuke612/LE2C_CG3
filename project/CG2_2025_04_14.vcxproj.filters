@@ -124,9 +124,10 @@
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />
-    <None Include="resources\shaders\CopyImage.hlsli" />
     <None Include="resources\shaders\CopyImage.PS.hlsl" />
-    <None Include="resources\shaders\CopyImage.VS.hlsl" />
+    <None Include="resources\shaders\Fullscreen.hlsli" />
+    <None Include="resources\shaders\Fullscreen.VS.hlsl" />
+    <None Include="resources\shaders\Grayscale.PS.hlsl" />
     <None Include="resources\shaders\Object3D.hlsli" />
     <None Include="resources\shaders\Particle.hlsli" />
     <None Include="resources\shaders\Skybox.hlsli" />

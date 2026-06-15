@@ -12,12 +12,19 @@ void FullscreenCopy::Initialize(DirectXCommon* dxCommon) {
 	CreatePipelineState();
 }
 
-void FullscreenCopy::Draw(D3D12_GPU_DESCRIPTOR_HANDLE textureHandle) {
+void FullscreenCopy::Draw(
+	D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
+	Effect effect
+) {
 	assert(dxCommon_);
 
 	ID3D12GraphicsCommandList* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
-	commandList->SetPipelineState(pipelineState_.Get());
+	commandList->SetPipelineState(
+		effect == Effect::kGrayscale
+			? grayscalePipelineState_.Get()
+			: copyPipelineState_.Get()
+	);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootDescriptorTable(0, textureHandle);
 	commandList->DrawInstanced(3, 1, 0, 0);
@@ -81,15 +88,20 @@ void FullscreenCopy::CreateRootSignature() {
 
 void FullscreenCopy::CreatePipelineState() {
 	const auto vertexShader = dxCommon_->CompileShader(
-		L"resources/shaders/CopyImage.VS.hlsl",
+		L"resources/shaders/Fullscreen.VS.hlsl",
 		L"vs_6_0"
 	);
-	const auto pixelShader = dxCommon_->CompileShader(
+	const auto copyPixelShader = dxCommon_->CompileShader(
 		L"resources/shaders/CopyImage.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto grayscalePixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/Grayscale.PS.hlsl",
+		L"ps_6_0"
+	);
 	assert(vertexShader);
-	assert(pixelShader);
+	assert(copyPixelShader);
+	assert(grayscalePixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -112,10 +124,6 @@ void FullscreenCopy::CreatePipelineState() {
 		vertexShader->GetBufferPointer(),
 		vertexShader->GetBufferSize()
 	};
-	pipelineDesc.PS = {
-		pixelShader->GetBufferPointer(),
-		pixelShader->GetBufferSize()
-	};
 	pipelineDesc.BlendState = blendDesc;
 	pipelineDesc.RasterizerState = rasterizerDesc;
 	pipelineDesc.DepthStencilState = depthStencilDesc;
@@ -126,10 +134,23 @@ void FullscreenCopy::CreatePipelineState() {
 	pipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	pipelineDesc.SampleDesc.Count = 1;
 
-	const HRESULT result =
-		dxCommon_->GetDevice()->CreateGraphicsPipelineState(
-			&pipelineDesc,
-			IID_PPV_ARGS(&pipelineState_)
-		);
+	pipelineDesc.PS = {
+		copyPixelShader->GetBufferPointer(),
+		copyPixelShader->GetBufferSize()
+	};
+	HRESULT result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&copyPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		grayscalePixelShader->GetBufferPointer(),
+		grayscalePixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&grayscalePipelineState_)
+	);
 	assert(SUCCEEDED(result));
 }

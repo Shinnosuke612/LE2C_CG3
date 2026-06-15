@@ -15,5 +15,7 @@ public:
 private:
 	SceneManager* sceneManager_ = nullptr;
 	SceneRenderTarget* sceneRenderTarget_ = nullptr;
+	SceneRenderTarget* postProcessRenderTarget_ = nullptr;
 	FullscreenCopy* fullscreenCopy_ = nullptr;
+	bool grayscaleEnabled_ = false;
 };

@@ -34,6 +34,13 @@ void Game::Initialize() {
 		dxCommon_->GetClientWidth(),
 		dxCommon_->GetClientHeight()
 	);
+	postProcessRenderTarget_ = new SceneRenderTarget();
+	postProcessRenderTarget_->Initialize(
+		dxCommon_,
+		srvManager_,
+		dxCommon_->GetClientWidth(),
+		dxCommon_->GetClientHeight()
+	);
 	fullscreenCopy_ = new FullscreenCopy();
 	fullscreenCopy_->Initialize(dxCommon_);
 }
@@ -48,6 +55,10 @@ void Game::Update() {
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	DebugRenderer::GetInstance()->Clear();
+
+	ImGui::Begin("Post Process");
+	ImGui::Checkbox("Grayscale", &grayscaleEnabled_);
+	ImGui::End();
 
 	Camera* editorCamera =
 		Object3dCommon::GetInstance()->GetDefaultCamera();
@@ -74,17 +85,25 @@ void Game::Draw() {
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->DrawEditorWorkspace(
-		sceneRenderTarget_->GetSrvGpuHandle(),
-		sceneRenderTarget_->GetWidth(),
-		sceneRenderTarget_->GetHeight(),
+		postProcessRenderTarget_->GetSrvGpuHandle(),
+		postProcessRenderTarget_->GetWidth(),
+		postProcessRenderTarget_->GetHeight(),
 		sceneManager_->GetCurrentSceneName().c_str()
 	);
 	sceneRenderTarget_->Resize(
 		imguiManager_->GetSceneViewWidth(),
 		imguiManager_->GetSceneViewHeight()
 	);
+	postProcessRenderTarget_->Resize(
+		imguiManager_->GetSceneViewWidth(),
+		imguiManager_->GetSceneViewHeight()
+	);
 #else
 	sceneRenderTarget_->Resize(
+		dxCommon_->GetClientWidth(),
+		dxCommon_->GetClientHeight()
+	);
+	postProcessRenderTarget_->Resize(
 		dxCommon_->GetClientWidth(),
 		dxCommon_->GetClientHeight()
 	);
@@ -101,9 +120,21 @@ void Game::Draw() {
 #endif
 	sceneRenderTarget_->End();
 
+	postProcessRenderTarget_->Begin();
+	srvManager_->PreDraw();
+	fullscreenCopy_->Draw(
+		sceneRenderTarget_->GetSrvGpuHandle(),
+		grayscaleEnabled_
+			? FullscreenCopy::Effect::kGrayscale
+			: FullscreenCopy::Effect::kCopy
+	);
+	postProcessRenderTarget_->End();
+
 	dxCommon_->PreDraw();
 	srvManager_->PreDraw();
-	fullscreenCopy_->Draw(sceneRenderTarget_->GetSrvGpuHandle());
+	fullscreenCopy_->Draw(
+		postProcessRenderTarget_->GetSrvGpuHandle()
+	);
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->EndFrame();
 #endif
@@ -118,6 +149,9 @@ void Game::Finalize() {
 
 	delete sceneRenderTarget_;
 	sceneRenderTarget_ = nullptr;
+
+	delete postProcessRenderTarget_;
+	postProcessRenderTarget_ = nullptr;
 
 	if (sceneManager_) {
 		delete sceneManager_;
