@@ -57,7 +57,16 @@ void Game::Update() {
 	DebugRenderer::GetInstance()->Clear();
 
 	ImGui::Begin("Post Process");
-	ImGui::Checkbox("Grayscale", &grayscaleEnabled_);
+	ImGui::RadioButton("None", &postProcessEffect_, 0);
+	ImGui::SameLine();
+	ImGui::RadioButton("Grayscale", &postProcessEffect_, 1);
+	ImGui::SameLine();
+	ImGui::RadioButton("Vignette", &postProcessEffect_, 2);
+	if (postProcessEffect_ == 2) {
+		ImGui::SliderFloat("Scale", &vignetteScale_, 0.0f, 32.0f);
+		ImGui::SliderFloat("Power", &vignettePower_, 0.05f, 4.0f);
+		ImGui::SliderFloat("Intensity", &vignetteIntensity_, 0.0f, 1.0f);
+	}
 	ImGui::End();
 
 	Camera* editorCamera =
@@ -122,11 +131,22 @@ void Game::Draw() {
 
 	postProcessRenderTarget_->Begin();
 	srvManager_->PreDraw();
+	fullscreenCopy_->SetVignetteParameters({
+		vignetteScale_,
+		vignettePower_,
+		vignetteIntensity_,
+		0.0f
+	});
+	FullscreenCopy::Effect effect = FullscreenCopy::Effect::kCopy;
+	if (postProcessEffect_ == 1) {
+		effect = FullscreenCopy::Effect::kGrayscale;
+	}
+	else if (postProcessEffect_ == 2) {
+		effect = FullscreenCopy::Effect::kVignette;
+	}
 	fullscreenCopy_->Draw(
 		sceneRenderTarget_->GetSrvGpuHandle(),
-		grayscaleEnabled_
-			? FullscreenCopy::Effect::kGrayscale
-			: FullscreenCopy::Effect::kCopy
+		effect
 	);
 	postProcessRenderTarget_->End();
 

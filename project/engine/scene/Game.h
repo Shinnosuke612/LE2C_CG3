@@ -17,5 +17,8 @@ private:
 	SceneRenderTarget* sceneRenderTarget_ = nullptr;
 	SceneRenderTarget* postProcessRenderTarget_ = nullptr;
 	FullscreenCopy* fullscreenCopy_ = nullptr;
-	bool grayscaleEnabled_ = false;
+	int postProcessEffect_ = 0;
+	float vignetteScale_ = 16.0f;
+	float vignettePower_ = 0.8f;
+	float vignetteIntensity_ = 1.0f;
 };

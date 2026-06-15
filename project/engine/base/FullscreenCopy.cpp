@@ -10,6 +10,22 @@ void FullscreenCopy::Initialize(DirectXCommon* dxCommon) {
 	dxCommon_ = dxCommon;
 	CreateRootSignature();
 	CreatePipelineState();
+
+	vignetteResource_ =
+		dxCommon_->CreateBufferResource(sizeof(VignetteParameters));
+	vignetteResource_->Map(
+		0,
+		nullptr,
+		reinterpret_cast<void**>(&vignetteData_)
+	);
+	*vignetteData_ = {};
+}
+
+void FullscreenCopy::SetVignetteParameters(
+	const VignetteParameters& parameters
+) {
+	assert(vignetteData_);
+	*vignetteData_ = parameters;
 }
 
 void FullscreenCopy::Draw(
@@ -20,13 +36,20 @@ void FullscreenCopy::Draw(
 
 	ID3D12GraphicsCommandList* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
-	commandList->SetPipelineState(
-		effect == Effect::kGrayscale
-			? grayscalePipelineState_.Get()
-			: copyPipelineState_.Get()
-	);
+	ID3D12PipelineState* pipelineState = copyPipelineState_.Get();
+	if (effect == Effect::kGrayscale) {
+		pipelineState = grayscalePipelineState_.Get();
+	}
+	else if (effect == Effect::kVignette) {
+		pipelineState = vignettePipelineState_.Get();
+	}
+	commandList->SetPipelineState(pipelineState);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootDescriptorTable(0, textureHandle);
+	commandList->SetGraphicsRootConstantBufferView(
+		1,
+		vignetteResource_->GetGPUVirtualAddress()
+	);
 	commandList->DrawInstanced(3, 1, 0, 0);
 }
 
@@ -38,11 +61,16 @@ void FullscreenCopy::CreateRootSignature() {
 	descriptorRange.OffsetInDescriptorsFromTableStart =
 		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER rootParameter{};
-	rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	rootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	rootParameter.DescriptorTable.pDescriptorRanges = &descriptorRange;
-	rootParameter.DescriptorTable.NumDescriptorRanges = 1;
+	D3D12_ROOT_PARAMETER rootParameters[2]{};
+	rootParameters[0].ParameterType =
+		D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[0].DescriptorTable.pDescriptorRanges = &descriptorRange;
+	rootParameters[0].DescriptorTable.NumDescriptorRanges = 1;
+
+	rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[1].Descriptor.ShaderRegister = 0;
 
 	D3D12_STATIC_SAMPLER_DESC sampler{};
 	sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -55,8 +83,8 @@ void FullscreenCopy::CreateRootSignature() {
 
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
-	rootSignatureDesc.pParameters = &rootParameter;
-	rootSignatureDesc.NumParameters = 1;
+	rootSignatureDesc.pParameters = rootParameters;
+	rootSignatureDesc.NumParameters = _countof(rootParameters);
 	rootSignatureDesc.pStaticSamplers = &sampler;
 	rootSignatureDesc.NumStaticSamplers = 1;
 
@@ -99,9 +127,14 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/Grayscale.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto vignettePixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/Vignette.PS.hlsl",
+		L"ps_6_0"
+	);
 	assert(vertexShader);
 	assert(copyPixelShader);
 	assert(grayscalePixelShader);
+	assert(vignettePixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -151,6 +184,16 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&grayscalePipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		vignettePixelShader->GetBufferPointer(),
+		vignettePixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&vignettePipelineState_)
 	);
 	assert(SUCCEEDED(result));
 }
