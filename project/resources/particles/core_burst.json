@@ -45,8 +45,11 @@
     "life": {
       "enableLifeFade": true,
       "fadeOutStartRatio": 0.6499999761581421,
-      "lifeTimeMax": 0.3499999940395355,
-      "lifeTimeMin": 0.20000000298023224
+      "isLooping": false,
+      "lifeTimeMax": 0.10000000149011612,
+      "lifeTimeMin": 0.10000000149011612,
+      "loopDuration": 1.0,
+      "loopPingPong": true
     },
     "motion": {
       "linear": {
@@ -92,7 +95,34 @@
       }
     },
     "render": {
+      "alphaCutoff": 0.0,
       "billboardMode": "Billboard",
+      "cullMode": "None",
+      "cylinder": {
+        "bottomColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "bottomRadius": 1.0,
+        "divisions": 32,
+        "endAngle": 6.2831854820251465,
+        "height": 3.0,
+        "startAngle": 0.0,
+        "topColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "topRadius": 1.0,
+        "uvMode": "Horizontal"
+      },
+      "depthTest": true,
+      "depthWrite": false,
+      "flipU": false,
+      "flipV": false,
       "primitiveType": "Plane",
       "ring": {
         "divisions": 32,
@@ -120,6 +150,7 @@
       ]
     },
     "rotation": {
+      "enableRotationOverTime": false,
       "initialRotationMax": [
         0.0,
         0.0,
@@ -129,6 +160,11 @@
         0.0,
         0.0,
         -3.1415927410125732
+      ],
+      "rotationSpeed": [
+        0.0,
+        0.0,
+        0.0
       ]
     },
     "scale": {

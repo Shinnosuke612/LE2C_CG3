@@ -2,6 +2,7 @@
 #include "Camera.h"
 
 #include "../externals/imgui/imgui.h"
+#include "../base/ImGuiManager.h"
 #include "../io/Input.h"
 #include "../math/Math.h"
 
@@ -182,7 +183,10 @@ void Camera::UpdateOrbitMouseControl() {
 	if (ImGui::GetCurrentContext() == nullptr) {
 		// ImGui未初期化時もゲーム側のマウス入力は使用する
 	}
-	else if (ImGui::GetIO().WantCaptureMouse) {
+	else if (
+		ImGui::GetIO().WantCaptureMouse &&
+		!ImGuiManager::IsSceneViewInputActive()
+	) {
 		return;
 	}
 #endif

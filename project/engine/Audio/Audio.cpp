@@ -1,6 +1,13 @@
 #include "Audio.h"
 
+Audio* Audio::instance = nullptr;
+
+Audio* Audio::GetInstance() {
+	return instance;
+}
+
 void Audio::Initialize(){
+	instance = this;
 	HRESULT result;
 
 	// XAudioエンジンのインスタンスを生成
@@ -16,6 +23,7 @@ void Audio::Finalize(){
 	// masterVoiceはxAudio2解放時に無効になる
 	masterVoice_ = nullptr;
 	xAudio2_.Reset();
+	instance = nullptr;
 }
 
 Audio::SoundData Audio::SoundLoadWave(const char* filename){

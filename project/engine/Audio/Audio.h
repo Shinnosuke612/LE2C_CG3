@@ -53,7 +53,10 @@ public:
 	// wav解放
 	void SoundUnload(SoundData* soundData);
 
+	static Audio* GetInstance();
+
 private:
+	static Audio* instance;
 	Microsoft::WRL::ComPtr<IXAudio2> xAudio2_;
 	IXAudio2MasteringVoice* masterVoice_ = nullptr;
 };

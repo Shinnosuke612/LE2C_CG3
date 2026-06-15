@@ -173,9 +173,22 @@ void GamePlayScene::Initialize()
 
 void GamePlayScene::Update()
 {
+	std::string particlePath;
+	if (ImGuiManager::GetInstance() && ImGuiManager::GetInstance()->GetRequestLoadParticle(particlePath)) {
+		ParticleEffectDesc loadedEffect{};
+		if (ParticleEffectResource::Load(particlePath, loadedEffect)) {
+			editingEffect_ = loadedEffect;
+			particleEffectEditor_.Initialize(
+				editingEffect_,
+				particlePath
+			);
+			delete editorPreviewEmitter_;
+			editorPreviewEmitter_ = ParticleEffectResource::CreateEmitter(editingEffect_);
+		}
+	}
+
 	if (Input::GetInstance()->TriggerKey(DIK_RETURN)) {
-		BaseScene* scene = new TitleScene;
-		sceneManager_->SetNextScene(scene);
+		sceneManager_->ChangeScene("TITLE");
 	}
 
 	if (Input::GetInstance()->TriggerKey(DIK_SPACE)) {
@@ -402,9 +415,9 @@ void GamePlayScene::Draw()
 		}
 	}
 
-	if (skybox_) {
-		skybox_->Draw();
-	}
+	//if (skybox_) {
+	//	skybox_->Draw();
+	//}
 
 	ParticleManager::GetInstance()->Draw();
 }

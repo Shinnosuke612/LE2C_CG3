@@ -57,9 +57,11 @@ namespace {
 			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
 		}
 
-		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+		// SceneをImGui上へ表示するときに描画先のAlphaも合成に使われるため、
+		// パーティクルのAlphaでScene全体の不透明度を上書きしない。
+		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ZERO;
 		blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-		blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+		blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
 	}
 
 	D3D12_CULL_MODE ToD3D12CullMode(ParticleCommon::CullMode cullMode) {

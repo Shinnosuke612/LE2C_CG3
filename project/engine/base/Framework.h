@@ -11,6 +11,7 @@ class ParticleCommon;
 class Object3dCommon;
 class SpriteCommon;
 class Camera;
+class AbstractSceneFactory;
 
 class Framework {
 public:
@@ -49,4 +50,5 @@ protected:
 	ImGuiManager* imguiManager_ = nullptr;
 	Audio* audio_ = nullptr;
 	ParticleCommon* particleCommon_ = nullptr;
+	AbstractSceneFactory* sceneFactory_ = nullptr;
 };

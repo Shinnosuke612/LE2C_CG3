@@ -1,81 +1,212 @@
 {
-  "name": "RingBurst",
-  "textureFilePath": "resources/gradationLine.png",
-  "blendMode": "Add",
-  "emitter": {
-    "translate": [0.0, 3.0, 0.0],
-    "spawnSize": [0.0, 0.0, 0.0],
-    "count": 1,
-    "frequency": 1.0,
-    "isActive": false
-  },
   "behavior": {
+    "color": {
+      "endColorMax": [
+        0.20000000298023224,
+        0.5,
+        1.0,
+        0.0
+      ],
+      "endColorMin": [
+        0.20000000298023224,
+        0.5,
+        1.0,
+        0.0
+      ],
+      "mode": "OverLife",
+      "randomColorChangeIntervalMax": 0.3499999940395355,
+      "randomColorChangeIntervalMin": 0.15000000596046448,
+      "randomColorLerpSpeed": 6.0,
+      "randomColorMax": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "randomColorMin": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "startColorMax": [
+        0.699999988079071,
+        0.8999999761581421,
+        1.0,
+        1.0
+      ],
+      "startColorMin": [
+        0.699999988079071,
+        0.8999999761581421,
+        1.0,
+        1.0
+      ]
+    },
     "life": {
-      "lifeTimeMin": 0.45,
-      "lifeTimeMax": 0.55,
       "enableLifeFade": true,
-      "fadeOutStartRatio": 0.45
-    },
-    "scale": {
-      "startScaleMin": [0.15, 0.15, 1.0],
-      "startScaleMax": [0.15, 0.15, 1.0],
-      "enableScaleOverLife": true,
-      "endScaleMin": [3.0, 3.0, 1.0],
-      "endScaleMax": [3.5, 3.5, 1.0]
-    },
-    "rotation": {
-      "initialRotationMin": [0.0, 0.0, 0.0],
-      "initialRotationMax": [0.0, 0.0, 0.0]
+      "fadeOutStartRatio": 0.44999998807907104,
+      "isLooping": false,
+      "lifeTimeMax": 0.10000000149011612,
+      "lifeTimeMin": 0.10000000149011612,
+      "loopDuration": 1.0,
+      "loopPingPong": true
     },
     "motion": {
-      "mode": "Linear",
       "linear": {
-        "baseVelocity": [0.0, 0.0, 0.0],
-        "velocityRandomRange": [0.0, 0.0, 0.0],
-        "baseAcceleration": [0.0, 0.0, 0.0],
-        "accelerationRandomRange": [0.0, 0.0, 0.0]
+        "accelerationRandomRange": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "baseAcceleration": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "baseVelocity": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "velocityRandomRange": [
+          0.0,
+          0.0,
+          0.0
+        ]
       },
+      "mode": "Linear",
       "sway": {
         "amplitude": 0.0,
         "frequency": 0.0
       },
       "vortex": {
-        "center": [0.0, 3.0, 0.0],
-        "axis": "Z",
-        "angularSpeedMin": 0.0,
         "angularSpeedMax": 0.0,
-        "inwardSpeedMin": 0.0,
+        "angularSpeedMin": 0.0,
+        "axis": "Z",
+        "center": [
+          0.0,
+          3.0,
+          0.0
+        ],
         "inwardSpeedMax": 0.0,
-        "verticalSpeedMin": 0.0,
-        "verticalSpeedMax": 0.0
+        "inwardSpeedMin": 0.0,
+        "verticalSpeedMax": 0.0,
+        "verticalSpeedMin": 0.0
       }
-    },
-    "color": {
-      "mode": "OverLife",
-      "startColorMin": [0.7, 0.9, 1.0, 1.0],
-      "startColorMax": [0.7, 0.9, 1.0, 1.0],
-      "endColorMin": [0.2, 0.5, 1.0, 0.0],
-      "endColorMax": [0.2, 0.5, 1.0, 0.0],
-      "randomColorMin": [0.0, 0.0, 0.0, 1.0],
-      "randomColorMax": [1.0, 1.0, 1.0, 1.0],
-      "randomColorChangeIntervalMin": 0.15,
-      "randomColorChangeIntervalMax": 0.35,
-      "randomColorLerpSpeed": 6.0
     },
     "render": {
+      "alphaCutoff": 0.0,
       "billboardMode": "Billboard",
+      "cullMode": "None",
+      "cylinder": {
+        "bottomColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "bottomRadius": 1.0,
+        "divisions": 32,
+        "endAngle": 6.2831854820251465,
+        "height": 3.0,
+        "startAngle": 0.0,
+        "topColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "topRadius": 1.0,
+        "uvMode": "Horizontal"
+      },
+      "depthTest": true,
+      "depthWrite": false,
+      "flipU": false,
+      "flipV": false,
       "primitiveType": "Ring",
-      "uvScrollSpeed": [0.8, 0.0],
       "ring": {
         "divisions": 48,
+        "endAngle": 6.2831854820251465,
+        "innerColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "innerRadius": 0.6200000047683716,
+        "outerColor": [
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
         "outerRadius": 1.0,
-        "innerRadius": 0.62,
         "startAngle": 0.0,
-        "endAngle": 6.2831853,
-        "outerColor": [1.0, 1.0, 1.0, 0.0],
-        "innerColor": [1.0, 1.0, 1.0, 1.0],
         "uvMode": "Horizontal"
-      }
+      },
+      "uvScrollSpeed": [
+        0.800000011920929,
+        0.0
+      ]
+    },
+    "rotation": {
+      "enableRotationOverTime": false,
+      "initialRotationMax": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "initialRotationMin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotationSpeed": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "scale": {
+      "enableScaleOverLife": true,
+      "endScaleMax": [
+        3.5,
+        3.5,
+        1.0
+      ],
+      "endScaleMin": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "startScaleMax": [
+        0.15000000596046448,
+        0.15000000596046448,
+        1.0
+      ],
+      "startScaleMin": [
+        0.15000000596046448,
+        0.15000000596046448,
+        1.0
+      ]
     }
-  }
+  },
+  "blendMode": "Add",
+  "emitter": {
+    "count": 1,
+    "frequency": 1.0,
+    "isActive": false,
+    "spawnSize": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "translate": [
+      0.0,
+      3.0,
+      0.0
+    ]
+  },
+  "name": "RingBurst",
+  "textureFilePath": "resources/gradationLine.png"
 }

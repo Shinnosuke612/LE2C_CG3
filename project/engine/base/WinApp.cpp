@@ -27,6 +27,9 @@ LRESULT CALLBACK WinApp::WindowProc(HWND hwnd, UINT msg,
 
 void WinApp::Initialize(){
 
+	SetProcessDpiAwarenessContext(
+		DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+	);
 	CoInitializeEx(0, COINIT_MULTITHREADED);
 
 	// ウィンドウプロシージャ

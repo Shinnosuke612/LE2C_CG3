@@ -2,6 +2,7 @@
 #include "../externals/imgui/imgui.h"
 #include "SceneManager.h"
 #include "GamePlayScene.h"
+#include "../base/ImGuiManager.h"
 
 #include "../3d/Camera.h"
 #include "../3d/Object3dCommon.h"
@@ -64,9 +65,22 @@ void TitleScene::Finalize()
 
 void TitleScene::Update()
 {
+	std::string particlePath;
+	if (ImGuiManager::GetInstance() && ImGuiManager::GetInstance()->GetRequestLoadParticle(particlePath)) {
+		ParticleEffectDesc loadedEffect{};
+		if (ParticleEffectResource::Load(particlePath, loadedEffect)) {
+			editingEffect_ = loadedEffect;
+			particleEffectEditor_.Initialize(
+				editingEffect_,
+				particlePath
+			);
+			delete previewEmitter_;
+			previewEmitter_ = ParticleEffectResource::CreateEmitter(editingEffect_);
+		}
+	}
+
 	if (Input::GetInstance()->TriggerKey(DIK_RETURN)) {
-		BaseScene* scene = new GamePlayScene;
-		sceneManager_->SetNextScene(scene);
+		sceneManager_->ChangeScene("GAMEPLAY");
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)

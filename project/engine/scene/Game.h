@@ -2,7 +2,8 @@
 #include "../base/Framework.h"
 #include "SceneManager.h"
 
-class BaseScene;
+class SceneRenderTarget;
+class FullscreenCopy;
 
 class Game : public Framework {
 public:
@@ -13,6 +14,6 @@ public:
 
 private:
 	SceneManager* sceneManager_ = nullptr;
-
-
+	SceneRenderTarget* sceneRenderTarget_ = nullptr;
+	FullscreenCopy* fullscreenCopy_ = nullptr;
 };

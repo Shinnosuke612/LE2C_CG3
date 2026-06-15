@@ -1,10 +1,10 @@
 #include "Game.h"
-#include "BaseScene.h"
-#include "TitleScene.h"
-#include "GamePlayScene.h"
+#include "SceneFactory.h"
 
 #include "../base/DirectXCommon.h"
+#include "../base/FullscreenCopy.h"
 #include "../base/ImGuiManager.h"
+#include "../base/SceneRenderTarget.h"
 #include "../io/Input.h"
 #include "../2d/Sprite.h"
 #include "../2d/SpriteCommon.h"
@@ -23,9 +23,19 @@ void Game::Initialize() {
 	Framework::Initialize();
 
 	sceneManager_ = new SceneManager();
+	sceneFactory_ = new SceneFactory();
+	sceneManager_->SetSceneFactory(sceneFactory_);
+	sceneManager_->ChangeScene("TITLE");
 
-	BaseScene* scene = new GamePlayScene();
-	sceneManager_->SetNextScene(scene);
+	sceneRenderTarget_ = new SceneRenderTarget();
+	sceneRenderTarget_->Initialize(
+		dxCommon_,
+		srvManager_,
+		dxCommon_->GetClientWidth(),
+		dxCommon_->GetClientHeight()
+	);
+	fullscreenCopy_ = new FullscreenCopy();
+	fullscreenCopy_->Initialize(dxCommon_);
 }
 
 void Game::Update() {
@@ -38,6 +48,18 @@ void Game::Update() {
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	DebugRenderer::GetInstance()->Clear();
+
+	Camera* editorCamera =
+		Object3dCommon::GetInstance()->GetDefaultCamera();
+	if (
+		editorCamera &&
+		imguiManager_->GetSceneViewHeight() > 0
+	) {
+		editorCamera->SetAspectRatio(
+			static_cast<float>(imguiManager_->GetSceneViewWidth()) /
+			static_cast<float>(imguiManager_->GetSceneViewHeight())
+		);
+	}
 #endif
 
 	sceneManager_->Update();
@@ -50,16 +72,39 @@ void Game::Draw() {
 
 	sceneManager_->DrawShadow();
 
-	dxCommon_->PreDraw();
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	imguiManager_->DrawEditorWorkspace(
+		sceneRenderTarget_->GetSrvGpuHandle(),
+		sceneRenderTarget_->GetWidth(),
+		sceneRenderTarget_->GetHeight(),
+		sceneManager_->GetCurrentSceneName().c_str()
+	);
+	sceneRenderTarget_->Resize(
+		imguiManager_->GetSceneViewWidth(),
+		imguiManager_->GetSceneViewHeight()
+	);
+#else
+	sceneRenderTarget_->Resize(
+		dxCommon_->GetClientWidth(),
+		dxCommon_->GetClientHeight()
+	);
+#endif
+
+	sceneRenderTarget_->Begin();
 	srvManager_->PreDraw();
 	Object3dCommon::GetInstance()->SetCommonRenderState();
-
 	sceneManager_->Draw();
-
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	DebugRenderer::GetInstance()->Draw(
 		Object3dCommon::GetInstance()->GetDefaultCamera()
 	);
+#endif
+	sceneRenderTarget_->End();
+
+	dxCommon_->PreDraw();
+	srvManager_->PreDraw();
+	fullscreenCopy_->Draw(sceneRenderTarget_->GetSrvGpuHandle());
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->EndFrame();
 #endif
 
@@ -67,6 +112,12 @@ void Game::Draw() {
 }
 
 void Game::Finalize() {
+
+	delete fullscreenCopy_;
+	fullscreenCopy_ = nullptr;
+
+	delete sceneRenderTarget_;
+	sceneRenderTarget_ = nullptr;
 
 	if (sceneManager_) {
 		delete sceneManager_;

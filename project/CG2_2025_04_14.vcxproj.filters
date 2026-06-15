@@ -25,6 +25,7 @@
     <ClCompile Include="engine\player\Player.cpp" />
     <ClCompile Include="engine\base\D3DResourceLeadChecker.cpp" />
     <ClCompile Include="engine\base\DirectXCommon.cpp" />
+    <ClCompile Include="engine\base\SceneRenderTarget.cpp" />
     <ClCompile Include="engine\io\Input.cpp" />
     <ClCompile Include="engine\math\Quaternion.cpp" />
     <ClCompile Include="engine\utility\Logger.cpp" />
@@ -55,6 +56,7 @@
     <ClCompile Include="engine\base\Framework.cpp" />
     <ClCompile Include="engine\scene\GamePlayScene.cpp" />
     <ClCompile Include="engine\scene\BaseScene.cpp" />
+    <ClCompile Include="engine\scene\SceneFactory.cpp" />
     <ClCompile Include="engine\scene\TitleScene.cpp" />
     <ClCompile Include="engine\scene\SceneManager.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectResource.cpp" />
@@ -72,6 +74,7 @@
     <ClInclude Include="engine\player\Player.h" />
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
     <ClInclude Include="engine\base\DirectXCommon.h" />
+    <ClInclude Include="engine\base\SceneRenderTarget.h" />
     <ClInclude Include="engine\io\Input.h" />
     <ClInclude Include="engine\utility\Logger.h" />
     <ClInclude Include="engine\math\Math.h" />
@@ -109,6 +112,8 @@
     <ClInclude Include="engine\base\Framework.h" />
     <ClInclude Include="engine\scene\GamePlayScene.h" />
     <ClInclude Include="engine\scene\BaseScene.h" />
+    <ClInclude Include="engine\scene\AbstractSceneFactory.h" />
+    <ClInclude Include="engine\scene\SceneFactory.h" />
     <ClInclude Include="engine\scene\TitleScene.h" />
     <ClInclude Include="engine\scene\SceneManager.h" />
     <ClInclude Include="engine\particle\ParticleEffectResource.h" />
@@ -119,6 +124,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorconfig" />
+    <None Include="resources\shaders\CopyImage.hlsli" />
+    <None Include="resources\shaders\CopyImage.PS.hlsl" />
+    <None Include="resources\shaders\CopyImage.VS.hlsl" />
     <None Include="resources\shaders\Object3D.hlsli" />
     <None Include="resources\shaders\Particle.hlsli" />
     <None Include="resources\shaders\Skybox.hlsli" />

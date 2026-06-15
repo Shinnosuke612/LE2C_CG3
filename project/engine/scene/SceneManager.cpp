@@ -1,5 +1,27 @@
 #include "SceneManager.h"
 
+#include <cassert>
+
+#include "AbstractSceneFactory.h"
+#include "BaseScene.h"
+
+void SceneManager::ChangeScene(const std::string& sceneName) {
+	assert(sceneFactory_);
+	assert(!nextScene_);
+	if (!sceneFactory_ || nextScene_) {
+		return;
+	}
+
+	BaseScene* newScene = sceneFactory_->CreateScene(sceneName);
+	assert(newScene);
+	if (!newScene) {
+		return;
+	}
+
+	nextScene_ = newScene;
+	nextSceneName_ = sceneName;
+}
+
 void SceneManager::Update()
 {
 	// 次のシーンの予約があるなら
@@ -13,6 +35,8 @@ void SceneManager::Update()
 		// シーン切り替え
 		scene_ = nextScene_;
 		nextScene_ = nullptr;
+		currentSceneName_ = nextSceneName_;
+		nextSceneName_.clear();
 
 		scene_->SetSceneManager(this);
 
@@ -30,7 +54,9 @@ void SceneManager::Update()
 
 void SceneManager::Draw()
 {
-	scene_->Draw();
+	if (scene_) {
+		scene_->Draw();
+	}
 }
 
 void SceneManager::DrawShadow()
@@ -42,6 +68,12 @@ void SceneManager::DrawShadow()
 
 SceneManager::~SceneManager()
 {
-	scene_->Finalize();
-	delete scene_;
+	if (scene_) {
+		scene_->Finalize();
+		delete scene_;
+		scene_ = nullptr;
+	}
+
+	delete nextScene_;
+	nextScene_ = nullptr;
 }

@@ -15,6 +15,7 @@
 #include "../particle/ParticleManager.h"
 #include "../audio/Audio.h"
 #include "../debug/DebugRenderer.h"
+#include "../scene/AbstractSceneFactory.h"
 
 void Framework::Run() {
 	// ゲームの初期化
@@ -97,6 +98,9 @@ void Framework::Update() {
 #endif
 }
 void Framework::Finalize() {
+	delete sceneFactory_;
+	sceneFactory_ = nullptr;
+
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	DebugRenderer::GetInstance()->Finalize();
 
