@@ -11,21 +11,21 @@ void FullscreenCopy::Initialize(DirectXCommon* dxCommon) {
 	CreateRootSignature();
 	CreatePipelineState();
 
-	vignetteResource_ =
-		dxCommon_->CreateBufferResource(sizeof(VignetteParameters));
-	vignetteResource_->Map(
+	parametersResource_ =
+		dxCommon_->CreateBufferResource(sizeof(Parameters));
+	parametersResource_->Map(
 		0,
 		nullptr,
-		reinterpret_cast<void**>(&vignetteData_)
+		reinterpret_cast<void**>(&parametersData_)
 	);
-	*vignetteData_ = {};
+	*parametersData_ = {};
 }
 
-void FullscreenCopy::SetVignetteParameters(
-	const VignetteParameters& parameters
+void FullscreenCopy::SetParameters(
+	const Parameters& parameters
 ) {
-	assert(vignetteData_);
-	*vignetteData_ = parameters;
+	assert(parametersData_);
+	*parametersData_ = parameters;
 }
 
 void FullscreenCopy::Draw(
@@ -43,12 +43,15 @@ void FullscreenCopy::Draw(
 	else if (effect == Effect::kVignette) {
 		pipelineState = vignettePipelineState_.Get();
 	}
+	else if (effect == Effect::kBoxBlur) {
+		pipelineState = boxBlurPipelineState_.Get();
+	}
 	commandList->SetPipelineState(pipelineState);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootDescriptorTable(0, textureHandle);
 	commandList->SetGraphicsRootConstantBufferView(
 		1,
-		vignetteResource_->GetGPUVirtualAddress()
+		parametersResource_->GetGPUVirtualAddress()
 	);
 	commandList->DrawInstanced(3, 1, 0, 0);
 }
@@ -131,10 +134,15 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/Vignette.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto boxBlurPixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/BoxBlur.PS.hlsl",
+		L"ps_6_0"
+	);
 	assert(vertexShader);
 	assert(copyPixelShader);
 	assert(grayscalePixelShader);
 	assert(vignettePixelShader);
+	assert(boxBlurPixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -194,6 +202,16 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&vignettePipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		boxBlurPixelShader->GetBufferPointer(),
+		boxBlurPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&boxBlurPipelineState_)
 	);
 	assert(SUCCEEDED(result));
 }

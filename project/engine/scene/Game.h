@@ -21,4 +21,6 @@ private:
 	float vignetteScale_ = 16.0f;
 	float vignettePower_ = 0.8f;
 	float vignetteIntensity_ = 1.0f;
+	int boxBlurKernelSize_ = 3;
+	float boxBlurStrength_ = 1.0f;
 };

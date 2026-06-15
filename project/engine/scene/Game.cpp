@@ -62,10 +62,30 @@ void Game::Update() {
 	ImGui::RadioButton("Grayscale", &postProcessEffect_, 1);
 	ImGui::SameLine();
 	ImGui::RadioButton("Vignette", &postProcessEffect_, 2);
+	ImGui::SameLine();
+	ImGui::RadioButton("Box Blur", &postProcessEffect_, 3);
 	if (postProcessEffect_ == 2) {
 		ImGui::SliderFloat("Scale", &vignetteScale_, 0.0f, 32.0f);
 		ImGui::SliderFloat("Power", &vignettePower_, 0.05f, 4.0f);
 		ImGui::SliderFloat("Intensity", &vignetteIntensity_, 0.0f, 1.0f);
+	}
+	else if (postProcessEffect_ == 3) {
+		const char* kernelNames[] = { "3 x 3", "5 x 5" };
+		int kernelIndex = boxBlurKernelSize_ == 5 ? 1 : 0;
+		if (ImGui::Combo(
+			"Kernel",
+			&kernelIndex,
+			kernelNames,
+			IM_ARRAYSIZE(kernelNames)
+		)) {
+			boxBlurKernelSize_ = kernelIndex == 1 ? 5 : 3;
+		}
+		ImGui::SliderFloat(
+			"Strength",
+			&boxBlurStrength_,
+			0.0f,
+			1.0f
+		);
 	}
 	ImGui::End();
 
@@ -131,18 +151,22 @@ void Game::Draw() {
 
 	postProcessRenderTarget_->Begin();
 	srvManager_->PreDraw();
-	fullscreenCopy_->SetVignetteParameters({
-		vignetteScale_,
-		vignettePower_,
-		vignetteIntensity_,
-		0.0f
-	});
+	FullscreenCopy::Parameters parameters{};
+	parameters.vignetteScale = vignetteScale_;
+	parameters.vignettePower = vignettePower_;
+	parameters.vignetteIntensity = vignetteIntensity_;
+	parameters.blurStrength = boxBlurStrength_;
+	parameters.blurRadius = boxBlurKernelSize_ == 5 ? 2u : 1u;
+	fullscreenCopy_->SetParameters(parameters);
 	FullscreenCopy::Effect effect = FullscreenCopy::Effect::kCopy;
 	if (postProcessEffect_ == 1) {
 		effect = FullscreenCopy::Effect::kGrayscale;
 	}
 	else if (postProcessEffect_ == 2) {
 		effect = FullscreenCopy::Effect::kVignette;
+	}
+	else if (postProcessEffect_ == 3) {
+		effect = FullscreenCopy::Effect::kBoxBlur;
 	}
 	fullscreenCopy_->Draw(
 		sceneRenderTarget_->GetSrvGpuHandle(),

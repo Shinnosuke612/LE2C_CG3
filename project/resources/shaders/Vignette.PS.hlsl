@@ -3,23 +3,29 @@
 Texture2D<float4> gTexture : register(t0);
 SamplerState gSampler : register(s0);
 
-struct VignetteParameters
+struct PostProcessParameters
 {
-    float scale;
-    float power;
-    float intensity;
-    float padding;
+    float vignetteScale;
+    float vignettePower;
+    float vignetteIntensity;
+    float blurStrength;
+    uint blurRadius;
+    float3 padding;
 };
-ConstantBuffer<VignetteParameters> gVignette : register(b0);
+ConstantBuffer<PostProcessParameters> gParameters : register(b0);
 
 float4 main(VertexShaderOutput input) : SV_TARGET0
 {
     const float4 textureColor = gTexture.Sample(gSampler, input.texcoord);
 
     const float2 correct = input.texcoord * (1.0f - input.texcoord);
-    float vignette = correct.x * correct.y * gVignette.scale;
-    vignette = saturate(pow(saturate(vignette), gVignette.power));
-    vignette = lerp(1.0f, vignette, saturate(gVignette.intensity));
+    float vignette = correct.x * correct.y * gParameters.vignetteScale;
+    vignette = saturate(pow(saturate(vignette), gParameters.vignettePower));
+    vignette = lerp(
+        1.0f,
+        vignette,
+        saturate(gParameters.vignetteIntensity)
+    );
 
     return float4(textureColor.rgb * vignette, textureColor.a);
 }
