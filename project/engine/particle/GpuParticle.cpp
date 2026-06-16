@@ -84,7 +84,8 @@ void GpuParticle::Initialize(
 
 void GpuParticle::Reset() {
 	particleResource_.Reset();
-	counterResource_.Reset();
+	freeListIndexResource_.Reset();
+	freeListResource_.Reset();
 	materialResource_.Reset();
 	directionalLightResource_.Reset();
 	perViewResource_.Reset();
@@ -110,9 +111,11 @@ void GpuParticle::Reset() {
 	textureSrvIndex_ = 0;
 	particleSrvIndex_ = 0;
 	particleUavIndex_ = 0;
-	counterUavIndex_ = 0;
+	freeListIndexUavIndex_ = 0;
+	freeListUavIndex_ = 0;
 	particleResourceState_ = D3D12_RESOURCE_STATE_COMMON;
-	counterResourceState_ = D3D12_RESOURCE_STATE_COMMON;
+	freeListIndexResourceState_ = D3D12_RESOURCE_STATE_COMMON;
+	freeListResourceState_ = D3D12_RESOURCE_STATE_COMMON;
 	needsInitialize_ = true;
 	elapsedTime_ = 0.0f;
 }
@@ -146,16 +149,31 @@ void GpuParticle::CreateParticleResource() {
 	);
 
 	assert(srvManager_->CanAllocate());
-	counterResource_ =
+	freeListIndexResource_ =
 		CreateUavBufferResource(dxCommon_->GetDevice(), sizeof(int32_t));
-	counterResourceState_ = D3D12_RESOURCE_STATE_COMMON;
+	freeListIndexResourceState_ = D3D12_RESOURCE_STATE_COMMON;
 
-	counterUavIndex_ = srvManager_->Allocate();
+	freeListIndexUavIndex_ = srvManager_->Allocate();
 	srvManager_->CreateUAVforStructuredBuffer(
-		counterUavIndex_,
-		counterResource_.Get(),
+		freeListIndexUavIndex_,
+		freeListIndexResource_.Get(),
 		1,
 		sizeof(int32_t)
+	);
+
+	assert(srvManager_->CanAllocate());
+	freeListResource_ = CreateUavBufferResource(
+		dxCommon_->GetDevice(),
+		sizeof(uint32_t) * kMaxParticles
+	);
+	freeListResourceState_ = D3D12_RESOURCE_STATE_COMMON;
+
+	freeListUavIndex_ = srvManager_->Allocate();
+	srvManager_->CreateUAVforStructuredBuffer(
+		freeListUavIndex_,
+		freeListResource_.Get(),
+		kMaxParticles,
+		sizeof(uint32_t)
 	);
 }
 
@@ -278,7 +296,7 @@ void GpuParticle::CreateRootSignatures() {
 	}
 
 	{
-		D3D12_DESCRIPTOR_RANGE uavRanges[2]{};
+		D3D12_DESCRIPTOR_RANGE uavRanges[3]{};
 		for (uint32_t index = 0; index < _countof(uavRanges); ++index) {
 			uavRanges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
 			uavRanges[index].NumDescriptors = 1;
@@ -287,7 +305,7 @@ void GpuParticle::CreateRootSignatures() {
 				D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		}
 
-		D3D12_ROOT_PARAMETER rootParameters[2]{};
+		D3D12_ROOT_PARAMETER rootParameters[3]{};
 		for (uint32_t index = 0; index < _countof(rootParameters); ++index) {
 			rootParameters[index].ParameterType =
 				D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
@@ -327,7 +345,7 @@ void GpuParticle::CreateRootSignatures() {
 	}
 
 	{
-		D3D12_DESCRIPTOR_RANGE uavRanges[2]{};
+		D3D12_DESCRIPTOR_RANGE uavRanges[3]{};
 		for (uint32_t index = 0; index < _countof(uavRanges); ++index) {
 			uavRanges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
 			uavRanges[index].NumDescriptors = 1;
@@ -336,7 +354,7 @@ void GpuParticle::CreateRootSignatures() {
 				D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		}
 
-		D3D12_ROOT_PARAMETER rootParameters[4]{};
+		D3D12_ROOT_PARAMETER rootParameters[5]{};
 		rootParameters[0].ParameterType =
 			D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 		rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -349,13 +367,19 @@ void GpuParticle::CreateRootSignatures() {
 		rootParameters[1].DescriptorTable.pDescriptorRanges = &uavRanges[1];
 		rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
 
-		rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+		rootParameters[2].ParameterType =
+			D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 		rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-		rootParameters[2].Descriptor.ShaderRegister = 0;
+		rootParameters[2].DescriptorTable.pDescriptorRanges = &uavRanges[2];
+		rootParameters[2].DescriptorTable.NumDescriptorRanges = 1;
 
 		rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 		rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-		rootParameters[3].Descriptor.ShaderRegister = 1;
+		rootParameters[3].Descriptor.ShaderRegister = 0;
+
+		rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+		rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		rootParameters[4].Descriptor.ShaderRegister = 1;
 
 		D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
 		rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -542,20 +566,38 @@ void GpuParticle::TransitionParticleResource(D3D12_RESOURCE_STATES stateAfter) {
 	particleResourceState_ = stateAfter;
 }
 
-void GpuParticle::TransitionCounterResource(D3D12_RESOURCE_STATES stateAfter) {
-	if (!counterResource_ || counterResourceState_ == stateAfter) {
+void GpuParticle::TransitionFreeListIndexResource(
+	D3D12_RESOURCE_STATES stateAfter
+) {
+	if (!freeListIndexResource_ || freeListIndexResourceState_ == stateAfter) {
 		return;
 	}
 
 	D3D12_RESOURCE_BARRIER barrier{};
 	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = counterResource_.Get();
+	barrier.Transition.pResource = freeListIndexResource_.Get();
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	barrier.Transition.StateBefore = counterResourceState_;
+	barrier.Transition.StateBefore = freeListIndexResourceState_;
 	barrier.Transition.StateAfter = stateAfter;
 	dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
-	counterResourceState_ = stateAfter;
+	freeListIndexResourceState_ = stateAfter;
+}
+
+void GpuParticle::TransitionFreeListResource(D3D12_RESOURCE_STATES stateAfter) {
+	if (!freeListResource_ || freeListResourceState_ == stateAfter) {
+		return;
+	}
+
+	D3D12_RESOURCE_BARRIER barrier{};
+	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barrier.Transition.pResource = freeListResource_.Get();
+	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+	barrier.Transition.StateBefore = freeListResourceState_;
+	barrier.Transition.StateAfter = stateAfter;
+	dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
+	freeListResourceState_ = stateAfter;
 }
 
 void GpuParticle::InitializeParticlesOnGPU() {
@@ -565,19 +607,23 @@ void GpuParticle::InitializeParticlesOnGPU() {
 
 	auto* commandList = dxCommon_->GetCommandList();
 	TransitionParticleResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	TransitionCounterResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	TransitionFreeListIndexResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	TransitionFreeListResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 	commandList->SetComputeRootSignature(initializeRootSignature_.Get());
 	commandList->SetPipelineState(initializePipelineState_.Get());
 	srvManager_->SetComputeRootDescriptorTable(0, particleUavIndex_);
-	srvManager_->SetComputeRootDescriptorTable(1, counterUavIndex_);
+	srvManager_->SetComputeRootDescriptorTable(1, freeListIndexUavIndex_);
+	srvManager_->SetComputeRootDescriptorTable(2, freeListUavIndex_);
 	commandList->Dispatch(1, 1, 1);
 
-	D3D12_RESOURCE_BARRIER uavBarriers[2]{};
+	D3D12_RESOURCE_BARRIER uavBarriers[3]{};
 	uavBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 	uavBarriers[0].UAV.pResource = particleResource_.Get();
 	uavBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-	uavBarriers[1].UAV.pResource = counterResource_.Get();
+	uavBarriers[1].UAV.pResource = freeListIndexResource_.Get();
+	uavBarriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	uavBarriers[2].UAV.pResource = freeListResource_.Get();
 	commandList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
 
 	TransitionParticleResource(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -591,52 +637,63 @@ void GpuParticle::EmitParticlesOnGPU() {
 
 	auto* commandList = dxCommon_->GetCommandList();
 	TransitionParticleResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	TransitionCounterResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	TransitionFreeListIndexResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	TransitionFreeListResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 	commandList->SetComputeRootSignature(emitRootSignature_.Get());
 	commandList->SetPipelineState(emitPipelineState_.Get());
 	srvManager_->SetComputeRootDescriptorTable(0, particleUavIndex_);
-	srvManager_->SetComputeRootDescriptorTable(1, counterUavIndex_);
+	srvManager_->SetComputeRootDescriptorTable(1, freeListIndexUavIndex_);
+	srvManager_->SetComputeRootDescriptorTable(2, freeListUavIndex_);
 	commandList->SetComputeRootConstantBufferView(
-		2,
+		3,
 		emitterResource_->GetGPUVirtualAddress()
 	);
 	commandList->SetComputeRootConstantBufferView(
-		3,
+		4,
 		perFrameResource_->GetGPUVirtualAddress()
 	);
 	commandList->Dispatch(1, 1, 1);
 
-	D3D12_RESOURCE_BARRIER uavBarriers[2]{};
+	D3D12_RESOURCE_BARRIER uavBarriers[3]{};
 	uavBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 	uavBarriers[0].UAV.pResource = particleResource_.Get();
 	uavBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-	uavBarriers[1].UAV.pResource = counterResource_.Get();
+	uavBarriers[1].UAV.pResource = freeListIndexResource_.Get();
+	uavBarriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	uavBarriers[2].UAV.pResource = freeListResource_.Get();
 	commandList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
 }
 
 void GpuParticle::UpdateParticlesOnGPU() {
 	auto* commandList = dxCommon_->GetCommandList();
 	TransitionParticleResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	TransitionFreeListIndexResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	TransitionFreeListResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 	commandList->SetComputeRootSignature(emitRootSignature_.Get());
 	commandList->SetPipelineState(updatePipelineState_.Get());
 	srvManager_->SetComputeRootDescriptorTable(0, particleUavIndex_);
-	srvManager_->SetComputeRootDescriptorTable(1, counterUavIndex_);
+	srvManager_->SetComputeRootDescriptorTable(1, freeListIndexUavIndex_);
+	srvManager_->SetComputeRootDescriptorTable(2, freeListUavIndex_);
 	commandList->SetComputeRootConstantBufferView(
-		2,
+		3,
 		emitterResource_->GetGPUVirtualAddress()
 	);
 	commandList->SetComputeRootConstantBufferView(
-		3,
+		4,
 		perFrameResource_->GetGPUVirtualAddress()
 	);
 	commandList->Dispatch(1, 1, 1);
 
-	D3D12_RESOURCE_BARRIER uavBarrier{};
-	uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-	uavBarrier.UAV.pResource = particleResource_.Get();
-	commandList->ResourceBarrier(1, &uavBarrier);
+	D3D12_RESOURCE_BARRIER uavBarriers[3]{};
+	uavBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	uavBarriers[0].UAV.pResource = particleResource_.Get();
+	uavBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	uavBarriers[1].UAV.pResource = freeListIndexResource_.Get();
+	uavBarriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	uavBarriers[2].UAV.pResource = freeListResource_.Get();
+	commandList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
 
 	TransitionParticleResource(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 }

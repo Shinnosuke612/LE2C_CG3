@@ -84,7 +84,8 @@ private:
 	void EmitParticlesOnGPU();
 	void UpdateParticlesOnGPU();
 	void TransitionParticleResource(D3D12_RESOURCE_STATES stateAfter);
-	void TransitionCounterResource(D3D12_RESOURCE_STATES stateAfter);
+	void TransitionFreeListIndexResource(D3D12_RESOURCE_STATES stateAfter);
+	void TransitionFreeListResource(D3D12_RESOURCE_STATES stateAfter);
 
 private:
 	ParticleCommon* particleCommon_ = nullptr;
@@ -95,12 +96,16 @@ private:
 	uint32_t textureSrvIndex_ = 0;
 	uint32_t particleSrvIndex_ = 0;
 	uint32_t particleUavIndex_ = 0;
-	uint32_t counterUavIndex_ = 0;
+	uint32_t freeListIndexUavIndex_ = 0;
+	uint32_t freeListUavIndex_ = 0;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> particleResource_;
 	D3D12_RESOURCE_STATES particleResourceState_ = D3D12_RESOURCE_STATE_COMMON;
-	Microsoft::WRL::ComPtr<ID3D12Resource> counterResource_;
-	D3D12_RESOURCE_STATES counterResourceState_ = D3D12_RESOURCE_STATE_COMMON;
+	Microsoft::WRL::ComPtr<ID3D12Resource> freeListIndexResource_;
+	D3D12_RESOURCE_STATES freeListIndexResourceState_ =
+		D3D12_RESOURCE_STATE_COMMON;
+	Microsoft::WRL::ComPtr<ID3D12Resource> freeListResource_;
+	D3D12_RESOURCE_STATES freeListResourceState_ = D3D12_RESOURCE_STATE_COMMON;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> materialResource_;
 	Material* materialData_ = nullptr;

@@ -3,7 +3,8 @@
 static const uint32_t kMaxParticles = 1024;
 
 RWStructuredBuffer<GpuParticle> gParticles : register(u0);
-RWStructuredBuffer<int32_t> gFreeCounter : register(u1);
+RWStructuredBuffer<int32_t> gFreeListIndex : register(u1);
+RWStructuredBuffer<uint32_t> gFreeList : register(u2);
 ConstantBuffer<EmitterSphere> gEmitter : register(b0);
 ConstantBuffer<PerFrame> gPerFrame : register(b1);
 
@@ -38,14 +39,15 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
 
     for (uint32_t countIndex = 0; countIndex < gEmitter.count; ++countIndex)
     {
-        int32_t particleIndex = 0;
-        InterlockedAdd(gFreeCounter[0], 1, particleIndex);
-
-        if (particleIndex >= int32_t(kMaxParticles))
+        int32_t freeListIndex = 0;
+        InterlockedAdd(gFreeListIndex[0], -1, freeListIndex);
+        if (freeListIndex < 0 || int32_t(kMaxParticles) <= freeListIndex)
         {
-            continue;
+            InterlockedAdd(gFreeListIndex[0], 1, freeListIndex);
+            break;
         }
 
+        uint32_t particleIndex = gFreeList[freeListIndex];
         float32_t3 seed =
             float32_t3(float32_t(particleIndex), float32_t(countIndex), gPerFrame.time);
         float32_t3 direction = RandomUnitVector(seed);
