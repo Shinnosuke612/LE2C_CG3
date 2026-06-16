@@ -96,6 +96,7 @@ void GpuParticle::Reset() {
 	initializePipelineState_.Reset();
 	emitRootSignature_.Reset();
 	emitPipelineState_.Reset();
+	updatePipelineState_.Reset();
 
 	materialData_ = nullptr;
 	directionalLightData_ = nullptr;
@@ -504,6 +505,25 @@ void GpuParticle::CreatePipelineStates() {
 		IID_PPV_ARGS(&emitPipelineState_)
 	);
 	assert(SUCCEEDED(hr));
+
+	const auto updateShaderBlob = dxCommon_->CompileShader(
+		L"resources/shaders/UpdateGpuParticle.CS.hlsl",
+		L"cs_6_0"
+	);
+	assert(updateShaderBlob);
+
+	D3D12_COMPUTE_PIPELINE_STATE_DESC updatePipelineDesc{};
+	updatePipelineDesc.pRootSignature = emitRootSignature_.Get();
+	updatePipelineDesc.CS = {
+		updateShaderBlob->GetBufferPointer(),
+		updateShaderBlob->GetBufferSize()
+	};
+
+	hr = dxCommon_->GetDevice()->CreateComputePipelineState(
+		&updatePipelineDesc,
+		IID_PPV_ARGS(&updatePipelineState_)
+	);
+	assert(SUCCEEDED(hr));
 }
 
 void GpuParticle::TransitionParticleResource(D3D12_RESOURCE_STATES stateAfter) {
@@ -593,6 +613,30 @@ void GpuParticle::EmitParticlesOnGPU() {
 	uavBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 	uavBarriers[1].UAV.pResource = counterResource_.Get();
 	commandList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
+}
+
+void GpuParticle::UpdateParticlesOnGPU() {
+	auto* commandList = dxCommon_->GetCommandList();
+	TransitionParticleResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	commandList->SetComputeRootSignature(emitRootSignature_.Get());
+	commandList->SetPipelineState(updatePipelineState_.Get());
+	srvManager_->SetComputeRootDescriptorTable(0, particleUavIndex_);
+	srvManager_->SetComputeRootDescriptorTable(1, counterUavIndex_);
+	commandList->SetComputeRootConstantBufferView(
+		2,
+		emitterResource_->GetGPUVirtualAddress()
+	);
+	commandList->SetComputeRootConstantBufferView(
+		3,
+		perFrameResource_->GetGPUVirtualAddress()
+	);
+	commandList->Dispatch(1, 1, 1);
+
+	D3D12_RESOURCE_BARRIER uavBarrier{};
+	uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	uavBarrier.UAV.pResource = particleResource_.Get();
+	commandList->ResourceBarrier(1, &uavBarrier);
 
 	TransitionParticleResource(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 }
@@ -623,6 +667,7 @@ void GpuParticle::Draw(Camera* camera) {
 
 	InitializeParticlesOnGPU();
 	EmitParticlesOnGPU();
+	UpdateParticlesOnGPU();
 	TransitionParticleResource(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 	perViewData_->viewProjection = camera->GetViewProjectionMatrix();

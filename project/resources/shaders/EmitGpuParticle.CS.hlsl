@@ -62,7 +62,7 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
         );
         particle.lifeTime = 1.0f;
         particle.currentTime = 0.0f;
-        particle.velocity = direction * lerp(0.01f, 0.05f, Rand1d(seed + 23.11f));
+        particle.velocity = direction * lerp(0.4f, 1.0f, Rand1d(seed + 23.11f));
         particle.color = float32_t4(
             lerp(0.8f, 1.0f, Rand1d(seed + 29.73f)),
             lerp(0.35f, 0.75f, Rand1d(seed + 41.29f)),

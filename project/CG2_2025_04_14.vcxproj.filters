@@ -136,6 +136,7 @@
     <None Include="resources\shaders\GpuParticle.VS.hlsl" />
     <None Include="resources\shaders\InitializeGpuParticle.CS.hlsl" />
     <None Include="resources\shaders\EmitGpuParticle.CS.hlsl" />
+    <None Include="resources\shaders\UpdateGpuParticle.CS.hlsl" />
     <None Include="resources\shaders\RadialBlur.PS.hlsl" />
     <None Include="resources\shaders\Grayscale.PS.hlsl" />
     <None Include="resources\shaders\Noise.PS.hlsl" />

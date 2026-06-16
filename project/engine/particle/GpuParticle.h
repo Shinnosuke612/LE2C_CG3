@@ -82,6 +82,7 @@ private:
 	void CreatePipelineStates();
 	void InitializeParticlesOnGPU();
 	void EmitParticlesOnGPU();
+	void UpdateParticlesOnGPU();
 	void TransitionParticleResource(D3D12_RESOURCE_STATES stateAfter);
 	void TransitionCounterResource(D3D12_RESOURCE_STATES stateAfter);
 
@@ -118,6 +119,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> initializePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> emitRootSignature_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> emitPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> updatePipelineState_;
 
 	bool needsInitialize_ = true;
 	float elapsedTime_ = 0.0f;
