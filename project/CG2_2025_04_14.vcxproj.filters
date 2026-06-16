@@ -134,6 +134,7 @@
     <None Include="resources\shaders\Grayscale.PS.hlsl" />
     <None Include="resources\shaders\Noise.PS.hlsl" />
     <None Include="resources\shaders\Outline.PS.hlsl" />
+    <None Include="resources\shaders\Skinning.CS.hlsl" />
     <None Include="resources\shaders\Vignette.PS.hlsl" />
     <None Include="resources\shaders\Object3D.hlsli" />
     <None Include="resources\shaders\Particle.hlsli" />

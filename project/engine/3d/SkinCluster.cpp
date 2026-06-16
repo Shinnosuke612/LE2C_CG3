@@ -11,6 +11,42 @@
 #include "SrvManager.h"
 #include "../base/DirectXCommon.h"
 
+namespace {
+
+Microsoft::WRL::ComPtr<ID3D12Resource> CreateUavBufferResource(
+	ID3D12Device* device,
+	size_t sizeInBytes
+) {
+	assert(device);
+
+	D3D12_HEAP_PROPERTIES heapProperties{};
+	heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+	D3D12_RESOURCE_DESC resourceDesc{};
+	resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	resourceDesc.Width = sizeInBytes;
+	resourceDesc.Height = 1;
+	resourceDesc.DepthOrArraySize = 1;
+	resourceDesc.MipLevels = 1;
+	resourceDesc.SampleDesc.Count = 1;
+	resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> resource;
+	const HRESULT hr = device->CreateCommittedResource(
+		&heapProperties,
+		D3D12_HEAP_FLAG_NONE,
+		&resourceDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(&resource)
+	);
+	assert(SUCCEEDED(hr));
+	return resource;
+}
+
+} // namespace
+
 void SkinCluster::Initialize(
 	DirectXCommon* dxCommon,
 	SrvManager* srvManager,
@@ -41,6 +77,15 @@ void SkinCluster::Initialize(
 		sizeof(PaletteWell)
 	);
 
+	assert(srvManager->CanAllocate());
+	inputVertexSrvIndex_ = srvManager->Allocate();
+	srvManager->CreateSRVforStructuredBuffer(
+		inputVertexSrvIndex_,
+		model.GetVertexResource(),
+		vertexCount,
+		sizeof(Model::VertexData)
+	);
+
 	influenceResource_ = dxCommon->CreateBufferResource(
 		sizeof(VertexInfluence) * vertexCount
 	);
@@ -60,6 +105,45 @@ void SkinCluster::Initialize(
 		sizeof(VertexInfluence) * vertexCount
 	);
 	influenceBufferView_.StrideInBytes = sizeof(VertexInfluence);
+
+	assert(srvManager->CanAllocate());
+	influenceSrvIndex_ = srvManager->Allocate();
+	srvManager->CreateSRVforStructuredBuffer(
+		influenceSrvIndex_,
+		influenceResource_.Get(),
+		vertexCount,
+		sizeof(VertexInfluence)
+	);
+
+	outputVertexResource_ = CreateUavBufferResource(
+		dxCommon->GetDevice(),
+		sizeof(Model::VertexData) * vertexCount
+	);
+	skinnedVertexBufferView_.BufferLocation =
+		outputVertexResource_->GetGPUVirtualAddress();
+	skinnedVertexBufferView_.SizeInBytes = static_cast<UINT>(
+		sizeof(Model::VertexData) * vertexCount
+	);
+	skinnedVertexBufferView_.StrideInBytes = sizeof(Model::VertexData);
+
+	assert(srvManager->CanAllocate());
+	outputVertexUavIndex_ = srvManager->Allocate();
+	srvManager->CreateUAVforStructuredBuffer(
+		outputVertexUavIndex_,
+		outputVertexResource_.Get(),
+		vertexCount,
+		sizeof(Model::VertexData)
+	);
+
+	skinningInformationResource_ = dxCommon->CreateBufferResource(
+		sizeof(SkinningInformation)
+	);
+	skinningInformationResource_->Map(
+		0,
+		nullptr,
+		reinterpret_cast<void**>(&mappedSkinningInformation_)
+	);
+	mappedSkinningInformation_->numVertices = vertexCount;
 
 	inverseBindPoseMatrices_.assign(
 		jointCount_,
@@ -165,6 +249,25 @@ void SkinCluster::Update(const Skeleton& skeleton) {
 			Transpose(Inverse(skinningMatrix));
 	}
 
+}
+
+void SkinCluster::TransitionOutputResource(
+	ID3D12GraphicsCommandList* commandList,
+	D3D12_RESOURCE_STATES stateAfter
+) {
+	if (!outputVertexResource_ || outputVertexResourceState_ == stateAfter) {
+		return;
+	}
+
+	D3D12_RESOURCE_BARRIER barrier{};
+	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barrier.Transition.pResource = outputVertexResource_.Get();
+	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+	barrier.Transition.StateBefore = outputVertexResourceState_;
+	barrier.Transition.StateAfter = stateAfter;
+	commandList->ResourceBarrier(1, &barrier);
+	outputVertexResourceState_ = stateAfter;
 }
 
 void SkinCluster::AddInfluence(

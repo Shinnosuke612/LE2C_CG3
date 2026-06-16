@@ -109,6 +109,40 @@ void Model::DrawForShadow(
 	);
 }
 
+void Model::DrawWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& customVertexBufferView) {
+	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
+	commandList->IASetVertexBuffers(0, 1, &customVertexBufferView);
+	commandList->IASetIndexBuffer(&indexBufferView);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	commandList->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
+	commandList->SetGraphicsRootDescriptorTable(
+		2,
+		TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureFilePath)
+	);
+	commandList->DrawIndexedInstanced(
+		static_cast<UINT>(modelData.indices.size()),
+		1,
+		0,
+		0,
+		0
+	);
+}
+
+void Model::DrawForShadowWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& customVertexBufferView) {
+	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
+	commandList->IASetVertexBuffers(0, 1, &customVertexBufferView);
+	commandList->IASetIndexBuffer(&indexBufferView);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	commandList->DrawIndexedInstanced(
+		static_cast<UINT>(modelData.indices.size()),
+		1,
+		0,
+		0,
+		0
+	);
+}
+
 Model::MaterialData Model::LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename) {
 	MaterialData materialData;      // 構築するMaterialData
 	std::string line;               // 1行分

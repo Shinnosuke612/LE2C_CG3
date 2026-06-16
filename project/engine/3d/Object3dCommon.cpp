@@ -1,6 +1,8 @@
 #include "Object3dCommon.h"
 #include "../base/DirectXCommon.h"
 #include "../utility/Logger.h"
+#include "SkinCluster.h"
+#include "SrvManager.h"
 #include <cassert>
 
 Object3dCommon* Object3dCommon::GetInstance() {
@@ -19,6 +21,7 @@ void Object3dCommon::Initialize(DirectXCommon* dxCommon) {
 
 	GenerateGraphicsPipeline();
 	GenerateSkinningGraphicsPipeline();
+	GenerateSkinningComputePipeline();
 	GenerateSkyboxGraphicsPipeline();
 	GenerateShadowGraphicsPipeline();
 	GenerateSkinningShadowGraphicsPipeline();
@@ -52,6 +55,46 @@ void Object3dCommon::SetSkyboxRenderState() {
 	dxCommon_->GetCommandList()->SetGraphicsRootSignature(rootSignature_.Get());
 	dxCommon_->GetCommandList()->SetPipelineState(skyboxPipelineState_.Get());
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
+void Object3dCommon::DispatchSkinning(SkinCluster& skinCluster) {
+	if (!skinningComputeRootSignature_ || !skinningComputePipelineState_) {
+		return;
+	}
+
+	auto* commandList = dxCommon_->GetCommandList();
+	skinCluster.TransitionOutputResource(
+		commandList,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+	);
+
+	commandList->SetComputeRootSignature(skinningComputeRootSignature_.Get());
+	commandList->SetPipelineState(skinningComputePipelineState_.Get());
+
+	SrvManager* srvManager = SrvManager::GetInstance();
+	srvManager->SetComputeRootDescriptorTable(0, skinCluster.GetPaletteSrvIndex());
+	srvManager->SetComputeRootDescriptorTable(1, skinCluster.GetInputVertexSrvIndex());
+	srvManager->SetComputeRootDescriptorTable(2, skinCluster.GetInfluenceSrvIndex());
+	srvManager->SetComputeRootDescriptorTable(3, skinCluster.GetOutputVertexUavIndex());
+	commandList->SetComputeRootConstantBufferView(
+		4,
+		skinCluster.GetSkinningInformationResource()->GetGPUVirtualAddress()
+	);
+
+	const uint32_t threadCount = 1024;
+	const uint32_t dispatchX =
+		(skinCluster.GetVertexCount() + threadCount - 1) / threadCount;
+	commandList->Dispatch(dispatchX, 1, 1);
+
+	D3D12_RESOURCE_BARRIER uavBarrier{};
+	uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	uavBarrier.UAV.pResource = nullptr;
+	commandList->ResourceBarrier(1, &uavBarrier);
+
+	skinCluster.TransitionOutputResource(
+		commandList,
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
+	);
 }
 
 void Object3dCommon::MakeRootSignature(){
@@ -347,6 +390,90 @@ void Object3dCommon::GenerateSkinningGraphicsPipeline() {
 			&pipelineDesc,
 			IID_PPV_ARGS(&skinningPipelineState_)
 		);
+	assert(SUCCEEDED(hr));
+}
+
+void Object3dCommon::GenerateSkinningComputePipeline() {
+	HRESULT hr;
+
+	D3D12_DESCRIPTOR_RANGE descriptorRanges[4] = {};
+	descriptorRanges[0].BaseShaderRegister = 0;
+	descriptorRanges[0].NumDescriptors = 1;
+	descriptorRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descriptorRanges[0].OffsetInDescriptorsFromTableStart =
+		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+	descriptorRanges[1].BaseShaderRegister = 1;
+	descriptorRanges[1].NumDescriptors = 1;
+	descriptorRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descriptorRanges[1].OffsetInDescriptorsFromTableStart =
+		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+	descriptorRanges[2].BaseShaderRegister = 2;
+	descriptorRanges[2].NumDescriptors = 1;
+	descriptorRanges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descriptorRanges[2].OffsetInDescriptorsFromTableStart =
+		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+	descriptorRanges[3].BaseShaderRegister = 0;
+	descriptorRanges[3].NumDescriptors = 1;
+	descriptorRanges[3].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+	descriptorRanges[3].OffsetInDescriptorsFromTableStart =
+		D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER rootParameters[5] = {};
+	for (uint32_t index = 0; index < 4; ++index) {
+		rootParameters[index].ParameterType =
+			D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParameters[index].ShaderVisibility =
+			D3D12_SHADER_VISIBILITY_ALL;
+		rootParameters[index].DescriptorTable.pDescriptorRanges =
+			&descriptorRanges[index];
+		rootParameters[index].DescriptorTable.NumDescriptorRanges = 1;
+	}
+	rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	rootParameters[4].Descriptor.ShaderRegister = 0;
+
+	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
+	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+	rootSignatureDesc.pParameters = rootParameters;
+	rootSignatureDesc.NumParameters = _countof(rootParameters);
+
+	ID3DBlob* signatureBlob = nullptr;
+	ID3DBlob* errorBlob = nullptr;
+	hr = D3D12SerializeRootSignature(
+		&rootSignatureDesc,
+		D3D_ROOT_SIGNATURE_VERSION_1,
+		&signatureBlob,
+		&errorBlob
+	);
+	if (FAILED(hr)) {
+		Logger::Log(reinterpret_cast<char*>(errorBlob->GetBufferPointer()));
+		assert(false);
+	}
+
+	hr = dxCommon_->GetDevice()->CreateRootSignature(
+		0,
+		signatureBlob->GetBufferPointer(),
+		signatureBlob->GetBufferSize(),
+		IID_PPV_ARGS(&skinningComputeRootSignature_)
+	);
+	assert(SUCCEEDED(hr));
+
+	const auto computeShaderBlob = dxCommon_->CompileShader(
+		L"resources/shaders/Skinning.CS.hlsl",
+		L"cs_6_0"
+	);
+	assert(computeShaderBlob);
+
+	D3D12_COMPUTE_PIPELINE_STATE_DESC pipelineDesc{};
+	pipelineDesc.pRootSignature = skinningComputeRootSignature_.Get();
+	pipelineDesc.CS = {
+		computeShaderBlob->GetBufferPointer(),
+		computeShaderBlob->GetBufferSize()
+	};
+	hr = dxCommon_->GetDevice()->CreateComputePipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&skinningComputePipelineState_)
+	);
 	assert(SUCCEEDED(hr));
 }
 

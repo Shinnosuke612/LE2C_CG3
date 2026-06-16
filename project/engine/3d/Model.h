@@ -35,13 +35,13 @@ public:
 
 	using SkinClusterData = std::map<std::string, JointWeightData>;
 
-private://インナークラス
 	struct VertexData{
 		Vector4 position;
 		Vector2 texcoord;
 		Vector3 normal;
 	};
 
+private://インナークラス
 	struct MaterialData{
 		std::string textureFilePath;
 	};
@@ -81,6 +81,8 @@ public://公開メンバ関数
 	//描画
 	void Draw(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
 	void DrawForShadow(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
+	void DrawWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView);
+	void DrawForShadowWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView);
 
 	// getter
 	const Matrix4x4& GetRootNodeLocalMatrix() const { return modelData.rootNode.localMatrix; }
@@ -93,6 +95,10 @@ public://公開メンバ関数
 	}
 	const SkinClusterData& GetSkinClusterData() const {
 		return modelData.skinClusterData;
+	}
+	ID3D12Resource* GetVertexResource() const { return vertexResource; }
+	const D3D12_VERTEX_BUFFER_VIEW& GetVertexBufferView() const {
+		return vertexBufferView;
 	}
 private:
 	//ModelCommonのポインタ

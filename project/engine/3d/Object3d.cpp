@@ -161,11 +161,8 @@ void Object3d::Draw(){
 
 	auto* commandList = object3dCommon->GetDxCommon()->GetCommandList();
 	if (skinCluster_ && skinCluster_->IsValid()) {
-		object3dCommon->SetSkinningRenderState();
-		SrvManager::GetInstance()->SetGraphicsRootDescriptorTable(
-			8,
-			skinCluster_->GetPaletteSrvIndex()
-		);
+		object3dCommon->DispatchSkinning(*skinCluster_);
+		object3dCommon->SetCommonRenderState();
 	}
 	else {
 		object3dCommon->SetCommonRenderState();
@@ -181,11 +178,14 @@ void Object3d::Draw(){
 		TextureManager::GetInstance()->GetSrvHandleGPU(environmentTextureFilePath_)
 	);
 
-	model->Draw(
-		skinCluster_
-			? &skinCluster_->GetInfluenceBufferView()
-			: nullptr
-	);
+	if (skinCluster_ && skinCluster_->IsValid()) {
+		model->DrawWithVertexBuffer(
+			skinCluster_->GetSkinnedVertexBufferView()
+		);
+	}
+	else {
+		model->Draw();
+	}
 }
 
 void Object3d::DrawShadow(const Matrix4x4& lightViewProjection) {
@@ -197,11 +197,8 @@ void Object3d::DrawShadow(const Matrix4x4& lightViewProjection) {
 
 	auto* commandList = object3dCommon->GetDxCommon()->GetCommandList();
 	if (skinCluster_ && skinCluster_->IsValid()) {
-		object3dCommon->SetSkinningShadowRenderState();
-		SrvManager::GetInstance()->SetGraphicsRootDescriptorTable(
-			1,
-			skinCluster_->GetPaletteSrvIndex()
-		);
+		object3dCommon->DispatchSkinning(*skinCluster_);
+		object3dCommon->SetShadowRenderState();
 	}
 	else {
 		object3dCommon->SetShadowRenderState();
@@ -211,11 +208,14 @@ void Object3d::DrawShadow(const Matrix4x4& lightViewProjection) {
 		shadowTransformationMatrixResource->GetGPUVirtualAddress()
 	);
 
-	model->DrawForShadow(
-		skinCluster_
-			? &skinCluster_->GetInfluenceBufferView()
-			: nullptr
-	);
+	if (skinCluster_ && skinCluster_->IsValid()) {
+		model->DrawForShadowWithVertexBuffer(
+			skinCluster_->GetSkinnedVertexBufferView()
+		);
+	}
+	else {
+		model->DrawForShadow();
+	}
 }
 
 void Object3d::DrawSkeletonDebug(

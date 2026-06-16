@@ -4,6 +4,7 @@
 #include "../math/Vector4.h"
 class DirectXCommon;
 class Camera;
+class SkinCluster;
 
 class Object3dCommon{
 public: //メンバ関数
@@ -22,6 +23,7 @@ public: //メンバ関数
 	void SetSkinningRenderState();
 	void SetShadowRenderState();
 	void SetSkinningShadowRenderState();
+	void DispatchSkinning(SkinCluster& skinCluster);
 
 public:
 	
@@ -44,6 +46,7 @@ private://非公開メンバ関数
 	//グラフィックパイプラインの生成
 	void GenerateGraphicsPipeline();
 	void GenerateSkinningGraphicsPipeline();
+	void GenerateSkinningComputePipeline();
 
 	// Skybox用グラフィックパイプラインの生成
 	void GenerateSkyboxGraphicsPipeline();
@@ -64,6 +67,8 @@ private://メンバ変数
 	Microsoft::WRL::ComPtr < ID3D12RootSignature> rootSignature_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> skinningPipelineState_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> skinningComputeRootSignature_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> skinningComputePipelineState_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> shadowRootSignature_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> shadowPipelineState_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> skinningShadowPipelineState_ = nullptr;

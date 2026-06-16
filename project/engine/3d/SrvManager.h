@@ -21,12 +21,15 @@ public:
 	void CreateSRVforTexture2DArray(uint32_t srvIndex, ID3D12Resource* pResource, DXGI_FORMAT Format, UINT MipLevels, UINT arraySize);
 	//SRV生成(Structured Buffer用)
 	void CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResource, UINT numElements,UINT structureByteStride);
+	//UAV生成(Structured Buffer用)
+	void CreateUAVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResource, UINT numElements, UINT structureByteStride);
 
 	ID3D12DescriptorHeap* GetDescriptorHeap() const;
 
 	void PreDraw();
 
 	void SetGraphicsRootDescriptorTable(UINT RootParameterIndex, uint32_t srvIndex);
+	void SetComputeRootDescriptorTable(UINT RootParameterIndex, uint32_t srvIndex);
 
 private:
 	DirectXCommon* directXCommon = nullptr;
