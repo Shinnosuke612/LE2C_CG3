@@ -35,10 +35,13 @@ void ParticleManager::Initialize(ParticleCommon* particleCommon, SrvManager* srv
 	camera_ = particleCommon_->GetDefaultCamera();
 
 	CreateDirectionalLightResource();
+	gpuParticle_.Initialize(particleCommon_, srvManager_, "resources/circle.png");
 }
 
 void ParticleManager::Reset() {
 	particleGroups_.clear();
+	gpuParticle_.Reset();
+	gpuParticleEnabled_ = false;
 
 	directionalLightResource_.Reset();
 	directionalLightData_ = nullptr;
@@ -846,5 +849,9 @@ void ParticleManager::Draw() {
 		);
 
 		commandList->DrawInstanced(group.vertexCount, group.instanceCount, 0, 0);
+	}
+
+	if (gpuParticleEnabled_) {
+		gpuParticle_.Draw(camera_);
 	}
 }

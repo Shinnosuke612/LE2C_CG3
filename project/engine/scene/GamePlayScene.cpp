@@ -37,6 +37,7 @@ void GamePlayScene::Initialize()
 
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
 	ParticleManager::GetInstance()->SetCamera(camera_);
+	ParticleManager::GetInstance()->SetGpuParticleEnabled(true);
 
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");

@@ -22,6 +22,7 @@ void TitleScene::Initialize()
 
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
 	ParticleManager::GetInstance()->SetCamera(camera_);
+	ParticleManager::GetInstance()->SetGpuParticleEnabled(false);
 
 	ParticleEffectDesc coreBurstEffect{};
 

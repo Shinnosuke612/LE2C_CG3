@@ -12,6 +12,7 @@
 #include "../math/Matrix4x4.h"
 
 #include "ParticleCommon.h"
+#include "GpuParticle.h"
 
 class SrvManager;
 class Camera;
@@ -335,6 +336,8 @@ public:
 
 	void SetGroupBlendMode(const std::string& name, ParticleCommon::BlendMode blendMode);
 	void SetGroupRenderDesc(const std::string& name, const ParticleRenderDesc& render);
+	void SetGpuParticleEnabled(bool enabled) { gpuParticleEnabled_ = enabled; }
+	bool IsGpuParticleEnabled() const { return gpuParticleEnabled_; }
 
 private:
 	void CreateDirectionalLightResource();
@@ -366,6 +369,8 @@ private:
 	Camera* camera_ = nullptr;
 
 	std::unordered_map<std::string, ParticleGroup> particleGroups_;
+	GpuParticle gpuParticle_;
+	bool gpuParticleEnabled_ = false;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> directionalLightResource_;
 	DirectionalLight* directionalLightData_ = nullptr;

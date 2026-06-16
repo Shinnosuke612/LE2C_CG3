@@ -36,6 +36,7 @@
     <ClCompile Include="engine\utility\StringUtility.cpp" />
     <ClCompile Include="engine\2d\TextureManager.cpp" />
     <ClCompile Include="engine\base\WinApp.cpp" />
+    <ClCompile Include="engine\particle\GpuParticle.cpp" />
     <ClCompile Include="engine\3d\Object3dCommon.cpp" />
     <ClCompile Include="engine\3d\Object3d.cpp" />
     <ClCompile Include="engine\3d\Model.cpp" />
@@ -97,6 +98,7 @@
     <ClInclude Include="engine\3d\ModelManager.h" />
     <ClInclude Include="engine\3d\Camera.h" />
     <ClInclude Include="engine\3d\SrvManager.h" />
+    <ClInclude Include="engine\particle\GpuParticle.h" />
     <ClInclude Include="engine\particle\ParticleCommon.h" />
     <ClInclude Include="engine\particle\ParticleManager.h" />
     <ClInclude Include="engine\particle\ParticleEmitter.h" />
@@ -130,6 +132,9 @@
     <None Include="resources\shaders\Fullscreen.hlsli" />
     <None Include="resources\shaders\Fullscreen.VS.hlsl" />
     <None Include="resources\shaders\GaussianBlur.PS.hlsl" />
+    <None Include="resources\shaders\GpuParticle.hlsli" />
+    <None Include="resources\shaders\GpuParticle.VS.hlsl" />
+    <None Include="resources\shaders\InitializeGpuParticle.CS.hlsl" />
     <None Include="resources\shaders\RadialBlur.PS.hlsl" />
     <None Include="resources\shaders\Grayscale.PS.hlsl" />
     <None Include="resources\shaders\Noise.PS.hlsl" />
