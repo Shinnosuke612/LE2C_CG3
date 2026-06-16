@@ -46,9 +46,24 @@ public:
 		float intensity;
 	};
 
+	struct EmitterSphere {
+		Vector3 translate;
+		float radius;
+		uint32_t count;
+		float frequency;
+		float frequencyTime;
+		uint32_t emit;
+	};
+
 	struct PerView {
 		Matrix4x4 viewProjection;
 		Matrix4x4 billboardMatrix;
+	};
+
+	struct PerFrame {
+		float time;
+		float deltaTime;
+		float padding[2];
 	};
 
 	void Initialize(
@@ -57,6 +72,7 @@ public:
 		const std::string& textureFilePath = "resources/circle.png"
 	);
 	void Reset();
+	void Update();
 	void Draw(Camera* camera);
 
 private:
@@ -65,7 +81,9 @@ private:
 	void CreateRootSignatures();
 	void CreatePipelineStates();
 	void InitializeParticlesOnGPU();
+	void EmitParticlesOnGPU();
 	void TransitionParticleResource(D3D12_RESOURCE_STATES stateAfter);
+	void TransitionCounterResource(D3D12_RESOURCE_STATES stateAfter);
 
 private:
 	ParticleCommon* particleCommon_ = nullptr;
@@ -76,9 +94,12 @@ private:
 	uint32_t textureSrvIndex_ = 0;
 	uint32_t particleSrvIndex_ = 0;
 	uint32_t particleUavIndex_ = 0;
+	uint32_t counterUavIndex_ = 0;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> particleResource_;
 	D3D12_RESOURCE_STATES particleResourceState_ = D3D12_RESOURCE_STATE_COMMON;
+	Microsoft::WRL::ComPtr<ID3D12Resource> counterResource_;
+	D3D12_RESOURCE_STATES counterResourceState_ = D3D12_RESOURCE_STATE_COMMON;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> materialResource_;
 	Material* materialData_ = nullptr;
@@ -86,11 +107,19 @@ private:
 	DirectionalLight* directionalLightData_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> perViewResource_;
 	PerView* perViewData_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> emitterResource_;
+	EmitterSphere* emitterData_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> perFrameResource_;
+	PerFrame* perFrameData_ = nullptr;
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> graphicsRootSignature_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> initializeRootSignature_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> initializePipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> emitRootSignature_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> emitPipelineState_;
 
 	bool needsInitialize_ = true;
+	float elapsedTime_ = 0.0f;
+	float deltaTime_ = 1.0f / 60.0f;
 };

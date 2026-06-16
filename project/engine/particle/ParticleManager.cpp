@@ -750,6 +750,10 @@ void ParticleManager::Update() {
 		return;
 	}
 
+	if (gpuParticleEnabled_) {
+		gpuParticle_.Update();
+	}
+
 	for (auto& [name, group] : particleGroups_) {
 		group.uvOffset.x += group.render.uvScrollSpeed.x * deltaTime_;
 		group.uvOffset.y += group.render.uvScrollSpeed.y * deltaTime_;
