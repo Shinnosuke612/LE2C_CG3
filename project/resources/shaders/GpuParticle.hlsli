@@ -5,9 +5,9 @@ struct GpuParticle
     float32_t3 scale;
     float32_t currentTime;
     float32_t3 rotate;
-    float32_t padding0;
+    float32_t rotationSpeed;
     float32_t3 velocity;
-    float32_t padding1;
+    float32_t padding0;
     float32_t4 color;
 };
 
@@ -32,4 +32,12 @@ struct PerFrame
     float32_t time;
     float32_t deltaTime;
     float32_t2 padding;
+};
+
+struct GpuParticleBehavior
+{
+    float32_t4 lifeScaleVelocityMinRotationMin;
+    float32_t4 lifeScaleVelocityMaxRotationMax;
+    float32_t4 colorMin;
+    float32_t4 colorMax;
 };

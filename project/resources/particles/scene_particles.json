@@ -1,0 +1,62 @@
+{
+  "scenes": {
+    "GAMEPLAY": [
+      {
+        "count": 10,
+        "effectFilePath": "resources/particles/riftParticle.json",
+        "emitterActive": true,
+        "enabled": true,
+        "frequency": 0.10000000149011612,
+        "label": "Particle 0",
+        "spawnSize": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "count": 200,
+        "effectFilePath": "resources/particles/rainParticle.json",
+        "emitterActive": true,
+        "enabled": true,
+        "frequency": 0.10000000149011612,
+        "label": "Particle 1",
+        "spawnSize": [
+          100.0,
+          1.0,
+          100.0
+        ],
+        "translate": [
+          0.0,
+          30.0,
+          0.0
+        ]
+      }
+    ],
+    "TITLE": [
+      {
+        "count": 10,
+        "effectFilePath": "resources/particles/newParticle.json",
+        "emitterActive": true,
+        "enabled": true,
+        "frequency": 0.10000000149011612,
+        "label": "Particle 0",
+        "spawnSize": [
+          1.0,
+          1.0,
+          0.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ]
+  }
+}

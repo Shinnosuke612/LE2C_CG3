@@ -25,20 +25,20 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Development|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>false</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -150,6 +150,7 @@
     <ClCompile Include="engine\collision\OBBCollider.cpp" />
     <ClCompile Include="engine\collision\SphereCollider.cpp" />
     <ClCompile Include="engine\debug\DebugRenderer.cpp" />
+    <ClCompile Include="engine\effect\LightningRenderer.cpp" />
     <ClCompile Include="engine\player\Player.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectEditor.cpp" />
     <ClCompile Include="engine\scene\BaseScene.cpp" />
@@ -159,6 +160,7 @@
     <ClCompile Include="engine\base\D3DResourceLeadChecker.cpp" />
     <ClCompile Include="engine\base\DirectXCommon.cpp" />
     <ClCompile Include="engine\base\FullscreenCopy.cpp" />
+    <ClCompile Include="engine\base\BloomRenderer.cpp" />
     <ClCompile Include="engine\base\SceneRenderTarget.cpp" />
     <ClCompile Include="engine\io\Input.cpp" />
     <ClCompile Include="engine\math\Quaternion.cpp" />
@@ -273,6 +275,7 @@
     <ClInclude Include="engine\collision\OBBCollider.h" />
     <ClInclude Include="engine\collision\SphereCollider.h" />
     <ClInclude Include="engine\debug\DebugRenderer.h" />
+    <ClInclude Include="engine\effect\LightningRenderer.h" />
     <ClInclude Include="engine\player\Player.h" />
     <ClInclude Include="engine\particle\ParticleEffectEditor.h" />
     <ClInclude Include="engine\scene\BaseScene.h" />
@@ -283,6 +286,8 @@
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
     <ClInclude Include="engine\base\DirectXCommon.h" />
     <ClInclude Include="engine\base\FullscreenCopy.h" />
+    <ClInclude Include="engine\base\BloomRenderer.h" />
+    <ClInclude Include="engine\base\RenderFormats.h" />
     <ClInclude Include="engine\base\SceneRenderTarget.h" />
     <ClInclude Include="engine\io\Input.h" />
     <ClInclude Include="engine\math\Matrix3x3.h" />
@@ -334,6 +339,10 @@
   <ItemGroup>
     <None Include=".editorconfig" />
     <None Include="resources\shaders\BoxBlur.PS.hlsl" />
+    <None Include="resources\shaders\Bloom.hlsli" />
+    <None Include="resources\shaders\BloomBlur.PS.hlsl" />
+    <None Include="resources\shaders\BloomComposite.PS.hlsl" />
+    <None Include="resources\shaders\BloomExtract.PS.hlsl" />
     <None Include="resources\shaders\CopyImage.PS.hlsl" />
     <None Include="resources\shaders\Dissolve.PS.hlsl" />
     <None Include="resources\shaders\Fullscreen.hlsli" />
@@ -375,11 +384,11 @@
           SkipUnchangedFiles="true"
           Condition="'@(RuntimeDll)' != ''" />
   </Target>
-  <Target Name="CopyReleaseRuntimeAssets" AfterTargets="Build" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+  <Target Name="CopyRuntimeAssets" AfterTargets="Build">
     <ItemGroup>
-      <ReleaseResource Include="$(ProjectDir)resources\**\*" />
+      <RuntimeResource Include="$(ProjectDir)resources\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(ReleaseResource)" DestinationFiles="@(ReleaseResource->'$(TargetDir)resources\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(RuntimeResource)" DestinationFiles="@(RuntimeResource->'$(TargetDir)resources\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

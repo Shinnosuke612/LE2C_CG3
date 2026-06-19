@@ -1,4 +1,5 @@
 #include "DebugRenderer.h"
+#include "../base/RenderFormats.h"
 
 #include <algorithm>
 #include <cassert>
@@ -303,7 +304,7 @@ void DebugRenderer::CreateGraphicsPipeline() {
 	pipelineDesc.PrimitiveTopologyType =
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
 	pipelineDesc.NumRenderTargets = 1;
-	pipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	pipelineDesc.RTVFormats[0] = RenderFormats::kSceneHdrFormat;
 	pipelineDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	pipelineDesc.SampleDesc.Count = 1;
 

@@ -10,6 +10,12 @@ using json = nlohmann::json;
 
 namespace {
 
+constexpr float kMinEmitterFrequency = 1.0f / 60.0f;
+
+float NormalizeEmitterFrequency(float frequency) {
+	return frequency > 0.0f ? frequency : kMinEmitterFrequency;
+}
+
 json ToJson(const Vector3& v) {
 	return json::array({ v.x, v.y, v.z });
 }
@@ -175,6 +181,7 @@ void WriteRender(json& j, const ParticleManager::ParticleRenderDesc& render) {
 		{ "flipU", render.flipU },
 		{ "flipV", render.flipV },
 		{ "alphaCutoff", render.alphaCutoff },
+		{ "emissiveIntensity", render.emissiveIntensity },
 		{ "cullMode", ToString(render.cullMode) },
 		{ "depthTest", render.depthTest },
 		{ "depthWrite", render.depthWrite },
@@ -215,6 +222,8 @@ void ReadRender(const json& j, ParticleManager::ParticleRenderDesc& render) {
 	render.flipV = j.value("flipV", render.flipV);
 	render.alphaCutoff =
 		std::clamp(j.value("alphaCutoff", render.alphaCutoff), 0.0f, 1.0f);
+	render.emissiveIntensity =
+		(std::max)(0.0f, j.value("emissiveIntensity", render.emissiveIntensity));
 	render.cullMode = ToCullMode(j.value("cullMode", ToString(render.cullMode)));
 	render.depthTest = j.value("depthTest", render.depthTest);
 	render.depthWrite = j.value("depthWrite", render.depthWrite);
@@ -330,6 +339,7 @@ void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 	};
 
 	j["motion"]["vortex"] = {
+		{ "useEmitterOffset", b.motion.vortex.useEmitterOffset },
 		{ "center", ToJson(b.motion.vortex.center) },
 		{ "axis", ToString(b.motion.vortex.axis) },
 		{ "angularSpeedMin", b.motion.vortex.angularSpeedMin },
@@ -420,6 +430,7 @@ void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
 
 		if (motion.contains("vortex")) {
 			const json& vortex = motion.at("vortex");
+			b.motion.vortex.useEmitterOffset = vortex.value("useEmitterOffset", b.motion.vortex.useEmitterOffset);
 			if (vortex.contains("center")) b.motion.vortex.center = ReadVector3(vortex.at("center"), b.motion.vortex.center);
 			b.motion.vortex.axis = ToVortexAxis(vortex.value("axis", ToString(b.motion.vortex.axis)));
 			b.motion.vortex.angularSpeedMin = vortex.value("angularSpeedMin", b.motion.vortex.angularSpeedMin);
@@ -471,6 +482,24 @@ bool Save(const std::string& filePath, const ParticleEffectDesc& effect) {
 		{ "isActive", effect.emitter.isActive }
 	};
 
+	root["lightning"] = {
+		{ "enabled", effect.lightning.enabled },
+		{ "startOffset", ToJson(effect.lightning.startOffset) },
+		{ "endOffset", ToJson(effect.lightning.endOffset) },
+		{ "randomRange", ToJson(effect.lightning.randomRange) },
+		{ "coreColor", ToJson(effect.lightning.coreColor) },
+		{ "branchColor", ToJson(effect.lightning.branchColor) },
+		{ "jitter", effect.lightning.jitter },
+		{ "branchLength", effect.lightning.branchLength },
+		{ "branchProbability", effect.lightning.branchProbability },
+		{ "thickness", effect.lightning.thickness },
+		{ "duration", effect.lightning.duration },
+		{ "segmentCount", effect.lightning.segmentCount },
+		{ "flashExposure", effect.lightning.flashExposure },
+		{ "flashExposureValue", effect.lightning.flashExposureValue },
+		{ "flashReturnSpeed", effect.lightning.flashReturnSpeed }
+	};
+
 	WriteBehavior(root["behavior"], effect.behavior);
 
 	std::ofstream file(filePath);
@@ -510,8 +539,55 @@ bool Load(const std::string& filePath, ParticleEffectDesc& outEffect) {
 		}
 
 		outEffect.emitter.count = emitter.value("count", outEffect.emitter.count);
-		outEffect.emitter.frequency = emitter.value("frequency", outEffect.emitter.frequency);
+		outEffect.emitter.frequency =
+			NormalizeEmitterFrequency(emitter.value("frequency", outEffect.emitter.frequency));
 		outEffect.emitter.isActive = emitter.value("isActive", outEffect.emitter.isActive);
+	}
+
+	if (root.contains("lightning")) {
+		const json& lightning = root.at("lightning");
+
+		outEffect.lightning.enabled =
+			lightning.value("enabled", outEffect.lightning.enabled);
+		if (lightning.contains("startOffset")) {
+			outEffect.lightning.startOffset =
+				ReadVector3(lightning.at("startOffset"), outEffect.lightning.startOffset);
+		}
+		if (lightning.contains("endOffset")) {
+			outEffect.lightning.endOffset =
+				ReadVector3(lightning.at("endOffset"), outEffect.lightning.endOffset);
+		}
+		if (lightning.contains("randomRange")) {
+			outEffect.lightning.randomRange =
+				ReadVector3(lightning.at("randomRange"), outEffect.lightning.randomRange);
+		}
+		if (lightning.contains("coreColor")) {
+			outEffect.lightning.coreColor =
+				ReadVector4(lightning.at("coreColor"), outEffect.lightning.coreColor);
+		}
+		if (lightning.contains("branchColor")) {
+			outEffect.lightning.branchColor =
+				ReadVector4(lightning.at("branchColor"), outEffect.lightning.branchColor);
+		}
+
+		outEffect.lightning.jitter =
+			lightning.value("jitter", outEffect.lightning.jitter);
+		outEffect.lightning.branchLength =
+			lightning.value("branchLength", outEffect.lightning.branchLength);
+		outEffect.lightning.branchProbability =
+			lightning.value("branchProbability", outEffect.lightning.branchProbability);
+		outEffect.lightning.thickness =
+			lightning.value("thickness", outEffect.lightning.thickness);
+		outEffect.lightning.duration =
+			lightning.value("duration", outEffect.lightning.duration);
+		outEffect.lightning.segmentCount =
+			lightning.value("segmentCount", outEffect.lightning.segmentCount);
+		outEffect.lightning.flashExposure =
+			lightning.value("flashExposure", outEffect.lightning.flashExposure);
+		outEffect.lightning.flashExposureValue =
+			lightning.value("flashExposureValue", outEffect.lightning.flashExposureValue);
+		outEffect.lightning.flashReturnSpeed =
+			lightning.value("flashReturnSpeed", outEffect.lightning.flashReturnSpeed);
 	}
 
 	if (root.contains("behavior")) {
@@ -544,6 +620,7 @@ void ApplyToEmitter(ParticleEmitter& emitter, const ParticleEffectDesc& effect) 
 	emitter.SetFrequency(effect.emitter.frequency);
 	emitter.SetActive(effect.emitter.isActive);
 	emitter.SetBehavior(effect.behavior);
+	emitter.SetLightning(effect.lightning);
 }
 
 ParticleEmitter* CreateEmitter(const ParticleEffectDesc& effect) {

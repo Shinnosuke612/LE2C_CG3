@@ -17,20 +17,23 @@ public:
 	void SetRotate(const Vector3& rotate){ transform_.rotate = rotate; }
 
 	void SetCount(uint32_t count){ count_ = count; }
-	void SetFrequency(float frequency){ frequency_ = frequency; }
+	void SetFrequency(float frequency);
 	void SetActive(bool isActive){ isActive_ = isActive; }
 
 	void SetSpawnSize(const Vector3& spawnSize){ spawnSize_ = spawnSize; }
 	void SetBehavior(const ParticleManager::ParticleBehavior& behavior);
+	void SetLightning(const ParticleManager::LightningEmitterDesc& lightning);
 
 	const Vector3& GetSpawnSize() const{ return spawnSize_; }
 	const ParticleManager::ParticleBehavior& GetBehavior() const{ return behavior_; }
+	const ParticleManager::LightningEmitterDesc& GetLightning() const{ return lightning_; }
 
 private:
 	ParticleManager* particleManager_ = nullptr;
 	std::string groupName_;
 	Transform transform_{ {1.0f,1.0f,1.0f}, {0.0f,0.0f,0.0f}, {0.0f,0.0f,0.0f} };
 	ParticleManager::ParticleBehavior behavior_{};
+	ParticleManager::LightningEmitterDesc lightning_{};
 
 	uint32_t count_ = 1;
 	float frequency_ = 0.4f;

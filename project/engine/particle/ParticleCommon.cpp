@@ -1,4 +1,5 @@
 #include "ParticleCommon.h"
+#include "../base/RenderFormats.h"
 #include "../base/DirectXCommon.h"
 #include "../utility/Logger.h"
 #include <cassert>
@@ -47,9 +48,12 @@ namespace {
 			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
 		}
 		else if (blendMode == ParticleCommon::BlendMode::kBlendModeMultiply) {
-			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ZERO;
+			// Alpha-aware multiply:
+			//   result = source.rgb * dest.rgb + dest.rgb * (1 - source.a)
+			// This keeps transparent texels from darkening the scene.
+			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_DEST_COLOR;
 			blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_SRC_COLOR;
+			blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
 		}
 		else if (blendMode == ParticleCommon::BlendMode::kBlendModeScreen) {
 			blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_INV_DEST_COLOR;
@@ -254,7 +258,7 @@ void ParticleCommon::GenerateGraphicsPipeline() {
 	desc.PS = { pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize() };
 	desc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	desc.NumRenderTargets = 1;
-	desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	desc.RTVFormats[0] = RenderFormats::kSceneHdrFormat;
 	desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	desc.SampleDesc.Count = 1;
 	desc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;

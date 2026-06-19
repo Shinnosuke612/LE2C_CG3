@@ -3,10 +3,53 @@
 #include "../../externals/DirectXTex/d3dx12.h"
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
+#include <filesystem>
 #include <format>
+#include <stdexcept>
 
 using namespace Microsoft::WRL;
 using namespace Logger;
+
+namespace {
+std::wstring ResolveRuntimePath(const std::wstring& filePath) {
+	namespace fs = std::filesystem;
+
+	const fs::path sourcePath(filePath);
+	std::error_code error;
+	if (fs::exists(sourcePath, error)) {
+		return sourcePath.wstring();
+	}
+
+	auto searchParents = [&](fs::path base) -> std::wstring {
+		base = fs::absolute(base, error);
+		while (!base.empty()) {
+			const fs::path candidate = base / sourcePath;
+			if (fs::exists(candidate, error)) {
+				return candidate.wstring();
+			}
+			const fs::path parent = base.parent_path();
+			if (parent == base) {
+				break;
+			}
+			base = parent;
+		}
+		return {};
+	};
+
+	if (std::wstring resolved = searchParents(fs::current_path(error)); !resolved.empty()) {
+		return resolved;
+	}
+
+	wchar_t modulePath[MAX_PATH]{};
+	if (GetModuleFileNameW(nullptr, modulePath, MAX_PATH) != 0) {
+		if (std::wstring resolved = searchParents(fs::path(modulePath).parent_path()); !resolved.empty()) {
+			return resolved;
+		}
+	}
+
+	return filePath;
+}
+}
 
 void DirectXCommon::Initialize(WinApp* winApp){
 	//NULL検出
@@ -459,13 +502,24 @@ void DirectXCommon::ExecuteCommandListAndWait(){
 Microsoft::WRL::ComPtr<IDxcBlob> DirectXCommon::CompileShader(const std::wstring& filePath, const wchar_t* profile){
 	// 1. hlslファイルを読む
 	// // これからシェーダーをコンパイルする旨をログに出す
-	Log(StringUtility::ConvertString(std::format(L"Begin CompileShader, path:{}, profile:{}\n", filePath, profile)));
+	const std::wstring resolvedFilePath = ResolveRuntimePath(filePath);
+	Log(StringUtility::ConvertString(std::format(L"Begin CompileShader, path:{}, profile:{}\n", resolvedFilePath, profile)));
 
 	// hlslファイルを読む
 	IDxcBlobEncoding* shaderSource = nullptr;
-	HRESULT hr = dxcUtils->LoadFile(filePath.c_str(), nullptr, &shaderSource);
+	HRESULT hr = dxcUtils->LoadFile(resolvedFilePath.c_str(), nullptr, &shaderSource);
 	// 読めなかったら止める
-	assert(SUCCEEDED(hr));
+	if (FAILED(hr) || shaderSource == nullptr) {
+		const std::string message = StringUtility::ConvertString(std::format(
+			L"Failed LoadFile shader, requested:{}, resolved:{}, hr:{:#010x}\n",
+			filePath,
+			resolvedFilePath,
+			static_cast<unsigned int>(hr)
+		));
+		Log(message);
+		assert(false);
+		throw std::runtime_error(message);
+	}
 
 	// 読み込んだファイルの内容を設定する
 	DxcBuffer shaderSourceBuffer;
@@ -475,7 +529,7 @@ Microsoft::WRL::ComPtr<IDxcBlob> DirectXCommon::CompileShader(const std::wstring
 
 	// 2. Compileする
 	LPCWSTR arguments[] = {
-	filePath.c_str(),     // コンパイル対象のhlslファイル名
+	resolvedFilePath.c_str(),     // コンパイル対象のhlslファイル名
 	L"-E", L"main",       // エントリーポイントの指定。基本的にmain以外にはしない
 	L"-T", profile,       // ShaderProfileの設定
 	L"-Zi", L"-Qembed_debug", // デバッグ用の情報を埋め込む
@@ -493,7 +547,18 @@ Microsoft::WRL::ComPtr<IDxcBlob> DirectXCommon::CompileShader(const std::wstring
 		IID_PPV_ARGS(&shaderResult) // コンパイル結果
 	);
 	// コンパイルエラーではなくdxcが起動できないなど致命的な状況
-	assert(SUCCEEDED(hr));
+	if (FAILED(hr) || shaderResult == nullptr) {
+		const std::string message = StringUtility::ConvertString(std::format(
+			L"Failed CompileShader, path:{}, profile:{}, hr:{:#010x}\n",
+			resolvedFilePath,
+			profile,
+			static_cast<unsigned int>(hr)
+		));
+		Log(message);
+		shaderSource->Release();
+		assert(false);
+		throw std::runtime_error(message);
+	}
 
 	// 3. 警告・エラーがでていないか確認する
 	// 警告・エラーが出てたらログに出して止める
@@ -503,16 +568,31 @@ Microsoft::WRL::ComPtr<IDxcBlob> DirectXCommon::CompileShader(const std::wstring
 		Log(shaderError->GetStringPointer());
 		// 警告・エラー ダメ ゼッタイ
 		assert(false);
+		shaderSource->Release();
+		shaderResult->Release();
+		throw std::runtime_error(shaderError->GetStringPointer());
 	}
 
 	// 4. Compile結果を受け取って返す
 	// コンパイル結果から実行用のバイナリ部分を取得
 	IDxcBlob* shaderBlob = nullptr;
 	hr = shaderResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&shaderBlob), nullptr);
-	assert(SUCCEEDED(hr));
+	if (FAILED(hr) || shaderBlob == nullptr) {
+		const std::string message = StringUtility::ConvertString(std::format(
+			L"Failed Get shader object, path:{}, profile:{}, hr:{:#010x}\n",
+			resolvedFilePath,
+			profile,
+			static_cast<unsigned int>(hr)
+		));
+		Log(message);
+		shaderSource->Release();
+		shaderResult->Release();
+		assert(false);
+		throw std::runtime_error(message);
+	}
 
 	// 成功したログを出す
-	Log(StringUtility::ConvertString(std::format(L"Compile Succeeded, path:{}, profile:{}\n", filePath, profile)));
+	Log(StringUtility::ConvertString(std::format(L"Compile Succeeded, path:{}, profile:{}\n", resolvedFilePath, profile)));
 
 	// もう使わないリソースを解放
 	shaderSource->Release();

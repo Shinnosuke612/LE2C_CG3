@@ -23,6 +23,7 @@ void TitleScene::Initialize()
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
 	ParticleManager::GetInstance()->SetCamera(camera_);
 	ParticleManager::GetInstance()->SetGpuParticleEnabled(false);
+	ParticleManager::GetInstance()->LoadSceneParticleLayout();
 
 	ParticleEffectDesc coreBurstEffect{};
 
@@ -96,6 +97,7 @@ void TitleScene::Update()
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	particleEffectEditor_.DrawImGui(editingEffect_, previewEmitter_);
+	ParticleManager::GetInstance()->DrawSceneParticleImGui("TITLE", "Scene Particles");
 #endif
 
 	if (previewEmitter_) {
@@ -106,6 +108,7 @@ void TitleScene::Update()
 		emitter->Update();
 	}
 
+	ParticleManager::GetInstance()->UpdateSceneParticles("TITLE");
 	ParticleManager::GetInstance()->Update();
 }
 

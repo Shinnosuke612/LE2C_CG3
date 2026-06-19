@@ -7,6 +7,7 @@ RWStructuredBuffer<int32_t> gFreeListIndex : register(u1);
 RWStructuredBuffer<uint32_t> gFreeList : register(u2);
 ConstantBuffer<EmitterSphere> gEmitter : register(b0);
 ConstantBuffer<PerFrame> gPerFrame : register(b1);
+ConstantBuffer<GpuParticleBehavior> gBehavior : register(b2);
 
 float32_t Rand1d(float32_t3 seed)
 {
@@ -52,7 +53,11 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
             float32_t3(float32_t(particleIndex), float32_t(countIndex), gPerFrame.time);
         float32_t3 direction = RandomUnitVector(seed);
         float32_t radius = Rand1d(seed + 3.17f) * gEmitter.radius;
-        float32_t scale = lerp(0.08f, 0.22f, Rand1d(seed + 7.31f));
+        float32_t scale = lerp(
+            gBehavior.lifeScaleVelocityMinRotationMin.y,
+            gBehavior.lifeScaleVelocityMaxRotationMax.y,
+            Rand1d(seed + 7.31f)
+        );
 
         GpuParticle particle = (GpuParticle)0;
         particle.translate = gEmitter.translate + direction * radius;
@@ -62,14 +67,31 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
             0.0f,
             Rand1d(seed + 19.57f) * 6.2831853f
         );
-        particle.lifeTime = 1.0f;
+        particle.rotationSpeed = lerp(
+            gBehavior.lifeScaleVelocityMinRotationMin.w,
+            gBehavior.lifeScaleVelocityMaxRotationMax.w,
+            Rand1d(seed + 17.41f)
+        );
+        particle.lifeTime = lerp(
+            gBehavior.lifeScaleVelocityMinRotationMin.x,
+            gBehavior.lifeScaleVelocityMaxRotationMax.x,
+            Rand1d(seed + 13.79f)
+        );
         particle.currentTime = 0.0f;
-        particle.velocity = direction * lerp(0.4f, 1.0f, Rand1d(seed + 23.11f));
-        particle.color = float32_t4(
-            lerp(0.8f, 1.0f, Rand1d(seed + 29.73f)),
-            lerp(0.35f, 0.75f, Rand1d(seed + 41.29f)),
-            lerp(0.25f, 0.45f, Rand1d(seed + 53.47f)),
-            0.85f
+        particle.velocity = direction * lerp(
+            gBehavior.lifeScaleVelocityMinRotationMin.z,
+            gBehavior.lifeScaleVelocityMaxRotationMax.z,
+            Rand1d(seed + 23.11f)
+        );
+        particle.color = lerp(
+            gBehavior.colorMin,
+            gBehavior.colorMax,
+            float32_t4(
+                Rand1d(seed + 29.73f),
+                Rand1d(seed + 41.29f),
+                Rand1d(seed + 53.47f),
+                Rand1d(seed + 61.91f)
+            )
         );
 
         gParticles[particleIndex] = particle;

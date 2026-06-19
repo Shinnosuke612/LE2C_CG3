@@ -11,6 +11,8 @@ struct Material
     int flipU;
     int flipV;
     float4x4 uvTransform;
+    float emissiveIntensity;
+    float3 padding;
 };
 ConstantBuffer<Material> gMaterial : register(b0);
 
@@ -49,6 +51,7 @@ PixelShaderOutput main(VertexShaderOutput input)
     }
 
     output.color = gMaterial.color * textureColor * input.color;
+    output.color.rgb *= max(gMaterial.emissiveIntensity, 0.0f);
 
     if (output.color.a <= 0.0f)
     {

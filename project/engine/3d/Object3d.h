@@ -36,6 +36,17 @@ private://インナークラス
 		Matrix4x4 WVP;
 	};
 
+	struct Material {
+		Vector4 color;
+		int32_t enableLighting;
+		float emissiveIntensity;
+		float padding[2];
+		Matrix4x4 uvTransform;
+		Vector4 emissiveColor;
+		float shininess;
+		float padding2[3];
+	};
+
 public: //公開メンバ関数
 	//初期化
 	void Initialize(Object3dCommon* object3dCommon);
@@ -64,6 +75,9 @@ public: //公開メンバ関数
 	void SetAnimationLoop(bool isLooping) { isAnimationLooping_ = isLooping; }
 	void SetAnimationSpeed(float speed) { animationSpeed_ = speed; }
 	void ResetAnimation();
+	void SetColor(const Vector4& color);
+	void SetEnableLighting(bool enableLighting);
+	void SetEmissive(float intensity, const Vector4& color = { 1.0f, 1.0f, 1.0f, 1.0f });
 
 	// getter（参照返しが軽くて安全）
 	const Vector3& GetScale() const{return transform.scale;}
@@ -87,6 +101,7 @@ private: //非公開メンバ関数
 
 	void CreateCameraResource();
 	void CreateShadowTransformationMatrixResource();
+	void CreateMaterialResource();
 private://メンバ変数
 	Transform transform;
 
@@ -109,6 +124,8 @@ private://メンバ変数
 
 	ID3D12Resource* cameraResource;
 	CameraForGPU* cameraData = nullptr;
+	ID3D12Resource* materialResource = nullptr;
+	Material* materialData = nullptr;
 	std::string environmentTextureFilePath_;
 	float animationTime_ = 0.0f;
 	float animationSpeed_ = 1.0f;

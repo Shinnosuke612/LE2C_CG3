@@ -2,8 +2,10 @@
 #include "SceneFactory.h"
 
 #include "../base/DirectXCommon.h"
+#include "../base/BloomRenderer.h"
 #include "../base/FullscreenCopy.h"
 #include "../base/ImGuiManager.h"
+#include "../base/RenderFormats.h"
 #include "../base/SceneRenderTarget.h"
 #include "../io/Input.h"
 #include "../2d/Sprite.h"
@@ -19,6 +21,8 @@
 #include "../debug/DebugRenderer.h"
 #include "../externals/imgui/imgui.h"
 
+#include <algorithm>
+
 void Game::Initialize() {
 	// 基底クラスの初期化処理
 	Framework::Initialize();
@@ -29,23 +33,35 @@ void Game::Initialize() {
 	sceneManager_->ChangeScene("TITLE");
 
 	sceneRenderTarget_ = new SceneRenderTarget();
-	sceneRenderTarget_->Initialize(
-		dxCommon_,
-		srvManager_,
-		dxCommon_->GetClientWidth(),
-		dxCommon_->GetClientHeight()
-	);
+	SceneRenderTarget::Desc sceneTargetDesc{};
+	sceneTargetDesc.width = dxCommon_->GetClientWidth();
+	sceneTargetDesc.height = dxCommon_->GetClientHeight();
+	sceneTargetDesc.format = RenderFormats::kSceneHdrFormat;
+	sceneTargetDesc.createDepth = true;
+	sceneTargetDesc.clearColor[0] = 0.1f;
+	sceneTargetDesc.clearColor[1] = 0.2f;
+	sceneTargetDesc.clearColor[2] = 0.8f;
+	sceneTargetDesc.clearColor[3] = 1.0f;
+	sceneRenderTarget_->Initialize(dxCommon_, srvManager_, sceneTargetDesc);
 	for (SceneRenderTarget*& renderTarget : postProcessRenderTargets_) {
 		renderTarget = new SceneRenderTarget();
-		renderTarget->Initialize(
-			dxCommon_,
-			srvManager_,
-			dxCommon_->GetClientWidth(),
-			dxCommon_->GetClientHeight()
-		);
+		SceneRenderTarget::Desc postTargetDesc{};
+		postTargetDesc.width = dxCommon_->GetClientWidth();
+		postTargetDesc.height = dxCommon_->GetClientHeight();
+		postTargetDesc.format = RenderFormats::kDisplayFormat;
+		postTargetDesc.createDepth = false;
+		postTargetDesc.clearColor[0] = 0.0f;
+		postTargetDesc.clearColor[1] = 0.0f;
+		postTargetDesc.clearColor[2] = 0.0f;
+		postTargetDesc.clearColor[3] = 1.0f;
+		renderTarget->Initialize(dxCommon_, srvManager_, postTargetDesc);
 	}
 	fullscreenCopy_ = new FullscreenCopy();
 	fullscreenCopy_->Initialize(dxCommon_);
+	bloomRenderer_ = new BloomRenderer();
+	bloomRenderer_->Initialize(dxCommon_, srvManager_);
+	baseExposure_ = bloomParameters_.exposure;
+	currentExposure_ = baseExposure_;
 
 	TextureManager::GetInstance()->LoadTexture("resources/noise0.png");
 	TextureManager::GetInstance()->LoadTexture("resources/noise1.png");
@@ -70,6 +86,7 @@ void Game::Update() {
 	ImGui::Text("Active: %d", GetEnabledPostEffectCount());
 	ImGui::SameLine();
 	if (ImGui::SmallButton("Disable All")) {
+		bloomParameters_.enabled = 0;
 		grayscaleEnabled_ = false;
 		vignetteEnabled_ = false;
 		boxBlurEnabled_ = false;
@@ -83,6 +100,35 @@ void Game::Update() {
 	ImGui::Separator();
 
 	ImGui::BeginChild("EffectStack", ImVec2(0.0f, 0.0f), true);
+
+	ImGui::PushID("HDRBloom");
+	if (ImGui::TreeNodeEx(
+		"HDR / Bloom / ToneMap",
+		ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
+		bool bloomEnabled = bloomParameters_.enabled != 0;
+		if (ImGui::Checkbox("Bloom", &bloomEnabled)) {
+			bloomParameters_.enabled = bloomEnabled ? 1 : 0;
+		}
+		ImGui::SliderFloat("Base Exposure", &baseExposure_, 0.01f, 5.0f);
+		ImGui::Text("Current Exposure: %.2f", currentExposure_);
+		const char* toneMapNames[] = { "ACES", "Reinhard" };
+		ImGui::Combo(
+			"Tone Map",
+			&bloomParameters_.toneMapMode,
+			toneMapNames,
+			IM_ARRAYSIZE(toneMapNames)
+		);
+		ImGui::SliderFloat("Threshold", &bloomParameters_.threshold, 0.0f, 10.0f);
+		ImGui::SliderFloat("Soft Knee", &bloomParameters_.softKnee, 0.0f, 1.0f);
+		ImGui::SliderFloat("Intensity", &bloomParameters_.intensity, 0.0f, 5.0f);
+		ImGui::SliderInt("Blur Iterations", &bloomParameters_.blurIterations, 0, 12);
+		ImGui::SliderInt("Downsample", &bloomParameters_.downsampleScale, 1, 8);
+		ImGui::SliderFloat("Blur Radius", &bloomParameters_.blurRadius, 0.0f, 8.0f);
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
+	ImGui::Separator();
 
 	ImGui::PushID("Grayscale");
 	ImGui::Checkbox("##Enabled", &grayscaleEnabled_);
@@ -333,6 +379,23 @@ void Game::Update() {
 
 	sceneManager_->Update();
 
+	ParticleManager::ExposureFlashEvent exposureFlash{};
+	while (ParticleManager::GetInstance()->ConsumeExposureFlashEvent(exposureFlash)) {
+		currentExposure_ = (std::max)(
+			currentExposure_,
+			exposureFlash.exposure
+		);
+		exposureReturnSpeed_ = (std::max)(
+			exposureFlash.returnSpeed,
+			0.01f
+		);
+	}
+
+	const float exposureLerp =
+		std::clamp(exposureReturnSpeed_ * (1.0f / 60.0f), 0.0f, 1.0f);
+	currentExposure_ += (baseExposure_ - currentExposure_) * exposureLerp;
+	bloomParameters_.exposure = currentExposure_;
+
 }
 
 void Game::Draw() {
@@ -383,8 +446,14 @@ void Game::Draw() {
 	sceneRenderTarget_->End();
 
 	fullscreenCopy_->BeginFrame();
+	bloomRenderer_->BeginFrame();
+	bloomRenderer_->SetParameters(bloomParameters_);
+	bloomRenderer_->Apply(
+		sceneRenderTarget_->GetSrvGpuHandle(),
+		postProcessRenderTargets_[0]
+	);
 	D3D12_GPU_DESCRIPTOR_HANDLE sourceHandle =
-		sceneRenderTarget_->GetSrvGpuHandle();
+		postProcessRenderTargets_[0]->GetSrvGpuHandle();
 	const D3D12_GPU_DESCRIPTOR_HANDLE depthHandle =
 		sceneRenderTarget_->GetDepthSrvGpuHandle();
 	const char* dissolveMaskPath =
@@ -393,7 +462,7 @@ void Game::Draw() {
 			: "resources/noise0.png";
 	const D3D12_GPU_DESCRIPTOR_HANDLE maskHandle =
 		TextureManager::GetInstance()->GetSrvHandleGPU(dissolveMaskPath);
-	int passIndex = 0;
+	int passIndex = 1;
 	auto applyEffect = [&](
 		FullscreenCopy::Effect effect,
 		const FullscreenCopy::Parameters& parameters
@@ -489,13 +558,6 @@ void Game::Draw() {
 		}
 		applyEffect(FullscreenCopy::Effect::kOutline, parameters);
 	}
-	if (passIndex == 0) {
-		applyEffect(
-			FullscreenCopy::Effect::kCopy,
-			FullscreenCopy::Parameters{}
-		);
-	}
-
 	dxCommon_->PreDraw();
 	srvManager_->PreDraw();
 	fullscreenCopy_->Draw(sourceHandle, depthHandle, maskHandle);
@@ -507,6 +569,9 @@ void Game::Draw() {
 }
 
 void Game::Finalize() {
+
+	delete bloomRenderer_;
+	bloomRenderer_ = nullptr;
 
 	delete fullscreenCopy_;
 	fullscreenCopy_ = nullptr;
@@ -541,7 +606,5 @@ int Game::GetEnabledPostEffectCount() const {
 }
 
 SceneRenderTarget* Game::GetPostProcessOutputTarget() const {
-	const int effectCount = GetEnabledPostEffectCount();
-	const int passCount = effectCount > 0 ? effectCount : 1;
-	return postProcessRenderTargets_[(passCount - 1) % 2];
+	return postProcessRenderTargets_[GetEnabledPostEffectCount() % 2];
 }

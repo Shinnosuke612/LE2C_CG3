@@ -1,5 +1,6 @@
 #pragma once
 #include "../base/Framework.h"
+#include "../base/BloomRenderer.h"
 #include "SceneManager.h"
 
 class SceneRenderTarget;
@@ -20,6 +21,11 @@ private:
 	SceneRenderTarget* sceneRenderTarget_ = nullptr;
 	SceneRenderTarget* postProcessRenderTargets_[2]{};
 	FullscreenCopy* fullscreenCopy_ = nullptr;
+	BloomRenderer* bloomRenderer_ = nullptr;
+	BloomRenderer::Parameters bloomParameters_{};
+	float baseExposure_ = 1.0f;
+	float currentExposure_ = 1.0f;
+	float exposureReturnSpeed_ = 6.0f;
 	bool grayscaleEnabled_ = false;
 	bool vignetteEnabled_ = false;
 	bool boxBlurEnabled_ = false;

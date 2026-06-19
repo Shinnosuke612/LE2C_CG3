@@ -13,8 +13,12 @@ cbuffer MaterialCB : register(b0)
 {
     float4 gMaterialColor;
     int gEnableLighting;
-    float3 gMaterialPadding;
+    float gEmissiveIntensity;
+    float2 gMaterialPadding;
     float4x4 gUvTransform;
+    float4 gEmissiveColor;
+    float gShininess;
+    float3 gMaterialPadding2;
 };
 
 struct DirectionalLight
@@ -285,6 +289,15 @@ PixelShaderOutput main(VertexShaderOutput input)
         float3 reflectedVector = reflect(cameraToPosition, normalize(input.normal));
         float3 environmentColor = gEnvironmentTexture.Sample(gSampler, reflectedVector).rgb;
         output.color.rgb += environmentColor * gEnvironmentCoefficient;
+    }
+
+    if (gEmissiveIntensity > 0.0f)
+    {
+        output.color.rgb +=
+            gMaterialColor.rgb *
+            textureColor.rgb *
+            gEmissiveColor.rgb *
+            gEmissiveIntensity;
     }
 
     if (output.color.a == 0.0f)

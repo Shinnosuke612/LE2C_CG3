@@ -1,4 +1,5 @@
 #include "Object3dCommon.h"
+#include "../base/RenderFormats.h"
 #include "../base/DirectXCommon.h"
 #include "../utility/Logger.h"
 #include "SkinCluster.h"
@@ -283,7 +284,7 @@ void Object3dCommon::GenerateGraphicsPipeline(){
 
 	// 書き込むRTVの情報
 	graphicsPipelineStateDesc.NumRenderTargets = 1;
-	graphicsPipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	graphicsPipelineStateDesc.RTVFormats[0] = RenderFormats::kSceneHdrFormat;
 
 	// 利用するトポロジ（形状）のタイプ。三角形
 	graphicsPipelineStateDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -381,7 +382,7 @@ void Object3dCommon::GenerateSkinningGraphicsPipeline() {
 	pipelineDesc.PrimitiveTopologyType =
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	pipelineDesc.NumRenderTargets = 1;
-	pipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	pipelineDesc.RTVFormats[0] = RenderFormats::kSceneHdrFormat;
 	pipelineDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	pipelineDesc.SampleDesc.Count = 1;
 
@@ -714,7 +715,7 @@ void Object3dCommon::GenerateSkyboxGraphicsPipeline() {
 	graphicsPipelineStateDesc.RasterizerState = rasterizerDesc;
 
 	graphicsPipelineStateDesc.NumRenderTargets = 1;
-	graphicsPipelineStateDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	graphicsPipelineStateDesc.RTVFormats[0] = RenderFormats::kSceneHdrFormat;
 	graphicsPipelineStateDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	graphicsPipelineStateDesc.SampleDesc.Count = 1;
 	graphicsPipelineStateDesc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;

@@ -8,6 +8,7 @@
 #include "../3d/LightManager.h"
 #include "../3d/ShadowManager.h"
 #include "../collision/OBBCollider.h"
+#include "../effect/LightningRenderer.h"
 
 class SpriteCommon;
 class Sprite;
@@ -70,6 +71,7 @@ private:
 	ParticleEmitter* ringBurstEmitter_ = nullptr;
 	std::unique_ptr<LightManager> lightManager_;
 	std::unique_ptr<ShadowManager> shadowManager_;
+	std::unique_ptr<LightningRenderer> lightningRenderer_;
 	Skybox* skybox_ = nullptr;
 };
 

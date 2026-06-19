@@ -52,6 +52,13 @@ void Model::Initialize(ModelCommon* modelCommon, const std::string& directoryPat
 	}
 }
 void Model::Draw(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView) {
+	DrawWithMaterial(materialResource, influenceBufferView);
+}
+
+void Model::DrawWithMaterial(
+	ID3D12Resource* materialOverride,
+	const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView
+) {
 	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
 	if (influenceBufferView) {
 		const D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[] = {
@@ -67,7 +74,9 @@ void Model::Draw(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView) {
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// マテリアルCBufferの場所を設定
-	commandList->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
+	ID3D12Resource* materialToBind =
+		materialOverride ? materialOverride : materialResource;
+	commandList->SetGraphicsRootConstantBufferView(0, materialToBind->GetGPUVirtualAddress());
 
 	// SRVのDescriptorTableの先頭を設定（TextureManagerから取得）
 	commandList->SetGraphicsRootDescriptorTable(
@@ -110,12 +119,21 @@ void Model::DrawForShadow(
 }
 
 void Model::DrawWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& customVertexBufferView) {
+	DrawWithVertexBufferAndMaterial(customVertexBufferView, materialResource);
+}
+
+void Model::DrawWithVertexBufferAndMaterial(
+	const D3D12_VERTEX_BUFFER_VIEW& customVertexBufferView,
+	ID3D12Resource* materialOverride
+) {
 	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
 	commandList->IASetVertexBuffers(0, 1, &customVertexBufferView);
 	commandList->IASetIndexBuffer(&indexBufferView);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	commandList->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
+	ID3D12Resource* materialToBind =
+		materialOverride ? materialOverride : materialResource;
+	commandList->SetGraphicsRootConstantBufferView(0, materialToBind->GetGPUVirtualAddress());
 	commandList->SetGraphicsRootDescriptorTable(
 		2,
 		TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureFilePath)
@@ -339,8 +357,10 @@ void Model::CreateMaterialResource() {
 	materialData->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 	//ライティングの有無
 	materialData->enableLighting = true;
+	materialData->emissiveIntensity = 0.0f;
 	//uvTransform行列を単位行列で初期化
 	materialData->uvTransform = MakeIdentity4x4();
+	materialData->emissiveColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 
 	materialData->shininess = 40.0f;
 }

@@ -10,7 +10,16 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <random>
+
+#include "../externals/imgui/imgui.h"
+#include "../externals/nlohmann/json.hpp"
+#include "ParticleEffectResource.h"
+
+using json = nlohmann::json;
 
 ParticleManager* ParticleManager::instance_ = nullptr;
 
@@ -26,6 +35,17 @@ void ParticleManager::DeleteInstance() {
 	instance_ = nullptr;
 }
 
+ParticleManager::~ParticleManager() {
+	for (auto& [sceneName, placements] : sceneParticlePlacements_) {
+		for (SceneParticlePlacement& placement : placements) {
+			delete placement.effect;
+			placement.effect = nullptr;
+			delete placement.emitter;
+			placement.emitter = nullptr;
+		}
+	}
+}
+
 void ParticleManager::Initialize(ParticleCommon* particleCommon, SrvManager* srvManager) {
 	assert(particleCommon);
 	assert(srvManager);
@@ -39,9 +59,23 @@ void ParticleManager::Initialize(ParticleCommon* particleCommon, SrvManager* srv
 }
 
 void ParticleManager::Reset() {
+	for (auto& [sceneName, placements] : sceneParticlePlacements_) {
+		for (SceneParticlePlacement& placement : placements) {
+			delete placement.effect;
+			placement.effect = nullptr;
+			delete placement.emitter;
+			placement.emitter = nullptr;
+		}
+	}
+	sceneParticlePlacements_.clear();
+	sceneParticleLayoutLoaded_ = false;
+
 	particleGroups_.clear();
 	gpuParticle_.Reset();
 	gpuParticleEnabled_ = false;
+	pendingLightningEvents_.clear();
+	pendingExposureFlashEvents_.clear();
+	lightningSeed_ = 1;
 
 	directionalLightResource_.Reset();
 	directionalLightData_ = nullptr;
@@ -49,6 +83,70 @@ void ParticleManager::Reset() {
 	particleCommon_ = nullptr;
 	srvManager_ = nullptr;
 	camera_ = nullptr;
+}
+
+void ParticleManager::QueueLightning(
+	const LightningEmitterDesc& desc,
+	const Vector3& emitterPosition
+) {
+	if (!desc.enabled) {
+		return;
+	}
+
+	const Vector3 halfRange = {
+		desc.randomRange.x * 0.5f,
+		desc.randomRange.y * 0.5f,
+		desc.randomRange.z * 0.5f
+	};
+	const Vector3 randomOffset = RandomVector3Range(
+		{ -halfRange.x, -halfRange.y, -halfRange.z },
+		{ halfRange.x, halfRange.y, halfRange.z }
+	);
+
+	LightningEvent event{};
+	event.desc = desc;
+	event.start = {
+		emitterPosition.x + desc.startOffset.x + randomOffset.x,
+		emitterPosition.y + desc.startOffset.y + randomOffset.y,
+		emitterPosition.z + desc.startOffset.z + randomOffset.z
+	};
+	event.end = {
+		emitterPosition.x + desc.endOffset.x + randomOffset.x,
+		emitterPosition.y + desc.endOffset.y + randomOffset.y,
+		emitterPosition.z + desc.endOffset.z + randomOffset.z
+	};
+	event.seed = lightningSeed_++;
+
+	pendingLightningEvents_.push_back(event);
+
+	if (desc.flashExposure) {
+		pendingExposureFlashEvents_.push_back({
+			desc.flashExposureValue,
+			desc.flashReturnSpeed
+		});
+	}
+}
+
+bool ParticleManager::ConsumeLightningEvent(LightningEvent& outEvent) {
+	if (pendingLightningEvents_.empty()) {
+		return false;
+	}
+
+	outEvent = pendingLightningEvents_.front();
+	pendingLightningEvents_.erase(pendingLightningEvents_.begin());
+	return true;
+}
+
+bool ParticleManager::ConsumeExposureFlashEvent(
+	ExposureFlashEvent& outEvent
+) {
+	if (pendingExposureFlashEvents_.empty()) {
+		return false;
+	}
+
+	outEvent = pendingExposureFlashEvents_.front();
+	pendingExposureFlashEvents_.erase(pendingExposureFlashEvents_.begin());
+	return true;
 }
 
 void ParticleManager::SetGroupBlendMode(
@@ -97,10 +195,507 @@ void ParticleManager::SetGroupRenderDesc(
 	group.materialData->alphaCutoff = std::clamp(render.alphaCutoff, 0.0f, 1.0f);
 	group.materialData->flipU = render.flipU ? 1 : 0;
 	group.materialData->flipV = render.flipV ? 1 : 0;
+	group.materialData->emissiveIntensity = (std::max)(0.0f, render.emissiveIntensity);
 
 	if (!geometryUnchanged) {
 		CreateGroupVertexResource(group);
 	}
+}
+
+void ParticleManager::DrawGpuParticleImGui(const char* windowTitle) {
+	gpuParticle_.DrawImGui(windowTitle);
+}
+
+namespace {
+
+constexpr float kMinEmitterFrequency = 1.0f / 60.0f;
+
+float NormalizeEmitterFrequency(float frequency) {
+	return frequency > 0.0f ? frequency : kMinEmitterFrequency;
+}
+
+json ToJson(const Vector3& v) {
+	return json::array({ v.x, v.y, v.z });
+}
+
+Vector3 ReadVector3(const json& j, const Vector3& defaultValue) {
+	if (!j.is_array() || j.size() < 3) {
+		return defaultValue;
+	}
+
+	return {
+		j.at(0).get<float>(),
+		j.at(1).get<float>(),
+		j.at(2).get<float>()
+	};
+}
+
+void CopyText(char* destination, size_t destinationSize, const std::string& source) {
+	if (!destination || destinationSize == 0) {
+		return;
+	}
+	strncpy_s(destination, destinationSize, source.c_str(), _TRUNCATE);
+}
+
+std::string MakeDefaultEffectPath(const char* name) {
+	std::string safeName = name && name[0] != '\0' ? name : "newParticle";
+	for (char& c : safeName) {
+		if (c == '\\' || c == '/' || c == ':' || c == '*' || c == '?' ||
+			c == '"' || c == '<' || c == '>' || c == '|') {
+			c = '_';
+		}
+	}
+	return "resources/particles/" + safeName + ".json";
+}
+
+void CollectEffectFiles(std::vector<std::string>& paths, std::vector<std::string>& names) {
+	paths.clear();
+	names.clear();
+
+	std::error_code error;
+	for (const std::filesystem::directory_entry& entry :
+		std::filesystem::directory_iterator("resources/particles", error)) {
+		if (error) {
+			break;
+		}
+		if (!entry.is_regular_file() || entry.path().extension() != ".json") {
+			continue;
+		}
+		if (entry.path().filename() == "scene_particles.json") {
+			continue;
+		}
+		paths.push_back(entry.path().generic_string());
+	}
+
+	std::sort(paths.begin(), paths.end());
+	for (const std::string& path : paths) {
+		names.push_back(std::filesystem::path(path).filename().string());
+	}
+}
+
+} // namespace
+
+void ParticleManager::ApplySceneParticleEmitterSettings(SceneParticlePlacement& placement) {
+	if (!placement.emitter) {
+		RebuildSceneParticleEmitter(placement, false);
+		return;
+	}
+	if (!placement.effect) {
+		RebuildSceneParticleEmitter(placement, false);
+		return;
+	}
+
+	placement.effect->emitter.translate = placement.translate;
+	placement.effect->emitter.spawnSize = placement.spawnSize;
+	placement.effect->emitter.count = placement.count;
+	placement.effect->emitter.frequency = NormalizeEmitterFrequency(placement.frequency);
+	placement.effect->emitter.isActive = placement.emitterActive;
+
+	ParticleEffectResource::PrepareParticleGroup(*placement.effect, false);
+	ParticleEffectResource::ApplyToEmitter(*placement.emitter, *placement.effect);
+}
+
+void ParticleManager::RebuildSceneParticleEmitter(
+	SceneParticlePlacement& placement,
+	bool clearParticles,
+	bool useEffectEmitterSettings
+) {
+	delete placement.emitter;
+	placement.emitter = nullptr;
+
+	if (!placement.effect) {
+		placement.effect = new ParticleEffectDesc();
+	}
+
+	if (!ParticleEffectResource::Load(placement.effectFilePath, *placement.effect)) {
+		*placement.effect = ParticleEffectDesc{};
+		placement.effect->name = placement.label.empty() ? "newParticle" : placement.label;
+	}
+
+	if (useEffectEmitterSettings) {
+		placement.translate = placement.effect->emitter.translate;
+		placement.spawnSize = placement.effect->emitter.spawnSize;
+		placement.count = placement.effect->emitter.count;
+		placement.frequency = NormalizeEmitterFrequency(placement.effect->emitter.frequency);
+		placement.emitterActive = placement.effect->emitter.isActive;
+	}
+
+	placement.effect->emitter.translate = placement.translate;
+	placement.effect->emitter.spawnSize = placement.spawnSize;
+	placement.effect->emitter.count = placement.count;
+	placement.effect->emitter.frequency = NormalizeEmitterFrequency(placement.frequency);
+	placement.effect->emitter.isActive = placement.emitterActive;
+
+	ParticleEffectResource::PrepareParticleGroup(*placement.effect, clearParticles);
+	placement.emitter = new ParticleEmitter();
+	placement.emitter->Initialize(this, placement.effect->name);
+	ParticleEffectResource::ApplyToEmitter(*placement.emitter, *placement.effect);
+}
+
+void ParticleManager::LoadSceneParticleLayout(const std::string& filePath) {
+	for (auto& [sceneName, placements] : sceneParticlePlacements_) {
+		for (SceneParticlePlacement& placement : placements) {
+			delete placement.effect;
+			placement.effect = nullptr;
+			delete placement.emitter;
+			placement.emitter = nullptr;
+		}
+	}
+	sceneParticlePlacements_.clear();
+
+	std::ifstream file(filePath);
+	if (!file.is_open()) {
+		sceneParticlePlacements_["TITLE"];
+		sceneParticlePlacements_["GAMEPLAY"];
+		sceneParticleLayoutLoaded_ = true;
+		return;
+	}
+
+	json root;
+	try {
+		file >> root;
+	} catch (...) {
+		sceneParticlePlacements_["TITLE"];
+		sceneParticlePlacements_["GAMEPLAY"];
+		sceneParticleLayoutLoaded_ = true;
+		return;
+	}
+
+	if (root.contains("scenes") && root.at("scenes").is_object()) {
+		const json& scenes = root.at("scenes");
+		for (auto it = scenes.begin(); it != scenes.end(); ++it) {
+			const std::string sceneName = it.key();
+			std::vector<SceneParticlePlacement>& placements =
+				sceneParticlePlacements_[sceneName];
+
+			if (!it.value().is_array()) {
+				continue;
+			}
+
+			for (const json& placementJson : it.value()) {
+				SceneParticlePlacement placement{};
+				placement.sceneName = sceneName;
+				placement.label = placementJson.value("label", placement.label);
+				placement.effectFilePath =
+					placementJson.value("effectFilePath", placement.effectFilePath);
+				placement.enabled = placementJson.value("enabled", placement.enabled);
+				placement.emitterActive =
+					placementJson.value("emitterActive", placement.emitterActive);
+				const bool hasEmitterSettings =
+					placementJson.contains("translate") ||
+					placementJson.contains("spawnSize") ||
+					placementJson.contains("count") ||
+					placementJson.contains("frequency") ||
+					placementJson.contains("emitterActive");
+				if (placementJson.contains("translate")) {
+					placement.translate =
+						ReadVector3(placementJson.at("translate"), placement.translate);
+				}
+				if (placementJson.contains("spawnSize")) {
+					placement.spawnSize =
+						ReadVector3(placementJson.at("spawnSize"), placement.spawnSize);
+				}
+				placement.count = placementJson.value("count", placement.count);
+				placement.frequency =
+					placementJson.value("frequency", placement.frequency);
+				placement.frequency = NormalizeEmitterFrequency(placement.frequency);
+
+				RebuildSceneParticleEmitter(placement, false, !hasEmitterSettings);
+				placements.push_back(placement);
+				placements.back().effect = placement.effect;
+				placements.back().emitter = placement.emitter;
+				placement.effect = nullptr;
+				placement.emitter = nullptr;
+			}
+		}
+	}
+
+	sceneParticlePlacements_["TITLE"];
+	sceneParticlePlacements_["GAMEPLAY"];
+	sceneParticleLayoutLoaded_ = true;
+}
+
+void ParticleManager::SaveSceneParticleLayout(const std::string& filePath) const {
+	json root;
+	root["scenes"] = json::object();
+
+	for (const auto& [sceneName, placements] : sceneParticlePlacements_) {
+		json sceneArray = json::array();
+		for (const SceneParticlePlacement& placement : placements) {
+			sceneArray.push_back({
+				{ "label", placement.label },
+				{ "effectFilePath", placement.effectFilePath },
+				{ "enabled", placement.enabled },
+				{ "emitterActive", placement.emitterActive },
+				{ "translate", ToJson(placement.translate) },
+				{ "spawnSize", ToJson(placement.spawnSize) },
+				{ "count", placement.count },
+				{ "frequency", placement.frequency }
+			});
+		}
+		root["scenes"][sceneName] = sceneArray;
+	}
+
+	const std::filesystem::path parentPath =
+		std::filesystem::path(filePath).parent_path();
+	if (!parentPath.empty()) {
+		std::filesystem::create_directories(parentPath);
+	}
+
+	std::ofstream file(filePath);
+	if (!file.is_open()) {
+		return;
+	}
+	file << std::setw(2) << root << std::endl;
+}
+
+void ParticleManager::UpdateSceneParticles(const std::string& sceneName) {
+	if (!sceneParticleLayoutLoaded_) {
+		LoadSceneParticleLayout();
+	}
+
+	auto it = sceneParticlePlacements_.find(sceneName);
+	if (it == sceneParticlePlacements_.end()) {
+		return;
+	}
+
+	for (SceneParticlePlacement& placement : it->second) {
+		if (placement.enabled && placement.emitter) {
+			placement.emitter->Update();
+		}
+	}
+}
+
+void ParticleManager::EmitSceneParticles(const std::string& sceneName) {
+	if (!sceneParticleLayoutLoaded_) {
+		LoadSceneParticleLayout();
+	}
+
+	auto it = sceneParticlePlacements_.find(sceneName);
+	if (it == sceneParticlePlacements_.end()) {
+		return;
+	}
+
+	for (SceneParticlePlacement& placement : it->second) {
+		if (placement.enabled && placement.emitter) {
+			placement.emitter->Emit();
+		}
+	}
+}
+
+void ParticleManager::DrawSceneParticleImGui(
+	const std::string& currentSceneName,
+	const char* windowTitle
+) {
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (!sceneParticleLayoutLoaded_) {
+		LoadSceneParticleLayout();
+	}
+
+	static char layoutPath[260] = "resources/particles/scene_particles.json";
+	static char newEffectName[128] = "newParticle";
+	std::vector<std::string> effectPaths;
+	std::vector<std::string> effectNames;
+	CollectEffectFiles(effectPaths, effectNames);
+
+	ImGui::Begin(windowTitle);
+	ImGui::InputText("Layout", layoutPath, sizeof(layoutPath));
+	if (ImGui::Button("Load Layout")) {
+		LoadSceneParticleLayout(layoutPath);
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Save Layout")) {
+		SaveSceneParticleLayout(layoutPath);
+	}
+
+	ImGui::SeparatorText("Effect");
+	ImGui::InputText("New Effect Name", newEffectName, sizeof(newEffectName));
+	ImGui::SameLine();
+	if (ImGui::Button("Create New Effect")) {
+		ParticleEffectDesc newEffect{};
+		newEffect.name = newEffectName;
+		const std::string path = MakeDefaultEffectPath(newEffectName);
+		ParticleEffectResource::Save(path, newEffect);
+	}
+
+	const char* sceneNames[] = { "TITLE", "GAMEPLAY" };
+	if (ImGui::BeginTabBar("SceneParticleTabs")) {
+		for (const char* sceneNameText : sceneNames) {
+			const bool isCurrent = currentSceneName == sceneNameText;
+			ImGuiTabItemFlags flags =
+				isCurrent ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+
+			if (ImGui::BeginTabItem(sceneNameText, nullptr, flags)) {
+				std::vector<SceneParticlePlacement>& placements =
+					sceneParticlePlacements_[sceneNameText];
+
+				if (ImGui::Button("Add Particle Placement")) {
+					SceneParticlePlacement placement{};
+					placement.sceneName = sceneNameText;
+					placement.label =
+						std::string("Particle ") + std::to_string(placements.size());
+					if (!effectPaths.empty()) {
+						placement.effectFilePath = effectPaths.front();
+					}
+					RebuildSceneParticleEmitter(placement, false, true);
+					placements.push_back(placement);
+					placements.back().effect = placement.effect;
+					placements.back().emitter = placement.emitter;
+					placement.effect = nullptr;
+					placement.emitter = nullptr;
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Add New Effect Here")) {
+					ParticleEffectDesc newEffect{};
+					newEffect.name = newEffectName;
+					const std::string path = MakeDefaultEffectPath(newEffectName);
+					ParticleEffectResource::Save(path, newEffect);
+
+					SceneParticlePlacement placement{};
+					placement.sceneName = sceneNameText;
+					placement.label = newEffect.name;
+					placement.effectFilePath = path;
+					RebuildSceneParticleEmitter(placement, false, true);
+					placements.push_back(placement);
+					placements.back().effect = placement.effect;
+					placements.back().emitter = placement.emitter;
+					placement.effect = nullptr;
+					placement.emitter = nullptr;
+				}
+
+				int removeIndex = -1;
+				for (int index = 0; index < static_cast<int>(placements.size()); ++index) {
+					SceneParticlePlacement& placement = placements[index];
+					ImGui::PushID(index);
+
+					const std::string header =
+						placement.label.empty() ? "(unnamed)" : placement.label;
+					if (ImGui::CollapsingHeader(
+						header.c_str(),
+						ImGuiTreeNodeFlags_DefaultOpen
+					)) {
+						char label[128]{};
+						char effectFilePath[260]{};
+						CopyText(label, sizeof(label), placement.label);
+						CopyText(
+							effectFilePath,
+							sizeof(effectFilePath),
+							placement.effectFilePath
+						);
+
+						ImGui::Checkbox("Enabled", &placement.enabled);
+						ImGui::SameLine();
+						if (ImGui::Button("Emit Now") && placement.emitter) {
+							placement.emitter->Emit();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Remove")) {
+							removeIndex = index;
+						}
+
+						if (ImGui::InputText("Label", label, sizeof(label))) {
+							placement.label = label;
+						}
+
+						const std::string selectedEffectName =
+							std::filesystem::path(placement.effectFilePath)
+							.filename()
+							.string();
+						if (ImGui::BeginCombo("Effect File", selectedEffectName.c_str())) {
+							for (int effectIndex = 0;
+								effectIndex < static_cast<int>(effectPaths.size());
+								++effectIndex) {
+								const bool selected =
+									placement.effectFilePath == effectPaths[effectIndex];
+								if (ImGui::Selectable(
+									effectNames[effectIndex].c_str(),
+									selected
+								)) {
+									placement.effectFilePath = effectPaths[effectIndex];
+									RebuildSceneParticleEmitter(placement, false, true);
+								}
+								if (selected) {
+									ImGui::SetItemDefaultFocus();
+								}
+							}
+							ImGui::EndCombo();
+						}
+
+						if (ImGui::InputText(
+							"Effect Path",
+							effectFilePath,
+							sizeof(effectFilePath)
+						)) {
+							placement.effectFilePath = effectFilePath;
+						}
+
+						if (ImGui::Button("Reload Effect")) {
+							RebuildSceneParticleEmitter(placement, false);
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Load Effect Emitter")) {
+							RebuildSceneParticleEmitter(placement, false, true);
+						}
+
+						bool changed = false;
+						changed |= ImGui::DragFloat3(
+							"Translate",
+							&placement.translate.x,
+							0.05f
+						);
+						changed |= ImGui::DragFloat3(
+							"SpawnSize",
+							&placement.spawnSize.x,
+							0.05f
+						);
+
+						int count = static_cast<int>(placement.count);
+						if (ImGui::DragInt("Count", &count, 1, 0, 1000)) {
+							placement.count =
+								static_cast<uint32_t>((std::max)(count, 0));
+							changed = true;
+						}
+						changed |= ImGui::DragFloat(
+							"Frequency",
+							&placement.frequency,
+							0.001f,
+							1.0f / 60.0f,
+							10.0f
+						);
+						if (placement.frequency <= 0.0f) {
+							placement.frequency = 1.0f / 60.0f;
+							changed = true;
+						}
+						changed |= ImGui::Checkbox(
+							"Emitter Active",
+							&placement.emitterActive
+						);
+
+						if (changed) {
+							ApplySceneParticleEmitterSettings(placement);
+						}
+					}
+
+					ImGui::PopID();
+				}
+
+				if (removeIndex >= 0 && removeIndex < static_cast<int>(placements.size())) {
+					delete placements[removeIndex].effect;
+					delete placements[removeIndex].emitter;
+					placements.erase(placements.begin() + removeIndex);
+				}
+
+				ImGui::EndTabItem();
+			}
+		}
+		ImGui::EndTabBar();
+	}
+
+	ImGui::End();
+#else
+	(void)currentSceneName;
+	(void)windowTitle;
+#endif
 }
 
 void ParticleManager::CreateGroupVertexResource(ParticleGroup& group) {
@@ -298,6 +893,7 @@ void ParticleManager::CreateParticleGroup(const std::string& name, const std::st
 	group.materialData->flipU = false;
 	group.materialData->flipV = false;
 	group.materialData->uvTransform = MakeIdentity4x4();
+	group.materialData->emissiveIntensity = 1.0f;
 
 	group.instancingResource =
 		particleCommon_->GetDxCommon()->CreateBufferResource(sizeof(TransformationMatrix) * kMaxInstanceCount);
@@ -355,7 +951,11 @@ void ParticleManager::InitializeParticleLife(Particle& particle, const ParticleB
 	particle.fadeOutStartRatio = std::clamp(behavior.life.fadeOutStartRatio, 0.0f, 0.99f);
 }
 
-void ParticleManager::InitializeParticleMotion(Particle& particle, const ParticleBehavior& behavior) {
+void ParticleManager::InitializeParticleMotion(
+	Particle& particle,
+	const ParticleBehavior& behavior,
+	const Vector3& emitterPosition
+) {
 	particle.movementMode = behavior.motion.mode;
 
 	const ParticleLinearMotionDesc& linear = behavior.motion.linear;
@@ -412,7 +1012,15 @@ void ParticleManager::InitializeParticleMotion(Particle& particle, const Particl
 	if (particle.movementMode == MovementMode::kVortexInward) {
 		const ParticleVortexDesc& vortex = behavior.motion.vortex;
 
-		particle.vortexCenter = vortex.center;
+		if (vortex.useEmitterOffset) {
+			particle.vortexCenter = {
+				emitterPosition.x + vortex.center.x,
+				emitterPosition.y + vortex.center.y,
+				emitterPosition.z + vortex.center.z
+			};
+		} else {
+			particle.vortexCenter = vortex.center;
+		}
 		particle.vortexAxis = vortex.axis;
 
 		Vector3 offset = {
@@ -544,7 +1152,7 @@ void ParticleManager::Emit(
 		particle.transform.scale = particle.startScale;
 
 		InitializeParticleLife(particle, behavior);
-		InitializeParticleMotion(particle, behavior);
+		InitializeParticleMotion(particle, behavior, position);
 		InitializeParticleColor(particle, behavior);
 
 		particle.billboardMode = behavior.render.billboardMode;

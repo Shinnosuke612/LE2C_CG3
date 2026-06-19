@@ -57,8 +57,10 @@ private://インナークラス
 	struct Material {
 		Vector4 color;
 		int32_t enableLighting;
-		float padding[3];
+		float emissiveIntensity;
+		float padding[2];
 		Matrix4x4 uvTransform;
+		Vector4 emissiveColor;
 		float shininess;
 		float padding2[3];
 	};
@@ -82,6 +84,8 @@ public://公開メンバ関数
 	void Draw(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
 	void DrawForShadow(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
 	void DrawWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView);
+	void DrawWithMaterial(ID3D12Resource* materialOverride, const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
+	void DrawWithVertexBufferAndMaterial(const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView, ID3D12Resource* materialOverride);
 	void DrawForShadowWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView);
 
 	// getter

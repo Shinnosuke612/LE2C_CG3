@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include "DirectXCommon.h"
+#include "RenderFormats.h"
 #include "../3d/SrvManager.h"
 
 void SceneRenderTarget::Initialize(
@@ -12,29 +13,49 @@ void SceneRenderTarget::Initialize(
 	uint32_t width,
 	uint32_t height
 ) {
+	Desc desc{};
+	desc.width = width;
+	desc.height = height;
+	Initialize(dxCommon, srvManager, desc);
+}
+
+void SceneRenderTarget::Initialize(
+	DirectXCommon* dxCommon,
+	SrvManager* srvManager,
+	const Desc& desc
+) {
 	assert(dxCommon);
 	assert(srvManager);
 
 	dxCommon_ = dxCommon;
 	srvManager_ = srvManager;
+	format_ = desc.format;
+	createDepth_ = desc.createDepth;
+	for (uint32_t index = 0; index < 4; ++index) {
+		clearColor_[index] = desc.clearColor[index];
+	}
 	assert(srvManager_->CanAllocate());
 	srvIndex_ = srvManager_->Allocate();
-	assert(srvManager_->CanAllocate());
-	depthSrvIndex_ = srvManager_->Allocate();
+	if (createDepth_) {
+		assert(srvManager_->CanAllocate());
+		depthSrvIndex_ = srvManager_->Allocate();
+	}
 
 	rtvHeap_ = dxCommon_->CreateDescriptorHeap(
 		D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
 		1,
 		false
 	);
-	dsvHeap_ = dxCommon_->CreateDescriptorHeap(
-		D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
-		1,
-		false
-	);
+	if (createDepth_) {
+		dsvHeap_ = dxCommon_->CreateDescriptorHeap(
+			D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
+			1,
+			false
+		);
+	}
 
-	width_ = (std::max)(width, 1u);
-	height_ = (std::max)(height, 1u);
+	width_ = (std::max)(desc.width, 1u);
+	height_ = (std::max)(desc.height, 1u);
 	CreateResources();
 	initialized_ = true;
 }
@@ -50,6 +71,7 @@ void SceneRenderTarget::Resize(uint32_t width, uint32_t height) {
 	height_ = height;
 	colorResource_.Reset();
 	depthResource_.Reset();
+	colorReadable_ = true;
 	depthReadable_ = false;
 	CreateResources();
 }
@@ -64,13 +86,17 @@ void SceneRenderTarget::Begin() {
 	barrier.Transition.pResource = colorResource_.Get();
 	barrier.Transition.Subresource =
 		D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	barrier.Transition.StateBefore =
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	barrier.Transition.StateBefore = colorReadable_
+		? D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+		: D3D12_RESOURCE_STATE_RENDER_TARGET;
 	barrier.Transition.StateAfter =
 		D3D12_RESOURCE_STATE_RENDER_TARGET;
-	dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
+	if (colorReadable_) {
+		dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
+		colorReadable_ = false;
+	}
 
-	if (depthReadable_) {
+	if (createDepth_ && depthReadable_) {
 		barrier.Transition.pResource = depthResource_.Get();
 		barrier.Transition.StateBefore =
 			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -82,30 +108,35 @@ void SceneRenderTarget::Begin() {
 
 	const D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle =
 		rtvHeap_->GetCPUDescriptorHandleForHeapStart();
-	const D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle =
-		dsvHeap_->GetCPUDescriptorHandleForHeapStart();
+	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle{};
+	D3D12_CPU_DESCRIPTOR_HANDLE* dsvHandlePtr = nullptr;
+	if (createDepth_) {
+		dsvHandle = dsvHeap_->GetCPUDescriptorHandleForHeapStart();
+		dsvHandlePtr = &dsvHandle;
+	}
 	dxCommon_->GetCommandList()->OMSetRenderTargets(
 		1,
 		&rtvHandle,
 		false,
-		&dsvHandle
+		dsvHandlePtr
 	);
 
-	const float clearColor[] = { 1.0f, 0.0f, 0.0f, 1.0f };
 	dxCommon_->GetCommandList()->ClearRenderTargetView(
 		rtvHandle,
-		clearColor,
+		clearColor_,
 		0,
 		nullptr
 	);
-	dxCommon_->GetCommandList()->ClearDepthStencilView(
-		dsvHandle,
-		D3D12_CLEAR_FLAG_DEPTH,
-		1.0f,
-		0,
-		0,
-		nullptr
-	);
+	if (createDepth_) {
+		dxCommon_->GetCommandList()->ClearDepthStencilView(
+			dsvHandle,
+			D3D12_CLEAR_FLAG_DEPTH,
+			1.0f,
+			0,
+			0,
+			nullptr
+		);
+	}
 
 	D3D12_VIEWPORT viewport{};
 	viewport.Width = static_cast<float>(width_);
@@ -135,13 +166,16 @@ void SceneRenderTarget::End() {
 	barrier.Transition.StateAfter =
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
+	colorReadable_ = true;
 
-	barrier.Transition.pResource = depthResource_.Get();
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-	barrier.Transition.StateAfter =
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
-	depthReadable_ = true;
+	if (createDepth_) {
+		barrier.Transition.pResource = depthResource_.Get();
+		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+		barrier.Transition.StateAfter =
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
+		depthReadable_ = true;
+	}
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE SceneRenderTarget::GetSrvGpuHandle() const {
@@ -153,10 +187,19 @@ D3D12_GPU_DESCRIPTOR_HANDLE SceneRenderTarget::GetSrvGpuHandle() const {
 
 D3D12_GPU_DESCRIPTOR_HANDLE
 SceneRenderTarget::GetDepthSrvGpuHandle() const {
-	if (!initialized_) {
+	if (!initialized_ || !createDepth_) {
 		return {};
 	}
 	return srvManager_->GetGPUDescriptorHandle(depthSrvIndex_);
+}
+
+namespace {
+DXGI_FORMAT ToResourceFormat(DXGI_FORMAT format) {
+	if (format == RenderFormats::kDisplayFormat) {
+		return RenderFormats::kDisplayResourceFormat;
+	}
+	return format;
+}
 }
 
 void SceneRenderTarget::CreateResources() {
@@ -169,16 +212,15 @@ void SceneRenderTarget::CreateResources() {
 	colorDesc.Height = height_;
 	colorDesc.DepthOrArraySize = 1;
 	colorDesc.MipLevels = 1;
-	colorDesc.Format = DXGI_FORMAT_R8G8B8A8_TYPELESS;
+	colorDesc.Format = ToResourceFormat(format_);
 	colorDesc.SampleDesc.Count = 1;
 	colorDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
 	D3D12_CLEAR_VALUE colorClearValue{};
-	colorClearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-	colorClearValue.Color[0] = 1.0f;
-	colorClearValue.Color[1] = 0.0f;
-	colorClearValue.Color[2] = 0.0f;
-	colorClearValue.Color[3] = 1.0f;
+	colorClearValue.Format = format_;
+	for (uint32_t index = 0; index < 4; ++index) {
+		colorClearValue.Color[index] = clearColor_[index];
+	}
 
 	HRESULT result = dxCommon_->GetDevice()->CreateCommittedResource(
 		&heapProperties,
@@ -191,7 +233,7 @@ void SceneRenderTarget::CreateResources() {
 	assert(SUCCEEDED(result));
 
 	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc{};
-	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	rtvDesc.Format = format_;
 	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 	dxCommon_->GetDevice()->CreateRenderTargetView(
 		colorResource_.Get(),
@@ -199,18 +241,28 @@ void SceneRenderTarget::CreateResources() {
 		rtvHeap_->GetCPUDescriptorHandleForHeapStart()
 	);
 
+	if (!createDepth_) {
+		srvManager_->CreateSRVforTexture2D(
+			srvIndex_,
+			colorResource_.Get(),
+			format_,
+			1
+		);
+		return;
+	}
+
 	D3D12_RESOURCE_DESC depthDesc{};
 	depthDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	depthDesc.Width = width_;
 	depthDesc.Height = height_;
 	depthDesc.DepthOrArraySize = 1;
 	depthDesc.MipLevels = 1;
-	depthDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+	depthDesc.Format = RenderFormats::kDepthResourceFormat;
 	depthDesc.SampleDesc.Count = 1;
 	depthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 	D3D12_CLEAR_VALUE depthClearValue{};
-	depthClearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	depthClearValue.Format = RenderFormats::kDepthDsvFormat;
 	depthClearValue.DepthStencil.Depth = 1.0f;
 
 	result = dxCommon_->GetDevice()->CreateCommittedResource(
@@ -224,7 +276,7 @@ void SceneRenderTarget::CreateResources() {
 	assert(SUCCEEDED(result));
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
-	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	dsvDesc.Format = RenderFormats::kDepthDsvFormat;
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dxCommon_->GetDevice()->CreateDepthStencilView(
 		depthResource_.Get(),
@@ -235,13 +287,13 @@ void SceneRenderTarget::CreateResources() {
 	srvManager_->CreateSRVforTexture2D(
 		srvIndex_,
 		colorResource_.Get(),
-		DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+		format_,
 		1
 	);
 	srvManager_->CreateSRVforTexture2D(
 		depthSrvIndex_,
 		depthResource_.Get(),
-		DXGI_FORMAT_R24_UNORM_X8_TYPELESS,
+		RenderFormats::kDepthSrvFormat,
 		1
 	);
 }

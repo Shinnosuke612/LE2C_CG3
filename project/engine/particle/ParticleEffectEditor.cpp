@@ -25,13 +25,15 @@ void DragVector4(const char* label, Vector4& value, float speed = 0.01f) {
 	ImGui::DragFloat4(label, &value.x, speed, 0.0f, 1.0f);
 }
 
-void ComboBlendMode(const char* label, ParticleCommon::BlendMode& mode) {
+bool ComboBlendMode(const char* label, ParticleCommon::BlendMode& mode) {
 	const char* items[] = { "None", "Normal", "Add", "Subtract", "Multiply", "Screen" };
 	int current = static_cast<int>(mode);
 
 	if (ImGui::Combo(label, &current, items, IM_ARRAYSIZE(items))) {
 		mode = static_cast<ParticleCommon::BlendMode>(current);
+		return true;
 	}
+	return false;
 }
 
 void ComboColorMode(const char* label, ParticleManager::ColorChangeMode& mode) {
@@ -213,7 +215,7 @@ bool ParticleEffectEditor::DrawImGui(
 
 	CopyStringsToEffect(effect);
 
-	ComboBlendMode("BlendMode", effect.blendMode);
+	changed |= ComboBlendMode("BlendMode", effect.blendMode);
 
 	if (ImGui::CollapsingHeader("Emitter", ImGuiTreeNodeFlags_DefaultOpen)) {
 		changed |= ImGui::DragFloat3("Translate", &effect.emitter.translate.x, 0.05f);
@@ -230,11 +232,112 @@ bool ParticleEffectEditor::DrawImGui(
 				"Frequency",
 				&effect.emitter.frequency,
 				0.001f,
-				0.001f,
+				1.0f / 60.0f,
 				10.0f
 			);
+			if (effect.emitter.frequency <= 0.0f) {
+				effect.emitter.frequency = 1.0f / 60.0f;
+				changed = true;
+			}
 		}
 		changed |= ImGui::Checkbox("Active", &effect.emitter.isActive);
+	}
+
+	if (ImGui::CollapsingHeader("Lightning")) {
+		changed |= ImGui::Checkbox("Enable Lightning", &effect.lightning.enabled);
+		if (effect.lightning.enabled) {
+			ImGui::TextDisabled("Offsets are relative to the emitter position.");
+			changed |= ImGui::DragFloat3(
+				"Start Offset",
+				&effect.lightning.startOffset.x,
+				0.05f
+			);
+			changed |= ImGui::DragFloat3(
+				"End Offset",
+				&effect.lightning.endOffset.x,
+				0.05f
+			);
+			changed |= ImGui::DragFloat3(
+				"Random Range",
+				&effect.lightning.randomRange.x,
+				0.05f,
+				0.0f,
+				100.0f
+			);
+			changed |= ImGui::ColorEdit4(
+				"Core Color",
+				&effect.lightning.coreColor.x,
+				ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
+			);
+			changed |= ImGui::ColorEdit4(
+				"Branch Color",
+				&effect.lightning.branchColor.x,
+				ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
+			);
+			changed |= ImGui::DragFloat(
+				"Thickness",
+				&effect.lightning.thickness,
+				0.001f,
+				0.001f,
+				1.0f,
+				"%.3f"
+			);
+			changed |= ImGui::DragFloat(
+				"Duration",
+				&effect.lightning.duration,
+				0.01f,
+				0.01f,
+				5.0f
+			);
+			changed |= ImGui::DragFloat(
+				"Jitter",
+				&effect.lightning.jitter,
+				0.01f,
+				0.0f,
+				10.0f
+			);
+			changed |= ImGui::DragFloat(
+				"Branch Length",
+				&effect.lightning.branchLength,
+				0.01f,
+				0.0f,
+				10.0f
+			);
+			changed |= ImGui::SliderFloat(
+				"Branch Probability",
+				&effect.lightning.branchProbability,
+				0.0f,
+				1.0f
+			);
+			int segmentCount = static_cast<int>(effect.lightning.segmentCount);
+			if (ImGui::SliderInt("Segments", &segmentCount, 1, 64)) {
+				effect.lightning.segmentCount =
+					static_cast<uint32_t>(std::clamp(segmentCount, 1, 64));
+				changed = true;
+			}
+
+			ImGui::SeparatorText("Exposure Flash");
+			changed |= ImGui::Checkbox(
+				"Flash Exposure",
+				&effect.lightning.flashExposure
+			);
+			if (effect.lightning.flashExposure) {
+				changed |= ImGui::DragFloat(
+					"Flash Exposure Value",
+					&effect.lightning.flashExposureValue,
+					0.01f,
+					0.01f,
+					20.0f
+				);
+				changed |= ImGui::DragFloat(
+					"Return Speed",
+					&effect.lightning.flashReturnSpeed,
+					0.01f,
+					0.01f,
+					100.0f
+				);
+			}
+		}
 	}
 
 	if (ImGui::CollapsingHeader("Life", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -304,7 +407,15 @@ bool ParticleEffectEditor::DrawImGui(
 		}
 
 		if (ImGui::TreeNode("Vortex")) {
-			DragVector3("Center", effect.behavior.motion.vortex.center, 0.05f);
+			ImGui::Checkbox(
+				"UseEmitterOffset",
+				&effect.behavior.motion.vortex.useEmitterOffset
+			);
+			DragVector3(
+				effect.behavior.motion.vortex.useEmitterOffset ? "CenterOffset" : "WorldCenter",
+				effect.behavior.motion.vortex.center,
+				0.05f
+			);
 			ComboVortexAxis("Axis", effect.behavior.motion.vortex.axis);
 
 			ImGui::DragFloat("AngularSpeedMin", &effect.behavior.motion.vortex.angularSpeedMin, 0.01f, -100.0f, 100.0f);
@@ -351,6 +462,12 @@ bool ParticleEffectEditor::DrawImGui(
 			&effect.behavior.render.alphaCutoff,
 			0.0f,
 			1.0f
+		);
+		ImGui::SliderFloat(
+			"Emissive",
+			&effect.behavior.render.emissiveIntensity,
+			0.0f,
+			20.0f
 		);
 		ComboCullMode("CullMode", effect.behavior.render.cullMode);
 		ImGui::Checkbox("DepthTest", &effect.behavior.render.depthTest);

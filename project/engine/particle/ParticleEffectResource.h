@@ -24,6 +24,7 @@ struct ParticleEffectDesc {
 
 	ParticleEmitterDesc emitter;
 	ParticleManager::ParticleBehavior behavior;
+	ParticleManager::LightningEmitterDesc lightning;
 };
 
 namespace ParticleEffectResource {

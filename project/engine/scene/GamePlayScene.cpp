@@ -20,6 +20,7 @@
 #include "../3d/LightManager.h"
 #include "../3d/ShadowManager.h"
 #include "../3d/Skybox.h"
+#include "../effect/LightningRenderer.h"
 #include "../player/Player.h"
 
 #include "../externals/imgui/imgui.h"
@@ -38,6 +39,7 @@ void GamePlayScene::Initialize()
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
 	ParticleManager::GetInstance()->SetCamera(camera_);
 	ParticleManager::GetInstance()->SetGpuParticleEnabled(true);
+	ParticleManager::GetInstance()->LoadSceneParticleLayout();
 
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
@@ -88,7 +90,7 @@ void GamePlayScene::Initialize()
 	animatedCube_ = new Object3d();
 	animatedCube_->Initialize(Object3dCommon::GetInstance());
 	animatedCube_->SetModel("AnimatedCube/AnimatedCube.gltf");
-	animatedCube_->SetTranslate({ 3.0f, 1.5f, -2.0f });
+	animatedCube_->SetTranslate({ 3.0f, 10.5f, -2.0f });
 	animatedCube_->SetScale({ 0.65f, 0.65f, 0.65f });
 	animatedCube_->SetAnimationLoop(true);
 	animatedCube_->SetAnimationSpeed(1.0f);
@@ -169,6 +171,8 @@ void GamePlayScene::Initialize()
 		SrvManager::GetInstance()
 	);
 
+	lightningRenderer_ = std::make_unique<LightningRenderer>();
+
 	//soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
 }
 
@@ -199,6 +203,7 @@ void GamePlayScene::Update()
 		if (ringBurstEmitter_) {
 			ringBurstEmitter_->Emit();
 		}
+		ParticleManager::GetInstance()->EmitSceneParticles("GAMEPLAY");
 	}
 
 	if (emitter_) {
@@ -213,7 +218,28 @@ void GamePlayScene::Update()
 	if (ringBurstEmitter_) {
 		ringBurstEmitter_->Update();
 	}
+	ParticleManager::GetInstance()->UpdateSceneParticles("GAMEPLAY");
 	ParticleManager::GetInstance()->Update();
+	if (lightningRenderer_) {
+		ParticleManager::LightningEvent lightningEvent{};
+		while (ParticleManager::GetInstance()->ConsumeLightningEvent(lightningEvent)) {
+			LightningRenderer::Settings settings = lightningRenderer_->GetSettings();
+			settings.start = lightningEvent.start;
+			settings.end = lightningEvent.end;
+			settings.coreColor = lightningEvent.desc.coreColor;
+			settings.branchColor = lightningEvent.desc.branchColor;
+			settings.jitter = lightningEvent.desc.jitter;
+			settings.branchLength = lightningEvent.desc.branchLength;
+			settings.branchProbability = lightningEvent.desc.branchProbability;
+			settings.thickness = lightningEvent.desc.thickness;
+			settings.duration = lightningEvent.desc.duration;
+			settings.segmentCount = lightningEvent.desc.segmentCount;
+			settings.seed = lightningEvent.seed;
+			lightningRenderer_->Trigger(settings);
+		}
+		lightningRenderer_->Update(1.0f / 60.0f);
+		lightningRenderer_->DrawDebug();
+	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	ImGui::Begin("Scene Controls");
@@ -319,6 +345,14 @@ void GamePlayScene::Update()
 		editorPreviewEmitter_,
 		"Particle Effect Editor"
 	);
+
+	if (ParticleManager::GetInstance()->IsGpuParticleEnabled()) {
+		ParticleManager::GetInstance()->DrawGpuParticleImGui("GPU Particle");
+	}
+	ParticleManager::GetInstance()->DrawSceneParticleImGui("GAMEPLAY", "Scene Particles");
+	if (lightningRenderer_) {
+		lightningRenderer_->DrawImGui("Lightning");
+	}
 
 	if (editingEffect_.name == planeBurstEffect_.name && planeBurstEmitter_) {
 		planeBurstEffect_ = editingEffect_;

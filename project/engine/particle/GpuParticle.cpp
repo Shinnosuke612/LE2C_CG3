@@ -1,16 +1,104 @@
 #include "GpuParticle.h"
+#include "../base/RenderFormats.h"
 
 #include "ParticleCommon.h"
 #include "../2d/TextureManager.h"
 #include "../3d/Camera.h"
 #include "../3d/SrvManager.h"
 #include "../base/DirectXCommon.h"
+#include "../externals/nlohmann/json.hpp"
 #include "../utility/Logger.h"
 
+#include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cstring>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <unordered_map>
+#include <vector>
+
+#ifdef _DEBUG
+#include <imgui.h>
+#endif
+
+using json = nlohmann::json;
 
 namespace {
+
+constexpr float kMinEmitterFrequency = 1.0f / 60.0f;
+
+float NormalizeEmitterFrequency(float frequency) {
+	return frequency > 0.0f ? frequency : kMinEmitterFrequency;
+}
+
+const char* ToString(ParticleCommon::BlendMode mode) {
+	switch (mode) {
+	case ParticleCommon::BlendMode::kBlendModeNone: return "None";
+	case ParticleCommon::BlendMode::kBlendModeNormal: return "Normal";
+	case ParticleCommon::BlendMode::kBlendModeAdd: return "Add";
+	case ParticleCommon::BlendMode::kBlendModeSubtract: return "Subtract";
+	case ParticleCommon::BlendMode::kBlendModeMultiply: return "Multiply";
+	case ParticleCommon::BlendMode::kBlendModeScreen: return "Screen";
+	default: return "Add";
+	}
+}
+
+ParticleCommon::BlendMode ToBlendMode(const std::string& text) {
+	if (text == "None") return ParticleCommon::BlendMode::kBlendModeNone;
+	if (text == "Normal") return ParticleCommon::BlendMode::kBlendModeNormal;
+	if (text == "Add") return ParticleCommon::BlendMode::kBlendModeAdd;
+	if (text == "Subtract") return ParticleCommon::BlendMode::kBlendModeSubtract;
+	if (text == "Multiply") return ParticleCommon::BlendMode::kBlendModeMultiply;
+	if (text == "Screen") return ParticleCommon::BlendMode::kBlendModeScreen;
+	return ParticleCommon::BlendMode::kBlendModeAdd;
+}
+
+void ApplyBlendMode(
+	D3D12_BLEND_DESC& blendDesc,
+	ParticleCommon::BlendMode blendMode
+) {
+	blendDesc = {};
+	blendDesc.RenderTarget[0].RenderTargetWriteMask =
+		D3D12_COLOR_WRITE_ENABLE_ALL;
+
+	if (blendMode == ParticleCommon::BlendMode::kBlendModeNone) {
+		blendDesc.RenderTarget[0].BlendEnable = FALSE;
+		return;
+	}
+
+	blendDesc.RenderTarget[0].BlendEnable = TRUE;
+	if (blendMode == ParticleCommon::BlendMode::kBlendModeNormal) {
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	}
+	else if (blendMode == ParticleCommon::BlendMode::kBlendModeAdd) {
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	}
+	else if (blendMode == ParticleCommon::BlendMode::kBlendModeSubtract) {
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_REV_SUBTRACT;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	}
+	else if (blendMode == ParticleCommon::BlendMode::kBlendModeMultiply) {
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_DEST_COLOR;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	}
+	else if (blendMode == ParticleCommon::BlendMode::kBlendModeScreen) {
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_INV_DEST_COLOR;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	}
+
+	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ZERO;
+	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+}
 
 Microsoft::WRL::ComPtr<ID3D12Resource> CreateUavBufferResource(
 	ID3D12Device* device,
@@ -55,6 +143,114 @@ D3D12_STATIC_SAMPLER_DESC MakeLinearSampler() {
 	return sampler;
 }
 
+json ToJson(const Vector3& value) {
+	return json::array({ value.x, value.y, value.z });
+}
+
+json ToJson(const Vector4& value) {
+	return json::array({ value.x, value.y, value.z, value.w });
+}
+
+Vector3 ReadVector3(const json& value, const Vector3& fallback) {
+	if (!value.is_array() || value.size() < 3) {
+		return fallback;
+	}
+
+	return {
+		value.at(0).get<float>(),
+		value.at(1).get<float>(),
+		value.at(2).get<float>()
+	};
+}
+
+Vector4 ReadVector4(const json& value, const Vector4& fallback) {
+	if (!value.is_array() || value.size() < 4) {
+		return fallback;
+	}
+
+	return {
+		value.at(0).get<float>(),
+		value.at(1).get<float>(),
+		value.at(2).get<float>(),
+		value.at(3).get<float>()
+	};
+}
+
+bool IsCsvPath(const std::string& filePath) {
+	const size_t dot = filePath.find_last_of('.');
+	if (dot == std::string::npos) {
+		return false;
+	}
+
+	std::string extension = filePath.substr(dot);
+	std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
+		return static_cast<char>(std::tolower(c));
+	});
+	return extension == ".csv";
+}
+
+std::vector<std::string> SplitCsvLine(const std::string& line) {
+	std::vector<std::string> values;
+	std::stringstream stream(line);
+	std::string value;
+	while (std::getline(stream, value, ',')) {
+		values.push_back(value);
+	}
+	return values;
+}
+
+float ReadCsvFloat(
+	const std::unordered_map<std::string, std::vector<std::string>>& table,
+	const std::string& key,
+	size_t index,
+	float fallback
+) {
+	const auto it = table.find(key);
+	if (it == table.end() || it->second.size() <= index + 1) {
+		return fallback;
+	}
+
+	return std::stof(it->second[index + 1]);
+}
+
+uint32_t ReadCsvUint(
+	const std::unordered_map<std::string, std::vector<std::string>>& table,
+	const std::string& key,
+	uint32_t fallback
+) {
+	const auto it = table.find(key);
+	if (it == table.end() || it->second.size() <= 1) {
+		return fallback;
+	}
+
+	return static_cast<uint32_t>(std::stoul(it->second[1]));
+}
+
+Vector3 ReadCsvVector3(
+	const std::unordered_map<std::string, std::vector<std::string>>& table,
+	const std::string& key,
+	const Vector3& fallback
+) {
+	return {
+		ReadCsvFloat(table, key, 0, fallback.x),
+		ReadCsvFloat(table, key, 1, fallback.y),
+		ReadCsvFloat(table, key, 2, fallback.z)
+	};
+}
+
+Vector4 ReadCsvVector4(
+	const std::unordered_map<std::string, std::vector<std::string>>& table,
+	const std::string& key,
+	const Vector4& fallback
+) {
+	return {
+		ReadCsvFloat(table, key, 0, fallback.x),
+		ReadCsvFloat(table, key, 1, fallback.y),
+		ReadCsvFloat(table, key, 2, fallback.z),
+		ReadCsvFloat(table, key, 3, fallback.w)
+	};
+}
+
 } // namespace
 
 void GpuParticle::Initialize(
@@ -68,16 +264,21 @@ void GpuParticle::Initialize(
 	particleCommon_ = particleCommon;
 	srvManager_ = srvManager;
 	dxCommon_ = particleCommon_->GetDxCommon();
+	config_.textureFilePath = textureFilePath;
+	config_.filePath = "resources/particles/gpu_particle.json";
 	textureFilePath_ = textureFilePath;
 
-	const bool loaded = TextureManager::GetInstance()->LoadTexture(textureFilePath_);
+	const bool loaded = ApplyTexture(textureFilePath_);
 	assert(loaded);
-	textureSrvIndex_ = TextureManager::GetInstance()->GetSrvIndex(textureFilePath_);
 
 	CreateParticleResource();
 	CreateConstantBuffers();
 	CreateRootSignatures();
 	CreatePipelineStates();
+	if (!LoadConfig(config_.filePath)) {
+		ApplyConfigToGpu();
+	}
+	CopyStringsToBuffers();
 
 	needsInitialize_ = true;
 }
@@ -91,8 +292,11 @@ void GpuParticle::Reset() {
 	perViewResource_.Reset();
 	emitterResource_.Reset();
 	perFrameResource_.Reset();
+	behaviorResource_.Reset();
 	graphicsRootSignature_.Reset();
-	graphicsPipelineState_.Reset();
+	for (auto& pipelineState : graphicsPipelineStates_) {
+		pipelineState.Reset();
+	}
 	initializeRootSignature_.Reset();
 	initializePipelineState_.Reset();
 	emitRootSignature_.Reset();
@@ -104,6 +308,7 @@ void GpuParticle::Reset() {
 	perViewData_ = nullptr;
 	emitterData_ = nullptr;
 	perFrameData_ = nullptr;
+	behaviorData_ = nullptr;
 	particleCommon_ = nullptr;
 	srvManager_ = nullptr;
 	dxCommon_ = nullptr;
@@ -118,6 +323,9 @@ void GpuParticle::Reset() {
 	freeListResourceState_ = D3D12_RESOURCE_STATE_COMMON;
 	needsInitialize_ = true;
 	elapsedTime_ = 0.0f;
+	config_ = {};
+	std::memset(configPathBuffer_, 0, sizeof(configPathBuffer_));
+	std::memset(texturePathBuffer_, 0, sizeof(texturePathBuffer_));
 }
 
 void GpuParticle::CreateParticleResource() {
@@ -186,6 +394,7 @@ void GpuParticle::CreateConstantBuffers() {
 	materialData_->flipU = false;
 	materialData_->flipV = false;
 	materialData_->uvTransform = MakeIdentity4x4();
+	materialData_->emissiveIntensity = 1.0f;
 
 	directionalLightResource_ =
 		dxCommon_->CreateBufferResource(sizeof(DirectionalLight));
@@ -204,12 +413,7 @@ void GpuParticle::CreateConstantBuffers() {
 
 	emitterResource_ = dxCommon_->CreateBufferResource(sizeof(EmitterSphere));
 	emitterResource_->Map(0, nullptr, reinterpret_cast<void**>(&emitterData_));
-	emitterData_->translate = { 0.0f, 1.7f, 0.0f };
-	emitterData_->radius = 0.35f;
-	emitterData_->count = 10;
-	emitterData_->frequency = 0.5f;
-	emitterData_->frequencyTime = 0.0f;
-	emitterData_->emit = 0;
+	*emitterData_ = config_.emitter;
 
 	perFrameResource_ = dxCommon_->CreateBufferResource(sizeof(PerFrame));
 	perFrameResource_->Map(0, nullptr, reinterpret_cast<void**>(&perFrameData_));
@@ -217,6 +421,439 @@ void GpuParticle::CreateConstantBuffers() {
 	perFrameData_->deltaTime = deltaTime_;
 	perFrameData_->padding[0] = 0.0f;
 	perFrameData_->padding[1] = 0.0f;
+
+	behaviorResource_ = dxCommon_->CreateBufferResource(sizeof(BehaviorForGPU));
+	behaviorResource_->Map(0, nullptr, reinterpret_cast<void**>(&behaviorData_));
+	ApplyConfigToGpu();
+}
+
+void GpuParticle::ApplyConfigToGpu() {
+	config_.emitter.frequency = NormalizeEmitterFrequency(config_.emitter.frequency);
+	if (emitterData_) {
+		const uint32_t emit = emitterData_->emit;
+		const float frequencyTime = emitterData_->frequencyTime;
+		*emitterData_ = config_.emitter;
+		emitterData_->emit = emit;
+		emitterData_->frequencyTime = frequencyTime;
+	}
+
+	if (behaviorData_) {
+		const BehaviorSettings& behavior = config_.behavior;
+		behaviorData_->lifeScaleVelocityMinRotationMin = {
+			behavior.lifeTimeMin,
+			behavior.scaleMin,
+			behavior.velocityMin,
+			behavior.rotationSpeedMin
+		};
+		behaviorData_->lifeScaleVelocityMaxRotationMax = {
+			behavior.lifeTimeMax,
+			behavior.scaleMax,
+			behavior.velocityMax,
+			behavior.rotationSpeedMax
+		};
+		behaviorData_->colorMin = behavior.colorMin;
+		behaviorData_->colorMax = behavior.colorMax;
+	}
+}
+
+bool GpuParticle::ApplyTexture(const std::string& textureFilePath) {
+	if (textureFilePath.empty()) {
+		return false;
+	}
+
+	if (!TextureManager::GetInstance()->LoadTexture(textureFilePath)) {
+		return false;
+	}
+
+	textureFilePath_ = textureFilePath;
+	config_.textureFilePath = textureFilePath;
+	textureSrvIndex_ = TextureManager::GetInstance()->GetSrvIndex(textureFilePath_);
+	return true;
+}
+
+void GpuParticle::CopyStringsToBuffers() {
+	strncpy_s(
+		configPathBuffer_,
+		sizeof(configPathBuffer_),
+		config_.filePath.c_str(),
+		_TRUNCATE
+	);
+	strncpy_s(
+		texturePathBuffer_,
+		sizeof(texturePathBuffer_),
+		config_.textureFilePath.c_str(),
+		_TRUNCATE
+	);
+}
+
+bool GpuParticle::SaveConfig(const std::string& filePath) const {
+	if (filePath.empty()) {
+		return false;
+	}
+
+	std::ofstream file(filePath);
+	if (!file.is_open()) {
+		return false;
+	}
+
+	if (IsCsvPath(filePath)) {
+		const BehaviorSettings& behavior = config_.behavior;
+		file << std::fixed << std::setprecision(6);
+		file << "texture," << config_.textureFilePath << "\n";
+		file << "blendMode," << ToString(config_.blendMode) << "\n";
+		file << "autoEmit," << (config_.autoEmit ? 1 : 0) << "\n";
+		file << "emitter.translate,"
+			 << config_.emitter.translate.x << "," << config_.emitter.translate.y
+			 << "," << config_.emitter.translate.z << "\n";
+		file << "emitter.radius," << config_.emitter.radius << "\n";
+		file << "emitter.count," << config_.emitter.count << "\n";
+		file << "emitter.frequency," << config_.emitter.frequency << "\n";
+		file << "behavior.lifeTime," << behavior.lifeTimeMin << ","
+			 << behavior.lifeTimeMax << "\n";
+		file << "behavior.scale," << behavior.scaleMin << ","
+			 << behavior.scaleMax << "\n";
+		file << "behavior.velocity," << behavior.velocityMin << ","
+			 << behavior.velocityMax << "\n";
+		file << "behavior.rotationSpeed," << behavior.rotationSpeedMin << ","
+			 << behavior.rotationSpeedMax << "\n";
+		file << "behavior.colorMin," << behavior.colorMin.x << ","
+			 << behavior.colorMin.y << "," << behavior.colorMin.z << ","
+			 << behavior.colorMin.w << "\n";
+		file << "behavior.colorMax," << behavior.colorMax.x << ","
+			 << behavior.colorMax.y << "," << behavior.colorMax.z << ","
+			 << behavior.colorMax.w << "\n";
+		return true;
+	}
+
+	json root;
+	root["texture"] = config_.textureFilePath;
+	root["blendMode"] = ToString(config_.blendMode);
+	root["autoEmit"] = config_.autoEmit;
+	root["emitter"] = {
+		{ "translate", ToJson(config_.emitter.translate) },
+		{ "radius", config_.emitter.radius },
+		{ "count", config_.emitter.count },
+		{ "frequency", config_.emitter.frequency }
+	};
+
+	const BehaviorSettings& behavior = config_.behavior;
+	root["behavior"] = {
+		{ "lifeTime", json::array({ behavior.lifeTimeMin, behavior.lifeTimeMax }) },
+		{ "scale", json::array({ behavior.scaleMin, behavior.scaleMax }) },
+		{ "velocity", json::array({ behavior.velocityMin, behavior.velocityMax }) },
+		{
+			"rotationSpeed",
+			json::array({ behavior.rotationSpeedMin, behavior.rotationSpeedMax })
+		},
+		{ "colorMin", ToJson(behavior.colorMin) },
+		{ "colorMax", ToJson(behavior.colorMax) }
+	};
+
+	file << std::setw(4) << root;
+	return true;
+}
+
+bool GpuParticle::LoadConfig(const std::string& filePath) {
+	if (filePath.empty()) {
+		return false;
+	}
+
+	std::ifstream file(filePath);
+	if (!file.is_open()) {
+		return false;
+	}
+
+	Config loaded = config_;
+	loaded.filePath = filePath;
+
+	try {
+		if (IsCsvPath(filePath)) {
+			std::unordered_map<std::string, std::vector<std::string>> table;
+			std::string line;
+			while (std::getline(file, line)) {
+				std::vector<std::string> values = SplitCsvLine(line);
+				if (!values.empty()) {
+					table.emplace(values.front(), std::move(values));
+				}
+			}
+
+			if (const auto it = table.find("texture"); it != table.end() &&
+				it->second.size() > 1) {
+				loaded.textureFilePath = it->second[1];
+			}
+			if (const auto it = table.find("blendMode"); it != table.end() &&
+				it->second.size() > 1) {
+				loaded.blendMode = ToBlendMode(it->second[1]);
+			}
+			loaded.autoEmit = ReadCsvUint(table, "autoEmit", loaded.autoEmit ? 1u : 0u) != 0;
+			loaded.emitter.translate =
+				ReadCsvVector3(table, "emitter.translate", loaded.emitter.translate);
+			loaded.emitter.radius =
+				ReadCsvFloat(table, "emitter.radius", 0, loaded.emitter.radius);
+			loaded.emitter.count =
+				ReadCsvUint(table, "emitter.count", loaded.emitter.count);
+			loaded.emitter.frequency =
+				ReadCsvFloat(table, "emitter.frequency", 0, loaded.emitter.frequency);
+			loaded.behavior.lifeTimeMin =
+				ReadCsvFloat(table, "behavior.lifeTime", 0, loaded.behavior.lifeTimeMin);
+			loaded.behavior.lifeTimeMax =
+				ReadCsvFloat(table, "behavior.lifeTime", 1, loaded.behavior.lifeTimeMax);
+			loaded.behavior.scaleMin =
+				ReadCsvFloat(table, "behavior.scale", 0, loaded.behavior.scaleMin);
+			loaded.behavior.scaleMax =
+				ReadCsvFloat(table, "behavior.scale", 1, loaded.behavior.scaleMax);
+			loaded.behavior.velocityMin =
+				ReadCsvFloat(table, "behavior.velocity", 0, loaded.behavior.velocityMin);
+			loaded.behavior.velocityMax =
+				ReadCsvFloat(table, "behavior.velocity", 1, loaded.behavior.velocityMax);
+			loaded.behavior.rotationSpeedMin = ReadCsvFloat(
+				table,
+				"behavior.rotationSpeed",
+				0,
+				loaded.behavior.rotationSpeedMin
+			);
+			loaded.behavior.rotationSpeedMax = ReadCsvFloat(
+				table,
+				"behavior.rotationSpeed",
+				1,
+				loaded.behavior.rotationSpeedMax
+			);
+			loaded.behavior.colorMin =
+				ReadCsvVector4(table, "behavior.colorMin", loaded.behavior.colorMin);
+			loaded.behavior.colorMax =
+				ReadCsvVector4(table, "behavior.colorMax", loaded.behavior.colorMax);
+		}
+		else {
+			json root;
+			file >> root;
+
+			loaded.textureFilePath = root.value("texture", loaded.textureFilePath);
+			loaded.blendMode =
+				ToBlendMode(root.value("blendMode", std::string(ToString(loaded.blendMode))));
+			loaded.autoEmit = root.value("autoEmit", loaded.autoEmit);
+
+			if (root.contains("emitter")) {
+				const json& emitter = root.at("emitter");
+				if (emitter.contains("translate")) {
+					loaded.emitter.translate =
+						ReadVector3(emitter.at("translate"), loaded.emitter.translate);
+				}
+				loaded.emitter.radius = emitter.value("radius", loaded.emitter.radius);
+				loaded.emitter.count = emitter.value("count", loaded.emitter.count);
+				loaded.emitter.frequency =
+					emitter.value("frequency", loaded.emitter.frequency);
+			}
+
+			if (root.contains("behavior")) {
+				const json& behavior = root.at("behavior");
+				if (behavior.contains("lifeTime") &&
+					behavior.at("lifeTime").is_array() &&
+					behavior.at("lifeTime").size() >= 2) {
+					loaded.behavior.lifeTimeMin =
+						behavior.at("lifeTime").at(0).get<float>();
+					loaded.behavior.lifeTimeMax =
+						behavior.at("lifeTime").at(1).get<float>();
+				}
+				if (behavior.contains("scale") && behavior.at("scale").is_array() &&
+					behavior.at("scale").size() >= 2) {
+					loaded.behavior.scaleMin = behavior.at("scale").at(0).get<float>();
+					loaded.behavior.scaleMax = behavior.at("scale").at(1).get<float>();
+				}
+				if (behavior.contains("velocity") &&
+					behavior.at("velocity").is_array() &&
+					behavior.at("velocity").size() >= 2) {
+					loaded.behavior.velocityMin =
+						behavior.at("velocity").at(0).get<float>();
+					loaded.behavior.velocityMax =
+						behavior.at("velocity").at(1).get<float>();
+				}
+				if (behavior.contains("rotationSpeed") &&
+					behavior.at("rotationSpeed").is_array() &&
+					behavior.at("rotationSpeed").size() >= 2) {
+					loaded.behavior.rotationSpeedMin =
+						behavior.at("rotationSpeed").at(0).get<float>();
+					loaded.behavior.rotationSpeedMax =
+						behavior.at("rotationSpeed").at(1).get<float>();
+				}
+				if (behavior.contains("colorMin")) {
+					loaded.behavior.colorMin =
+						ReadVector4(behavior.at("colorMin"), loaded.behavior.colorMin);
+				}
+				if (behavior.contains("colorMax")) {
+					loaded.behavior.colorMax =
+						ReadVector4(behavior.at("colorMax"), loaded.behavior.colorMax);
+				}
+			}
+		}
+	}
+	catch (...) {
+		return false;
+	}
+
+	loaded.emitter.count = std::clamp(loaded.emitter.count, 0u, kMaxParticles);
+	loaded.emitter.radius = (std::max)(0.0f, loaded.emitter.radius);
+	loaded.emitter.frequency = NormalizeEmitterFrequency(loaded.emitter.frequency);
+	loaded.behavior.lifeTimeMax =
+		(std::max)(loaded.behavior.lifeTimeMin, loaded.behavior.lifeTimeMax);
+	loaded.behavior.scaleMax =
+		(std::max)(loaded.behavior.scaleMin, loaded.behavior.scaleMax);
+	loaded.behavior.velocityMax =
+		(std::max)(loaded.behavior.velocityMin, loaded.behavior.velocityMax);
+	loaded.behavior.rotationSpeedMax = (std::max)(
+		loaded.behavior.rotationSpeedMin,
+		loaded.behavior.rotationSpeedMax
+	);
+
+	config_ = loaded;
+	ApplyTexture(config_.textureFilePath);
+	ApplyConfigToGpu();
+	CopyStringsToBuffers();
+	return true;
+}
+
+void GpuParticle::DrawImGui(const char* windowTitle) {
+#ifdef _DEBUG
+	if (!ImGui::Begin(windowTitle)) {
+		ImGui::End();
+		return;
+	}
+
+	bool dirty = false;
+	ImGui::InputText("Config Path", configPathBuffer_, sizeof(configPathBuffer_));
+	if (ImGui::Button("Save")) {
+		config_.filePath = configPathBuffer_;
+		SaveConfig(config_.filePath);
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Load")) {
+		LoadConfig(configPathBuffer_);
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Reset GPU Buffer")) {
+		needsInitialize_ = true;
+	}
+
+	if (ImGui::InputText("Texture", texturePathBuffer_, sizeof(texturePathBuffer_))) {
+		config_.textureFilePath = texturePathBuffer_;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Apply Texture")) {
+		ApplyTexture(texturePathBuffer_);
+		CopyStringsToBuffers();
+	}
+
+	dirty |= ImGui::Checkbox("Auto Emit", &config_.autoEmit);
+	const char* blendModeItems[] = {
+		"None",
+		"Normal",
+		"Add",
+		"Subtract",
+		"Multiply",
+		"Screen"
+	};
+	int blendMode = static_cast<int>(config_.blendMode);
+	if (ImGui::Combo(
+			"BlendMode",
+			&blendMode,
+			blendModeItems,
+			IM_ARRAYSIZE(blendModeItems)
+		)) {
+		config_.blendMode = static_cast<ParticleCommon::BlendMode>(blendMode);
+		dirty = true;
+	}
+
+	if (ImGui::CollapsingHeader("Emitter", ImGuiTreeNodeFlags_DefaultOpen)) {
+		dirty |= ImGui::DragFloat3(
+			"Translate",
+			&config_.emitter.translate.x,
+			0.01f
+		);
+		dirty |= ImGui::DragFloat(
+			"Radius",
+			&config_.emitter.radius,
+			0.01f,
+			0.0f,
+			100.0f
+		);
+		int count = static_cast<int>(config_.emitter.count);
+		if (ImGui::DragInt(
+				"Count",
+				&count,
+				1.0f,
+				0,
+				static_cast<int>(kMaxParticles)
+			)) {
+			config_.emitter.count =
+				static_cast<uint32_t>(std::clamp(count, 0, static_cast<int>(kMaxParticles)));
+			dirty = true;
+		}
+		dirty |= ImGui::DragFloat(
+			"Frequency",
+			&config_.emitter.frequency,
+			0.01f,
+			kMinEmitterFrequency,
+			60.0f
+		);
+		if (ImGui::Button("Emit Once")) {
+			if (emitterData_) {
+				emitterData_->emit = 1;
+			}
+		}
+	}
+
+	if (ImGui::CollapsingHeader("Behavior", ImGuiTreeNodeFlags_DefaultOpen)) {
+		BehaviorSettings& behavior = config_.behavior;
+		float lifeTime[2] = { behavior.lifeTimeMin, behavior.lifeTimeMax };
+		if (ImGui::DragFloat2("LifeTime", lifeTime, 0.01f, 0.01f, 60.0f)) {
+			behavior.lifeTimeMin = lifeTime[0];
+			behavior.lifeTimeMax = (std::max)(lifeTime[0], lifeTime[1]);
+			dirty = true;
+		}
+
+		float scale[2] = { behavior.scaleMin, behavior.scaleMax };
+		if (ImGui::DragFloat2("Scale", scale, 0.001f, 0.0f, 100.0f)) {
+			behavior.scaleMin = scale[0];
+			behavior.scaleMax = (std::max)(scale[0], scale[1]);
+			dirty = true;
+		}
+
+		float velocity[2] = { behavior.velocityMin, behavior.velocityMax };
+		if (ImGui::DragFloat2("Velocity", velocity, 0.01f, -100.0f, 100.0f)) {
+			behavior.velocityMin = velocity[0];
+			behavior.velocityMax = (std::max)(velocity[0], velocity[1]);
+			dirty = true;
+		}
+
+		float rotationSpeed[2] = {
+			behavior.rotationSpeedMin,
+			behavior.rotationSpeedMax
+		};
+		if (ImGui::DragFloat2(
+				"Rotation Speed",
+				rotationSpeed,
+				0.01f,
+				-100.0f,
+				100.0f
+			)) {
+			behavior.rotationSpeedMin = rotationSpeed[0];
+			behavior.rotationSpeedMax = (std::max)(rotationSpeed[0], rotationSpeed[1]);
+			dirty = true;
+		}
+
+		dirty |= ImGui::ColorEdit4("Color Min", &behavior.colorMin.x);
+		dirty |= ImGui::ColorEdit4("Color Max", &behavior.colorMax.x);
+	}
+
+	if (dirty) {
+		config_.emitter.radius = (std::max)(0.0f, config_.emitter.radius);
+		config_.emitter.frequency = NormalizeEmitterFrequency(config_.emitter.frequency);
+		ApplyConfigToGpu();
+	}
+
+	ImGui::End();
+#else
+	(void)windowTitle;
+#endif
 }
 
 void GpuParticle::CreateRootSignatures() {
@@ -236,7 +873,7 @@ void GpuParticle::CreateRootSignatures() {
 		ranges[1].OffsetInDescriptorsFromTableStart =
 			D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-		D3D12_ROOT_PARAMETER rootParameters[5]{};
+		D3D12_ROOT_PARAMETER rootParameters[6]{};
 		rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 		rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 		rootParameters[0].Descriptor.ShaderRegister = 0;
@@ -354,7 +991,7 @@ void GpuParticle::CreateRootSignatures() {
 				D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		}
 
-		D3D12_ROOT_PARAMETER rootParameters[5]{};
+		D3D12_ROOT_PARAMETER rootParameters[6]{};
 		rootParameters[0].ParameterType =
 			D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 		rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -380,6 +1017,10 @@ void GpuParticle::CreateRootSignatures() {
 		rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 		rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 		rootParameters[4].Descriptor.ShaderRegister = 1;
+
+		rootParameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+		rootParameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		rootParameters[5].Descriptor.ShaderRegister = 2;
 
 		D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
 		rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -443,17 +1084,6 @@ void GpuParticle::CreatePipelineStates() {
 	inputLayoutDesc.pInputElementDescs = inputElementDescs;
 	inputLayoutDesc.NumElements = _countof(inputElementDescs);
 
-	D3D12_BLEND_DESC blendDesc{};
-	blendDesc.RenderTarget[0].BlendEnable = TRUE;
-	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
-	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ZERO;
-	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
-	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].RenderTargetWriteMask =
-		D3D12_COLOR_WRITE_ENABLE_ALL;
-
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -475,22 +1105,32 @@ void GpuParticle::CreatePipelineStates() {
 		pixelShaderBlob->GetBufferPointer(),
 		pixelShaderBlob->GetBufferSize()
 	};
-	graphicsPipelineDesc.BlendState = blendDesc;
 	graphicsPipelineDesc.RasterizerState = rasterizerDesc;
 	graphicsPipelineDesc.DepthStencilState = depthStencilDesc;
 	graphicsPipelineDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	graphicsPipelineDesc.NumRenderTargets = 1;
-	graphicsPipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	graphicsPipelineDesc.RTVFormats[0] = RenderFormats::kSceneHdrFormat;
 	graphicsPipelineDesc.PrimitiveTopologyType =
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	graphicsPipelineDesc.SampleDesc.Count = 1;
 	graphicsPipelineDesc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
 
-	hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
-		&graphicsPipelineDesc,
-		IID_PPV_ARGS(&graphicsPipelineState_)
-	);
-	assert(SUCCEEDED(hr));
+	for (uint32_t blendIndex = 0;
+		blendIndex <
+			static_cast<uint32_t>(ParticleCommon::BlendMode::kCountOfBlendMode);
+		++blendIndex) {
+		D3D12_BLEND_DESC blendDesc{};
+		ApplyBlendMode(
+			blendDesc,
+			static_cast<ParticleCommon::BlendMode>(blendIndex)
+		);
+		graphicsPipelineDesc.BlendState = blendDesc;
+		hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+			&graphicsPipelineDesc,
+			IID_PPV_ARGS(&graphicsPipelineStates_[blendIndex])
+		);
+		assert(SUCCEEDED(hr));
+	}
 
 	const auto initializeShaderBlob = dxCommon_->CompileShader(
 		L"resources/shaders/InitializeGpuParticle.CS.hlsl",
@@ -653,6 +1293,10 @@ void GpuParticle::EmitParticlesOnGPU() {
 		4,
 		perFrameResource_->GetGPUVirtualAddress()
 	);
+	commandList->SetComputeRootConstantBufferView(
+		5,
+		behaviorResource_->GetGPUVirtualAddress()
+	);
 	commandList->Dispatch(1, 1, 1);
 
 	D3D12_RESOURCE_BARRIER uavBarriers[3]{};
@@ -663,6 +1307,8 @@ void GpuParticle::EmitParticlesOnGPU() {
 	uavBarriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 	uavBarriers[2].UAV.pResource = freeListResource_.Get();
 	commandList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
+
+	emitterData_->emit = 0;
 }
 
 void GpuParticle::UpdateParticlesOnGPU() {
@@ -683,6 +1329,10 @@ void GpuParticle::UpdateParticlesOnGPU() {
 	commandList->SetComputeRootConstantBufferView(
 		4,
 		perFrameResource_->GetGPUVirtualAddress()
+	);
+	commandList->SetComputeRootConstantBufferView(
+		5,
+		behaviorResource_->GetGPUVirtualAddress()
 	);
 	commandList->Dispatch(1, 1, 1);
 
@@ -707,6 +1357,11 @@ void GpuParticle::Update() {
 	perFrameData_->time = elapsedTime_;
 	perFrameData_->deltaTime = deltaTime_;
 
+	if (!config_.autoEmit) {
+		return;
+	}
+
+	emitterData_->frequency = NormalizeEmitterFrequency(emitterData_->frequency);
 	emitterData_->frequencyTime += deltaTime_;
 	if (emitterData_->frequency <= emitterData_->frequencyTime) {
 		emitterData_->frequencyTime -= emitterData_->frequency;
@@ -735,7 +1390,12 @@ void GpuParticle::Draw(Camera* camera) {
 
 	auto* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(graphicsRootSignature_.Get());
-	commandList->SetPipelineState(graphicsPipelineState_.Get());
+	const uint32_t blendIndex = std::clamp(
+		static_cast<uint32_t>(config_.blendMode),
+		0u,
+		static_cast<uint32_t>(ParticleCommon::BlendMode::kCountOfBlendMode) - 1u
+	);
+	commandList->SetPipelineState(graphicsPipelineStates_[blendIndex].Get());
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	const D3D12_VERTEX_BUFFER_VIEW& vbv =
 		particleCommon_->GetVertexBufferView();

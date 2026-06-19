@@ -16,13 +16,15 @@
 
 class SrvManager;
 class Camera;
+class ParticleEmitter;
+struct ParticleEffectDesc;
 
 class ParticleManager {
 private:
 	static ParticleManager* instance_;
 
 	ParticleManager() = default;
-	~ParticleManager() = default;
+	~ParticleManager();
 	ParticleManager(const ParticleManager&) = delete;
 	ParticleManager& operator=(const ParticleManager&) = delete;
 
@@ -44,6 +46,8 @@ public:
 		int32_t flipU;
 		int32_t flipV;
 		Matrix4x4 uvTransform;
+		float emissiveIntensity;
+		float padding[3];
 	};
 
 	struct DirectionalLight {
@@ -112,7 +116,10 @@ public:
 	};
 
 	struct ParticleVortexDesc {
-		// 渦の中心
+		// trueならEmitter位置からのオフセット、falseならワールド座標として扱う
+		bool useEmitterOffset = true;
+
+		// 渦の中心。useEmitterOffsetがtrueならEmitterからのオフセット
 		Vector3 center = { 0.0f, 0.0f, 0.0f };
 
 		// 回転軸
@@ -209,6 +216,7 @@ public:
 		bool flipU = false;
 		bool flipV = false;
 		float alphaCutoff = 0.0f;
+		float emissiveIntensity = 1.0f;
 		ParticleCommon::CullMode cullMode = ParticleCommon::CullMode::kNone;
 		bool depthTest = true;
 		bool depthWrite = false;
@@ -221,6 +229,36 @@ public:
 		ParticleMotionDesc motion;
 		ParticleColorDesc color;
 		ParticleRenderDesc render;
+	};
+
+	struct LightningEmitterDesc {
+		bool enabled = false;
+		Vector3 startOffset = { 0.0f, 6.0f, 0.0f };
+		Vector3 endOffset = { 0.0f, 0.0f, 0.0f };
+		Vector3 randomRange = { 4.0f, 0.0f, 4.0f };
+		Vector4 coreColor = { 8.0f, 10.0f, 16.0f, 1.0f };
+		Vector4 branchColor = { 2.0f, 4.0f, 12.0f, 1.0f };
+		float jitter = 0.45f;
+		float branchLength = 0.8f;
+		float branchProbability = 0.35f;
+		float thickness = 0.04f;
+		float duration = 0.12f;
+		uint32_t segmentCount = 16;
+		bool flashExposure = true;
+		float flashExposureValue = 3.5f;
+		float flashReturnSpeed = 6.0f;
+	};
+
+	struct LightningEvent {
+		LightningEmitterDesc desc;
+		Vector3 start = { 0.0f, 0.0f, 0.0f };
+		Vector3 end = { 0.0f, 0.0f, 0.0f };
+		uint32_t seed = 0;
+	};
+
+	struct ExposureFlashEvent {
+		float exposure = 1.0f;
+		float returnSpeed = 6.0f;
 	};
 
 	struct Particle {
@@ -338,10 +376,47 @@ public:
 	void SetGroupRenderDesc(const std::string& name, const ParticleRenderDesc& render);
 	void SetGpuParticleEnabled(bool enabled) { gpuParticleEnabled_ = enabled; }
 	bool IsGpuParticleEnabled() const { return gpuParticleEnabled_; }
+	void DrawGpuParticleImGui(const char* windowTitle = "GPU Particle");
+
+	void LoadSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json");
+	void SaveSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json") const;
+	void UpdateSceneParticles(const std::string& sceneName);
+	void EmitSceneParticles(const std::string& sceneName);
+	void DrawSceneParticleImGui(
+		const std::string& currentSceneName,
+		const char* windowTitle = "Scene Particles"
+	);
+
+	void QueueLightning(
+		const LightningEmitterDesc& desc,
+		const Vector3& emitterPosition
+	);
+	bool ConsumeLightningEvent(LightningEvent& outEvent);
+	bool ConsumeExposureFlashEvent(ExposureFlashEvent& outEvent);
 
 private:
+	struct SceneParticlePlacement {
+		std::string label = "Particle";
+		std::string sceneName = "GAMEPLAY";
+		std::string effectFilePath = "resources/particles/core_burst.json";
+		bool enabled = true;
+		bool emitterActive = true;
+		Vector3 translate = { 0.0f, 0.0f, 0.0f };
+		Vector3 spawnSize = { 1.0f, 1.0f, 1.0f };
+		uint32_t count = 1;
+		float frequency = 0.1f;
+		ParticleEffectDesc* effect = nullptr;
+		ParticleEmitter* emitter = nullptr;
+	};
+
 	void CreateDirectionalLightResource();
 	void CreateGroupVertexResource(ParticleGroup& group);
+	void RebuildSceneParticleEmitter(
+		SceneParticlePlacement& placement,
+		bool clearParticles,
+		bool useEffectEmitterSettings = false
+	);
+	void ApplySceneParticleEmitterSettings(SceneParticlePlacement& placement);
 
 	float RandomRange(float min, float max);
 	Vector3 RandomVector3Range(const Vector3& min, const Vector3& max);
@@ -350,7 +425,11 @@ private:
 	Vector4 LerpColor(const Vector4& start, const Vector4& end, float t);
 
 	void InitializeParticleLife(Particle& particle, const ParticleBehavior& behavior);
-	void InitializeParticleMotion(Particle& particle, const ParticleBehavior& behavior);
+	void InitializeParticleMotion(
+		Particle& particle,
+		const ParticleBehavior& behavior,
+		const Vector3& emitterPosition
+	);
 	void InitializeParticleColor(Particle& particle, const ParticleBehavior& behavior);
 
 	void UpdateParticleMotion(Particle& particle);
@@ -371,6 +450,11 @@ private:
 	std::unordered_map<std::string, ParticleGroup> particleGroups_;
 	GpuParticle gpuParticle_;
 	bool gpuParticleEnabled_ = false;
+	std::unordered_map<std::string, std::vector<SceneParticlePlacement>> sceneParticlePlacements_;
+	bool sceneParticleLayoutLoaded_ = false;
+	std::vector<LightningEvent> pendingLightningEvents_;
+	std::vector<ExposureFlashEvent> pendingExposureFlashEvents_;
+	uint32_t lightningSeed_ = 1;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> directionalLightResource_;
 	DirectionalLight* directionalLightData_ = nullptr;

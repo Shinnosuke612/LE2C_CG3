@@ -60,6 +60,7 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 	CreateTransformationMatrixResource();
 	CreateCameraResource();
 	CreateShadowTransformationMatrixResource();
+	CreateMaterialResource();
 	environmentTextureFilePath_ = "resources/rostock_laage_airport_4k.dds";
 	TextureManager::GetInstance()->LoadTexture(environmentTextureFilePath_);
 
@@ -179,12 +180,13 @@ void Object3d::Draw(){
 	);
 
 	if (skinCluster_ && skinCluster_->IsValid()) {
-		model->DrawWithVertexBuffer(
-			skinCluster_->GetSkinnedVertexBufferView()
+		model->DrawWithVertexBufferAndMaterial(
+			skinCluster_->GetSkinnedVertexBufferView(),
+			materialResource
 		);
 	}
 	else {
-		model->Draw();
+		model->DrawWithMaterial(materialResource);
 	}
 }
 
@@ -350,7 +352,24 @@ void Object3d::SetEnvironmentCoefficient(float coefficient) {
 	cameraData->environmentCoefficient = std::clamp(coefficient, 0.0f, 1.0f);
 }
 
+void Object3d::SetColor(const Vector4& color) {
+	if (materialData) {
+		materialData->color = color;
+	}
+}
 
+void Object3d::SetEnableLighting(bool enableLighting) {
+	if (materialData) {
+		materialData->enableLighting = enableLighting ? 1 : 0;
+	}
+}
+
+void Object3d::SetEmissive(float intensity, const Vector4& color) {
+	if (materialData) {
+		materialData->emissiveIntensity = (std::max)(0.0f, intensity);
+		materialData->emissiveColor = color;
+	}
+}
 
 void Object3d::CreateTransformationMatrixResource(){
 	//WVP用リソースのリソースを作る。Matrix4x4 1つ分のサイズを用意する
@@ -373,4 +392,15 @@ void Object3d::CreateCameraResource() {
 	cameraResource->Map(0, nullptr, reinterpret_cast<void**>(&cameraData));
 	cameraData->worldPosition = { 0.0f, 0.0f, -10.0f };
 	cameraData->environmentCoefficient = 0.0f;
+}
+
+void Object3d::CreateMaterialResource() {
+	materialResource = *&object3dCommon->GetDxCommon()->CreateBufferResource(sizeof(Material));
+	materialResource->Map(0, nullptr, reinterpret_cast<void**>(&materialData));
+	materialData->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+	materialData->enableLighting = 1;
+	materialData->emissiveIntensity = 0.0f;
+	materialData->uvTransform = MakeIdentity4x4();
+	materialData->emissiveColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+	materialData->shininess = 40.0f;
 }

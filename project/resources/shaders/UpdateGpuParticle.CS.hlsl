@@ -47,7 +47,7 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
     }
 
     particle.translate += particle.velocity * gPerFrame.deltaTime;
-    particle.rotate.z += gPerFrame.deltaTime * 4.0f;
+    particle.rotate.z += gPerFrame.deltaTime * particle.rotationSpeed;
 
     float32_t lifeRatio = saturate(particle.currentTime / particle.lifeTime);
     particle.color.a = saturate(1.0f - lifeRatio);

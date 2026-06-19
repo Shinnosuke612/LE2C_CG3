@@ -22,9 +22,11 @@
     <ClCompile Include="engine\collision\OBBCollider.cpp" />
     <ClCompile Include="engine\collision\SphereCollider.cpp" />
     <ClCompile Include="engine\debug\DebugRenderer.cpp" />
+    <ClCompile Include="engine\effect\LightningRenderer.cpp" />
     <ClCompile Include="engine\player\Player.cpp" />
     <ClCompile Include="engine\base\D3DResourceLeadChecker.cpp" />
     <ClCompile Include="engine\base\DirectXCommon.cpp" />
+    <ClCompile Include="engine\base\BloomRenderer.cpp" />
     <ClCompile Include="engine\base\SceneRenderTarget.cpp" />
     <ClCompile Include="engine\io\Input.cpp" />
     <ClCompile Include="engine\math\Quaternion.cpp" />
@@ -72,9 +74,12 @@
     <ClInclude Include="engine\collision\OBBCollider.h" />
     <ClInclude Include="engine\collision\SphereCollider.h" />
     <ClInclude Include="engine\debug\DebugRenderer.h" />
+    <ClInclude Include="engine\effect\LightningRenderer.h" />
     <ClInclude Include="engine\player\Player.h" />
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
     <ClInclude Include="engine\base\DirectXCommon.h" />
+    <ClInclude Include="engine\base\BloomRenderer.h" />
+    <ClInclude Include="engine\base\RenderFormats.h" />
     <ClInclude Include="engine\base\SceneRenderTarget.h" />
     <ClInclude Include="engine\io\Input.h" />
     <ClInclude Include="engine\utility\Logger.h" />
@@ -127,6 +132,10 @@
   <ItemGroup>
     <None Include=".editorconfig" />
     <None Include="resources\shaders\BoxBlur.PS.hlsl" />
+    <None Include="resources\shaders\Bloom.hlsli" />
+    <None Include="resources\shaders\BloomBlur.PS.hlsl" />
+    <None Include="resources\shaders\BloomComposite.PS.hlsl" />
+    <None Include="resources\shaders\BloomExtract.PS.hlsl" />
     <None Include="resources\shaders\CopyImage.PS.hlsl" />
     <None Include="resources\shaders\Dissolve.PS.hlsl" />
     <None Include="resources\shaders\Fullscreen.hlsli" />
