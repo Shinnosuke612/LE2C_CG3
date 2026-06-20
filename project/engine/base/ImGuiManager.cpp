@@ -155,6 +155,14 @@ void ImGuiManager::DrawEditorWorkspace(
 		ImVec2(0.0f, 0.0f),
 		ImVec2(1.0f, 1.0f)
 	);
+	ImVec2 sceneMin = ImGui::GetItemRectMin();
+
+	ImGui::GetWindowDrawList()->AddText(
+		ImVec2(sceneMin.x + 16.0f, sceneMin.y + 16.0f),
+		IM_COL32(255, 255, 255, 255),
+		"Space to change particle assets"
+	);
+
 	sceneViewInputActive_ =
 		ImGui::IsItemHovered() || ImGui::IsWindowFocused();
 

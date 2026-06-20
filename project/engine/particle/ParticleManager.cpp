@@ -14,9 +14,12 @@
 #include <fstream>
 #include <iomanip>
 #include <random>
+#include <sstream>
+#include <stdexcept>
 
 #include "../externals/imgui/imgui.h"
 #include "../externals/nlohmann/json.hpp"
+#include "../utility/EditableResourcePath.h"
 #include "ParticleEffectResource.h"
 
 using json = nlohmann::json;
@@ -36,12 +39,10 @@ void ParticleManager::DeleteInstance() {
 }
 
 ParticleManager::~ParticleManager() {
-	for (auto& [sceneName, placements] : sceneParticlePlacements_) {
-		for (SceneParticlePlacement& placement : placements) {
-			delete placement.effect;
-			placement.effect = nullptr;
-			delete placement.emitter;
-			placement.emitter = nullptr;
+	for (auto& [sceneName, instances] : sceneParticleAssetInstances_) {
+		(void)sceneName;
+		for (SceneParticleAssetInstance& instance : instances) {
+			ReleasePlacements(instance.runtimePlacements);
 		}
 	}
 }
@@ -59,16 +60,18 @@ void ParticleManager::Initialize(ParticleCommon* particleCommon, SrvManager* srv
 }
 
 void ParticleManager::Reset() {
-	for (auto& [sceneName, placements] : sceneParticlePlacements_) {
-		for (SceneParticlePlacement& placement : placements) {
-			delete placement.effect;
-			placement.effect = nullptr;
-			delete placement.emitter;
-			placement.emitter = nullptr;
+	for (auto& [sceneName, instances] : sceneParticleAssetInstances_) {
+		(void)sceneName;
+		for (SceneParticleAssetInstance& instance : instances) {
+			ReleasePlacements(instance.runtimePlacements);
 		}
 	}
-	sceneParticlePlacements_.clear();
+	particlePlacementAssets_.clear();
+	sceneParticleAssetInstances_.clear();
+	sceneParticleAssetCycleSteps_.clear();
 	sceneParticleLayoutLoaded_ = false;
+	sceneParticleLayoutDirty_ = false;
+	sceneParticlePersistenceMessage_.clear();
 
 	particleGroups_.clear();
 	gpuParticle_.Reset();
@@ -248,13 +251,92 @@ std::string MakeDefaultEffectPath(const char* name) {
 	return "resources/particles/" + safeName + ".json";
 }
 
+Vector3 NormalizeOrZero(const Vector3& value) {
+	const float lengthSquared =
+		value.x * value.x + value.y * value.y + value.z * value.z;
+
+	if (lengthSquared <= 0.000001f) {
+		return { 0.0f, 0.0f, 0.0f };
+	}
+
+	const float invLength = 1.0f / std::sqrt(lengthSquared);
+	return {
+		value.x * invLength,
+		value.y * invLength,
+		value.z * invLength
+	};
+}
+
+float WrapRadian(float value) {
+	constexpr float kTwoPi = 6.2831853f;
+	value = std::fmod(value, kTwoPi);
+	if (value < -kTwoPi) {
+		value += kTwoPi;
+	}
+	return value;
+}
+
+Vector3 AddVector3(const Vector3& a, const Vector3& b) {
+	return {
+		a.x + b.x,
+		a.y + b.y,
+		a.z + b.z
+	};
+}
+
+Vector3 CalculateVelocityAlignedRotation(
+	const Vector3& direction,
+	ParticleManager::ParticleAlignmentAxis axis
+) {
+	const Vector3 dir = NormalizeOrZero(direction);
+	constexpr float kEpsilon = 0.000001f;
+
+	if (
+		std::fabs(dir.x) < kEpsilon &&
+		std::fabs(dir.y) < kEpsilon &&
+		std::fabs(dir.z) < kEpsilon
+		) {
+		return { 0.0f, 0.0f, 0.0f };
+	}
+
+	switch (axis) {
+	case ParticleManager::ParticleAlignmentAxis::kX: {
+		const float yzLength = std::sqrt(dir.y * dir.y + dir.z * dir.z);
+		return {
+			0.0f,
+			std::atan2(-dir.z, dir.x),
+			std::atan2(dir.y, yzLength)
+		};
+	}
+	case ParticleManager::ParticleAlignmentAxis::kY: {
+		const float yzLength = std::sqrt(dir.y * dir.y + dir.z * dir.z);
+		return {
+			std::atan2(dir.z, dir.y),
+			0.0f,
+			std::atan2(-dir.x, yzLength)
+		};
+	}
+	case ParticleManager::ParticleAlignmentAxis::kZ:
+	default: {
+		const float xzLength = std::sqrt(dir.x * dir.x + dir.z * dir.z);
+		return {
+			std::atan2(-dir.y, xzLength),
+			std::atan2(dir.x, dir.z),
+			0.0f
+		};
+	}
+	}
+}
+
 void CollectEffectFiles(std::vector<std::string>& paths, std::vector<std::string>& names) {
 	paths.clear();
 	names.clear();
 
 	std::error_code error;
+	const std::filesystem::path particleDirectory =
+		EditableResourcePath::Resolve("resources/particles");
 	for (const std::filesystem::directory_entry& entry :
-		std::filesystem::directory_iterator("resources/particles", error)) {
+		std::filesystem::directory_iterator(particleDirectory, error)) {
 		if (error) {
 			break;
 		}
@@ -264,7 +346,9 @@ void CollectEffectFiles(std::vector<std::string>& paths, std::vector<std::string
 		if (entry.path().filename() == "scene_particles.json") {
 			continue;
 		}
-		paths.push_back(entry.path().generic_string());
+		paths.push_back(
+			EditableResourcePath::ToProjectRelative(entry.path()).generic_string()
+		);
 	}
 
 	std::sort(paths.begin(), paths.end());
@@ -332,97 +416,213 @@ void ParticleManager::RebuildSceneParticleEmitter(
 	ParticleEffectResource::ApplyToEmitter(*placement.emitter, *placement.effect);
 }
 
-void ParticleManager::LoadSceneParticleLayout(const std::string& filePath) {
-	for (auto& [sceneName, placements] : sceneParticlePlacements_) {
-		for (SceneParticlePlacement& placement : placements) {
-			delete placement.effect;
-			placement.effect = nullptr;
-			delete placement.emitter;
-			placement.emitter = nullptr;
-		}
+void ParticleManager::ReleasePlacements(std::vector<SceneParticlePlacement>& placements) {
+	for (SceneParticlePlacement& placement : placements) {
+		delete placement.effect;
+		placement.effect = nullptr;
+		delete placement.emitter;
+		placement.emitter = nullptr;
 	}
-	sceneParticlePlacements_.clear();
-
-	std::ifstream file(filePath);
-	if (!file.is_open()) {
-		sceneParticlePlacements_["TITLE"];
-		sceneParticlePlacements_["GAMEPLAY"];
-		sceneParticleLayoutLoaded_ = true;
-		return;
-	}
-
-	json root;
-	try {
-		file >> root;
-	} catch (...) {
-		sceneParticlePlacements_["TITLE"];
-		sceneParticlePlacements_["GAMEPLAY"];
-		sceneParticleLayoutLoaded_ = true;
-		return;
-	}
-
-	if (root.contains("scenes") && root.at("scenes").is_object()) {
-		const json& scenes = root.at("scenes");
-		for (auto it = scenes.begin(); it != scenes.end(); ++it) {
-			const std::string sceneName = it.key();
-			std::vector<SceneParticlePlacement>& placements =
-				sceneParticlePlacements_[sceneName];
-
-			if (!it.value().is_array()) {
-				continue;
-			}
-
-			for (const json& placementJson : it.value()) {
-				SceneParticlePlacement placement{};
-				placement.sceneName = sceneName;
-				placement.label = placementJson.value("label", placement.label);
-				placement.effectFilePath =
-					placementJson.value("effectFilePath", placement.effectFilePath);
-				placement.enabled = placementJson.value("enabled", placement.enabled);
-				placement.emitterActive =
-					placementJson.value("emitterActive", placement.emitterActive);
-				const bool hasEmitterSettings =
-					placementJson.contains("translate") ||
-					placementJson.contains("spawnSize") ||
-					placementJson.contains("count") ||
-					placementJson.contains("frequency") ||
-					placementJson.contains("emitterActive");
-				if (placementJson.contains("translate")) {
-					placement.translate =
-						ReadVector3(placementJson.at("translate"), placement.translate);
-				}
-				if (placementJson.contains("spawnSize")) {
-					placement.spawnSize =
-						ReadVector3(placementJson.at("spawnSize"), placement.spawnSize);
-				}
-				placement.count = placementJson.value("count", placement.count);
-				placement.frequency =
-					placementJson.value("frequency", placement.frequency);
-				placement.frequency = NormalizeEmitterFrequency(placement.frequency);
-
-				RebuildSceneParticleEmitter(placement, false, !hasEmitterSettings);
-				placements.push_back(placement);
-				placements.back().effect = placement.effect;
-				placements.back().emitter = placement.emitter;
-				placement.effect = nullptr;
-				placement.emitter = nullptr;
-			}
-		}
-	}
-
-	sceneParticlePlacements_["TITLE"];
-	sceneParticlePlacements_["GAMEPLAY"];
-	sceneParticleLayoutLoaded_ = true;
+	placements.clear();
 }
 
-void ParticleManager::SaveSceneParticleLayout(const std::string& filePath) const {
+void ParticleManager::RebuildParticleAssetInstance(SceneParticleAssetInstance& instance) {
+	ReleasePlacements(instance.runtimePlacements);
+	const auto asset = particlePlacementAssets_.find(instance.assetName);
+	if (asset == particlePlacementAssets_.end()) return;
+
+	for (const SceneParticlePlacement& source : asset->second.placements) {
+		SceneParticlePlacement placement{};
+		placement.label = source.label;
+		placement.effectFilePath = source.effectFilePath;
+		placement.enabled = source.enabled;
+		placement.emitterActive = source.emitterActive;
+		placement.translate = AddVector3(source.translate, instance.translate);
+		placement.spawnSize = source.spawnSize;
+		placement.count = source.count;
+		placement.frequency = source.frequency;
+		RebuildSceneParticleEmitter(placement, false, false);
+		instance.runtimePlacements.push_back(placement);
+		instance.runtimePlacements.back().effect = placement.effect;
+		instance.runtimePlacements.back().emitter = placement.emitter;
+		placement.effect = nullptr;
+		placement.emitter = nullptr;
+	}
+}
+
+void ParticleManager::RebuildInstancesUsingAsset(const std::string& assetName) {
+	for (auto& [sceneName, instances] : sceneParticleAssetInstances_) {
+		(void)sceneName;
+		for (SceneParticleAssetInstance& instance : instances) {
+			if (instance.assetName == assetName) {
+				RebuildParticleAssetInstance(instance);
+			}
+		}
+	}
+}
+
+bool ParticleManager::LoadPlacementEmitterSettings(SceneParticlePlacement& placement) {
+	ParticleEffectDesc effect{};
+	if (!ParticleEffectResource::Load(placement.effectFilePath, effect)) return false;
+	placement.translate = effect.emitter.translate;
+	placement.spawnSize = effect.emitter.spawnSize;
+	placement.count = effect.emitter.count;
+	placement.frequency = NormalizeEmitterFrequency(effect.emitter.frequency);
+	placement.emitterActive = effect.emitter.isActive;
+	return true;
+}
+
+void ParticleManager::RefreshPlacementAssetsForEffect(const std::string& effectFilePath) {
+	bool refreshed = false;
+	for (auto& [assetName, asset] : particlePlacementAssets_) {
+		bool assetChanged = false;
+		for (SceneParticlePlacement& placement : asset.placements) {
+			if (std::filesystem::path(placement.effectFilePath).lexically_normal() !=
+				std::filesystem::path(effectFilePath).lexically_normal()) {
+				continue;
+			}
+			assetChanged |= LoadPlacementEmitterSettings(placement);
+		}
+		if (assetChanged) {
+			RebuildInstancesUsingAsset(assetName);
+			refreshed = true;
+		}
+	}
+	if (refreshed) sceneParticleLayoutDirty_ = true;
+}
+
+bool ParticleManager::LoadSceneParticleLayout(const std::string& filePath) {
 	json root;
+	const std::filesystem::path resolvedPath = EditableResourcePath::Resolve(filePath);
+	const std::filesystem::path candidates[] = {
+		resolvedPath,
+		EditableResourcePath::BackupPath(resolvedPath)
+	};
+	bool parsed = false;
+	for (const std::filesystem::path& candidate : candidates) {
+		std::string text;
+		if (!EditableResourcePath::ReadTextFile(candidate, text)) {
+			continue;
+		}
+		try {
+			root = json::parse(text);
+			if (root.contains("scenes") && root.at("scenes").is_object()) {
+				parsed = true;
+				break;
+			}
+		} catch (...) {
+		}
+	}
+
+	if (!parsed) {
+		sceneParticleLayoutLoaded_ = true;
+		sceneParticlePersistenceMessage_ =
+			"Load failed. Existing scene placements were kept.";
+		return false;
+	}
+
+	std::unordered_map<std::string, ParticlePlacementAsset> loadedAssets;
+	std::unordered_map<std::string, std::vector<SceneParticleAssetInstance>> loadedScenes;
+	const auto readPlacement = [](const json& placementJson) {
+		SceneParticlePlacement placement{};
+		placement.label = placementJson.value("label", placement.label);
+		placement.effectFilePath =
+			placementJson.value("effectFilePath", placement.effectFilePath);
+		placement.enabled = placementJson.value("enabled", placement.enabled);
+		placement.emitterActive =
+			placementJson.value("emitterActive", placement.emitterActive);
+		if (placementJson.contains("translate")) {
+			placement.translate = ReadVector3(placementJson.at("translate"), placement.translate);
+		}
+		if (placementJson.contains("spawnSize")) {
+			placement.spawnSize = ReadVector3(placementJson.at("spawnSize"), placement.spawnSize);
+		}
+		placement.count = placementJson.value("count", placement.count);
+		placement.frequency = NormalizeEmitterFrequency(
+			placementJson.value("frequency", placement.frequency));
+		return placement;
+	};
+
+	try {
+		if (root.contains("assets") && root.at("assets").is_object()) {
+			for (auto it = root.at("assets").begin(); it != root.at("assets").end(); ++it) {
+				if (!it.value().is_array()) throw std::runtime_error("Asset is not an array");
+				ParticlePlacementAsset asset{};
+				asset.name = it.key();
+				for (const json& placementJson : it.value()) {
+					asset.placements.push_back(readPlacement(placementJson));
+				}
+				loadedAssets.emplace(asset.name, std::move(asset));
+			}
+			for (auto it = root.at("scenes").begin(); it != root.at("scenes").end(); ++it) {
+				if (!it.value().is_array()) throw std::runtime_error("Scene is not an array");
+				for (const json& instanceJson : it.value()) {
+					SceneParticleAssetInstance instance{};
+					instance.assetName = instanceJson.value("assetName", std::string{});
+					instance.label = instanceJson.value("label", instance.assetName);
+					instance.enabled = instanceJson.value("enabled", instance.enabled);
+					if (instanceJson.contains("translate")) {
+						instance.translate = ReadVector3(instanceJson.at("translate"), instance.translate);
+					}
+					loadedScenes[it.key()].push_back(std::move(instance));
+				}
+			}
+		} else {
+			// Version 1 migration: each scene's direct placements become one reusable asset.
+			for (auto it = root.at("scenes").begin(); it != root.at("scenes").end(); ++it) {
+				if (!it.value().is_array()) throw std::runtime_error("Scene is not an array");
+				const std::string assetName = "Legacy_" + it.key();
+				ParticlePlacementAsset asset{};
+				asset.name = assetName;
+				for (const json& placementJson : it.value()) {
+					asset.placements.push_back(readPlacement(placementJson));
+				}
+				loadedAssets.emplace(assetName, std::move(asset));
+				SceneParticleAssetInstance instance{};
+				instance.assetName = assetName;
+				instance.label = assetName;
+				loadedScenes[it.key()].push_back(std::move(instance));
+			}
+		}
+	} catch (...) {
+		sceneParticlePersistenceMessage_ =
+			"Load failed. Existing scene placements were kept.";
+		return false;
+	}
+
+	for (auto& [sceneName, instances] : sceneParticleAssetInstances_) {
+		(void)sceneName;
+		for (SceneParticleAssetInstance& instance : instances) {
+			ReleasePlacements(instance.runtimePlacements);
+		}
+	}
+	loadedScenes["TITLE"];
+	loadedScenes["GAMEPLAY"];
+	particlePlacementAssets_ = std::move(loadedAssets);
+	sceneParticleAssetInstances_ = std::move(loadedScenes);
+	sceneParticleAssetCycleSteps_.clear();
+	for (auto& [sceneName, instances] : sceneParticleAssetInstances_) {
+		(void)sceneName;
+		for (SceneParticleAssetInstance& instance : instances) {
+			RebuildParticleAssetInstance(instance);
+		}
+	}
+	sceneParticleLayoutLoaded_ = true;
+	sceneParticleLayoutDirty_ = false;
+	sceneParticlePersistenceMessage_ = "Layout loaded from project resources.";
+	return true;
+}
+
+bool ParticleManager::SaveSceneParticleLayout(const std::string& filePath) const {
+	json root;
+	root["version"] = 2;
+	root["assets"] = json::object();
 	root["scenes"] = json::object();
 
-	for (const auto& [sceneName, placements] : sceneParticlePlacements_) {
-		json sceneArray = json::array();
-		for (const SceneParticlePlacement& placement : placements) {
-			sceneArray.push_back({
+	for (const auto& [assetName, asset] : particlePlacementAssets_) {
+		json placementArray = json::array();
+		for (const SceneParticlePlacement& placement : asset.placements) {
+			placementArray.push_back({
 				{ "label", placement.label },
 				{ "effectFilePath", placement.effectFilePath },
 				{ "enabled", placement.enabled },
@@ -433,20 +633,31 @@ void ParticleManager::SaveSceneParticleLayout(const std::string& filePath) const
 				{ "frequency", placement.frequency }
 			});
 		}
-		root["scenes"][sceneName] = sceneArray;
+		root["assets"][assetName] = placementArray;
+	}
+	for (const auto& [sceneName, instances] : sceneParticleAssetInstances_) {
+		json instanceArray = json::array();
+		for (const SceneParticleAssetInstance& instance : instances) {
+			instanceArray.push_back({
+				{ "label", instance.label },
+				{ "assetName", instance.assetName },
+				{ "enabled", instance.enabled },
+				{ "translate", ToJson(instance.translate) }
+			});
+		}
+		root["scenes"][sceneName] = instanceArray;
 	}
 
-	const std::filesystem::path parentPath =
-		std::filesystem::path(filePath).parent_path();
-	if (!parentPath.empty()) {
-		std::filesystem::create_directories(parentPath);
+	std::ostringstream output;
+	output << std::setw(2) << root << '\n';
+	const bool saved = EditableResourcePath::WriteTextAtomically(filePath, output.str());
+	if (saved) {
+		sceneParticleLayoutDirty_ = false;
 	}
-
-	std::ofstream file(filePath);
-	if (!file.is_open()) {
-		return;
-	}
-	file << std::setw(2) << root << std::endl;
+	sceneParticlePersistenceMessage_ = saved
+		? "Layout saved to project resources. Backup updated."
+		: "Save failed. The previous layout was not overwritten.";
+	return saved;
 }
 
 void ParticleManager::UpdateSceneParticles(const std::string& sceneName) {
@@ -454,14 +665,15 @@ void ParticleManager::UpdateSceneParticles(const std::string& sceneName) {
 		LoadSceneParticleLayout();
 	}
 
-	auto it = sceneParticlePlacements_.find(sceneName);
-	if (it == sceneParticlePlacements_.end()) {
+	auto it = sceneParticleAssetInstances_.find(sceneName);
+	if (it == sceneParticleAssetInstances_.end()) {
 		return;
 	}
 
-	for (SceneParticlePlacement& placement : it->second) {
-		if (placement.enabled && placement.emitter) {
-			placement.emitter->Update();
+	for (SceneParticleAssetInstance& instance : it->second) {
+		if (!instance.enabled) continue;
+		for (SceneParticlePlacement& placement : instance.runtimePlacements) {
+			if (placement.enabled && placement.emitter) placement.emitter->Update();
 		}
 	}
 }
@@ -471,16 +683,40 @@ void ParticleManager::EmitSceneParticles(const std::string& sceneName) {
 		LoadSceneParticleLayout();
 	}
 
-	auto it = sceneParticlePlacements_.find(sceneName);
-	if (it == sceneParticlePlacements_.end()) {
+	auto it = sceneParticleAssetInstances_.find(sceneName);
+	if (it == sceneParticleAssetInstances_.end()) {
 		return;
 	}
 
-	for (SceneParticlePlacement& placement : it->second) {
-		if (placement.enabled && placement.emitter) {
-			placement.emitter->Emit();
+	for (SceneParticleAssetInstance& instance : it->second) {
+		if (!instance.enabled) continue;
+		for (SceneParticlePlacement& placement : instance.runtimePlacements) {
+			if (placement.enabled && placement.emitter) placement.emitter->Emit();
 		}
 	}
+}
+
+void ParticleManager::CycleSceneParticleAssets(const std::string& sceneName) {
+	if (!sceneParticleLayoutLoaded_) LoadSceneParticleLayout();
+	auto scene = sceneParticleAssetInstances_.find(sceneName);
+	if (scene == sceneParticleAssetInstances_.end() || scene->second.empty()) return;
+
+	auto& instances = scene->second;
+	size_t& step = sceneParticleAssetCycleSteps_[sceneName];
+	if (step > instances.size()) step = 0;
+
+	const bool enableAll = step == instances.size();
+	for (size_t index = 0; index < instances.size(); ++index) {
+		SceneParticleAssetInstance& instance = instances[index];
+		const bool wasEnabled = instance.enabled;
+		instance.enabled = enableAll || index == step;
+		if (instance.enabled && !wasEnabled) {
+			for (SceneParticlePlacement& placement : instance.runtimePlacements) {
+				if (placement.emitter) placement.emitter->ResetEmissionState();
+			}
+		}
+	}
+	step = (step + 1u) % (instances.size() + 1u);
 }
 
 void ParticleManager::DrawSceneParticleImGui(
@@ -493,6 +729,212 @@ void ParticleManager::DrawSceneParticleImGui(
 	}
 
 	static char layoutPath[260] = "resources/particles/scene_particles.json";
+	static char newAssetName[128] = "ParticleSet";
+	static std::string selectedAssetName;
+	static int assetToAddIndex = 0;
+	std::vector<std::string> effectPaths;
+	std::vector<std::string> effectNames;
+	CollectEffectFiles(effectPaths, effectNames);
+
+	ImGui::Begin(windowTitle);
+	ImGui::InputText("Layout", layoutPath, sizeof(layoutPath));
+	if (ImGui::Button("Load Layout")) LoadSceneParticleLayout(layoutPath);
+	ImGui::SameLine();
+	if (ImGui::Button("Save Layout")) SaveSceneParticleLayout(layoutPath);
+	if (!sceneParticlePersistenceMessage_.empty()) {
+		ImGui::TextWrapped("%s", sceneParticlePersistenceMessage_.c_str());
+	}
+	if (sceneParticleLayoutDirty_) {
+		ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "Unsaved layout changes");
+	}
+
+	std::vector<std::string> assetNames;
+	assetNames.reserve(particlePlacementAssets_.size());
+	for (const auto& [name, asset] : particlePlacementAssets_) {
+		(void)asset;
+		assetNames.push_back(name);
+	}
+	std::sort(assetNames.begin(), assetNames.end());
+	if (selectedAssetName.empty() && !assetNames.empty()) selectedAssetName = assetNames.front();
+	if (assetToAddIndex >= static_cast<int>(assetNames.size())) assetToAddIndex = 0;
+
+	if (ImGui::BeginTabBar("ParticleAssetTabs")) {
+		if (ImGui::BeginTabItem("Assets")) {
+			ImGui::InputText("New Asset", newAssetName, sizeof(newAssetName));
+			ImGui::SameLine();
+			if (ImGui::Button("Create Asset") && newAssetName[0] != '\0' &&
+				!particlePlacementAssets_.contains(newAssetName)) {
+				ParticlePlacementAsset asset{};
+				asset.name = newAssetName;
+				particlePlacementAssets_.emplace(asset.name, std::move(asset));
+				selectedAssetName = newAssetName;
+				sceneParticleLayoutDirty_ = true;
+				assetNames.push_back(selectedAssetName);
+				std::sort(assetNames.begin(), assetNames.end());
+			}
+
+			const char* selectedAssetLabel = selectedAssetName.empty()
+				? "(select asset)" : selectedAssetName.c_str();
+			if (ImGui::BeginCombo("Placement Asset", selectedAssetLabel)) {
+				for (const std::string& assetName : assetNames) {
+					const bool selected = assetName == selectedAssetName;
+					if (ImGui::Selectable(assetName.c_str(), selected)) selectedAssetName = assetName;
+					if (selected) ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
+
+			auto assetIt = particlePlacementAssets_.find(selectedAssetName);
+			if (assetIt != particlePlacementAssets_.end()) {
+				auto& placements = assetIt->second.placements;
+				if (ImGui::Button("Add Placement")) {
+					SceneParticlePlacement placement{};
+					placement.label = "Particle " + std::to_string(placements.size());
+					if (!effectPaths.empty()) placement.effectFilePath = effectPaths.front();
+					if (!effectPaths.empty()) LoadPlacementEmitterSettings(placement);
+					placements.push_back(std::move(placement));
+					RebuildInstancesUsingAsset(selectedAssetName);
+					sceneParticleLayoutDirty_ = true;
+				}
+
+				int removePlacement = -1;
+				for (int index = 0; index < static_cast<int>(placements.size()); ++index) {
+					SceneParticlePlacement& placement = placements[index];
+					ImGui::PushID(index);
+					if (ImGui::CollapsingHeader(placement.label.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+						char label[128]{};
+						CopyText(label, sizeof(label), placement.label);
+						bool changed = false;
+						if (ImGui::Checkbox("Enabled", &placement.enabled)) changed = true;
+						ImGui::SameLine();
+						if (ImGui::Button("Remove")) removePlacement = index;
+						if (ImGui::InputText("Label", label, sizeof(label))) {
+							placement.label = label;
+							changed = true;
+						}
+						const std::string effectLabel = std::filesystem::path(
+							placement.effectFilePath).filename().string();
+						if (ImGui::BeginCombo("Effect", effectLabel.c_str())) {
+							for (int effectIndex = 0; effectIndex < static_cast<int>(effectPaths.size()); ++effectIndex) {
+								const bool selected = placement.effectFilePath == effectPaths[effectIndex];
+								if (ImGui::Selectable(effectNames[effectIndex].c_str(), selected)) {
+									placement.effectFilePath = effectPaths[effectIndex];
+									LoadPlacementEmitterSettings(placement);
+									changed = true;
+								}
+								if (selected) ImGui::SetItemDefaultFocus();
+							}
+							ImGui::EndCombo();
+						}
+						if (ImGui::Button("Reload Emitter from Effect")) {
+							changed |= LoadPlacementEmitterSettings(placement);
+						}
+						changed |= ImGui::DragFloat3("Translate", &placement.translate.x, 0.05f);
+						changed |= ImGui::DragFloat3("SpawnSize", &placement.spawnSize.x, 0.05f);
+						int count = static_cast<int>(placement.count);
+						if (ImGui::DragInt("Count", &count, 1, 0, 1000)) {
+							placement.count = static_cast<uint32_t>((std::max)(count, 0));
+							changed = true;
+						}
+						changed |= ImGui::DragFloat("Frequency", &placement.frequency, 0.001f, 1.0f / 60.0f, 10.0f);
+						placement.frequency = NormalizeEmitterFrequency(placement.frequency);
+						changed |= ImGui::Checkbox("Emitter Active", &placement.emitterActive);
+						if (changed) {
+							RebuildInstancesUsingAsset(selectedAssetName);
+							sceneParticleLayoutDirty_ = true;
+						}
+					}
+					ImGui::PopID();
+				}
+				if (removePlacement >= 0) {
+					placements.erase(placements.begin() + removePlacement);
+					RebuildInstancesUsingAsset(selectedAssetName);
+					sceneParticleLayoutDirty_ = true;
+				}
+			}
+			ImGui::EndTabItem();
+		}
+
+		if (ImGui::BeginTabItem("Scenes")) {
+			const char* sceneNames[] = { "TITLE", "GAMEPLAY" };
+			if (ImGui::BeginTabBar("ParticleSceneTabs")) {
+				for (const char* sceneName : sceneNames) {
+					const ImGuiTabItemFlags flags = currentSceneName == sceneName
+						? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+					if (!ImGui::BeginTabItem(sceneName, nullptr, flags)) continue;
+					auto& instances = sceneParticleAssetInstances_[sceneName];
+					const char* assetLabel = assetNames.empty() ? "(no assets)" : assetNames[assetToAddIndex].c_str();
+					if (ImGui::BeginCombo("Asset to Add", assetLabel)) {
+						for (int index = 0; index < static_cast<int>(assetNames.size()); ++index) {
+							if (ImGui::Selectable(assetNames[index].c_str(), index == assetToAddIndex)) assetToAddIndex = index;
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("Add Asset Instance") && !assetNames.empty()) {
+						SceneParticleAssetInstance instance{};
+						instance.assetName = assetNames[assetToAddIndex];
+						instance.label = instance.assetName + " " + std::to_string(instances.size());
+						RebuildParticleAssetInstance(instance);
+						instances.push_back(std::move(instance));
+						sceneParticleLayoutDirty_ = true;
+					}
+
+					int removeInstance = -1;
+					for (int index = 0; index < static_cast<int>(instances.size()); ++index) {
+						SceneParticleAssetInstance& instance = instances[index];
+						ImGui::PushID(index);
+						if (ImGui::CollapsingHeader(instance.label.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+							char label[128]{};
+							CopyText(label, sizeof(label), instance.label);
+							if (ImGui::Checkbox("Enabled", &instance.enabled)) sceneParticleLayoutDirty_ = true;
+							ImGui::SameLine();
+							if (ImGui::Button("Emit Now")) {
+								for (SceneParticlePlacement& placement : instance.runtimePlacements) {
+									if (placement.enabled && placement.emitter) placement.emitter->Emit();
+								}
+							}
+							ImGui::SameLine();
+							if (ImGui::Button("Remove")) removeInstance = index;
+							if (ImGui::InputText("Label", label, sizeof(label))) {
+								instance.label = label;
+								sceneParticleLayoutDirty_ = true;
+							}
+							if (ImGui::BeginCombo("Asset", instance.assetName.c_str())) {
+								for (const std::string& assetName : assetNames) {
+									const bool selected = assetName == instance.assetName;
+									if (ImGui::Selectable(assetName.c_str(), selected)) {
+										instance.assetName = assetName;
+										RebuildParticleAssetInstance(instance);
+										sceneParticleLayoutDirty_ = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+							if (ImGui::DragFloat3("Offset", &instance.translate.x, 0.05f)) {
+								RebuildParticleAssetInstance(instance);
+								sceneParticleLayoutDirty_ = true;
+							}
+						}
+						ImGui::PopID();
+					}
+					if (removeInstance >= 0) {
+						ReleasePlacements(instances[removeInstance].runtimePlacements);
+						instances.erase(instances.begin() + removeInstance);
+						sceneParticleLayoutDirty_ = true;
+					}
+					ImGui::EndTabItem();
+				}
+				ImGui::EndTabBar();
+			}
+			ImGui::EndTabItem();
+		}
+		ImGui::EndTabBar();
+	}
+	ImGui::End();
+	return;
+
+#if 0
 	static char newEffectName[128] = "newParticle";
 	std::vector<std::string> effectPaths;
 	std::vector<std::string> effectNames;
@@ -506,6 +948,19 @@ void ParticleManager::DrawSceneParticleImGui(
 	ImGui::SameLine();
 	if (ImGui::Button("Save Layout")) {
 		SaveSceneParticleLayout(layoutPath);
+	}
+	ImGui::TextDisabled(
+		"Project file: %s",
+		EditableResourcePath::Resolve(layoutPath).generic_string().c_str()
+	);
+	if (!sceneParticlePersistenceMessage_.empty()) {
+		ImGui::TextWrapped("%s", sceneParticlePersistenceMessage_.c_str());
+	}
+	if (sceneParticleLayoutDirty_) {
+		ImGui::TextColored(
+			ImVec4(1.0f, 0.75f, 0.2f, 1.0f),
+			"Unsaved layout changes"
+		);
 	}
 
 	ImGui::SeparatorText("Effect");
@@ -543,6 +998,7 @@ void ParticleManager::DrawSceneParticleImGui(
 					placements.back().emitter = placement.emitter;
 					placement.effect = nullptr;
 					placement.emitter = nullptr;
+					sceneParticleLayoutDirty_ = true;
 				}
 				ImGui::SameLine();
 				if (ImGui::Button("Add New Effect Here")) {
@@ -561,6 +1017,7 @@ void ParticleManager::DrawSceneParticleImGui(
 					placements.back().emitter = placement.emitter;
 					placement.effect = nullptr;
 					placement.emitter = nullptr;
+					sceneParticleLayoutDirty_ = true;
 				}
 
 				int removeIndex = -1;
@@ -583,7 +1040,9 @@ void ParticleManager::DrawSceneParticleImGui(
 							placement.effectFilePath
 						);
 
-						ImGui::Checkbox("Enabled", &placement.enabled);
+						if (ImGui::Checkbox("Enabled", &placement.enabled)) {
+							sceneParticleLayoutDirty_ = true;
+						}
 						ImGui::SameLine();
 						if (ImGui::Button("Emit Now") && placement.emitter) {
 							placement.emitter->Emit();
@@ -595,6 +1054,7 @@ void ParticleManager::DrawSceneParticleImGui(
 
 						if (ImGui::InputText("Label", label, sizeof(label))) {
 							placement.label = label;
+							sceneParticleLayoutDirty_ = true;
 						}
 
 						const std::string selectedEffectName =
@@ -613,6 +1073,7 @@ void ParticleManager::DrawSceneParticleImGui(
 								)) {
 									placement.effectFilePath = effectPaths[effectIndex];
 									RebuildSceneParticleEmitter(placement, false, true);
+									sceneParticleLayoutDirty_ = true;
 								}
 								if (selected) {
 									ImGui::SetItemDefaultFocus();
@@ -627,6 +1088,7 @@ void ParticleManager::DrawSceneParticleImGui(
 							sizeof(effectFilePath)
 						)) {
 							placement.effectFilePath = effectFilePath;
+							sceneParticleLayoutDirty_ = true;
 						}
 
 						if (ImGui::Button("Reload Effect")) {
@@ -635,6 +1097,7 @@ void ParticleManager::DrawSceneParticleImGui(
 						ImGui::SameLine();
 						if (ImGui::Button("Load Effect Emitter")) {
 							RebuildSceneParticleEmitter(placement, false, true);
+							sceneParticleLayoutDirty_ = true;
 						}
 
 						bool changed = false;
@@ -673,6 +1136,7 @@ void ParticleManager::DrawSceneParticleImGui(
 
 						if (changed) {
 							ApplySceneParticleEmitterSettings(placement);
+							sceneParticleLayoutDirty_ = true;
 						}
 					}
 
@@ -683,6 +1147,7 @@ void ParticleManager::DrawSceneParticleImGui(
 					delete placements[removeIndex].effect;
 					delete placements[removeIndex].emitter;
 					placements.erase(placements.begin() + removeIndex);
+					sceneParticleLayoutDirty_ = true;
 				}
 
 				ImGui::EndTabItem();
@@ -692,6 +1157,7 @@ void ParticleManager::DrawSceneParticleImGui(
 	}
 
 	ImGui::End();
+#endif
 #else
 	(void)currentSceneName;
 	(void)windowTitle;
@@ -928,6 +1394,27 @@ void ParticleManager::ClearParticleGroup(const std::string& name) {
 	it->second.instanceCount = 0;
 }
 
+void ParticleManager::ClearActiveParticles() {
+	for (auto& [name, group] : particleGroups_) {
+		(void)name;
+		group.particles.clear();
+		group.instanceCount = 0;
+	}
+
+	gpuParticle_.ClearParticles();
+	pendingLightningEvents_.clear();
+	pendingExposureFlashEvents_.clear();
+
+	for (auto& [sceneName, instances] : sceneParticleAssetInstances_) {
+		(void)sceneName;
+		for (SceneParticleAssetInstance& instance : instances) {
+			for (SceneParticlePlacement& placement : instance.runtimePlacements) {
+				if (placement.emitter) placement.emitter->ResetEmissionState();
+			}
+		}
+	}
+}
+
 void ParticleManager::CreateParticleGroupIfNeeded(
 	const std::string& name,
 	const std::string& textureFilePath
@@ -937,6 +1424,26 @@ void ParticleManager::CreateParticleGroupIfNeeded(
 	}
 
 	CreateParticleGroup(name, textureFilePath);
+}
+
+bool ParticleManager::SetParticleGroupTexture(
+	const std::string& name,
+	const std::string& textureFilePath
+) {
+	auto group = particleGroups_.find(name);
+	if (group == particleGroups_.end() || textureFilePath.empty()) {
+		return false;
+	}
+	if (group->second.textureFilePath == textureFilePath) {
+		return true;
+	}
+	if (!TextureManager::GetInstance()->LoadTexture(textureFilePath)) {
+		return false;
+	}
+	group->second.textureFilePath = textureFilePath;
+	group->second.textureSrvIndex =
+		TextureManager::GetInstance()->GetSrvIndex(textureFilePath);
+	return true;
 }
 
 void ParticleManager::InitializeParticleLife(Particle& particle, const ParticleBehavior& behavior) {
@@ -1008,6 +1515,65 @@ void ParticleManager::InitializeParticleMotion(
 	);
 	particle.swayAmplitude = sway.amplitude;
 	particle.swayFrequency = sway.frequency;
+
+	const ParticleWindFieldDesc& wind = behavior.motion.wind;
+	particle.windEnabled = wind.enabled;
+	particle.windFieldCenter = wind.useEmitterOffset
+		? Vector3{
+			emitterPosition.x + wind.center.x,
+			emitterPosition.y + wind.center.y,
+			emitterPosition.z + wind.center.z
+		}
+		: wind.center;
+	particle.windFieldHalfSize = {
+		std::abs(wind.size.x) * 0.5f,
+		std::abs(wind.size.y) * 0.5f,
+		std::abs(wind.size.z) * 0.5f
+	};
+	particle.linearAccelerationEnabled = linear.enableAcceleration;
+	particle.windDirection = NormalizeOrZero(wind.direction);
+	particle.windStrength = wind.strength;
+	particle.windVelocity = { 0.0f, 0.0f, 0.0f };
+	particle.windSmoothVelocity = wind.smoothVelocity;
+	particle.windAcceleration = (std::max)(wind.acceleration, 0.0f);
+	particle.windRecoverOutsideField = wind.recoverOutsideField;
+	particle.windDeceleration = (std::max)(wind.deceleration, 0.0f);
+	particle.windBoundaryFalloffEnabled = wind.enableBoundaryFalloff;
+	particle.windBoundaryFalloff = (std::max)(wind.boundaryFalloff, 0.0f);
+	particle.windTurbulenceStrength = wind.turbulenceStrength;
+	particle.windTurbulenceFrequency = wind.turbulenceFrequency;
+	particle.windTurbulenceScale = wind.turbulenceScale;
+	particle.windPhase = RandomRange(0.0f, 6.2831853f);
+	particle.windTurbulenceAxis = NormalizeOrZero(
+		RandomVector3Range(
+			{ -1.0f, -0.25f, -1.0f },
+			{ 1.0f, 0.25f, 1.0f }
+		)
+	);
+
+	const ParticlePointFieldDesc& pointField = behavior.motion.pointField;
+	particle.pointFieldEnabled = pointField.enabled;
+	particle.pointFieldCenter = pointField.useEmitterOffset
+		? Vector3{
+			emitterPosition.x + pointField.center.x,
+			emitterPosition.y + pointField.center.y,
+			emitterPosition.z + pointField.center.z
+		}
+		: pointField.center;
+	particle.pointFieldRadius = (std::max)(pointField.radius, 0.0f);
+	particle.pointFieldAttraction = pointField.attractionStrength;
+	particle.pointFieldRepulsion = pointField.repulsionStrength;
+	particle.pointFieldOrbit = pointField.orbitStrength;
+	particle.pointFieldOrbitAxis = NormalizeOrZero(pointField.orbitAxis);
+	if (
+		particle.pointFieldOrbitAxis.x == 0.0f &&
+		particle.pointFieldOrbitAxis.y == 0.0f &&
+		particle.pointFieldOrbitAxis.z == 0.0f
+	) {
+		particle.pointFieldOrbitAxis = { 0.0f, 1.0f, 0.0f };
+	}
+	particle.pointFieldFalloff = (std::max)(pointField.falloff, 0.0f);
+	particle.pointFieldDamping = (std::max)(pointField.damping, 0.0f);
 
 	if (particle.movementMode == MovementMode::kVortexInward) {
 		const ParticleVortexDesc& vortex = behavior.motion.vortex;
@@ -1135,9 +1701,12 @@ void ParticleManager::Emit(
 			behavior.rotation.initialRotationMin,
 			behavior.rotation.initialRotationMax
 		);
+		particle.rotationOffset = particle.transform.rotate;
 		particle.enableRotationOverTime =
 			behavior.rotation.enableRotationOverTime;
 		particle.rotationSpeed = behavior.rotation.rotationSpeed;
+		particle.alignToVelocity = behavior.rotation.alignToVelocity;
+		particle.alignAxis = behavior.rotation.alignAxis;
 		particle.startScale = RandomVector3Range(
 			behavior.scale.startScaleMin,
 			behavior.scale.startScaleMax
@@ -1162,10 +1731,54 @@ void ParticleManager::Emit(
 }
 
 void ParticleManager::UpdateParticleMotion(Particle& particle) {
+	const Vector3 previousPosition = particle.transform.translate;
+
+	if (particle.pointFieldEnabled && particle.movementMode == MovementMode::kLinear) {
+		const Vector3 toCenter = {
+			particle.pointFieldCenter.x - particle.transform.translate.x,
+			particle.pointFieldCenter.y - particle.transform.translate.y,
+			particle.pointFieldCenter.z - particle.transform.translate.z
+		};
+		const float distance = std::sqrt(
+			toCenter.x * toCenter.x + toCenter.y * toCenter.y + toCenter.z * toCenter.z
+		);
+		if (distance > 1.0e-5f && (particle.pointFieldRadius <= 0.0f || distance <= particle.pointFieldRadius)) {
+			const Vector3 radial = {
+				toCenter.x / distance,
+				toCenter.y / distance,
+				toCenter.z / distance
+			};
+			float weight = 1.0f;
+			if (particle.pointFieldRadius > 0.0f) {
+				weight = std::clamp(1.0f - distance / particle.pointFieldRadius, 0.0f, 1.0f);
+				weight = std::pow(weight, particle.pointFieldFalloff);
+			} else if (particle.pointFieldFalloff > 0.0f) {
+				weight = 1.0f / (1.0f + particle.pointFieldFalloff * distance * distance);
+			}
+
+			const Vector3 tangent = {
+				particle.pointFieldOrbitAxis.y * radial.z - particle.pointFieldOrbitAxis.z * radial.y,
+				particle.pointFieldOrbitAxis.z * radial.x - particle.pointFieldOrbitAxis.x * radial.z,
+				particle.pointFieldOrbitAxis.x * radial.y - particle.pointFieldOrbitAxis.y * radial.x
+			};
+			const float radialStrength = particle.pointFieldAttraction - particle.pointFieldRepulsion;
+			particle.velocity.x += (radial.x * radialStrength + tangent.x * particle.pointFieldOrbit) * weight * deltaTime_;
+			particle.velocity.y += (radial.y * radialStrength + tangent.y * particle.pointFieldOrbit) * weight * deltaTime_;
+			particle.velocity.z += (radial.z * radialStrength + tangent.z * particle.pointFieldOrbit) * weight * deltaTime_;
+		}
+
+		const float damping = std::exp(-particle.pointFieldDamping * deltaTime_);
+		particle.velocity.x *= damping;
+		particle.velocity.y *= damping;
+		particle.velocity.z *= damping;
+	}
+
 	if (particle.movementMode == MovementMode::kLinear) {
-		particle.velocity.x += particle.acceleration.x * deltaTime_;
-		particle.velocity.y += particle.acceleration.y * deltaTime_;
-		particle.velocity.z += particle.acceleration.z * deltaTime_;
+		if (particle.linearAccelerationEnabled) {
+			particle.velocity.x += particle.acceleration.x * deltaTime_;
+			particle.velocity.y += particle.acceleration.y * deltaTime_;
+			particle.velocity.z += particle.acceleration.z * deltaTime_;
+		}
 
 		particle.transform.translate.x += particle.velocity.x * deltaTime_;
 		particle.transform.translate.y += particle.velocity.y * deltaTime_;
@@ -1222,6 +1835,101 @@ void ParticleManager::UpdateParticleMotion(Particle& particle) {
 		}
 	}
 
+	const Vector3 windFieldOffset = {
+		particle.transform.translate.x - particle.windFieldCenter.x,
+		particle.transform.translate.y - particle.windFieldCenter.y,
+		particle.transform.translate.z - particle.windFieldCenter.z
+	};
+	const bool isInsideWindField =
+		std::abs(windFieldOffset.x) <= particle.windFieldHalfSize.x &&
+		std::abs(windFieldOffset.y) <= particle.windFieldHalfSize.y &&
+		std::abs(windFieldOffset.z) <= particle.windFieldHalfSize.z;
+
+	if (particle.windEnabled) {
+		float fieldWeight = isInsideWindField ? 1.0f : 0.0f;
+		if (
+			isInsideWindField &&
+			particle.windBoundaryFalloffEnabled &&
+			particle.windBoundaryFalloff > 0.0f
+		) {
+			const float distanceToBoundary = (std::min)({
+				particle.windFieldHalfSize.x - std::abs(windFieldOffset.x),
+				particle.windFieldHalfSize.y - std::abs(windFieldOffset.y),
+				particle.windFieldHalfSize.z - std::abs(windFieldOffset.z)
+			});
+			const float t = std::clamp(
+				distanceToBoundary / particle.windBoundaryFalloff,
+				0.0f,
+				1.0f
+			);
+			fieldWeight = t * t * (3.0f - 2.0f * t);
+		}
+
+		Vector3 targetWindVelocity = {
+			particle.windDirection.x * particle.windStrength,
+			particle.windDirection.y * particle.windStrength,
+			particle.windDirection.z * particle.windStrength
+		};
+
+		if (isInsideWindField && particle.windTurbulenceStrength != 0.0f) {
+			const float spatial =
+				(
+					particle.transform.translate.x +
+					particle.transform.translate.y +
+					particle.transform.translate.z
+				) * particle.windTurbulenceScale;
+			const float wave = std::sin(
+				spatial +
+				particle.currentTime * particle.windTurbulenceFrequency +
+				particle.windPhase
+			);
+
+			targetWindVelocity.x +=
+				particle.windTurbulenceAxis.x * wave * particle.windTurbulenceStrength;
+			targetWindVelocity.y +=
+				particle.windTurbulenceAxis.y * wave * particle.windTurbulenceStrength;
+			targetWindVelocity.z +=
+				particle.windTurbulenceAxis.z * wave * particle.windTurbulenceStrength;
+		}
+
+		targetWindVelocity.x *= fieldWeight;
+		targetWindVelocity.y *= fieldWeight;
+		targetWindVelocity.z *= fieldWeight;
+
+		if (particle.windSmoothVelocity) {
+			if (isInsideWindField || particle.windRecoverOutsideField) {
+				const float response = isInsideWindField
+					? particle.windAcceleration
+					: particle.windDeceleration;
+				const Vector3 difference = {
+					targetWindVelocity.x - particle.windVelocity.x,
+					targetWindVelocity.y - particle.windVelocity.y,
+					targetWindVelocity.z - particle.windVelocity.z
+				};
+				const float distance = std::sqrt(
+					difference.x * difference.x +
+					difference.y * difference.y +
+					difference.z * difference.z
+				);
+				const float maxChange = response * deltaTime_;
+				if (distance <= maxChange || distance <= 0.000001f) {
+					particle.windVelocity = targetWindVelocity;
+				} else {
+					const float scale = maxChange / distance;
+					particle.windVelocity.x += difference.x * scale;
+					particle.windVelocity.y += difference.y * scale;
+					particle.windVelocity.z += difference.z * scale;
+				}
+			}
+		} else {
+			particle.windVelocity = targetWindVelocity;
+		}
+
+		particle.transform.translate.x += particle.windVelocity.x * deltaTime_;
+		particle.transform.translate.y += particle.windVelocity.y * deltaTime_;
+		particle.transform.translate.z += particle.windVelocity.z * deltaTime_;
+	}
+
 	if (particle.swayAmplitude != 0.0f) {
 		particle.swayTime += deltaTime_;
 
@@ -1232,6 +1940,24 @@ void ParticleManager::UpdateParticleMotion(Particle& particle) {
 		particle.transform.translate.x += particle.swayAxis.x * swayValue * deltaTime_;
 		particle.transform.translate.y += particle.swayAxis.y * swayValue * deltaTime_;
 		particle.transform.translate.z += particle.swayAxis.z * swayValue * deltaTime_;
+	}
+
+	if (particle.alignToVelocity) {
+		const Vector3 moveDelta = {
+			particle.transform.translate.x - previousPosition.x,
+			particle.transform.translate.y - previousPosition.y,
+			particle.transform.translate.z - previousPosition.z
+		};
+		const Vector3 direction = NormalizeOrZero(moveDelta);
+
+		if (
+			direction.x != 0.0f ||
+			direction.y != 0.0f ||
+			direction.z != 0.0f
+			) {
+			particle.velocityAlignmentDirection = direction;
+			particle.hasVelocityAlignmentDirection = true;
+		}
 	}
 }
 
@@ -1334,23 +2060,28 @@ void ParticleManager::UpdateParticleScale(Particle& particle) {
 }
 
 void ParticleManager::UpdateParticleRotation(Particle& particle) {
-	if (!particle.enableRotationOverTime) {
+	if (!particle.enableRotationOverTime && !particle.alignToVelocity) {
 		return;
 	}
 
-	constexpr float kTwoPi = 6.2831853f;
-	particle.transform.rotate.x = std::fmod(
-		particle.transform.rotate.x + particle.rotationSpeed.x * deltaTime_,
-		kTwoPi
-	);
-	particle.transform.rotate.y = std::fmod(
-		particle.transform.rotate.y + particle.rotationSpeed.y * deltaTime_,
-		kTwoPi
-	);
-	particle.transform.rotate.z = std::fmod(
-		particle.transform.rotate.z + particle.rotationSpeed.z * deltaTime_,
-		kTwoPi
-	);
+	if (particle.enableRotationOverTime) {
+		Vector3& rotateTarget =
+			particle.alignToVelocity ? particle.rotationOffset : particle.transform.rotate;
+
+		rotateTarget.x = WrapRadian(rotateTarget.x + particle.rotationSpeed.x * deltaTime_);
+		rotateTarget.y = WrapRadian(rotateTarget.y + particle.rotationSpeed.y * deltaTime_);
+		rotateTarget.z = WrapRadian(rotateTarget.z + particle.rotationSpeed.z * deltaTime_);
+	}
+
+	if (particle.alignToVelocity && particle.hasVelocityAlignmentDirection) {
+		particle.transform.rotate = AddVector3(
+			CalculateVelocityAlignedRotation(
+				particle.velocityAlignmentDirection,
+				particle.alignAxis
+			),
+			particle.rotationOffset
+		);
+	}
 }
 
 void ParticleManager::Update() {

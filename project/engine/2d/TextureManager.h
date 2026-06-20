@@ -46,6 +46,7 @@ public:
 /// テクスチャファイルの読み込み
 /// </summary>
 	bool LoadTexture(const std::string& filePath);
+	bool ReloadTexture(const std::string& filePath);
 	bool HasTexture(const std::string& textureKey) const;
 	bool LoadTextureFromMemory(
 		const std::string& textureKey,

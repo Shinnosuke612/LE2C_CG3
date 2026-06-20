@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
+#include <sstream>
 
 #include "../externals/nlohmann/json.hpp"
+#include "../utility/EditableResourcePath.h"
 
 using json = nlohmann::json;
 
@@ -119,6 +121,24 @@ ParticleManager::VortexAxis ToVortexAxis(const std::string& text) {
 	if (text == "Z") return ParticleManager::VortexAxis::kZ;
 
 	return ParticleManager::VortexAxis::kY;
+}
+
+std::string ToString(ParticleManager::ParticleAlignmentAxis axis) {
+	switch (axis) {
+	case ParticleManager::ParticleAlignmentAxis::kX: return "X";
+	case ParticleManager::ParticleAlignmentAxis::kY: return "Y";
+	case ParticleManager::ParticleAlignmentAxis::kZ: return "Z";
+	}
+
+	return "Y";
+}
+
+ParticleManager::ParticleAlignmentAxis ToParticleAlignmentAxis(const std::string& text) {
+	if (text == "X") return ParticleManager::ParticleAlignmentAxis::kX;
+	if (text == "Y") return ParticleManager::ParticleAlignmentAxis::kY;
+	if (text == "Z") return ParticleManager::ParticleAlignmentAxis::kZ;
+
+	return ParticleManager::ParticleAlignmentAxis::kY;
 }
 
 std::string ToString(ParticleManager::BillboardMode mode) {
@@ -321,7 +341,9 @@ void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 		{ "initialRotationMin", ToJson(b.rotation.initialRotationMin) },
 		{ "initialRotationMax", ToJson(b.rotation.initialRotationMax) },
 		{ "enableRotationOverTime", b.rotation.enableRotationOverTime },
-		{ "rotationSpeed", ToJson(b.rotation.rotationSpeed) }
+		{ "rotationSpeed", ToJson(b.rotation.rotationSpeed) },
+		{ "alignToVelocity", b.rotation.alignToVelocity },
+		{ "alignAxis", ToString(b.rotation.alignAxis) }
 	};
 
 	j["motion"]["mode"] = ToString(b.motion.mode);
@@ -329,6 +351,7 @@ void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 	j["motion"]["linear"] = {
 		{ "baseVelocity", ToJson(b.motion.linear.baseVelocity) },
 		{ "velocityRandomRange", ToJson(b.motion.linear.velocityRandomRange) },
+		{ "enableAcceleration", b.motion.linear.enableAcceleration },
 		{ "baseAcceleration", ToJson(b.motion.linear.baseAcceleration) },
 		{ "accelerationRandomRange", ToJson(b.motion.linear.accelerationRandomRange) }
 	};
@@ -348,6 +371,37 @@ void WriteBehavior(json& j, const ParticleManager::ParticleBehavior& b) {
 		{ "inwardSpeedMax", b.motion.vortex.inwardSpeedMax },
 		{ "verticalSpeedMin", b.motion.vortex.verticalSpeedMin },
 		{ "verticalSpeedMax", b.motion.vortex.verticalSpeedMax }
+	};
+
+	j["motion"]["pointField"] = {
+		{ "enabled", b.motion.pointField.enabled },
+		{ "useEmitterOffset", b.motion.pointField.useEmitterOffset },
+		{ "center", ToJson(b.motion.pointField.center) },
+		{ "radius", b.motion.pointField.radius },
+		{ "attractionStrength", b.motion.pointField.attractionStrength },
+		{ "repulsionStrength", b.motion.pointField.repulsionStrength },
+		{ "orbitStrength", b.motion.pointField.orbitStrength },
+		{ "orbitAxis", ToJson(b.motion.pointField.orbitAxis) },
+		{ "falloff", b.motion.pointField.falloff },
+		{ "damping", b.motion.pointField.damping }
+	};
+
+	j["motion"]["wind"] = {
+		{ "enabled", b.motion.wind.enabled },
+		{ "useEmitterOffset", b.motion.wind.useEmitterOffset },
+		{ "center", ToJson(b.motion.wind.center) },
+		{ "size", ToJson(b.motion.wind.size) },
+		{ "direction", ToJson(b.motion.wind.direction) },
+		{ "strength", b.motion.wind.strength },
+		{ "smoothVelocity", b.motion.wind.smoothVelocity },
+		{ "acceleration", b.motion.wind.acceleration },
+		{ "recoverOutsideField", b.motion.wind.recoverOutsideField },
+		{ "deceleration", b.motion.wind.deceleration },
+		{ "enableBoundaryFalloff", b.motion.wind.enableBoundaryFalloff },
+		{ "boundaryFalloff", b.motion.wind.boundaryFalloff },
+		{ "turbulenceStrength", b.motion.wind.turbulenceStrength },
+		{ "turbulenceFrequency", b.motion.wind.turbulenceFrequency },
+		{ "turbulenceScale", b.motion.wind.turbulenceScale }
 	};
 
 	j["color"] = {
@@ -407,6 +461,13 @@ void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
 			b.rotation.rotationSpeed =
 				ReadVector3(rotation.at("rotationSpeed"), b.rotation.rotationSpeed);
 		}
+		b.rotation.alignToVelocity = rotation.value(
+			"alignToVelocity",
+			b.rotation.alignToVelocity
+		);
+		b.rotation.alignAxis = ToParticleAlignmentAxis(
+			rotation.value("alignAxis", ToString(b.rotation.alignAxis))
+		);
 	}
 
 	if (j.contains("motion")) {
@@ -418,6 +479,7 @@ void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
 			const json& linear = motion.at("linear");
 			if (linear.contains("baseVelocity")) b.motion.linear.baseVelocity = ReadVector3(linear.at("baseVelocity"), b.motion.linear.baseVelocity);
 			if (linear.contains("velocityRandomRange")) b.motion.linear.velocityRandomRange = ReadVector3(linear.at("velocityRandomRange"), b.motion.linear.velocityRandomRange);
+			b.motion.linear.enableAcceleration = linear.value("enableAcceleration", b.motion.linear.enableAcceleration);
 			if (linear.contains("baseAcceleration")) b.motion.linear.baseAcceleration = ReadVector3(linear.at("baseAcceleration"), b.motion.linear.baseAcceleration);
 			if (linear.contains("accelerationRandomRange")) b.motion.linear.accelerationRandomRange = ReadVector3(linear.at("accelerationRandomRange"), b.motion.linear.accelerationRandomRange);
 		}
@@ -439,6 +501,50 @@ void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
 			b.motion.vortex.inwardSpeedMax = vortex.value("inwardSpeedMax", b.motion.vortex.inwardSpeedMax);
 			b.motion.vortex.verticalSpeedMin = vortex.value("verticalSpeedMin", b.motion.vortex.verticalSpeedMin);
 			b.motion.vortex.verticalSpeedMax = vortex.value("verticalSpeedMax", b.motion.vortex.verticalSpeedMax);
+		}
+
+		if (motion.contains("pointField")) {
+			const json& field = motion.at("pointField");
+			b.motion.pointField.enabled = field.value("enabled", b.motion.pointField.enabled);
+			b.motion.pointField.useEmitterOffset = field.value("useEmitterOffset", b.motion.pointField.useEmitterOffset);
+			if (field.contains("center")) b.motion.pointField.center = ReadVector3(field.at("center"), b.motion.pointField.center);
+			b.motion.pointField.radius = field.value("radius", b.motion.pointField.radius);
+			b.motion.pointField.attractionStrength = field.value("attractionStrength", b.motion.pointField.attractionStrength);
+			b.motion.pointField.repulsionStrength = field.value("repulsionStrength", b.motion.pointField.repulsionStrength);
+			b.motion.pointField.orbitStrength = field.value("orbitStrength", b.motion.pointField.orbitStrength);
+			if (field.contains("orbitAxis")) b.motion.pointField.orbitAxis = ReadVector3(field.at("orbitAxis"), b.motion.pointField.orbitAxis);
+			b.motion.pointField.falloff = field.value("falloff", b.motion.pointField.falloff);
+			b.motion.pointField.damping = field.value("damping", b.motion.pointField.damping);
+		}
+
+		if (motion.contains("wind")) {
+			const json& wind = motion.at("wind");
+			b.motion.wind.enabled = wind.value("enabled", b.motion.wind.enabled);
+			b.motion.wind.useEmitterOffset =
+				wind.value("useEmitterOffset", b.motion.wind.useEmitterOffset);
+			if (wind.contains("center")) {
+				b.motion.wind.center = ReadVector3(wind.at("center"), b.motion.wind.center);
+			}
+			if (wind.contains("size")) {
+				b.motion.wind.size = ReadVector3(wind.at("size"), b.motion.wind.size);
+			}
+			if (wind.contains("direction")) {
+				b.motion.wind.direction =
+					ReadVector3(wind.at("direction"), b.motion.wind.direction);
+			}
+			b.motion.wind.strength = wind.value("strength", b.motion.wind.strength);
+			b.motion.wind.smoothVelocity = wind.value("smoothVelocity", b.motion.wind.smoothVelocity);
+			b.motion.wind.acceleration = wind.value("acceleration", b.motion.wind.acceleration);
+			b.motion.wind.recoverOutsideField = wind.value("recoverOutsideField", b.motion.wind.recoverOutsideField);
+			b.motion.wind.deceleration = wind.value("deceleration", b.motion.wind.deceleration);
+			b.motion.wind.enableBoundaryFalloff = wind.value("enableBoundaryFalloff", b.motion.wind.enableBoundaryFalloff);
+			b.motion.wind.boundaryFalloff = wind.value("boundaryFalloff", b.motion.wind.boundaryFalloff);
+			b.motion.wind.turbulenceStrength =
+				wind.value("turbulenceStrength", b.motion.wind.turbulenceStrength);
+			b.motion.wind.turbulenceFrequency =
+				wind.value("turbulenceFrequency", b.motion.wind.turbulenceFrequency);
+			b.motion.wind.turbulenceScale =
+				wind.value("turbulenceScale", b.motion.wind.turbulenceScale);
 		}
 	}
 
@@ -502,28 +608,37 @@ bool Save(const std::string& filePath, const ParticleEffectDesc& effect) {
 
 	WriteBehavior(root["behavior"], effect.behavior);
 
-	std::ofstream file(filePath);
-	if (!file.is_open()) {
-		return false;
-	}
-
-	file << std::setw(2) << root << std::endl;
-	return true;
+	std::ostringstream output;
+	output << std::setw(2) << root << '\n';
+	return EditableResourcePath::WriteTextAtomically(filePath, output.str());
 }
 
 bool Load(const std::string& filePath, ParticleEffectDesc& outEffect) {
-	std::ifstream file(filePath);
-	if (!file.is_open()) {
-		return false;
-	}
-
 	json root;
-	try {
-		file >> root;
-	} catch (...) {
+	const std::filesystem::path resolvedPath = EditableResourcePath::Resolve(filePath);
+	const std::filesystem::path candidates[] = {
+		resolvedPath,
+		EditableResourcePath::BackupPath(resolvedPath)
+	};
+	bool parsed = false;
+	for (const std::filesystem::path& candidate : candidates) {
+		std::string text;
+		if (!EditableResourcePath::ReadTextFile(candidate, text)) {
+			continue;
+		}
+		try {
+			root = json::parse(text);
+			parsed = true;
+			break;
+		} catch (...) {
+		}
+	}
+	if (!parsed) {
 		return false;
 	}
 
+	const ParticleEffectDesc originalEffect = outEffect;
+	try {
 	outEffect.name = root.value("name", outEffect.name);
 	outEffect.textureFilePath = root.value("textureFilePath", outEffect.textureFilePath);
 	outEffect.blendMode = ToBlendMode(root.value("blendMode", ToString(outEffect.blendMode)));
@@ -593,6 +708,10 @@ bool Load(const std::string& filePath, ParticleEffectDesc& outEffect) {
 	if (root.contains("behavior")) {
 		ReadBehavior(root.at("behavior"), outEffect.behavior);
 	}
+	} catch (...) {
+		outEffect = originalEffect;
+		return false;
+	}
 
 	return true;
 }
@@ -601,6 +720,10 @@ void PrepareParticleGroup(const ParticleEffectDesc& effect, bool clearParticles)
 	ParticleManager* particleManager = ParticleManager::GetInstance();
 
 	particleManager->CreateParticleGroupIfNeeded(
+		effect.name,
+		effect.textureFilePath
+	);
+	particleManager->SetParticleGroupTexture(
 		effect.name,
 		effect.textureFilePath
 	);

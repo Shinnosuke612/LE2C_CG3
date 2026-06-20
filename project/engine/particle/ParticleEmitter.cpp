@@ -41,6 +41,11 @@ void ParticleEmitter::SetFrequency(float frequency) {
 	frequency_ = NormalizeFrequency(frequency);
 }
 
+void ParticleEmitter::ResetEmissionState() {
+	frequencyTime_ = 0.0f;
+	hasAutoEmittedLoopParticle_ = false;
+}
+
 void ParticleEmitter::SetBehavior(const ParticleManager::ParticleBehavior& behavior) {
 	if (behavior_.life.isLooping != behavior.life.isLooping) {
 		hasAutoEmittedLoopParticle_ = false;

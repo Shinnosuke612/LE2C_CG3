@@ -9,6 +9,7 @@
 #include "../3d/ShadowManager.h"
 #include "../collision/OBBCollider.h"
 #include "../effect/LightningRenderer.h"
+#include "../3d/StarFieldGenerator.h"
 
 class SpriteCommon;
 class Sprite;
@@ -51,7 +52,7 @@ private:
 	Object3d* axis = nullptr;
 	Object3d* animatedCube_ = nullptr;
 	Object3d* human_ = nullptr;
-	bool showSkeletonDebug_ = true;
+	bool showSkeletonDebug_ = false;
 	bool showJointNames_ = false;
 	bool showJointAxes_ = true;
 	float jointRadius_ = 0.018f;
@@ -73,5 +74,6 @@ private:
 	std::unique_ptr<ShadowManager> shadowManager_;
 	std::unique_ptr<LightningRenderer> lightningRenderer_;
 	Skybox* skybox_ = nullptr;
+	StarFieldGenerator starFieldGenerator_;
 };
 

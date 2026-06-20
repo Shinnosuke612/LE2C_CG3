@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <d3d12.h>
 #include <wrl.h>
@@ -111,6 +112,7 @@ public:
 		const std::string& textureFilePath = "resources/circle.png"
 	);
 	void Reset();
+	void ClearParticles();
 	void Update();
 	void Draw(Camera* camera);
 	void DrawImGui(const char* windowTitle = "GPU Particle");
@@ -128,6 +130,7 @@ private:
 	void ApplyConfigToGpu();
 	bool ApplyTexture(const std::string& textureFilePath);
 	void CopyStringsToBuffers();
+	void RefreshTextureFiles();
 	void TransitionParticleResource(D3D12_RESOURCE_STATES stateAfter);
 	void TransitionFreeListIndexResource(D3D12_RESOURCE_STATES stateAfter);
 	void TransitionFreeListResource(D3D12_RESOURCE_STATES stateAfter);
@@ -180,4 +183,5 @@ private:
 	Config config_;
 	char configPathBuffer_[256]{};
 	char texturePathBuffer_[256]{};
+	std::vector<std::string> textureFilePaths_;
 };

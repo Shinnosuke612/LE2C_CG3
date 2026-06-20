@@ -30,7 +30,7 @@ void Game::Initialize() {
 	sceneManager_ = new SceneManager();
 	sceneFactory_ = new SceneFactory();
 	sceneManager_->SetSceneFactory(sceneFactory_);
-	sceneManager_->ChangeScene("TITLE");
+	sceneManager_->ChangeScene("GAMEPLAY");
 
 	sceneRenderTarget_ = new SceneRenderTarget();
 	SceneRenderTarget::Desc sceneTargetDesc{};

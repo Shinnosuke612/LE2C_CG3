@@ -198,7 +198,8 @@
     <ClCompile Include="engine\scene\TitleScene.cpp" />
     <ClCompile Include="engine\scene\SceneManager.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectResource.cpp" />
-    <ClCompile Include="engine\3d\Skybox.cpp" />
+	<ClCompile Include="engine\3d\Skybox.cpp" />
+	<ClCompile Include="engine\3d\StarFieldGenerator.cpp" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="resources\shaders\DebugLine.PS.hlsl">
@@ -325,7 +326,8 @@
     <ClInclude Include="engine\particle\ParticleEffectResource.h" />
     <ClInclude Include="engine\3d\LightManager.h" />
     <ClInclude Include="engine\3d\ShadowManager.h" />
-    <ClInclude Include="engine\3d\Skybox.h" />
+	<ClInclude Include="engine\3d\Skybox.h" />
+	<ClInclude Include="engine\3d\StarFieldGenerator.h" />
     <ClInclude Include="Vector\Vector2.h" />
     <ClInclude Include="Vector\Vector3.h" />
     <ClInclude Include="Vector\Vector4.h" />

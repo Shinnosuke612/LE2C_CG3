@@ -3,10 +3,12 @@
 
 #include "ParticleCommon.h"
 #include "../2d/TextureManager.h"
+#include "../utility/ResourceTextureCatalog.h"
 #include "../3d/Camera.h"
 #include "../3d/SrvManager.h"
 #include "../base/DirectXCommon.h"
 #include "../externals/nlohmann/json.hpp"
+#include "../utility/EditableResourcePath.h"
 #include "../utility/Logger.h"
 
 #include <algorithm>
@@ -328,6 +330,19 @@ void GpuParticle::Reset() {
 	std::memset(texturePathBuffer_, 0, sizeof(texturePathBuffer_));
 }
 
+void GpuParticle::ClearParticles() {
+	needsInitialize_ = true;
+	elapsedTime_ = 0.0f;
+	if (emitterData_) {
+		emitterData_->frequencyTime = 0.0f;
+		emitterData_->emit = 0;
+	}
+	if (perFrameData_) {
+		perFrameData_->time = 0.0f;
+		perFrameData_->deltaTime = deltaTime_;
+	}
+}
+
 void GpuParticle::CreateParticleResource() {
 	assert(dxCommon_);
 	assert(srvManager_);
@@ -486,43 +501,44 @@ void GpuParticle::CopyStringsToBuffers() {
 	);
 }
 
+void GpuParticle::RefreshTextureFiles() {
+	textureFilePaths_ = ResourceTextureCatalog::Collect();
+}
+
 bool GpuParticle::SaveConfig(const std::string& filePath) const {
 	if (filePath.empty()) {
 		return false;
 	}
 
-	std::ofstream file(filePath);
-	if (!file.is_open()) {
-		return false;
-	}
+	std::ostringstream output;
 
 	if (IsCsvPath(filePath)) {
 		const BehaviorSettings& behavior = config_.behavior;
-		file << std::fixed << std::setprecision(6);
-		file << "texture," << config_.textureFilePath << "\n";
-		file << "blendMode," << ToString(config_.blendMode) << "\n";
-		file << "autoEmit," << (config_.autoEmit ? 1 : 0) << "\n";
-		file << "emitter.translate,"
+		output << std::fixed << std::setprecision(6);
+		output << "texture," << config_.textureFilePath << "\n";
+		output << "blendMode," << ToString(config_.blendMode) << "\n";
+		output << "autoEmit," << (config_.autoEmit ? 1 : 0) << "\n";
+		output << "emitter.translate,"
 			 << config_.emitter.translate.x << "," << config_.emitter.translate.y
 			 << "," << config_.emitter.translate.z << "\n";
-		file << "emitter.radius," << config_.emitter.radius << "\n";
-		file << "emitter.count," << config_.emitter.count << "\n";
-		file << "emitter.frequency," << config_.emitter.frequency << "\n";
-		file << "behavior.lifeTime," << behavior.lifeTimeMin << ","
+		output << "emitter.radius," << config_.emitter.radius << "\n";
+		output << "emitter.count," << config_.emitter.count << "\n";
+		output << "emitter.frequency," << config_.emitter.frequency << "\n";
+		output << "behavior.lifeTime," << behavior.lifeTimeMin << ","
 			 << behavior.lifeTimeMax << "\n";
-		file << "behavior.scale," << behavior.scaleMin << ","
+		output << "behavior.scale," << behavior.scaleMin << ","
 			 << behavior.scaleMax << "\n";
-		file << "behavior.velocity," << behavior.velocityMin << ","
+		output << "behavior.velocity," << behavior.velocityMin << ","
 			 << behavior.velocityMax << "\n";
-		file << "behavior.rotationSpeed," << behavior.rotationSpeedMin << ","
+		output << "behavior.rotationSpeed," << behavior.rotationSpeedMin << ","
 			 << behavior.rotationSpeedMax << "\n";
-		file << "behavior.colorMin," << behavior.colorMin.x << ","
+		output << "behavior.colorMin," << behavior.colorMin.x << ","
 			 << behavior.colorMin.y << "," << behavior.colorMin.z << ","
 			 << behavior.colorMin.w << "\n";
-		file << "behavior.colorMax," << behavior.colorMax.x << ","
+		output << "behavior.colorMax," << behavior.colorMax.x << ","
 			 << behavior.colorMax.y << "," << behavior.colorMax.z << ","
 			 << behavior.colorMax.w << "\n";
-		return true;
+		return EditableResourcePath::WriteTextAtomically(filePath, output.str());
 	}
 
 	json root;
@@ -549,8 +565,8 @@ bool GpuParticle::SaveConfig(const std::string& filePath) const {
 		{ "colorMax", ToJson(behavior.colorMax) }
 	};
 
-	file << std::setw(4) << root;
-	return true;
+	output << std::setw(4) << root << '\n';
+	return EditableResourcePath::WriteTextAtomically(filePath, output.str());
 }
 
 bool GpuParticle::LoadConfig(const std::string& filePath) {
@@ -558,10 +574,24 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 		return false;
 	}
 
-	std::ifstream file(filePath);
-	if (!file.is_open()) {
+	const std::filesystem::path resolvedPath = EditableResourcePath::Resolve(filePath);
+	std::string configText;
+	if (!EditableResourcePath::ReadText(filePath, configText)) {
 		return false;
 	}
+	if (!IsCsvPath(filePath)) {
+		try {
+			(void)json::parse(configText);
+		} catch (...) {
+			if (!EditableResourcePath::ReadTextFile(
+				EditableResourcePath::BackupPath(resolvedPath),
+				configText
+			)) {
+				return false;
+			}
+		}
+	}
+	std::istringstream file(configText);
 
 	Config loaded = config_;
 	loaded.filePath = filePath;
@@ -741,6 +771,25 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 		ApplyTexture(texturePathBuffer_);
 		CopyStringsToBuffers();
 	}
+	if (textureFilePaths_.empty()) RefreshTextureFiles();
+	const char* selectedTexture = texturePathBuffer_[0] != '\0'
+		? texturePathBuffer_
+		: "(select texture)";
+	if (ImGui::BeginCombo("Resource Texture", selectedTexture)) {
+		for (const std::string& texturePath : textureFilePaths_) {
+			const bool selected = texturePath == texturePathBuffer_;
+			if (ImGui::Selectable(texturePath.c_str(), selected)) {
+				strncpy_s(texturePathBuffer_, sizeof(texturePathBuffer_), texturePath.c_str(), _TRUNCATE);
+				config_.textureFilePath = texturePath;
+				ApplyTexture(texturePath);
+				CopyStringsToBuffers();
+			}
+			if (selected) ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Refresh Textures")) RefreshTextureFiles();
 
 	dirty |= ImGui::Checkbox("Auto Emit", &config_.autoEmit);
 	const char* blendModeItems[] = {

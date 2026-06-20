@@ -2,18 +2,18 @@
   "behavior": {
     "color": {
       "endColorMax": [
-        1.0,
-        1.0,
-        1.0,
+        0.0,
+        0.0,
+        0.0,
         1.0
       ],
       "endColorMin": [
-        1.0,
-        1.0,
-        1.0,
+        0.0,
+        0.0,
+        0.0,
         1.0
       ],
-      "mode": "Constant",
+      "mode": "RandomLoop",
       "randomColorChangeIntervalMax": 0.3499999940395355,
       "randomColorChangeIntervalMin": 0.15000000596046448,
       "randomColorLerpSpeed": 6.0,
@@ -31,19 +31,19 @@
       ],
       "startColorMax": [
         1.0,
-        1.0,
-        1.0,
+        0.0,
+        0.0,
         1.0
       ],
       "startColorMin": [
         1.0,
-        1.0,
-        1.0,
+        0.0,
+        0.0,
         1.0
       ]
     },
     "life": {
-      "enableLifeFade": true,
+      "enableLifeFade": false,
       "fadeOutStartRatio": 0.699999988079071,
       "isLooping": false,
       "lifeTimeMax": 1.0,
@@ -61,31 +61,31 @@
         "baseAcceleration": [
           0.0,
           -0.0010000000474974513,
-          0.0
+          5.789999961853027
         ],
         "baseVelocity": [
           0.0,
-          -1.7999999523162842,
-          0.0
+          0.0,
+          3.25
         ],
         "enableAcceleration": true,
         "velocityRandomRange": [
           0.0,
           0.0,
-          0.009999999776482582
+          0.0
         ]
       },
-      "mode": "Linear",
+      "mode": "VortexInward",
       "pointField": {
-        "attractionStrength": 0.0,
+        "attractionStrength": 10.0,
         "center": [
           0.0,
           0.0,
           0.0
         ],
-        "damping": 0.0,
+        "damping": 3.0,
         "enabled": false,
-        "falloff": 1.0,
+        "falloff": 0.0,
         "orbitAxis": [
           0.0,
           1.0,
@@ -93,7 +93,7 @@
         ],
         "orbitStrength": 0.0,
         "radius": 0.0,
-        "repulsionStrength": 0.0,
+        "repulsionStrength": 3.0,
         "useEmitterOffset": true
       },
       "sway": {
@@ -101,19 +101,19 @@
         "frequency": 0.0
       },
       "vortex": {
-        "angularSpeedMax": 8.0,
-        "angularSpeedMin": 4.0,
-        "axis": "Y",
+        "angularSpeedMax": 5.0,
+        "angularSpeedMin": 5.0,
+        "axis": "Z",
         "center": [
           0.0,
           0.0,
           0.0
         ],
-        "inwardSpeedMax": 1.7999999523162842,
-        "inwardSpeedMin": 0.800000011920929,
+        "inwardSpeedMax": -0.05000000074505806,
+        "inwardSpeedMin": -0.05000000074505806,
         "useEmitterOffset": true,
-        "verticalSpeedMax": 0.10000000149011612,
-        "verticalSpeedMin": -0.10000000149011612
+        "verticalSpeedMax": 30.0,
+        "verticalSpeedMin": 30.0
       },
       "wind": {
         "acceleration": 8.0,
@@ -222,7 +222,7 @@
       ]
     },
     "scale": {
-      "enableScaleOverLife": false,
+      "enableScaleOverLife": true,
       "endScaleMax": [
         1.0,
         1.0,
@@ -234,31 +234,31 @@
         1.0
       ],
       "startScaleMax": [
-        1.0,
-        1.0,
-        1.0
+        0.30000001192092896,
+        0.30000001192092896,
+        0.0
       ],
       "startScaleMin": [
-        1.0,
-        1.0,
-        1.0
+        0.10000000149011612,
+        0.10000000149011612,
+        0.0
       ]
     }
   },
-  "blendMode": "Add",
+  "blendMode": "Subtract",
   "emitter": {
-    "count": 1,
-    "frequency": 0.10000000149011612,
+    "count": 24,
+    "frequency": 0.01666666753590107,
     "isActive": true,
     "spawnSize": [
-      1.0,
-      1.0,
+      0.0,
+      0.0,
       1.0
     ],
     "translate": [
       0.0,
       0.0,
-      0.0
+      5.0
     ]
   },
   "lightning": {
@@ -268,38 +268,38 @@
       12.0,
       1.0
     ],
-    "branchLength": 0.800000011920929,
-    "branchProbability": 0.3499999940395355,
+    "branchLength": 4.230000019073486,
+    "branchProbability": 0.5149999856948853,
     "coreColor": [
       8.0,
       10.0,
       16.0,
       1.0
     ],
-    "duration": 0.11999999731779099,
+    "duration": 0.36000001430511475,
     "enabled": false,
     "endOffset": [
       0.0,
-      0.0,
+      -5.0,
       0.0
     ],
     "flashExposure": true,
-    "flashExposureValue": 3.5,
+    "flashExposureValue": 5.960000038146973,
     "flashReturnSpeed": 6.0,
-    "jitter": 0.44999998807907104,
+    "jitter": 3.259999990463257,
     "randomRange": [
-      4.0,
+      20.0,
       0.0,
-      4.0
+      20.0
     ],
-    "segmentCount": 16,
+    "segmentCount": 40,
     "startOffset": [
       0.0,
-      6.0,
+      100.0,
       0.0
     ],
-    "thickness": 0.03999999910593033
+    "thickness": 0.11699999868869781
   },
-  "name": "newParticle",
-  "textureFilePath": "resources/circle.png"
+  "name": "BeamParticle",
+  "textureFilePath": "resources/circleEntity.png"
 }

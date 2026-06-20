@@ -68,6 +68,11 @@ bool TextureManager::LoadTexture(const std::string& filePath) {
 	return RegisterTexture(filePath, loadedImage, metadata);
 }
 
+bool TextureManager::ReloadTexture(const std::string& filePath) {
+	textureDatas.erase(filePath);
+	return LoadTexture(filePath);
+}
+
 bool TextureManager::LoadTextureFromMemory(
 	const std::string& textureKey,
 	const uint8_t* data,

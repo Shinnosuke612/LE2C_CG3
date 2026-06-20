@@ -5,7 +5,10 @@
 #include <filesystem>
 
 #include "../externals/imgui/imgui.h"
+#include "../utility/EditableResourcePath.h"
+#include "../utility/ResourceTextureCatalog.h"
 #include "ParticleEmitter.h"
+#include "ParticleManager.h"
 
 namespace {
 
@@ -63,6 +66,21 @@ void ComboVortexAxis(const char* label, ParticleManager::VortexAxis& axis) {
 	}
 }
 
+void ComboAlignmentAxis(const char* label, ParticleManager::ParticleAlignmentAxis& axis) {
+	const char* items[] = { "X", "Y", "Z" };
+	int current = static_cast<int>(axis);
+
+	if (ImGui::Combo(label, &current, items, IM_ARRAYSIZE(items))) {
+		axis = static_cast<ParticleManager::ParticleAlignmentAxis>(current);
+	}
+}
+
+void DirectionButton(const char* label, Vector3& direction, const Vector3& value) {
+	if (ImGui::Button(label)) {
+		direction = value;
+	}
+}
+
 void ComboBillboardMode(const char* label, ParticleManager::BillboardMode& mode) {
 	const char* items[] = { "None", "Billboard" };
 	int current = static_cast<int>(mode);
@@ -102,7 +120,12 @@ void ParticleEffectEditor::Initialize(const ParticleEffectDesc& effect, const st
 	CopyText(filePath_, sizeof(filePath_), filePath);
 	CopyStringsFromEffect(effect);
 	RefreshEffectFiles();
+	RefreshTextureFiles();
 	initialized_ = true;
+}
+
+void ParticleEffectEditor::RefreshTextureFiles() {
+	textureFilePaths_ = ResourceTextureCatalog::Collect();
 }
 
 void ParticleEffectEditor::CopyStringsFromEffect(const ParticleEffectDesc& effect) {
@@ -127,16 +150,23 @@ void ParticleEffectEditor::RefreshEffectFiles() {
 	}
 
 	std::error_code error;
+	const std::filesystem::path resolvedDirectory =
+		EditableResourcePath::Resolve(directory);
 	for (const std::filesystem::directory_entry& entry :
-		std::filesystem::directory_iterator(directory, error)) {
+		std::filesystem::directory_iterator(resolvedDirectory, error)) {
 		if (error) {
 			break;
 		}
 		if (!entry.is_regular_file() || entry.path().extension() != ".json") {
 			continue;
 		}
+		if (entry.path().filename() == "scene_particles.json") {
+			continue;
+		}
 
-		effectFilePaths_.push_back(entry.path().generic_string());
+		effectFilePaths_.push_back(
+			EditableResourcePath::ToProjectRelative(entry.path()).generic_string()
+		);
 	}
 
 	std::sort(effectFilePaths_.begin(), effectFilePaths_.end());
@@ -212,6 +242,24 @@ bool ParticleEffectEditor::DrawImGui(
 
 	resourceChanged |= ImGui::InputText("Name", name_, sizeof(name_));
 	resourceChanged |= ImGui::InputText("Texture", textureFilePath_, sizeof(textureFilePath_));
+	const char* selectedTexture = textureFilePath_[0] != '\0'
+		? textureFilePath_
+		: "(select texture)";
+	if (ImGui::BeginCombo("Resource Texture", selectedTexture)) {
+		for (const std::string& texturePath : textureFilePaths_) {
+			const bool selected = texturePath == textureFilePath_;
+			if (ImGui::Selectable(texturePath.c_str(), selected)) {
+				CopyText(textureFilePath_, sizeof(textureFilePath_), texturePath);
+				resourceChanged = true;
+			}
+			if (selected) ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Refresh Textures")) {
+		RefreshTextureFiles();
+	}
 
 	CopyStringsToEffect(effect);
 
@@ -387,6 +435,13 @@ bool ParticleEffectEditor::DrawImGui(
 				0.01f
 			);
 		}
+		ImGui::Checkbox(
+			"AlignToVelocity",
+			&effect.behavior.rotation.alignToVelocity
+		);
+		if (effect.behavior.rotation.alignToVelocity) {
+			ComboAlignmentAxis("AlignAxis", effect.behavior.rotation.alignAxis);
+		}
 	}
 
 	if (ImGui::CollapsingHeader("Motion", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -395,8 +450,11 @@ bool ParticleEffectEditor::DrawImGui(
 		if (ImGui::TreeNode("Linear")) {
 			DragVector3("BaseVelocity", effect.behavior.motion.linear.baseVelocity, 0.05f);
 			DragVector3("VelocityRandomRange", effect.behavior.motion.linear.velocityRandomRange, 0.05f);
-			DragVector3("BaseAcceleration", effect.behavior.motion.linear.baseAcceleration, 0.01f);
-			DragVector3("AccelerationRandomRange", effect.behavior.motion.linear.accelerationRandomRange, 0.01f);
+			ImGui::Checkbox("EnableAcceleration", &effect.behavior.motion.linear.enableAcceleration);
+			if (effect.behavior.motion.linear.enableAcceleration) {
+				DragVector3("BaseAcceleration", effect.behavior.motion.linear.baseAcceleration, 0.01f);
+				DragVector3("AccelerationRandomRange", effect.behavior.motion.linear.accelerationRandomRange, 0.01f);
+			}
 			ImGui::TreePop();
 		}
 
@@ -426,6 +484,97 @@ bool ParticleEffectEditor::DrawImGui(
 
 			ImGui::DragFloat("VerticalSpeedMin", &effect.behavior.motion.vortex.verticalSpeedMin, 0.01f, -100.0f, 100.0f);
 			ImGui::DragFloat("VerticalSpeedMax", &effect.behavior.motion.vortex.verticalSpeedMax, 0.01f, -100.0f, 100.0f);
+			ImGui::TreePop();
+		}
+
+		if (ImGui::TreeNode("Point Field")) {
+			auto& field = effect.behavior.motion.pointField;
+			ImGui::Checkbox("Enabled##PointField", &field.enabled);
+			ImGui::Checkbox("UseEmitterOffset##PointField", &field.useEmitterOffset);
+			DragVector3(
+				field.useEmitterOffset ? "CenterOffset##PointField" : "WorldCenter##PointField",
+				field.center,
+				0.05f
+			);
+			ImGui::DragFloat("Radius##PointField", &field.radius, 0.05f, 0.0f, 10000.0f);
+			ImGui::DragFloat("Attraction##PointField", &field.attractionStrength, 0.05f, -1000.0f, 1000.0f);
+			ImGui::DragFloat("Repulsion##PointField", &field.repulsionStrength, 0.05f, -1000.0f, 1000.0f);
+			ImGui::DragFloat("Orbit##PointField", &field.orbitStrength, 0.05f, -1000.0f, 1000.0f);
+			DragVector3("OrbitAxis##PointField", field.orbitAxis, 0.01f);
+			DirectionButton("+X##PointField", field.orbitAxis, { 1.0f, 0.0f, 0.0f });
+			ImGui::SameLine();
+			DirectionButton("+Y##PointField", field.orbitAxis, { 0.0f, 1.0f, 0.0f });
+			ImGui::SameLine();
+			DirectionButton("+Z##PointField", field.orbitAxis, { 0.0f, 0.0f, 1.0f });
+			ImGui::DragFloat("Falloff##PointField", &field.falloff, 0.01f, 0.0f, 16.0f);
+			ImGui::DragFloat("Damping##PointField", &field.damping, 0.01f, 0.0f, 100.0f);
+			ImGui::TextDisabled("Point Field affects Linear movement velocity.");
+			ImGui::TreePop();
+		}
+
+		if (ImGui::TreeNode("Wind Field")) {
+			auto& wind = effect.behavior.motion.wind;
+
+			ImGui::Checkbox("Enabled", &wind.enabled);
+			ImGui::Checkbox("UseEmitterOffset", &wind.useEmitterOffset);
+			DragVector3(
+				wind.useEmitterOffset ? "CenterOffset" : "WorldCenter",
+				wind.center,
+				0.05f
+			);
+			DragVector3("FieldSize", wind.size, 0.05f);
+			wind.size.x = (std::max)(wind.size.x, 0.0f);
+			wind.size.y = (std::max)(wind.size.y, 0.0f);
+			wind.size.z = (std::max)(wind.size.z, 0.0f);
+			DragVector3("Direction", wind.direction, 0.01f);
+
+			DirectionButton("+X", wind.direction, { 1.0f, 0.0f, 0.0f });
+			ImGui::SameLine();
+			DirectionButton("-X", wind.direction, { -1.0f, 0.0f, 0.0f });
+			ImGui::SameLine();
+			DirectionButton("+Y", wind.direction, { 0.0f, 1.0f, 0.0f });
+			ImGui::SameLine();
+			DirectionButton("-Y", wind.direction, { 0.0f, -1.0f, 0.0f });
+			ImGui::SameLine();
+			DirectionButton("+Z", wind.direction, { 0.0f, 0.0f, 1.0f });
+			ImGui::SameLine();
+			DirectionButton("-Z", wind.direction, { 0.0f, 0.0f, -1.0f });
+
+			ImGui::DragFloat("Strength", &wind.strength, 0.05f, -100.0f, 100.0f);
+			ImGui::Checkbox("SmoothVelocity", &wind.smoothVelocity);
+			if (wind.smoothVelocity) {
+				ImGui::DragFloat("Acceleration", &wind.acceleration, 0.05f, 0.0f, 1000.0f);
+				ImGui::Checkbox("RecoverOutsideField", &wind.recoverOutsideField);
+				if (wind.recoverOutsideField) {
+					ImGui::DragFloat("Deceleration", &wind.deceleration, 0.05f, 0.0f, 1000.0f);
+				}
+			}
+			ImGui::Checkbox("BoundaryFalloff", &wind.enableBoundaryFalloff);
+			if (wind.enableBoundaryFalloff) {
+				ImGui::DragFloat("FalloffDistance", &wind.boundaryFalloff, 0.05f, 0.0f, 1000.0f);
+			}
+			ImGui::DragFloat("TurbulenceStrength", &wind.turbulenceStrength, 0.01f, 0.0f, 100.0f);
+			ImGui::DragFloat("TurbulenceFrequency", &wind.turbulenceFrequency, 0.01f, 0.0f, 100.0f);
+			ImGui::DragFloat("TurbulenceScale", &wind.turbulenceScale, 0.001f, 0.0f, 100.0f);
+
+			if (ImGui::Button("Rain Wind Preset")) {
+				wind.enabled = true;
+				wind.useEmitterOffset = true;
+				wind.center = { 0.0f, -15.0f, 0.0f };
+				wind.size = { 100.0f, 32.0f, 100.0f };
+				wind.direction = { 1.0f, 0.0f, 0.25f };
+				wind.strength = 3.0f;
+				wind.smoothVelocity = true;
+				wind.acceleration = 7.0f;
+				wind.recoverOutsideField = true;
+				wind.deceleration = 3.5f;
+				wind.enableBoundaryFalloff = true;
+				wind.boundaryFalloff = 3.0f;
+				wind.turbulenceStrength = 0.8f;
+				wind.turbulenceFrequency = 2.2f;
+				wind.turbulenceScale = 0.06f;
+			}
+
 			ImGui::TreePop();
 		}
 	}
@@ -584,7 +733,13 @@ bool ParticleEffectEditor::DrawImGui(
 	ImGui::SameLine();
 
 	if (ImGui::Button("Save")) {
-		ParticleEffectResource::Save(filePath_, effect);
+		const bool saved = ParticleEffectResource::Save(filePath_, effect);
+		if (saved) {
+			ParticleManager::GetInstance()->RefreshPlacementAssetsForEffect(filePath_);
+		}
+		persistenceMessage_ = saved
+			? "Saved to project resources. Backup updated."
+			: "Save failed. The previous file was not overwritten.";
 	}
 
 	ImGui::SameLine();
@@ -593,7 +748,18 @@ bool ParticleEffectEditor::DrawImGui(
 		if (LoadEffectFile(filePath_, effect, previewEmitter)) {
 			RefreshEffectFiles();
 			applied = true;
+			persistenceMessage_ = "Loaded from project resources.";
+		} else {
+			persistenceMessage_ = "Load failed. Current edits were kept.";
 		}
+	}
+
+	ImGui::TextDisabled(
+		"Project file: %s",
+		EditableResourcePath::Resolve(filePath_).generic_string().c_str()
+	);
+	if (!persistenceMessage_.empty()) {
+		ImGui::TextWrapped("%s", persistenceMessage_.c_str());
 	}
 
 	ImGui::End();

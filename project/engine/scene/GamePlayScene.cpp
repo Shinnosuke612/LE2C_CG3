@@ -22,6 +22,7 @@
 #include "../3d/Skybox.h"
 #include "../effect/LightningRenderer.h"
 #include "../player/Player.h"
+#include "../utility/EditableResourcePath.h"
 
 #include "../externals/imgui/imgui.h"
 
@@ -39,8 +40,6 @@ void GamePlayScene::Initialize()
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
 	ParticleManager::GetInstance()->SetCamera(camera_);
 	ParticleManager::GetInstance()->SetGpuParticleEnabled(true);
-	ParticleManager::GetInstance()->LoadSceneParticleLayout();
-
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 	ModelManager::GetInstance()->LoadModel("terrain.obj");
@@ -146,17 +145,23 @@ void GamePlayScene::Initialize()
 	//addStageObject("Cube.obj", { -5.0f, 2.0f, 0.0f }, { 0.2f, 2.0f, 5.0f }, { 0.2f, 2.0f, 5.0f }, true);
 	//addStageObject("Cube.obj", { 3.0f, 0.5f, -2.0f }, { 1.0f, 0.5f, 1.0f }, { 1.0f, 0.5f, 1.0f }, true);
 
-	skybox_ = new Skybox();
-	skybox_->Initialize(
-		Object3dCommon::GetInstance(),
-		"resources/rostock_laage_airport_4k.dds"
-	);
-	skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
-	if (player_ && player_->GetObject()) {
-		player_->GetObject()->SetEnvironmentMap(
-			"resources/rostock_laage_airport_4k.dds",
-			0.01f
-		);
+	std::string skyboxPath = EditableResourcePath::Resolve(
+		"resources/skyboxes/generated_space.dds"
+	).generic_string();
+	bool skyboxLoaded = TextureManager::GetInstance()->LoadTexture(skyboxPath);
+	if (!skyboxLoaded) {
+		skyboxPath = EditableResourcePath::Resolve(
+			"resources/rostock_laage_airport_4k.dds"
+		).generic_string();
+		skyboxLoaded = TextureManager::GetInstance()->LoadTexture(skyboxPath);
+	}
+	if (skyboxLoaded) {
+		skybox_ = new Skybox();
+		skybox_->Initialize(Object3dCommon::GetInstance(), skyboxPath);
+		skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
+		if (player_ && player_->GetObject()) {
+			player_->GetObject()->SetEnvironmentMap(skyboxPath, 0.01f);
+		}
 	}
 
 	lightManager_ = std::make_unique<LightManager>();
@@ -172,6 +177,7 @@ void GamePlayScene::Initialize()
 	);
 
 	lightningRenderer_ = std::make_unique<LightningRenderer>();
+	lightningRenderer_->Initialize(Object3dCommon::GetInstance()->GetDxCommon());
 
 	//soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
 }
@@ -192,18 +198,8 @@ void GamePlayScene::Update()
 		}
 	}
 
-	if (Input::GetInstance()->TriggerKey(DIK_RETURN)) {
-		sceneManager_->ChangeScene("TITLE");
-	}
-
 	if (Input::GetInstance()->TriggerKey(DIK_SPACE)) {
-		if (planeBurstEmitter_) {
-			planeBurstEmitter_->Emit();
-		}
-		if (ringBurstEmitter_) {
-			ringBurstEmitter_->Emit();
-		}
-		ParticleManager::GetInstance()->EmitSceneParticles("GAMEPLAY");
+		ParticleManager::GetInstance()->CycleSceneParticleAssets("GAMEPLAY");
 	}
 
 	if (emitter_) {
@@ -238,7 +234,6 @@ void GamePlayScene::Update()
 			lightningRenderer_->Trigger(settings);
 		}
 		lightningRenderer_->Update(1.0f / 60.0f);
-		lightningRenderer_->DrawDebug();
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
@@ -334,10 +329,20 @@ void GamePlayScene::Update()
 	}
 	ImGui::End();
 
-	camera_->DrawImGui("Camera");
-
 	if (lightManager_) {
 		lightManager_->DrawImGui();
+	}
+
+	if (const auto generatedSkybox = starFieldGenerator_.DrawImGui("Environment")) {
+		if (TextureManager::GetInstance()->ReloadTexture(*generatedSkybox)) {
+			delete skybox_;
+			skybox_ = new Skybox();
+			skybox_->Initialize(Object3dCommon::GetInstance(), *generatedSkybox);
+			skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
+			if (player_ && player_->GetObject()) {
+				player_->GetObject()->SetEnvironmentMap(*generatedSkybox, 0.01f);
+			}
+		}
 	}
 
 	particleEffectEditor_.DrawImGui(
@@ -429,30 +434,34 @@ void GamePlayScene::Draw()
 	}
 
 	object3d_->Draw();
-	if (plane_) {
-		plane_->Draw();
-	}
-	if (axis) {
-		axis->Draw();
-	}
-	if (animatedCube_) {
-		animatedCube_->Draw();
-	}
-	if (human_) {
-		human_->Draw();
-	}
-	if (player_) {
-		player_->Draw();
-	}
+	//if (plane_) {
+	//	plane_->Draw();
+	//}
+	//if (axis) {
+	//	axis->Draw();
+	//}
+	//if (animatedCube_) {
+	//	animatedCube_->Draw();
+	//}
+	//if (human_) {
+	//	human_->Draw();
+	//}
+	//if (player_) {
+	//	player_->Draw();
+	//}
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
 			stageObject.object->Draw();
 		}
 	}
 
-	//if (skybox_) {
-	//	skybox_->Draw();
-	//}
+	if (lightningRenderer_) {
+		lightningRenderer_->Draw(camera_);
+	}
+
+	if (skybox_) {
+		skybox_->Draw();
+	}
 
 	ParticleManager::GetInstance()->Draw();
 }
@@ -466,21 +475,21 @@ void GamePlayScene::DrawShadow()
 	std::vector<Object3d*> shadowCasters;
 	shadowCasters.reserve(4 + stageObjects_.size() + (player_ ? 1 : 0));
 	shadowCasters.push_back(object3d_);
-	if (plane_) {
-		shadowCasters.push_back(plane_);
-	}
-	if (axis) {
-		shadowCasters.push_back(axis);
-	}
-	if (animatedCube_) {
-		shadowCasters.push_back(animatedCube_);
-	}
-	if (human_) {
-		shadowCasters.push_back(human_);
-	}
-	if (player_) {
-		shadowCasters.push_back(player_->GetObject());
-	}
+	//if (plane_) {
+	//	shadowCasters.push_back(plane_);
+	//}
+	//if (axis) {
+	//	shadowCasters.push_back(axis);
+	//}
+	//if (animatedCube_) {
+	//	shadowCasters.push_back(animatedCube_);
+	//}
+	//if (human_) {
+	//	shadowCasters.push_back(human_);
+	//}
+	//if (player_) {
+	//	shadowCasters.push_back(player_->GetObject());
+	//}
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
 			shadowCasters.push_back(stageObject.object);
@@ -541,6 +550,11 @@ void GamePlayScene::Finalize()
 
 	delete ringBurstEmitter_;
 	ringBurstEmitter_ = nullptr;
+
+	if (lightningRenderer_) {
+		lightningRenderer_->Finalize();
+		lightningRenderer_.reset();
+	}
 
 	delete camera_;
 	camera_ = nullptr;

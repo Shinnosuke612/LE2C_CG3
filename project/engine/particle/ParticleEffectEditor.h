@@ -22,6 +22,7 @@ private:
 	void CopyStringsFromEffect(const ParticleEffectDesc& effect);
 	void CopyStringsToEffect(ParticleEffectDesc& effect);
 	void RefreshEffectFiles();
+	void RefreshTextureFiles();
 	bool LoadEffectFile(
 		const std::string& filePath,
 		ParticleEffectDesc& effect,
@@ -37,5 +38,7 @@ private:
 
 	std::vector<std::string> effectFilePaths_;
 	std::vector<std::string> effectFileNames_;
+	std::vector<std::string> textureFilePaths_;
+	std::string persistenceMessage_;
 	int selectedEffectIndex_ = -1;
 };

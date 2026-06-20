@@ -24,9 +24,9 @@
         1.0
       ],
       "randomColorMin": [
-        0.0,
-        0.0,
-        0.0,
+        1.0,
+        1.0,
+        1.0,
         1.0
       ],
       "startColorMax": [
@@ -43,11 +43,11 @@
       ]
     },
     "life": {
-      "enableLifeFade": true,
+      "enableLifeFade": false,
       "fadeOutStartRatio": 0.699999988079071,
       "isLooping": false,
-      "lifeTimeMax": 1.0,
-      "lifeTimeMin": 1.0,
+      "lifeTimeMax": 5.0,
+      "lifeTimeMin": 5.0,
       "loopDuration": 1.0,
       "loopPingPong": true
     },
@@ -60,32 +60,32 @@
         ],
         "baseAcceleration": [
           0.0,
-          -0.0010000000474974513,
+          0.0,
           0.0
         ],
         "baseVelocity": [
           0.0,
-          -1.7999999523162842,
+          0.0,
           0.0
         ],
         "enableAcceleration": true,
         "velocityRandomRange": [
           0.0,
           0.0,
-          0.009999999776482582
+          0.0
         ]
       },
       "mode": "Linear",
       "pointField": {
-        "attractionStrength": 0.0,
+        "attractionStrength": 10.0,
         "center": [
           0.0,
           0.0,
           0.0
         ],
-        "damping": 0.0,
-        "enabled": false,
-        "falloff": 1.0,
+        "damping": 3.0,
+        "enabled": true,
+        "falloff": 0.0,
         "orbitAxis": [
           0.0,
           1.0,
@@ -93,7 +93,7 @@
         ],
         "orbitStrength": 0.0,
         "radius": 0.0,
-        "repulsionStrength": 0.0,
+        "repulsionStrength": 3.0,
         "useEmitterOffset": true
       },
       "sway": {
@@ -101,19 +101,19 @@
         "frequency": 0.0
       },
       "vortex": {
-        "angularSpeedMax": 8.0,
-        "angularSpeedMin": 4.0,
-        "axis": "Y",
+        "angularSpeedMax": 1.0,
+        "angularSpeedMin": 1.0,
+        "axis": "Z",
         "center": [
           0.0,
           0.0,
           0.0
         ],
-        "inwardSpeedMax": 1.7999999523162842,
-        "inwardSpeedMin": 0.800000011920929,
+        "inwardSpeedMax": -3.0,
+        "inwardSpeedMin": -2.0,
         "useEmitterOffset": true,
-        "verticalSpeedMax": 0.10000000149011612,
-        "verticalSpeedMin": -0.10000000149011612
+        "verticalSpeedMax": 0.0,
+        "verticalSpeedMin": 0.0
       },
       "wind": {
         "acceleration": 8.0,
@@ -224,41 +224,41 @@
     "scale": {
       "enableScaleOverLife": false,
       "endScaleMax": [
-        1.0,
-        1.0,
-        1.0
+        0.6000000238418579,
+        0.6000000238418579,
+        0.6000000238418579
       ],
       "endScaleMin": [
-        1.0,
-        1.0,
-        1.0
+        0.6000000238418579,
+        0.6000000238418579,
+        0.6000000238418579
       ],
       "startScaleMax": [
-        1.0,
-        1.0,
-        1.0
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
       ],
       "startScaleMin": [
-        1.0,
-        1.0,
-        1.0
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
       ]
     }
   },
   "blendMode": "Add",
   "emitter": {
-    "count": 1,
+    "count": 30,
     "frequency": 0.10000000149011612,
     "isActive": true,
     "spawnSize": [
-      1.0,
-      1.0,
-      1.0
+      5.0,
+      5.0,
+      5.0
     ],
     "translate": [
       0.0,
       0.0,
-      0.0
+      7.650000095367432
     ]
   },
   "lightning": {
@@ -268,38 +268,38 @@
       12.0,
       1.0
     ],
-    "branchLength": 0.800000011920929,
-    "branchProbability": 0.3499999940395355,
+    "branchLength": 4.230000019073486,
+    "branchProbability": 0.5149999856948853,
     "coreColor": [
       8.0,
       10.0,
       16.0,
       1.0
     ],
-    "duration": 0.11999999731779099,
+    "duration": 0.36000001430511475,
     "enabled": false,
     "endOffset": [
       0.0,
-      0.0,
+      -5.0,
       0.0
     ],
     "flashExposure": true,
-    "flashExposureValue": 3.5,
+    "flashExposureValue": 5.960000038146973,
     "flashReturnSpeed": 6.0,
-    "jitter": 0.44999998807907104,
+    "jitter": 3.259999990463257,
     "randomRange": [
-      4.0,
+      20.0,
       0.0,
-      4.0
+      20.0
     ],
-    "segmentCount": 16,
+    "segmentCount": 40,
     "startOffset": [
       0.0,
-      6.0,
+      100.0,
       0.0
     ],
-    "thickness": 0.03999999910593033
+    "thickness": 0.11699999868869781
   },
-  "name": "newParticle",
+  "name": "powerParticle",
   "textureFilePath": "resources/circle.png"
 }

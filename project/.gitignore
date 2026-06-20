@@ -1,0 +1,2 @@
+# Generated skybox backups can exceed GitHub's 100 MB file limit.
+resources/skyboxes/*.dds.bak

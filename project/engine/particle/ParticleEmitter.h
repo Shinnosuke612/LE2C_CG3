@@ -11,6 +11,7 @@ public:
 
 	void Update();
 	void Emit();
+	void ResetEmissionState();
 
 	void SetTranslate(const Vector3& translate){ transform_.translate = translate; }
 	void SetScale(const Vector3& scale){ transform_.scale = scale; }

@@ -4,6 +4,7 @@
 
 #include "AbstractSceneFactory.h"
 #include "BaseScene.h"
+#include "../particle/ParticleManager.h"
 
 void SceneManager::ChangeScene(const std::string& sceneName) {
 	assert(sceneFactory_);
@@ -30,6 +31,10 @@ void SceneManager::Update()
 			// 旧シーンの終了
 			scene_->Finalize();
 			delete scene_;
+			scene_ = nullptr;
+
+			// 配置・編集データは保持し、前シーンで生存していた演出だけを破棄する
+			ParticleManager::GetInstance()->ClearActiveParticles();
 		}
 
 		// シーン切り替え

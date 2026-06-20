@@ -73,6 +73,12 @@ public:
 		kZ, // Z軸まわり。XY平面で回る
 	};
 
+	enum class ParticleAlignmentAxis {
+		kX,
+		kY,
+		kZ,
+	};
+
 	struct ParticleLifeDesc {
 		bool isLooping = false;
 		float loopDuration = 1.0f;
@@ -100,12 +106,15 @@ public:
 		Vector3 initialRotationMax = { 0.0f, 0.0f, 0.0f };
 		bool enableRotationOverTime = false;
 		Vector3 rotationSpeed = { 0.0f, 0.0f, 0.0f };
+		bool alignToVelocity = false;
+		ParticleAlignmentAxis alignAxis = ParticleAlignmentAxis::kY;
 	};
 
 	struct ParticleLinearMotionDesc {
 		Vector3 baseVelocity = { 0.0f, -1.8f, 0.0f };
 		Vector3 velocityRandomRange = { 0.0f, 0.0f, 0.01f };
 
+		bool enableAcceleration = true;
 		Vector3 baseAcceleration = { 0.0f, -0.001f, 0.0f };
 		Vector3 accelerationRandomRange = { 0.0f, 0.0f, 0.0f };
 	};
@@ -142,12 +151,46 @@ public:
 		float verticalSpeedMax = 0.1f;
 	};
 
+	// 軸状のVortexとは別に、一点を基準として力を加えるフィールド。
+	struct ParticlePointFieldDesc {
+		bool enabled = false;
+		bool useEmitterOffset = true;
+		Vector3 center = { 0.0f, 0.0f, 0.0f };
+		float radius = 0.0f; // 0なら距離制限なし
+		float attractionStrength = 0.0f;
+		float repulsionStrength = 0.0f;
+		float orbitStrength = 0.0f;
+		Vector3 orbitAxis = { 0.0f, 1.0f, 0.0f };
+		float falloff = 1.0f;
+		float damping = 0.0f;
+	};
+
+	struct ParticleWindFieldDesc {
+		bool enabled = false;
+		bool useEmitterOffset = true;
+		Vector3 center = { 0.0f, 0.0f, 0.0f };
+		Vector3 size = { 20.0f, 20.0f, 20.0f };
+		Vector3 direction = { 1.0f, 0.0f, 0.0f };
+		float strength = 0.0f;
+		bool smoothVelocity = true;
+		float acceleration = 8.0f;
+		bool recoverOutsideField = true;
+		float deceleration = 5.0f;
+		bool enableBoundaryFalloff = true;
+		float boundaryFalloff = 2.0f;
+		float turbulenceStrength = 0.0f;
+		float turbulenceFrequency = 1.0f;
+		float turbulenceScale = 0.1f;
+	};
+
 	struct ParticleMotionDesc {
 		MovementMode mode = MovementMode::kLinear;
 
 		ParticleLinearMotionDesc linear;
 		ParticleSwayDesc sway;
 		ParticleVortexDesc vortex;
+		ParticlePointFieldDesc pointField;
+		ParticleWindFieldDesc wind;
 	};
 
 	struct ParticleColorDesc {
@@ -298,8 +341,14 @@ public:
 		float fadeOutStartRatio = 0.7f;
 		bool enableRotationOverTime = false;
 		Vector3 rotationSpeed = { 0.0f, 0.0f, 0.0f };
+		Vector3 rotationOffset = { 0.0f, 0.0f, 0.0f };
+		bool alignToVelocity = false;
+		ParticleAlignmentAxis alignAxis = ParticleAlignmentAxis::kY;
+		Vector3 velocityAlignmentDirection = { 0.0f, -1.0f, 0.0f };
+		bool hasVelocityAlignmentDirection = false;
 
 		MovementMode movementMode = MovementMode::kLinear;
+		bool linearAccelerationEnabled = true;
 
 		float swayTime = 0.0f;
 		float swayPhase = 0.0f;
@@ -316,6 +365,34 @@ public:
 		float vortexInwardSpeed = 0.0f;
 		float vortexVerticalSpeed = 0.0f;
 		float vortexHeightOffset = 0.0f;
+
+		bool pointFieldEnabled = false;
+		Vector3 pointFieldCenter = { 0.0f, 0.0f, 0.0f };
+		float pointFieldRadius = 0.0f;
+		float pointFieldAttraction = 0.0f;
+		float pointFieldRepulsion = 0.0f;
+		float pointFieldOrbit = 0.0f;
+		Vector3 pointFieldOrbitAxis = { 0.0f, 1.0f, 0.0f };
+		float pointFieldFalloff = 1.0f;
+		float pointFieldDamping = 0.0f;
+
+		bool windEnabled = false;
+		Vector3 windFieldCenter = { 0.0f, 0.0f, 0.0f };
+		Vector3 windFieldHalfSize = { 10.0f, 10.0f, 10.0f };
+		Vector3 windDirection = { 1.0f, 0.0f, 0.0f };
+		float windStrength = 0.0f;
+		Vector3 windVelocity = { 0.0f, 0.0f, 0.0f };
+		bool windSmoothVelocity = true;
+		float windAcceleration = 8.0f;
+		bool windRecoverOutsideField = true;
+		float windDeceleration = 5.0f;
+		bool windBoundaryFalloffEnabled = true;
+		float windBoundaryFalloff = 2.0f;
+		float windTurbulenceStrength = 0.0f;
+		float windTurbulenceFrequency = 1.0f;
+		float windTurbulenceScale = 0.1f;
+		float windPhase = 0.0f;
+		Vector3 windTurbulenceAxis = { 0.0f, 0.0f, 1.0f };
 
 		BillboardMode billboardMode = BillboardMode::kBillboard;
 	};
@@ -357,7 +434,12 @@ public:
 
 	bool HasParticleGroup(const std::string& name) const;
 	void ClearParticleGroup(const std::string& name);
+	void ClearActiveParticles();
 	void CreateParticleGroupIfNeeded(
+		const std::string& name,
+		const std::string& textureFilePath
+	);
+	bool SetParticleGroupTexture(
 		const std::string& name,
 		const std::string& textureFilePath
 	);
@@ -378,14 +460,16 @@ public:
 	bool IsGpuParticleEnabled() const { return gpuParticleEnabled_; }
 	void DrawGpuParticleImGui(const char* windowTitle = "GPU Particle");
 
-	void LoadSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json");
-	void SaveSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json") const;
+	bool LoadSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json");
+	bool SaveSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json") const;
 	void UpdateSceneParticles(const std::string& sceneName);
 	void EmitSceneParticles(const std::string& sceneName);
+	void CycleSceneParticleAssets(const std::string& sceneName);
 	void DrawSceneParticleImGui(
 		const std::string& currentSceneName,
 		const char* windowTitle = "Scene Particles"
 	);
+	void RefreshPlacementAssetsForEffect(const std::string& effectFilePath);
 
 	void QueueLightning(
 		const LightningEmitterDesc& desc,
@@ -397,7 +481,6 @@ public:
 private:
 	struct SceneParticlePlacement {
 		std::string label = "Particle";
-		std::string sceneName = "GAMEPLAY";
 		std::string effectFilePath = "resources/particles/core_burst.json";
 		bool enabled = true;
 		bool emitterActive = true;
@@ -408,6 +491,17 @@ private:
 		ParticleEffectDesc* effect = nullptr;
 		ParticleEmitter* emitter = nullptr;
 	};
+	struct ParticlePlacementAsset {
+		std::string name;
+		std::vector<SceneParticlePlacement> placements;
+	};
+	struct SceneParticleAssetInstance {
+		std::string label = "Particle Asset";
+		std::string assetName;
+		bool enabled = true;
+		Vector3 translate = { 0.0f, 0.0f, 0.0f };
+		std::vector<SceneParticlePlacement> runtimePlacements;
+	};
 
 	void CreateDirectionalLightResource();
 	void CreateGroupVertexResource(ParticleGroup& group);
@@ -417,6 +511,10 @@ private:
 		bool useEffectEmitterSettings = false
 	);
 	void ApplySceneParticleEmitterSettings(SceneParticlePlacement& placement);
+	void ReleasePlacements(std::vector<SceneParticlePlacement>& placements);
+	void RebuildParticleAssetInstance(SceneParticleAssetInstance& instance);
+	void RebuildInstancesUsingAsset(const std::string& assetName);
+	bool LoadPlacementEmitterSettings(SceneParticlePlacement& placement);
 
 	float RandomRange(float min, float max);
 	Vector3 RandomVector3Range(const Vector3& min, const Vector3& max);
@@ -450,8 +548,12 @@ private:
 	std::unordered_map<std::string, ParticleGroup> particleGroups_;
 	GpuParticle gpuParticle_;
 	bool gpuParticleEnabled_ = false;
-	std::unordered_map<std::string, std::vector<SceneParticlePlacement>> sceneParticlePlacements_;
+	std::unordered_map<std::string, ParticlePlacementAsset> particlePlacementAssets_;
+	std::unordered_map<std::string, std::vector<SceneParticleAssetInstance>> sceneParticleAssetInstances_;
+	std::unordered_map<std::string, size_t> sceneParticleAssetCycleSteps_;
 	bool sceneParticleLayoutLoaded_ = false;
+	mutable bool sceneParticleLayoutDirty_ = false;
+	mutable std::string sceneParticlePersistenceMessage_;
 	std::vector<LightningEvent> pendingLightningEvents_;
 	std::vector<ExposureFlashEvent> pendingExposureFlashEvents_;
 	uint32_t lightningSeed_ = 1;
