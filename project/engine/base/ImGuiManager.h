@@ -11,6 +11,7 @@
 class WinApp;
 class DirectXCommon;
 class SrvManager;
+class EditorSession;
 
 class ImGuiManager{
 public:
@@ -38,6 +39,9 @@ public:
 	uint32_t GetSceneViewWidth() const { return sceneViewWidth_; }
 	uint32_t GetSceneViewHeight() const { return sceneViewHeight_; }
 	static bool IsSceneViewInputActive();
+	void SetEditorSession(EditorSession* editorSession) {
+		editorSession_ = editorSession;
+	}
 
 	// Communication with scenes
 	const std::string& GetSelectedProjectFile() const { return selectedProjectFile_; }
@@ -59,6 +63,7 @@ private:
 	void DrawInspectorWindow();
 	void DrawProjectWindow();
 	void DrawConsoleWindow();
+	void DrawPlaybackControls();
 
 	// Helper for project tree
 	void DrawDirectoryTreeNode(const std::filesystem::path& path);
@@ -74,6 +79,8 @@ private:
 	bool showProject_ = true;
 	bool showConsole_ = true;
 	int selectedHierarchyItem_ = 0;
+	uint64_t selectedEntityId_ = 0;
+	EditorSession* editorSession_ = nullptr;
 
 	static bool sceneViewInputActive_;
 

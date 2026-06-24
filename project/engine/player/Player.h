@@ -4,6 +4,7 @@
 
 #include "../collision/OBBCollider.h"
 #include "../math/Vector3.h"
+#include "../math/Transform.h"
 
 class Object3d;
 class Object3dCommon;
@@ -20,6 +21,7 @@ public:
 	const Vector3& GetPosition() const { return position_; }
 	OBBCollider& GetCollider() { return collider_; }
 	Object3d* GetObject() const { return object_; }
+	void SetTransform(const Transform& transform);
 
 private:
 	bool IsColliding(const std::vector<OBBCollider*>& staticColliders) const;

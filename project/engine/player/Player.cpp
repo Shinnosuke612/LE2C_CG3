@@ -78,6 +78,16 @@ void Player::Finalize() {
 	object_ = nullptr;
 }
 
+void Player::SetTransform(const Transform& transform) {
+	if (!object_) {
+		return;
+	}
+	position_ = transform.translate;
+	object_->GetTransform() = transform;
+	ApplyPosition();
+	object_->Update();
+}
+
 bool Player::IsColliding(const std::vector<OBBCollider*>& staticColliders) const {
 	for (const OBBCollider* staticCollider : staticColliders) {
 		if (staticCollider && collider_.Intersects(*staticCollider)) {

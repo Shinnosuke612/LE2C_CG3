@@ -197,6 +197,8 @@
     <ClCompile Include="engine\particle\ParticleEmitter.cpp" />
     <ClCompile Include="engine\scene\TitleScene.cpp" />
     <ClCompile Include="engine\scene\SceneManager.cpp" />
+    <ClCompile Include="engine\scene\SceneDocument.cpp" />
+    <ClCompile Include="engine\scene\EditorSession.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectResource.cpp" />
 	<ClCompile Include="engine\3d\Skybox.cpp" />
 	<ClCompile Include="engine\3d\StarFieldGenerator.cpp" />
@@ -323,6 +325,8 @@
     <ClInclude Include="engine\scene\GamePlayScene.h" />
     <ClInclude Include="engine\scene\TitleScene.h" />
     <ClInclude Include="engine\scene\SceneManager.h" />
+    <ClInclude Include="engine\scene\SceneDocument.h" />
+    <ClInclude Include="engine\scene\EditorSession.h" />
     <ClInclude Include="engine\particle\ParticleEffectResource.h" />
     <ClInclude Include="engine\3d\LightManager.h" />
     <ClInclude Include="engine\3d\ShadowManager.h" />

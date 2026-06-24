@@ -69,6 +69,7 @@ public: //公開メンバ関数
 	void SetTranslate(const Vector3& translate){transform.translate = translate;}
 	void SetModel(const std::string& filePath);
 	void SetCamera(Camera* camera){ this->camera = camera; }
+	void SetParent(const Object3d* parent) { parent_ = parent; }
 	void SetEnvironmentMap(const std::string& textureFilePath, float coefficient);
 	void SetEnvironmentCoefficient(float coefficient);
 	void SetAnimationPlaying(bool isPlaying) { isAnimationPlaying_ = isPlaying; }
@@ -104,6 +105,8 @@ private: //非公開メンバ関数
 	void CreateMaterialResource();
 private://メンバ変数
 	Transform transform;
+	Matrix4x4 objectWorldMatrix_ = MakeIdentity4x4();
+	const Object3d* parent_ = nullptr;
 
 	Object3dCommon* object3dCommon = nullptr;
 

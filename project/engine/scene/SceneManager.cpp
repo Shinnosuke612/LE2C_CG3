@@ -4,6 +4,7 @@
 
 #include "AbstractSceneFactory.h"
 #include "BaseScene.h"
+#include "EditorSession.h"
 #include "../particle/ParticleManager.h"
 
 void SceneManager::ChangeScene(const std::string& sceneName) {
@@ -21,6 +22,17 @@ void SceneManager::ChangeScene(const std::string& sceneName) {
 
 	nextScene_ = newScene;
 	nextSceneName_ = sceneName;
+}
+
+void SceneManager::ReloadCurrentScene() {
+	if (currentSceneName_.empty() || nextScene_) {
+		return;
+	}
+	ChangeScene(currentSceneName_);
+}
+
+SceneDocument* SceneManager::GetActiveSceneDocument() const {
+	return editorSession_ ? &editorSession_->GetActiveDocument() : nullptr;
 }
 
 void SceneManager::Update()

@@ -2,6 +2,8 @@
 
 #include "TitleScene.h"
 #include "SceneManager.h"
+#include "EditorSession.h"
+#include "SceneDocument.h"
 
 #include "../base/DirectXCommon.h"
 #include "../3d/SrvManager.h"
@@ -25,6 +27,219 @@
 #include "../utility/EditableResourcePath.h"
 
 #include "../externals/imgui/imgui.h"
+
+#include <algorithm>
+#include <functional>
+#include <unordered_set>
+
+namespace {
+	const SceneEntity* FindSceneEntity(
+		const SceneManager* sceneManager,
+		const char* name
+	) {
+		SceneDocument* document = sceneManager
+			? sceneManager->GetActiveSceneDocument()
+			: nullptr;
+		return document ? document->FindEntityByName(name) : nullptr;
+	}
+
+	Transform GetSceneTransform(
+		const SceneManager* sceneManager,
+		const char* name,
+		const Transform& fallback
+	) {
+		const SceneEntity* entity = FindSceneEntity(sceneManager, name);
+		return entity ? entity->transform : fallback;
+	}
+
+	std::string GetSceneModelPath(
+		const SceneManager* sceneManager,
+		const char* name,
+		const char* fallback
+	) {
+		const SceneEntity* entity = FindSceneEntity(sceneManager, name);
+		return entity && !entity->modelPath.empty()
+			? entity->modelPath
+			: fallback;
+	}
+
+	void ApplySceneTransform(
+		const SceneManager* sceneManager,
+		const char* name,
+		Object3d* object
+	) {
+		const SceneEntity* entity = FindSceneEntity(sceneManager, name);
+		if (entity && object) {
+			object->GetTransform() = entity->transform;
+		}
+	}
+
+	bool HasComponent(const SceneEntity& entity, const char* componentName) {
+		return std::find(
+			entity.components.begin(),
+			entity.components.end(),
+			componentName
+		) != entity.components.end();
+	}
+
+	bool IsSpecializedSceneEntity(const SceneEntity& entity) {
+		return entity.name == "Terrain" ||
+			entity.name == "Animated Cube" ||
+			entity.name == "Human" ||
+			entity.name == "Player";
+	}
+
+	bool IsSceneEntityActive(
+		const SceneManager* sceneManager,
+		const char* name
+	) {
+		const SceneEntity* entity = FindSceneEntity(sceneManager, name);
+		return !entity || entity->active;
+	}
+
+	bool IsEntityActiveInHierarchy(
+		const SceneDocument& document,
+		const SceneEntity& entity
+	) {
+		if (!entity.active) {
+			return false;
+		}
+		const SceneEntity* parent = document.FindEntity(entity.parentId);
+		while (parent) {
+			if (!parent->active) {
+				return false;
+			}
+			parent = document.FindEntity(parent->parentId);
+		}
+		return true;
+	}
+}
+
+void GamePlayScene::SyncSceneModelObjects() {
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (!document) {
+		ClearSceneModelObjects();
+		return;
+	}
+
+	std::unordered_set<uint64_t> requiredIds;
+	for (const SceneEntity& entity : document->GetEntities()) {
+		if (
+			entity.modelPath.empty() ||
+			!HasComponent(entity, "MeshRenderer") ||
+			IsSpecializedSceneEntity(entity)
+		) {
+			continue;
+		}
+
+		requiredIds.insert(entity.id);
+		auto found = sceneModelObjects_.find(entity.id);
+		if (
+			found != sceneModelObjects_.end() &&
+			found->second.modelPath != entity.modelPath
+		) {
+			delete found->second.object;
+			sceneModelObjects_.erase(found);
+			found = sceneModelObjects_.end();
+		}
+
+		if (found == sceneModelObjects_.end()) {
+			ModelManager::GetInstance()->LoadModel(entity.modelPath);
+			SceneModelObject sceneObject{};
+			sceneObject.object = new Object3d();
+			sceneObject.object->Initialize(Object3dCommon::GetInstance());
+			sceneObject.object->SetModel(entity.modelPath);
+			sceneObject.modelPath = entity.modelPath;
+			found = sceneModelObjects_.emplace(
+				entity.id,
+				std::move(sceneObject)
+			).first;
+		}
+
+		found->second.object->GetTransform() = entity.transform;
+	}
+
+	for (auto iterator = sceneModelObjects_.begin(); iterator != sceneModelObjects_.end();) {
+		if (!requiredIds.contains(iterator->first)) {
+			delete iterator->second.object;
+			iterator = sceneModelObjects_.erase(iterator);
+		} else {
+			++iterator;
+		}
+	}
+
+	auto resolveObject = [this, document](uint64_t entityId) -> Object3d* {
+		if (entityId == 0) {
+			return nullptr;
+		}
+		const auto generic = sceneModelObjects_.find(entityId);
+		if (generic != sceneModelObjects_.end()) {
+			return generic->second.object;
+		}
+		const SceneEntity* entity = document->FindEntity(entityId);
+		if (!entity) {
+			return nullptr;
+		}
+		if (entity->name == "Terrain") {
+			return object3d_;
+		}
+		if (entity->name == "Animated Cube") {
+			return animatedCube_;
+		}
+		if (entity->name == "Human") {
+			return human_;
+		}
+		if (entity->name == "Player" && player_) {
+			return player_->GetObject();
+		}
+		return nullptr;
+	};
+
+	for (const SceneEntity& entity : document->GetEntities()) {
+		const auto found = sceneModelObjects_.find(entity.id);
+		if (found != sceneModelObjects_.end() && found->second.object) {
+			found->second.object->SetParent(resolveObject(entity.parentId));
+		}
+	}
+
+	std::unordered_set<uint64_t> updatedIds;
+	std::unordered_set<uint64_t> updatingIds;
+	std::function<void(uint64_t)> updateEntity;
+	updateEntity = [&](uint64_t entityId) {
+		if (updatedIds.contains(entityId) || updatingIds.contains(entityId)) {
+			return;
+		}
+		const SceneEntity* entity = document->FindEntity(entityId);
+		const auto found = sceneModelObjects_.find(entityId);
+		if (!entity || found == sceneModelObjects_.end() || !found->second.object) {
+			return;
+		}
+		updatingIds.insert(entityId);
+		if (sceneModelObjects_.contains(entity->parentId)) {
+			updateEntity(entity->parentId);
+		}
+		if (IsEntityActiveInHierarchy(*document, *entity)) {
+			found->second.object->Update();
+		}
+		updatingIds.erase(entityId);
+		updatedIds.insert(entityId);
+	};
+	for (const auto& [entityId, sceneObject] : sceneModelObjects_) {
+		(void)sceneObject;
+		updateEntity(entityId);
+	}
+}
+
+void GamePlayScene::ClearSceneModelObjects() {
+	for (auto& [id, sceneObject] : sceneModelObjects_) {
+		(void)id;
+		delete sceneObject.object;
+		sceneObject.object = nullptr;
+	}
+	sceneModelObjects_.clear();
+}
 
 void GamePlayScene::Initialize()
 {
@@ -82,23 +297,56 @@ void GamePlayScene::Initialize()
 
 	object3d_ = new Object3d();
 	object3d_->Initialize(Object3dCommon::GetInstance());
-	object3d_->SetModel("terrain.obj");
-	object3d_->SetTranslate({ 0.0f, -5.0f, 0.0f });
-	object3d_->SetScale({ 10.0f, 10.0f, 10.0f });
+	object3d_->SetModel(GetSceneModelPath(
+		sceneManager_,
+		"Terrain",
+		"terrain.obj"
+	));
+	object3d_->GetTransform() = GetSceneTransform(
+		sceneManager_,
+		"Terrain",
+		Transform{
+			{ 10.0f, 10.0f, 10.0f },
+			{ 0.0f, 0.0f, 0.0f },
+			{ 0.0f, -5.0f, 0.0f }
+		}
+	);
 
 	animatedCube_ = new Object3d();
 	animatedCube_->Initialize(Object3dCommon::GetInstance());
-	animatedCube_->SetModel("AnimatedCube/AnimatedCube.gltf");
-	animatedCube_->SetTranslate({ 3.0f, 10.5f, -2.0f });
-	animatedCube_->SetScale({ 0.65f, 0.65f, 0.65f });
+	animatedCube_->SetModel(GetSceneModelPath(
+		sceneManager_,
+		"Animated Cube",
+		"AnimatedCube/AnimatedCube.gltf"
+	));
+	animatedCube_->GetTransform() = GetSceneTransform(
+		sceneManager_,
+		"Animated Cube",
+		Transform{
+			{ 0.65f, 0.65f, 0.65f },
+			{ 0.0f, 0.0f, 0.0f },
+			{ 3.0f, 10.5f, -2.0f }
+		}
+	);
 	animatedCube_->SetAnimationLoop(true);
 	animatedCube_->SetAnimationSpeed(1.0f);
 
 	human_ = new Object3d();
 	human_->Initialize(Object3dCommon::GetInstance());
-	human_->SetModel("human/walk.gltf");
-	human_->SetTranslate({ -2.0f, 0.0f, -2.0f });
-	human_->SetScale({ 1.0f, 1.0f, 1.0f });
+	human_->SetModel(GetSceneModelPath(
+		sceneManager_,
+		"Human",
+		"human/walk.gltf"
+	));
+	human_->GetTransform() = GetSceneTransform(
+		sceneManager_,
+		"Human",
+		Transform{
+			{ 1.0f, 1.0f, 1.0f },
+			{ 0.0f, 0.0f, 0.0f },
+			{ -2.0f, 0.0f, -2.0f }
+		}
+	);
 	human_->SetAnimationLoop(true);
 	human_->SetAnimationSpeed(1.0f);
 	human_->SetEnvironmentMap(
@@ -110,7 +358,21 @@ void GamePlayScene::Initialize()
 	camera_->SetOrbitTarget(target);
 
 	player_ = new Player();
-	player_->Initialize(Object3dCommon::GetInstance(), "Cube.obj");
+	const std::string playerModelPath = GetSceneModelPath(
+		sceneManager_,
+		"Player",
+		"Cube.obj"
+	);
+	player_->Initialize(Object3dCommon::GetInstance(), playerModelPath.c_str());
+	player_->SetTransform(GetSceneTransform(
+		sceneManager_,
+		"Player",
+		Transform{
+			{ 1.0f, 1.0f, 1.0f },
+			{ 0.0f, 0.0f, 0.0f },
+			{ 0.0f, 1.0f, -4.0f }
+		}
+	));
 
 	auto addStageObject =
 		[this](
@@ -184,6 +446,22 @@ void GamePlayScene::Initialize()
 
 void GamePlayScene::Update()
 {
+	ApplySceneTransform(sceneManager_, "Terrain", object3d_);
+	ApplySceneTransform(sceneManager_, "Animated Cube", animatedCube_);
+	ApplySceneTransform(sceneManager_, "Human", human_);
+	EditorSession* editorSession = sceneManager_
+		? sceneManager_->GetEditorSession()
+		: nullptr;
+	if (editorSession && editorSession->IsEditing() && player_) {
+		const SceneEntity* playerEntity = FindSceneEntity(
+			sceneManager_,
+			"Player"
+		);
+		if (playerEntity) {
+			player_->SetTransform(playerEntity->transform);
+		}
+	}
+
 	std::string particlePath;
 	if (ImGuiManager::GetInstance() && ImGuiManager::GetInstance()->GetRequestLoadParticle(particlePath)) {
 		ParticleEffectDesc loadedEffect{};
@@ -388,10 +666,17 @@ void GamePlayScene::Update()
 	if (human_) {
 		human_->Update();
 	}
-	if (player_) {
+	if (player_ && (!editorSession || editorSession->IsPlaying())) {
 		player_->Update(staticColliders_);
-
+		SceneDocument* document = sceneManager_->GetActiveSceneDocument();
+		SceneEntity* playerEntity = document
+			? document->FindEntityByName("Player")
+			: nullptr;
+		if (playerEntity && player_->GetObject()) {
+			playerEntity->transform = player_->GetObject()->GetTransform();
+		}
 	}
+	SyncSceneModelObjects();
 	camera_->Update();
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
@@ -433,22 +718,35 @@ void GamePlayScene::Draw()
 		);
 	}
 
-	object3d_->Draw();
-	//if (plane_) {
-	//	plane_->Draw();
-	//}
-	//if (axis) {
-	//	axis->Draw();
-	//}
-	//if (animatedCube_) {
-	//	animatedCube_->Draw();
-	//}
-	//if (human_) {
-	//	human_->Draw();
-	//}
-	//if (player_) {
-	//	player_->Draw();
-	//}
+	if (object3d_ && IsSceneEntityActive(sceneManager_, "Terrain")) {
+		object3d_->Draw();
+	}
+	if (plane_) {
+		plane_->Draw();
+	}
+	if (axis) {
+		axis->Draw();
+	}
+	if (animatedCube_ && IsSceneEntityActive(sceneManager_, "Animated Cube")) {
+		animatedCube_->Draw();
+	}
+	if (human_ && IsSceneEntityActive(sceneManager_, "Human")) {
+		human_->Draw();
+	}
+	if (player_ && IsSceneEntityActive(sceneManager_, "Player")) {
+		player_->Draw();
+	}
+	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
+		for (const SceneEntity& entity : document->GetEntities()) {
+			if (!IsEntityActiveInHierarchy(*document, entity)) {
+				continue;
+			}
+			const auto found = sceneModelObjects_.find(entity.id);
+			if (found != sceneModelObjects_.end() && found->second.object) {
+				found->second.object->Draw();
+			}
+		}
+	}
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
 			stageObject.object->Draw();
@@ -473,8 +771,13 @@ void GamePlayScene::DrawShadow()
 	}
 
 	std::vector<Object3d*> shadowCasters;
-	shadowCasters.reserve(4 + stageObjects_.size() + (player_ ? 1 : 0));
-	shadowCasters.push_back(object3d_);
+	shadowCasters.reserve(
+		4 + stageObjects_.size() + sceneModelObjects_.size() +
+		(player_ ? 1 : 0)
+	);
+	if (object3d_ && IsSceneEntityActive(sceneManager_, "Terrain")) {
+		shadowCasters.push_back(object3d_);
+	}
 	//if (plane_) {
 	//	shadowCasters.push_back(plane_);
 	//}
@@ -495,6 +798,17 @@ void GamePlayScene::DrawShadow()
 			shadowCasters.push_back(stageObject.object);
 		}
 	}
+	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
+		for (const SceneEntity& entity : document->GetEntities()) {
+			if (!IsEntityActiveInHierarchy(*document, entity)) {
+				continue;
+			}
+			const auto found = sceneModelObjects_.find(entity.id);
+			if (found != sceneModelObjects_.end() && found->second.object) {
+				shadowCasters.push_back(found->second.object);
+			}
+		}
+	}
 	if (!shadowCasters.empty()) {
 		shadowManager_->Render(
 			*lightManager_,
@@ -506,6 +820,7 @@ void GamePlayScene::DrawShadow()
 
 void GamePlayScene::Finalize()
 {
+	ClearSceneModelObjects();
 	for (Sprite* sprite : sprites_) {
 		delete sprite;
 	}

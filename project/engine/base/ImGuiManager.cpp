@@ -3,6 +3,8 @@
 
 #include <cassert>
 #include <algorithm>
+#include <cstring>
+#include <functional>
 
 #include "WinApp.h"
 #include "DirectXCommon.h"
@@ -10,6 +12,8 @@
 #include "../2d/TextureManager.h"
 #include "../3d/ModelManager.h"
 #include "../particle/ParticleEffectResource.h"
+#include "../scene/EditorSession.h"
+#include "../scene/SceneDocument.h"
 
 #include "../../externals/imgui/imgui.h"
 #include "../../externals/imgui/imgui_internal.h"
@@ -230,6 +234,7 @@ void ImGuiManager::CreateDockSpace(){
 			}
 			ImGui::EndMenu();
 		}
+		DrawPlaybackControls();
 		ImGui::EndMenuBar();
 	}
 
@@ -244,6 +249,60 @@ void ImGuiManager::CreateDockSpace(){
 
 	ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f));
 	ImGui::End();
+}
+
+void ImGuiManager::DrawPlaybackControls() {
+	if (!editorSession_) {
+		return;
+	}
+
+	ImGui::Separator();
+	const EditorPlayState state = editorSession_->GetState();
+	if (state == EditorPlayState::Edit) {
+		if (ImGui::SmallButton("Play")) {
+			editorSession_->Play();
+		}
+	}
+	else {
+		if (ImGui::SmallButton("Stop")) {
+			editorSession_->Stop();
+		}
+		ImGui::SameLine();
+		if (state == EditorPlayState::Paused) {
+			if (ImGui::SmallButton("Resume")) {
+				editorSession_->Resume();
+			}
+		}
+		else if (ImGui::SmallButton("Pause")) {
+			editorSession_->Pause();
+		}
+	}
+
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!editorSession_->IsEditing());
+	const bool saveRequested = ImGui::SmallButton("Save Scene");
+	ImGui::EndDisabled();
+	const ImGuiIO& io = ImGui::GetIO();
+	if (
+		editorSession_->IsEditing() &&
+		(saveRequested || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)))
+	) {
+		editorSession_->Save();
+	}
+
+	ImGui::SameLine();
+	if (state == EditorPlayState::Playing) {
+		ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.4f, 1.0f), "Playing");
+	}
+	else if (state == EditorPlayState::Paused) {
+		ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f), "Paused");
+	}
+	else if (editorSession_->GetEditDocument().IsDirty()) {
+		ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.25f, 1.0f), "Unsaved");
+	}
+	else {
+		ImGui::TextDisabled("Edit");
+	}
 }
 
 void ImGuiManager::BuildDefaultLayout() {
@@ -298,6 +357,204 @@ void ImGuiManager::BuildDefaultLayout() {
 
 void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 	ImGui::Begin("Hierarchy", &showHierarchy_);
+	if (editorSession_) {
+		SceneDocument& document = editorSession_->GetActiveDocument();
+		ImGui::BeginDisabled(!editorSession_->IsEditing());
+		bool createRequested = false;
+		uint64_t createParentId = 0;
+		if (ImGui::SmallButton("+")) {
+			createRequested = true;
+		}
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("Create Empty Entity");
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		ImGui::TextDisabled("%zu entities", document.GetEntities().size());
+		ImGui::Separator();
+
+		uint64_t removeId = 0;
+		uint64_t duplicateId = 0;
+		uint64_t reparentId = 0;
+		uint64_t reparentTargetId = 0;
+		uint64_t moveId = 0;
+		int moveDirection = 0;
+		if (
+			editorSession_->IsEditing() &&
+			selectedEntityId_ != 0 &&
+			ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+			!ImGui::GetIO().WantTextInput
+		) {
+			if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+				removeId = selectedEntityId_;
+			}
+			if (
+				ImGui::GetIO().KeyCtrl &&
+				ImGui::IsKeyPressed(ImGuiKey_D, false)
+			) {
+				duplicateId = selectedEntityId_;
+			}
+		}
+
+		auto acceptEntityDrop = [&](uint64_t parentId) {
+			if (ImGui::BeginDragDropTarget()) {
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+					"SCENE_ENTITY_ID"
+				)) {
+					if (payload->DataSize == sizeof(uint64_t)) {
+						std::memcpy(
+							&reparentId,
+							payload->Data,
+							sizeof(uint64_t)
+						);
+						reparentTargetId = parentId;
+					}
+				}
+				ImGui::EndDragDropTarget();
+			}
+		};
+
+		std::function<void(uint64_t)> drawEntity;
+		drawEntity = [&](uint64_t entityId) {
+			const SceneEntity* entity = document.FindEntity(entityId);
+			if (!entity) {
+				return;
+			}
+			const bool hasChildren = std::any_of(
+				document.GetEntities().begin(),
+				document.GetEntities().end(),
+				[entityId](const SceneEntity& candidate) {
+					return candidate.parentId == entityId;
+				}
+			);
+
+			ImGui::PushID(static_cast<int>(entity->id));
+			ImGuiTreeNodeFlags flags =
+				ImGuiTreeNodeFlags_OpenOnArrow |
+				ImGuiTreeNodeFlags_SpanAvailWidth;
+			if (!hasChildren) {
+				flags |= ImGuiTreeNodeFlags_Leaf |
+					ImGuiTreeNodeFlags_NoTreePushOnOpen;
+			}
+			if (selectedEntityId_ == entity->id) {
+				flags |= ImGuiTreeNodeFlags_Selected;
+			}
+			const std::string label = entity->active
+				? entity->name
+				: entity->name + " (inactive)";
+			const bool open = ImGui::TreeNodeEx(
+				"##Entity",
+				flags,
+				"%s",
+				label.c_str()
+			);
+			if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+				selectedEntityId_ = entity->id;
+				selectedProjectFile_.clear();
+			}
+
+			if (editorSession_->IsEditing() && ImGui::BeginDragDropSource()) {
+				const uint64_t draggedId = entity->id;
+				ImGui::SetDragDropPayload(
+					"SCENE_ENTITY_ID",
+					&draggedId,
+					sizeof(draggedId)
+				);
+				ImGui::TextUnformatted(entity->name.c_str());
+				ImGui::EndDragDropSource();
+			}
+			if (editorSession_->IsEditing()) {
+				acceptEntityDrop(entity->id);
+			}
+
+			if (
+				editorSession_->IsEditing() &&
+				ImGui::BeginPopupContextItem("EntityContext")
+			) {
+				if (ImGui::MenuItem("Create Child")) {
+					createRequested = true;
+					createParentId = entity->id;
+				}
+				if (ImGui::MenuItem("Duplicate")) {
+					duplicateId = entity->id;
+				}
+				ImGui::Separator();
+				if (ImGui::MenuItem("Move Up")) {
+					moveId = entity->id;
+					moveDirection = -1;
+				}
+				if (ImGui::MenuItem("Move Down")) {
+					moveId = entity->id;
+					moveDirection = 1;
+				}
+				ImGui::Separator();
+				if (ImGui::MenuItem("Delete")) {
+					removeId = entity->id;
+				}
+				ImGui::EndPopup();
+			}
+
+			if (hasChildren && open) {
+				for (const SceneEntity& child : document.GetEntities()) {
+					if (child.parentId == entity->id) {
+						drawEntity(child.id);
+					}
+				}
+				ImGui::TreePop();
+			}
+			ImGui::PopID();
+		};
+
+		const char* rootName = document.GetSceneName().empty()
+			? (sceneName && sceneName[0] != '\0' ? sceneName : "Scene")
+			: document.GetSceneName().c_str();
+		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+		if (ImGui::TreeNodeEx(
+			"##SceneRoot",
+			ImGuiTreeNodeFlags_DefaultOpen |
+				ImGuiTreeNodeFlags_OpenOnArrow |
+				ImGuiTreeNodeFlags_SpanAvailWidth,
+			"%s",
+			rootName
+		)) {
+			if (editorSession_->IsEditing()) {
+				acceptEntityDrop(0);
+			}
+			for (const SceneEntity& entity : document.GetEntities()) {
+				if (entity.parentId == 0) {
+					drawEntity(entity.id);
+				}
+			}
+			ImGui::TreePop();
+		}
+
+		if (reparentId != 0) {
+			document.SetParent(reparentId, reparentTargetId);
+		}
+		if (moveId != 0) {
+			document.MoveEntity(moveId, moveDirection);
+		}
+		if (removeId != 0) {
+			if (
+				selectedEntityId_ == removeId ||
+				document.IsDescendantOf(selectedEntityId_, removeId)
+			) {
+				selectedEntityId_ = 0;
+			}
+			document.RemoveEntity(removeId);
+		}
+		if (duplicateId != 0) {
+			selectedEntityId_ = document.DuplicateEntity(duplicateId);
+		}
+		if (createRequested) {
+			SceneEntity& entity = document.CreateEntity("Entity", createParentId);
+			selectedEntityId_ = entity.id;
+			selectedProjectFile_.clear();
+		}
+		ImGui::End();
+		return;
+	}
+
 	const char* rootName = sceneName && sceneName[0] != '\0'
 		? sceneName
 		: "Scene";
@@ -406,6 +663,34 @@ void ImGuiManager::DrawInspectorWindow() {
 					}
 				}
 			}
+
+			ImGui::Separator();
+			ImGui::BeginDisabled(
+				!editorSession_ || !editorSession_->IsEditing()
+			);
+			if (ImGui::Button("Add Model to Scene")) {
+				SceneDocument& document = editorSession_->GetEditDocument();
+				std::string entityName = path.stem().string();
+				if (entityName.empty()) {
+					entityName = "Model";
+				}
+				const std::string baseName = entityName;
+				uint32_t suffix = 2;
+				while (document.FindEntityByName(entityName)) {
+					entityName = baseName + " " + std::to_string(suffix++);
+				}
+				SceneEntity& entity = document.CreateEntity(entityName);
+				entity.modelPath = relativePath;
+				entity.components = { "MeshRenderer" };
+				selectedEntityId_ = entity.id;
+				selectedProjectFile_.clear();
+			}
+			ImGui::EndDisabled();
+			if (!editorSession_) {
+				ImGui::TextDisabled("Scene editing is unavailable");
+			} else if (!editorSession_->IsEditing()) {
+				ImGui::TextDisabled("Stop Play Mode to edit the scene");
+			}
 		}
 		else if (ext == ".wav") {
 			// Audio asset inspector
@@ -449,7 +734,84 @@ void ImGuiManager::DrawInspectorWindow() {
 		else {
 			ImGui::Text("Type: Unknown Asset / Plain File");
 		}
-	} else {
+	}
+	else if (editorSession_ && selectedEntityId_ != 0) {
+		SceneDocument& document = editorSession_->GetActiveDocument();
+		SceneEntity* entity = document.FindEntity(selectedEntityId_);
+		if (!entity) {
+			selectedEntityId_ = 0;
+			ImGui::TextDisabled("Entity no longer exists");
+			ImGui::End();
+			return;
+		}
+
+		char nameBuffer[128]{};
+		strncpy_s(nameBuffer, entity->name.c_str(), _TRUNCATE);
+		if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+			entity->name = nameBuffer;
+			document.MarkDirty();
+		}
+		if (ImGui::Checkbox("Active", &entity->active)) {
+			document.MarkDirty();
+		}
+
+		const SceneEntity* parent = document.FindEntity(entity->parentId);
+		const char* parentName = parent ? parent->name.c_str() : "None (Root)";
+		if (ImGui::BeginCombo("Parent", parentName)) {
+			if (ImGui::Selectable("None (Root)", entity->parentId == 0)) {
+				document.SetParent(entity->id, 0);
+			}
+			for (const SceneEntity& candidate : document.GetEntities()) {
+				if (
+					candidate.id == entity->id ||
+					document.IsDescendantOf(candidate.id, entity->id)
+				) {
+					continue;
+				}
+				if (ImGui::Selectable(
+					candidate.name.c_str(),
+					entity->parentId == candidate.id
+				)) {
+					document.SetParent(entity->id, candidate.id);
+				}
+			}
+			ImGui::EndCombo();
+		}
+
+		ImGui::SeparatorText("Transform");
+		bool transformChanged = false;
+		transformChanged |= ImGui::DragFloat3(
+			"Position",
+			&entity->transform.translate.x,
+			0.05f
+		);
+		transformChanged |= ImGui::DragFloat3(
+			"Rotation",
+			&entity->transform.rotate.x,
+			0.01f
+		);
+		transformChanged |= ImGui::DragFloat3(
+			"Scale",
+			&entity->transform.scale.x,
+			0.01f,
+			0.001f,
+			1000.0f
+		);
+		if (transformChanged) {
+			document.MarkDirty();
+		}
+
+		for (const std::string& component : entity->components) {
+			ImGui::SeparatorText(component.c_str());
+			if (component == "MeshRenderer") {
+				ImGui::Text("Model: %s", entity->modelPath.c_str());
+			}
+		}
+		if (editorSession_->IsPlaying() || editorSession_->IsPaused()) {
+			ImGui::TextDisabled("Play mode changes are temporary");
+		}
+	}
+	else {
 		// Default scene hierarchy inspector
 		static const char* itemNames[] = {
 			"Main Camera",
@@ -515,6 +877,7 @@ void ImGuiManager::DrawProjectWindow() {
 				std::string displayName = prefix + "  " + fileName;
 				if (ImGui::Selectable(displayName.c_str(), isSelected)) {
 					selectedProjectFile_ = filePath;
+					selectedEntityId_ = 0;
 					
 					// Stop and unload preview sound if we change file
 					if (previewSoundData_.pBuffer) {

@@ -1,5 +1,6 @@
 #include "Game.h"
 #include "SceneFactory.h"
+#include "EditorSession.h"
 
 #include "../base/DirectXCommon.h"
 #include "../base/BloomRenderer.h"
@@ -22,15 +23,94 @@
 #include "../externals/imgui/imgui.h"
 
 #include <algorithm>
+#include <utility>
 
 void Game::Initialize() {
 	// 基底クラスの初期化処理
 	Framework::Initialize();
 
+	editorSession_ = new EditorSession();
+	const bool sceneLoaded = editorSession_->Initialize(
+		"GAMEPLAY",
+		"resources/scenes/gameplay.scene.json"
+	);
+	if (!sceneLoaded) {
+		SceneDocument& document = editorSession_->GetEditDocument();
+		auto addEntity = [&document](
+			const char* name,
+			const char* modelPath,
+			const Transform& transform,
+			std::vector<std::string> components
+		) {
+			SceneEntity& entity = document.CreateEntity(name);
+			entity.modelPath = modelPath ? modelPath : "";
+			entity.transform = transform;
+			entity.components = std::move(components);
+		};
+		addEntity(
+			"Main Camera",
+			"",
+			Transform{},
+			{ "Camera" }
+		);
+		addEntity(
+			"Environment",
+			"",
+			Transform{},
+			{ "Environment" }
+		);
+		addEntity(
+			"Terrain",
+			"terrain.obj",
+			Transform{
+				{ 10.0f, 10.0f, 10.0f },
+				{ 0.0f, 0.0f, 0.0f },
+				{ 0.0f, -5.0f, 0.0f }
+			},
+			{ "MeshRenderer" }
+		);
+		addEntity(
+			"Animated Cube",
+			"AnimatedCube/AnimatedCube.gltf",
+			Transform{
+				{ 0.65f, 0.65f, 0.65f },
+				{ 0.0f, 0.0f, 0.0f },
+				{ 3.0f, 10.5f, -2.0f }
+			},
+			{ "MeshRenderer", "Animator" }
+		);
+		addEntity(
+			"Human",
+			"human/walk.gltf",
+			Transform{
+				{ 1.0f, 1.0f, 1.0f },
+				{ 0.0f, 0.0f, 0.0f },
+				{ -2.0f, 0.0f, -2.0f }
+			},
+			{ "MeshRenderer", "Animator" }
+		);
+		addEntity(
+			"Player",
+			"Cube.obj",
+			Transform{
+				{ 1.0f, 1.0f, 1.0f },
+				{ 0.0f, 0.0f, 0.0f },
+				{ 0.0f, 1.0f, -4.0f }
+			},
+			{ "MeshRenderer", "PlayerBehavior", "OBBCollider" }
+		);
+		editorSession_->Save();
+	}
+
 	sceneManager_ = new SceneManager();
+	sceneManager_->SetEditorSession(editorSession_);
 	sceneFactory_ = new SceneFactory();
 	sceneManager_->SetSceneFactory(sceneFactory_);
 	sceneManager_->ChangeScene("GAMEPLAY");
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	imguiManager_->SetEditorSession(editorSession_);
+#endif
 
 	sceneRenderTarget_ = new SceneRenderTarget();
 	SceneRenderTarget::Desc sceneTargetDesc{};
@@ -377,7 +457,12 @@ void Game::Update() {
 	}
 #endif
 
-	sceneManager_->Update();
+	if (editorSession_->ConsumeReloadRequest()) {
+		sceneManager_->ReloadCurrentScene();
+	}
+	if (!editorSession_->IsPaused()) {
+		sceneManager_->Update();
+	}
 
 	ParticleManager::ExposureFlashEvent exposureFlash{};
 	while (ParticleManager::GetInstance()->ConsumeExposureFlashEvent(exposureFlash)) {
@@ -570,6 +655,12 @@ void Game::Draw() {
 
 void Game::Finalize() {
 
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (imguiManager_) {
+		imguiManager_->SetEditorSession(nullptr);
+	}
+#endif
+
 	delete bloomRenderer_;
 	bloomRenderer_ = nullptr;
 
@@ -588,6 +679,9 @@ void Game::Finalize() {
 		delete sceneManager_;
 		sceneManager_ = nullptr;
 	}
+
+	delete editorSession_;
+	editorSession_ = nullptr;
 
 	// 基底クラスの終了処理
 	Framework::Finalize();

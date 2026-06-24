@@ -119,28 +119,8 @@
     "GAMEPLAY": [
       {
         "assetName": "rainAsset",
-        "enabled": false,
-        "label": "rainAsset 0",
-        "translate": [
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      {
-        "assetName": "BeamAsset",
-        "enabled": false,
-        "label": "BeamAsset 1",
-        "translate": [
-          0.0,
-          0.0,
-          0.0
-        ]
-      },
-      {
-        "assetName": "HitAsset",
         "enabled": true,
-        "label": "HitAsset 2",
+        "label": "rainAsset 0",
         "translate": [
           0.0,
           0.0,

@@ -1,7 +1,10 @@
 #pragma once
 #include "BaseScene.h"
+#include <cstdint>
 #include <vector>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include "../audio/Audio.h"
 #include "../particle/ParticleEffectResource.h"
 #include "../particle/ParticleEffectEditor.h"
@@ -27,6 +30,11 @@ private:
 		OBBCollider collider;
 	};
 
+	struct SceneModelObject {
+		Object3d* object = nullptr;
+		std::string modelPath;
+	};
+
 public: //メンバ関数
 
 	//初期化
@@ -43,6 +51,9 @@ public: //メンバ関数
 	void DrawShadow() override;
 
 private:
+	void SyncSceneModelObjects();
+	void ClearSceneModelObjects();
+
 	SpriteCommon* spriteCommon_ = nullptr;
 	Camera* camera_ = nullptr;
 	ParticleEmitter* emitter_ = nullptr;
@@ -59,6 +70,7 @@ private:
 	float jointAxisLength_ = 0.06f;
 	Player* player_ = nullptr;
 	std::vector<StageObject> stageObjects_;
+	std::unordered_map<uint64_t, SceneModelObject> sceneModelObjects_;
 	std::vector<OBBCollider*> staticColliders_;
 	std::vector<Sprite*> sprites_;
 	Audio::SoundData soundData_{};

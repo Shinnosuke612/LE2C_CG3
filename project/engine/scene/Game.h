@@ -5,6 +5,7 @@
 
 class SceneRenderTarget;
 class FullscreenCopy;
+class EditorSession;
 
 class Game : public Framework {
 public:
@@ -18,6 +19,7 @@ private:
 	SceneRenderTarget* GetPostProcessOutputTarget() const;
 
 	SceneManager* sceneManager_ = nullptr;
+	EditorSession* editorSession_ = nullptr;
 	SceneRenderTarget* sceneRenderTarget_ = nullptr;
 	SceneRenderTarget* postProcessRenderTargets_[2]{};
 	FullscreenCopy* fullscreenCopy_ = nullptr;

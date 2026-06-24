@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "sceneName": "GAMEPLAY",
+  "entities": [
+    {
+      "id": 1,
+      "parentId": 0,
+      "name": "Main Camera",
+      "active": true,
+      "transform": { "scale": [1.0, 1.0, 1.0], "rotate": [0.0, 0.0, 0.0], "translate": [0.0, 0.0, 0.0] },
+      "modelPath": "",
+      "components": ["Camera"]
+    },
+    {
+      "id": 2,
+      "parentId": 0,
+      "name": "Environment",
+      "active": true,
+      "transform": { "scale": [1.0, 1.0, 1.0], "rotate": [0.0, 0.0, 0.0], "translate": [0.0, 0.0, 0.0] },
+      "modelPath": "",
+      "components": ["Environment"]
+    },
+    {
+      "id": 3,
+      "parentId": 0,
+      "name": "Terrain",
+      "active": true,
+      "transform": { "scale": [10.0, 10.0, 10.0], "rotate": [0.0, 0.0, 0.0], "translate": [0.0, -5.0, 0.0] },
+      "modelPath": "terrain.obj",
+      "components": ["MeshRenderer"]
+    },
+    {
+      "id": 4,
+      "parentId": 0,
+      "name": "Animated Cube",
+      "active": true,
+      "transform": { "scale": [0.65, 0.65, 0.65], "rotate": [0.0, 0.0, 0.0], "translate": [3.0, 10.5, -2.0] },
+      "modelPath": "AnimatedCube/AnimatedCube.gltf",
+      "components": ["MeshRenderer", "Animator"]
+    },
+    {
+      "id": 5,
+      "parentId": 0,
+      "name": "Human",
+      "active": true,
+      "transform": { "scale": [1.0, 1.0, 1.0], "rotate": [0.0, 0.0, 0.0], "translate": [-2.0, 0.0, -2.0] },
+      "modelPath": "human/walk.gltf",
+      "components": ["MeshRenderer", "Animator"]
+    },
+    {
+      "id": 6,
+      "parentId": 0,
+      "name": "Player",
+      "active": true,
+      "transform": { "scale": [1.0, 1.0, 1.0], "rotate": [0.0, 0.0, 0.0], "translate": [0.0, 1.0, -4.0] },
+      "modelPath": "Cube.obj",
+      "components": ["MeshRenderer", "PlayerBehavior", "OBBCollider"]
+    }
+  ]
+}

@@ -70,7 +70,18 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 }
 
 void Object3d::Update(){
-	Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
+	objectWorldMatrix_ = MakeAffineMatrix(
+		transform.scale,
+		transform.rotate,
+		transform.translate
+	);
+	if (parent_) {
+		objectWorldMatrix_ = Multiply(
+			objectWorldMatrix_,
+			parent_->objectWorldMatrix_
+		);
+	}
+	const Matrix4x4& worldMatrix = objectWorldMatrix_;
 
 	// ModelのRootNode行列を適用する
 	Matrix4x4 modelWorldMatrix = worldMatrix;
