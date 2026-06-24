@@ -33,6 +33,7 @@ public:
 	SceneDocument& GetActiveDocument();
 	const SceneDocument& GetActiveDocument() const;
 	const std::string& GetSceneFilePath() const { return sceneFilePath_; }
+	void RequestSceneReload() { reloadRequested_ = true; }
 
 	bool ConsumeReloadRequest();
 

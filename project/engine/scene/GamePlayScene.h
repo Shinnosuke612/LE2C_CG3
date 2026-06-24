@@ -35,6 +35,11 @@ private:
 		std::string modelPath;
 	};
 
+	struct SceneSpriteObject {
+		Sprite* sprite = nullptr;
+		std::string texturePath;
+	};
+
 public: //メンバ関数
 
 	//初期化
@@ -53,6 +58,8 @@ public: //メンバ関数
 private:
 	void SyncSceneModelObjects();
 	void ClearSceneModelObjects();
+	void SyncSceneSpriteObjects();
+	void ClearSceneSpriteObjects();
 
 	SpriteCommon* spriteCommon_ = nullptr;
 	Camera* camera_ = nullptr;
@@ -71,6 +78,7 @@ private:
 	Player* player_ = nullptr;
 	std::vector<StageObject> stageObjects_;
 	std::unordered_map<uint64_t, SceneModelObject> sceneModelObjects_;
+	std::unordered_map<uint64_t, SceneSpriteObject> sceneSpriteObjects_;
 	std::vector<OBBCollider*> staticColliders_;
 	std::vector<Sprite*> sprites_;
 	Audio::SoundData soundData_{};

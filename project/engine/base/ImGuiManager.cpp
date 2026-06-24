@@ -5,12 +5,17 @@
 #include <algorithm>
 #include <cstring>
 #include <functional>
+#include <numbers>
+#include <unordered_set>
 
 #include "WinApp.h"
 #include "DirectXCommon.h"
 #include "../3d/SrvManager.h"
 #include "../2d/TextureManager.h"
 #include "../3d/ModelManager.h"
+#include "../3d/Object3dCommon.h"
+#include "../3d/Camera.h"
+#include "../math/Matrix4x4.h"
 #include "../particle/ParticleEffectResource.h"
 #include "../scene/EditorSession.h"
 #include "../scene/SceneDocument.h"
@@ -19,14 +24,108 @@
 #include "../../externals/imgui/imgui_internal.h"
 #include "../../externals/imgui/imgui_impl_win32.h"
 #include "../../externals/imgui/imgui_impl_dx12.h"
+#include "../../externals/ImGuizmo/ImGuizmo.h"
 
 namespace {
+	bool IsModelAssetPath(const std::filesystem::path& path) {
+		std::string extension = path.extension().string();
+		std::transform(
+			extension.begin(),
+			extension.end(),
+			extension.begin(),
+			::tolower
+		);
+		return extension == ".obj" || extension == ".gltf";
+	}
+
+	bool IsTextureAssetPath(const std::filesystem::path& path) {
+		std::string extension = path.extension().string();
+		std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+		return extension == ".png" || extension == ".dds";
+	}
+
 	std::string GetPathRelativeToResources(const std::string& fullPath) {
 		const std::string prefix = "resources/";
 		if (fullPath.rfind(prefix, 0) == 0) {
 			return fullPath.substr(prefix.length());
 		}
 		return fullPath;
+	}
+
+	std::vector<std::string> CollectModelAssetPaths() {
+		std::vector<std::string> paths;
+		std::error_code error;
+		std::filesystem::recursive_directory_iterator iterator(
+			"resources",
+			std::filesystem::directory_options::skip_permission_denied,
+			error
+		);
+		const std::filesystem::recursive_directory_iterator end;
+		while (!error && iterator != end) {
+			if (iterator->is_regular_file(error) && IsModelAssetPath(iterator->path())) {
+				paths.push_back(GetPathRelativeToResources(
+					iterator->path().generic_string()
+				));
+			}
+			iterator.increment(error);
+		}
+		std::sort(paths.begin(), paths.end());
+		return paths;
+	}
+
+	std::vector<std::string> CollectTextureAssetPaths() {
+		std::vector<std::string> paths;
+		std::error_code error;
+		std::filesystem::recursive_directory_iterator iterator(
+			"resources",
+			std::filesystem::directory_options::skip_permission_denied,
+			error
+		);
+		const std::filesystem::recursive_directory_iterator end;
+		while (!error && iterator != end) {
+			if (iterator->is_regular_file(error) && IsTextureAssetPath(iterator->path())) {
+				paths.push_back(iterator->path().generic_string());
+			}
+			iterator.increment(error);
+		}
+		std::sort(paths.begin(), paths.end());
+		return paths;
+	}
+
+	bool HasComponent(const SceneEntity& entity, const char* name) {
+		return std::find(entity.components.begin(), entity.components.end(), name) !=
+			entity.components.end();
+	}
+
+	Matrix4x4 CalculateSceneWorldMatrix(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		std::unordered_set<uint64_t>& visited
+	) {
+		const Matrix4x4 localMatrix = MakeAffineMatrix(
+			entity.transform.scale,
+			entity.transform.rotate,
+			entity.transform.translate
+		);
+		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
+			return localMatrix;
+		}
+		const SceneEntity* parent = document.FindEntity(entity.parentId);
+		if (!parent) {
+			return localMatrix;
+		}
+		return Multiply(
+			localMatrix,
+			CalculateSceneWorldMatrix(document, *parent, visited)
+		);
+	}
+
+	Matrix4x4 CalculateSceneWorldMatrix(
+		const SceneDocument& document,
+		const SceneEntity& entity
+	) {
+		std::unordered_set<uint64_t> visited;
+		return CalculateSceneWorldMatrix(document, entity, visited);
 	}
 }
 
@@ -120,6 +219,7 @@ void ImGuiManager::BeginFrame(){
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
+	ImGuizmo::BeginFrame();
 
 	CreateDockSpace();
 }
@@ -159,16 +259,116 @@ void ImGuiManager::DrawEditorWorkspace(
 		ImVec2(0.0f, 0.0f),
 		ImVec2(1.0f, 1.0f)
 	);
-	ImVec2 sceneMin = ImGui::GetItemRectMin();
+	const bool sceneImageHovered = ImGui::IsItemHovered();
+	const ImVec2 sceneMin = ImGui::GetItemRectMin();
+	const ImVec2 sceneMax = ImGui::GetItemRectMax();
+	if (
+		editorSession_ &&
+		editorSession_->IsEditing() &&
+		ImGui::BeginDragDropTarget()
+	) {
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+			"PROJECT_TEXTURE_PATH"
+		)) {
+			const char* droppedPath = static_cast<const char*>(payload->Data);
+			if (droppedPath && droppedPath[0] != '\0') {
+				SceneDocument& document = editorSession_->GetEditDocument();
+				std::filesystem::path texturePath(droppedPath);
+				std::string entityName = texturePath.stem().string();
+				if (entityName.empty()) {
+					entityName = "Sprite";
+				}
+				const std::string baseName = entityName;
+				uint32_t suffix = 2;
+				while (document.FindEntityByName(entityName)) {
+					entityName = baseName + " " + std::to_string(suffix++);
+				}
+				SceneEntity& entity = document.CreateEntity(entityName);
+				entity.spriteTexturePath = texturePath.generic_string();
+				entity.components = { "SpriteRenderer" };
+				const ImVec2 mouse = ImGui::GetMousePos();
+				const float normalizedX = (mouse.x - sceneMin.x) /
+					(std::max)(sceneMax.x - sceneMin.x, 1.0f);
+				const float normalizedY = (mouse.y - sceneMin.y) /
+					(std::max)(sceneMax.y - sceneMin.y, 1.0f);
+				entity.transform.translate = {
+					normalizedX * static_cast<float>((std::max)(textureWidth, uint32_t{ 1 })),
+					normalizedY * static_cast<float>((std::max)(textureHeight, uint32_t{ 1 })),
+					0.0f
+				};
+				if (TextureManager::GetInstance()) {
+					TextureManager::GetInstance()->LoadTexture(entity.spriteTexturePath);
+					const auto& metadata = TextureManager::GetInstance()->GetMetaData(
+						entity.spriteTexturePath
+					);
+					entity.spriteSize = {
+						static_cast<float>(metadata.width),
+						static_cast<float>(metadata.height)
+					};
+				}
+				selectedEntityId_ = entity.id;
+				selectedProjectFile_.clear();
+			}
+		}
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+			"PROJECT_MODEL_PATH"
+		)) {
+			const char* droppedPath = static_cast<const char*>(payload->Data);
+			if (droppedPath && droppedPath[0] != '\0') {
+				SceneDocument& document = editorSession_->GetEditDocument();
+				std::filesystem::path modelPath(droppedPath);
+				std::string entityName = modelPath.stem().string();
+				if (entityName.empty()) {
+					entityName = "Model";
+				}
+				const std::string baseName = entityName;
+				uint32_t suffix = 2;
+				while (document.FindEntityByName(entityName)) {
+					entityName = baseName + " " + std::to_string(suffix++);
+				}
+				SceneEntity& entity = document.CreateEntity(entityName);
+				entity.modelPath = GetPathRelativeToResources(modelPath.generic_string());
+				entity.components = { "MeshRenderer" };
+				Object3dCommon* object3dCommon = Object3dCommon::GetInstance();
+				if (Camera* camera = object3dCommon
+					? object3dCommon->GetDefaultCamera()
+					: nullptr) {
+					const Matrix4x4& cameraWorld = camera->GetWorldMatrix();
+					entity.transform.translate = {
+						cameraWorld.m[3][0] + cameraWorld.m[2][0] * 5.0f,
+						cameraWorld.m[3][1] + cameraWorld.m[2][1] * 5.0f,
+						cameraWorld.m[3][2] + cameraWorld.m[2][2] * 5.0f
+					};
+				}
+				if (ModelManager::GetInstance()) {
+					ModelManager::GetInstance()->LoadModel(entity.modelPath);
+				}
+				selectedEntityId_ = entity.id;
+				selectedProjectFile_.clear();
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
+
+	DrawSceneGizmo(
+		sceneMin.x,
+		sceneMin.y,
+		sceneMax.x - sceneMin.x,
+		sceneMax.y - sceneMin.y,
+		textureWidth,
+		textureHeight
+	);
 
 	ImGui::GetWindowDrawList()->AddText(
-		ImVec2(sceneMin.x + 16.0f, sceneMin.y + 16.0f),
+		ImVec2(sceneMin.x + 16.0f, sceneMin.y + 44.0f),
 		IM_COL32(255, 255, 255, 255),
 		"Space to change particle assets"
 	);
 
 	sceneViewInputActive_ =
-		ImGui::IsItemHovered() || ImGui::IsWindowFocused();
+		(sceneImageHovered || ImGui::IsWindowFocused()) &&
+		!ImGuizmo::IsUsing() &&
+		!ImGuizmo::IsOver();
 
 	ImGui::End();
 	ImGui::PopStyleVar();
@@ -188,6 +388,210 @@ void ImGuiManager::DrawEditorWorkspace(
 
 	(void)textureWidth;
 	(void)textureHeight;
+}
+
+void ImGuiManager::DrawSceneGizmo(
+	float x,
+	float y,
+	float width,
+	float height,
+	uint32_t textureWidth,
+	uint32_t textureHeight
+) {
+	if (
+		!editorSession_ ||
+		!editorSession_->IsEditing() ||
+		width <= 1.0f ||
+		height <= 1.0f
+	) {
+		return;
+	}
+
+	if (
+		ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+		!ImGui::GetIO().WantTextInput &&
+		!ImGuizmo::IsUsing()
+	) {
+		if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
+			gizmoOperation_ = 0;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
+			gizmoOperation_ = 1;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+			gizmoOperation_ = 2;
+		}
+	}
+
+	ImGui::SetCursorScreenPos(ImVec2(x + 8.0f, y + 8.0f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 2.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(3.0f, 0.0f));
+	ImGui::BeginGroup();
+	const char* operationLabels[] = { "W", "E", "R" };
+	const char* operationTooltips[] = { "Move (W)", "Rotate (E)", "Scale (R)" };
+	for (int operation = 0; operation < 3; ++operation) {
+		if (operation > 0) {
+			ImGui::SameLine();
+		}
+		if (gizmoOperation_ == operation) {
+			ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+		}
+		if (ImGui::Button(operationLabels[operation], ImVec2(28.0f, 24.0f))) {
+			gizmoOperation_ = operation;
+		}
+		if (gizmoOperation_ == operation) {
+			ImGui::PopStyleColor();
+		}
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("%s", operationTooltips[operation]);
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Button(gizmoLocalMode_ ? "Local" : "World", ImVec2(52.0f, 24.0f))) {
+		gizmoLocalMode_ = !gizmoLocalMode_;
+	}
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip("Toggle Local / World space");
+	}
+	ImGui::SameLine();
+	ImGui::Checkbox("Snap", &gizmoSnapEnabled_);
+	if (gizmoSnapEnabled_) {
+		float* snapValue = gizmoOperation_ == 0
+			? &gizmoTranslationSnap_
+			: gizmoOperation_ == 1
+				? &gizmoRotationSnapDegrees_
+				: &gizmoScaleSnap_;
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(64.0f);
+		ImGui::DragFloat(
+			"##GizmoSnapValue",
+			snapValue,
+			gizmoOperation_ == 1 ? 1.0f : 0.05f,
+			0.01f,
+			0.0f,
+			"%.2f"
+		);
+	}
+	ImGui::EndGroup();
+	ImGui::PopStyleVar(2);
+
+	if (selectedEntityId_ == 0) {
+		return;
+	}
+	SceneDocument& document = editorSession_->GetEditDocument();
+	SceneEntity* entity = document.FindEntity(selectedEntityId_);
+	Camera* camera = Object3dCommon::GetInstance()
+		? Object3dCommon::GetInstance()->GetDefaultCamera()
+		: nullptr;
+	if (!entity || !camera) {
+		return;
+	}
+
+	const bool isSprite = HasComponent(*entity, "SpriteRenderer");
+	Matrix4x4 worldMatrix{};
+	Matrix4x4 viewMatrix{};
+	Matrix4x4 projectionMatrix{};
+	if (isSprite) {
+		const Vector3 spriteScale = {
+			entity->spriteSize.x * entity->transform.scale.x,
+			entity->spriteSize.y * entity->transform.scale.y,
+			1.0f
+		};
+		worldMatrix = MakeAffineMatrix(
+			spriteScale,
+			Vector3{ 0.0f, 0.0f, entity->transform.rotate.z },
+			Vector3{
+				entity->transform.translate.x,
+				entity->transform.translate.y,
+				0.0f
+			}
+		);
+		if (const SceneEntity* parent = document.FindEntity(entity->parentId)) {
+			worldMatrix = Multiply(
+				worldMatrix,
+				CalculateSceneWorldMatrix(document, *parent)
+			);
+		}
+		viewMatrix = MakeIdentity4x4();
+		projectionMatrix = MakeOrthographicMatrix(
+			0.0f,
+			0.0f,
+			static_cast<float>((std::max)(textureWidth, uint32_t{ 1 })),
+			static_cast<float>((std::max)(textureHeight, uint32_t{ 1 })),
+			0.0f,
+			100.0f
+		);
+	} else {
+		worldMatrix = CalculateSceneWorldMatrix(document, *entity);
+		viewMatrix = camera->GetViewMatrix();
+		projectionMatrix = camera->GetProjectionMatrix();
+	}
+
+	const ImGuizmo::OPERATION operation = gizmoOperation_ == 0
+		? ImGuizmo::TRANSLATE
+		: gizmoOperation_ == 1
+			? ImGuizmo::ROTATE
+			: ImGuizmo::SCALE;
+	const ImGuizmo::MODE mode = gizmoLocalMode_
+		? ImGuizmo::LOCAL
+		: ImGuizmo::WORLD;
+	const float snapValue = gizmoOperation_ == 0
+		? gizmoTranslationSnap_
+		: gizmoOperation_ == 1
+			? gizmoRotationSnapDegrees_
+			: gizmoScaleSnap_;
+	const float snap[3] = { snapValue, snapValue, snapValue };
+
+	ImGuizmo::SetOrthographic(isSprite);
+	ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+	ImGuizmo::SetRect(x, y, width, height);
+	const bool changed = ImGuizmo::Manipulate(
+		&viewMatrix.m[0][0],
+		&projectionMatrix.m[0][0],
+		operation,
+		mode,
+		&worldMatrix.m[0][0],
+		nullptr,
+		gizmoSnapEnabled_ ? snap : nullptr
+	);
+	if (!changed || !ImGuizmo::IsUsing()) {
+		return;
+	}
+
+	Matrix4x4 localMatrix = worldMatrix;
+	if (const SceneEntity* parent = document.FindEntity(entity->parentId)) {
+		const Matrix4x4 parentWorld = CalculateSceneWorldMatrix(document, *parent);
+		localMatrix = Multiply(worldMatrix, Inverse(parentWorld));
+	}
+
+	float translation[3]{};
+	float rotationDegrees[3]{};
+	float scale[3]{};
+	ImGuizmo::DecomposeMatrixToComponents(
+		&localMatrix.m[0][0],
+		translation,
+		rotationDegrees,
+		scale
+	);
+	constexpr float degreesToRadians = std::numbers::pi_v<float> / 180.0f;
+	if (isSprite) {
+		entity->transform.translate.x = translation[0];
+		entity->transform.translate.y = translation[1];
+		entity->transform.rotate.z = rotationDegrees[2] * degreesToRadians;
+		entity->transform.scale.x = scale[0] / (std::max)(entity->spriteSize.x, 0.001f);
+		entity->transform.scale.y = scale[1] / (std::max)(entity->spriteSize.y, 0.001f);
+	} else {
+		entity->transform.translate = {
+			translation[0], translation[1], translation[2]
+		};
+		entity->transform.rotate = {
+			rotationDegrees[0] * degreesToRadians,
+			rotationDegrees[1] * degreesToRadians,
+			rotationDegrees[2] * degreesToRadians
+		};
+		entity->transform.scale = { scale[0], scale[1], scale[2] };
+	}
+	document.MarkDirty();
 }
 
 void ImGuiManager::Finalize(){
@@ -646,6 +1050,41 @@ void ImGuiManager::DrawInspectorWindow() {
 					}
 				}
 			}
+			ImGui::Separator();
+			ImGui::BeginDisabled(!editorSession_ || !editorSession_->IsEditing());
+			if (ImGui::Button("Add Sprite to Scene")) {
+				SceneDocument& document = editorSession_->GetEditDocument();
+				std::string entityName = path.stem().string();
+				if (entityName.empty()) {
+					entityName = "Sprite";
+				}
+				const std::string baseName = entityName;
+				uint32_t suffix = 2;
+				while (document.FindEntityByName(entityName)) {
+					entityName = baseName + " " + std::to_string(suffix++);
+				}
+				SceneEntity& entity = document.CreateEntity(entityName);
+				entity.spriteTexturePath = path.generic_string();
+				entity.components = { "SpriteRenderer" };
+				entity.transform.translate = {
+					static_cast<float>(dxCommon_->GetClientWidth()) * 0.5f,
+					static_cast<float>(dxCommon_->GetClientHeight()) * 0.5f,
+					0.0f
+				};
+				if (TextureManager::GetInstance()) {
+					TextureManager::GetInstance()->LoadTexture(entity.spriteTexturePath);
+					const auto& metadata = TextureManager::GetInstance()->GetMetaData(
+						entity.spriteTexturePath
+					);
+					entity.spriteSize = {
+						static_cast<float>(metadata.width),
+						static_cast<float>(metadata.height)
+					};
+				}
+				selectedEntityId_ = entity.id;
+				selectedProjectFile_.clear();
+			}
+			ImGui::EndDisabled();
 		} 
 		else if (ext == ".obj" || ext == ".gltf") {
 			// Model asset inspector
@@ -710,7 +1149,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					}
 				}
 			}
-		}
+		} 
 		else if (ext == ".json") {
 			// Particle JSON inspector
 			ParticleEffectDesc desc;
@@ -780,23 +1219,43 @@ void ImGuiManager::DrawInspectorWindow() {
 
 		ImGui::SeparatorText("Transform");
 		bool transformChanged = false;
-		transformChanged |= ImGui::DragFloat3(
-			"Position",
-			&entity->transform.translate.x,
-			0.05f
-		);
-		transformChanged |= ImGui::DragFloat3(
-			"Rotation",
-			&entity->transform.rotate.x,
-			0.01f
-		);
-		transformChanged |= ImGui::DragFloat3(
-			"Scale",
-			&entity->transform.scale.x,
-			0.01f,
-			0.001f,
-			1000.0f
-		);
+		if (HasComponent(*entity, "SpriteRenderer")) {
+			transformChanged |= ImGui::DragFloat2(
+				"Position",
+				&entity->transform.translate.x,
+				0.5f
+			);
+			transformChanged |= ImGui::DragFloat(
+				"Rotation",
+				&entity->transform.rotate.z,
+				0.01f
+			);
+			transformChanged |= ImGui::DragFloat2(
+				"Scale",
+				&entity->transform.scale.x,
+				0.01f,
+				0.001f,
+				1000.0f
+			);
+		} else {
+			transformChanged |= ImGui::DragFloat3(
+				"Position",
+				&entity->transform.translate.x,
+				0.05f
+			);
+			transformChanged |= ImGui::DragFloat3(
+				"Rotation",
+				&entity->transform.rotate.x,
+				0.01f
+			);
+			transformChanged |= ImGui::DragFloat3(
+				"Scale",
+				&entity->transform.scale.x,
+				0.01f,
+				0.001f,
+				1000.0f
+			);
+		}
 		if (transformChanged) {
 			document.MarkDirty();
 		}
@@ -804,7 +1263,101 @@ void ImGuiManager::DrawInspectorWindow() {
 		for (const std::string& component : entity->components) {
 			ImGui::SeparatorText(component.c_str());
 			if (component == "MeshRenderer") {
-				ImGui::Text("Model: %s", entity->modelPath.c_str());
+				const char* currentModel = entity->modelPath.empty()
+					? "None"
+					: entity->modelPath.c_str();
+				ImGui::BeginDisabled(!editorSession_->IsEditing());
+				if (ImGui::BeginCombo("Model", currentModel)) {
+					if (ImGui::Selectable("None", entity->modelPath.empty())) {
+						entity->modelPath.clear();
+						document.MarkDirty();
+						editorSession_->RequestSceneReload();
+					}
+					const std::vector<std::string> modelPaths =
+						CollectModelAssetPaths();
+					for (const std::string& modelPath : modelPaths) {
+						if (ImGui::Selectable(
+							modelPath.c_str(),
+							entity->modelPath == modelPath
+						)) {
+							entity->modelPath = modelPath;
+							document.MarkDirty();
+							editorSession_->RequestSceneReload();
+						}
+					}
+					ImGui::EndCombo();
+				}
+				if (ImGui::BeginDragDropTarget()) {
+					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+						"PROJECT_MODEL_PATH"
+					)) {
+						const char* droppedPath = static_cast<const char*>(payload->Data);
+						if (droppedPath && droppedPath[0] != '\0') {
+							entity->modelPath = GetPathRelativeToResources(droppedPath);
+							document.MarkDirty();
+							editorSession_->RequestSceneReload();
+						}
+					}
+					ImGui::EndDragDropTarget();
+				}
+				ImGui::EndDisabled();
+			} else if (component == "SpriteRenderer") {
+				const char* currentTexture = entity->spriteTexturePath.empty()
+					? "None"
+					: entity->spriteTexturePath.c_str();
+				ImGui::BeginDisabled(!editorSession_->IsEditing());
+				if (ImGui::BeginCombo("Texture", currentTexture)) {
+					for (const std::string& texturePath : CollectTextureAssetPaths()) {
+						if (ImGui::Selectable(
+							texturePath.c_str(),
+							entity->spriteTexturePath == texturePath
+						)) {
+							entity->spriteTexturePath = texturePath;
+							TextureManager::GetInstance()->LoadTexture(texturePath);
+							document.MarkDirty();
+						}
+					}
+					ImGui::EndCombo();
+				}
+				if (ImGui::BeginDragDropTarget()) {
+					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+						"PROJECT_TEXTURE_PATH"
+					)) {
+						const char* droppedPath = static_cast<const char*>(payload->Data);
+						if (droppedPath && droppedPath[0] != '\0') {
+							entity->spriteTexturePath = droppedPath;
+							TextureManager::GetInstance()->LoadTexture(droppedPath);
+							document.MarkDirty();
+						}
+					}
+					ImGui::EndDragDropTarget();
+				}
+				bool spriteChanged = false;
+				spriteChanged |= ImGui::DragFloat2(
+					"Size",
+					&entity->spriteSize.x,
+					1.0f,
+					1.0f,
+					8192.0f
+				);
+				spriteChanged |= ImGui::DragFloat2(
+					"Anchor",
+					&entity->spriteAnchor.x,
+					0.01f,
+					0.0f,
+					1.0f
+				);
+				spriteChanged |= ImGui::ColorEdit4(
+					"Color",
+					&entity->spriteColor.x
+				);
+				spriteChanged |= ImGui::Checkbox("Flip X", &entity->spriteFlipX);
+				ImGui::SameLine();
+				spriteChanged |= ImGui::Checkbox("Flip Y", &entity->spriteFlipY);
+				if (spriteChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			}
 		}
 		if (editorSession_->IsPlaying() || editorSession_->IsPaused()) {
@@ -828,7 +1381,10 @@ void ImGuiManager::DrawInspectorWindow() {
 }
 
 void ImGuiManager::DrawProjectWindow() {
-	ImGui::Begin("Project", &showProject_);
+	if (!ImGui::Begin("Project", &showProject_)) {
+		ImGui::End();
+		return;
+	}
 	ImGui::Columns(2, "ProjectColumns", true);
 	
 	// Left column: directory tree
@@ -848,45 +1404,224 @@ void ImGuiManager::DrawProjectWindow() {
 
 	// Right column: files inside selected folder
 	ImGui::Text("Contents of: %s", selectedProjectFolder_.c_str());
+	ImGui::SameLine();
+	ImGui::TextDisabled("View:");
+	ImGui::SameLine();
+	if (projectGridView_) {
+		ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+	}
+	if (ImGui::SmallButton("Grid")) {
+		projectGridView_ = true;
+	}
+	if (projectGridView_) {
+		ImGui::PopStyleColor();
+	}
+	ImGui::SameLine();
+	if (!projectGridView_) {
+		ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+	}
+	if (ImGui::SmallButton("List")) {
+		projectGridView_ = false;
+	}
+	if (!projectGridView_) {
+		ImGui::PopStyleColor();
+	}
+	if (projectGridView_) {
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(100.0f);
+		ImGui::SliderFloat(
+			"##ProjectThumbnailSize",
+			&projectThumbnailSize_,
+			56.0f,
+			128.0f,
+			"%.0f px"
+		);
+	}
 	ImGui::Separator();
 
 	std::error_code ec;
 	if (std::filesystem::exists(selectedProjectFolder_, ec)) {
+		std::vector<std::filesystem::directory_entry> files;
 		for (const auto& entry : std::filesystem::directory_iterator(selectedProjectFolder_, ec)) {
 			if (entry.is_regular_file()) {
-				std::string fileName = entry.path().filename().string();
-				std::string filePath = entry.path().generic_string();
+				files.push_back(entry);
+			}
+		}
+		std::sort(
+			files.begin(),
+			files.end(),
+			[](const auto& left, const auto& right) {
+				return left.path().filename().string() < right.path().filename().string();
+			}
+		);
 
-				bool isSelected = (selectedProjectFile_ == filePath);
-				// Add file type prefix
-				std::string prefix = "[File] ";
-				std::string ext = entry.path().extension().string();
-				std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-				if (ext == ".png" || ext == ".dds") {
-					prefix = "[Tex]  ";
-				} else if (ext == ".obj" || ext == ".gltf") {
-					prefix = "[Model]";
-				} else if (ext == ".json") {
-					prefix = "[JSON] ";
-				} else if (ext == ".wav") {
-					prefix = "[Audio]";
-				} else if (ext == ".hlsl" || ext == ".hlsli") {
-					prefix = "[Shdr] ";
+		const float cellWidth = projectThumbnailSize_ + 18.0f;
+		const float panelWidth = ImGui::GetContentRegionAvail().x;
+		const int columnCount = projectGridView_
+			? (std::max)(1, static_cast<int>(panelWidth / cellWidth))
+			: 1;
+		bool tableOpen = false;
+		if (projectGridView_) {
+			tableOpen = ImGui::BeginTable(
+				"ProjectAssetGrid",
+				columnCount,
+				ImGuiTableFlags_SizingFixedFit
+			);
+		}
+
+		if (!projectGridView_ || tableOpen) {
+		for (const auto& entry : files) {
+			const std::string fileName = entry.path().filename().string();
+			const std::string filePath = entry.path().generic_string();
+			std::string extension = entry.path().extension().string();
+			std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+			const bool isTexture = IsTextureAssetPath(entry.path());
+			const bool isModel = IsModelAssetPath(entry.path());
+			const bool isSelected = selectedProjectFile_ == filePath;
+
+			if (projectGridView_) {
+				ImGui::TableNextColumn();
+			}
+			ImGui::PushID(filePath.c_str());
+			if (isSelected) {
+				ImGui::PushStyleColor(
+					ImGuiCol_Button,
+					ImGui::GetStyleColorVec4(ImGuiCol_Header)
+				);
+			}
+
+			bool texturePreviewAvailable = false;
+			float texturePreviewAspect = 1.0f;
+			D3D12_GPU_DESCRIPTOR_HANDLE textureHandle{};
+			if (isTexture && TextureManager::GetInstance()) {
+				if (
+					extension == ".png" &&
+					!TextureManager::GetInstance()->HasTexture(filePath) &&
+					projectPreviewLoadAttempted_.size() < 96 &&
+					projectPreviewLoadAttempted_.insert(filePath).second
+				) {
+					TextureManager::GetInstance()->LoadTexture(filePath);
 				}
-
-				std::string displayName = prefix + "  " + fileName;
-				if (ImGui::Selectable(displayName.c_str(), isSelected)) {
-					selectedProjectFile_ = filePath;
-					selectedEntityId_ = 0;
-					
-					// Stop and unload preview sound if we change file
-					if (previewSoundData_.pBuffer) {
-						if (Audio::GetInstance()) {
-							Audio::GetInstance()->SoundUnload(&previewSoundData_);
-						}
+				if (TextureManager::GetInstance()->HasTexture(filePath)) {
+					const auto& metadata = TextureManager::GetInstance()->GetMetaData(filePath);
+					texturePreviewAvailable = !metadata.IsCubemap();
+					if (texturePreviewAvailable) {
+						texturePreviewAspect = metadata.height > 0
+							? static_cast<float>(metadata.width) /
+								static_cast<float>(metadata.height)
+							: 1.0f;
+						textureHandle = TextureManager::GetInstance()->GetSrvHandleGPU(filePath);
 					}
 				}
 			}
+
+			bool clicked = false;
+			auto drawDragSource = [&]() {
+				if (!(isModel || isTexture) || !ImGui::BeginDragDropSource()) {
+					return;
+				}
+				ImGui::SetDragDropPayload(
+					isModel ? "PROJECT_MODEL_PATH" : "PROJECT_TEXTURE_PATH",
+					filePath.c_str(),
+					filePath.size() + 1
+				);
+				if (texturePreviewAvailable) {
+					ImGui::Image(
+						ImTextureRef(static_cast<ImTextureID>(textureHandle.ptr)),
+						ImVec2(48.0f, 48.0f)
+					);
+				}
+				ImGui::TextUnformatted(fileName.c_str());
+				ImGui::EndDragDropSource();
+			};
+			if (projectGridView_) {
+				if (texturePreviewAvailable) {
+					const ImVec2 previewMin = ImGui::GetCursorScreenPos();
+					clicked = ImGui::InvisibleButton(
+						"##AssetPreview",
+						ImVec2(projectThumbnailSize_, projectThumbnailSize_)
+					);
+					const ImVec2 previewMax = {
+						previewMin.x + projectThumbnailSize_,
+						previewMin.y + projectThumbnailSize_
+					};
+					ImDrawList* drawList = ImGui::GetWindowDrawList();
+					drawList->AddRectFilled(
+						previewMin,
+						previewMax,
+						ImGui::GetColorU32(
+							isSelected ? ImGuiCol_Header : ImGuiCol_FrameBg
+						),
+						2.0f
+					);
+					const float innerSize = projectThumbnailSize_ - 8.0f;
+					const float imageWidth = texturePreviewAspect >= 1.0f
+						? innerSize
+						: innerSize * texturePreviewAspect;
+					const float imageHeight = texturePreviewAspect >= 1.0f
+						? innerSize / texturePreviewAspect
+						: innerSize;
+					const ImVec2 imageMin = {
+						previewMin.x + (projectThumbnailSize_ - imageWidth) * 0.5f,
+						previewMin.y + (projectThumbnailSize_ - imageHeight) * 0.5f
+					};
+					drawList->AddImage(
+						ImTextureRef(static_cast<ImTextureID>(textureHandle.ptr)),
+						imageMin,
+						ImVec2(imageMin.x + imageWidth, imageMin.y + imageHeight)
+					);
+					if (ImGui::IsItemHovered()) {
+						drawList->AddRect(
+							previewMin,
+							previewMax,
+							ImGui::GetColorU32(ImGuiCol_HeaderHovered),
+							2.0f,
+							0,
+							2.0f
+						);
+					}
+					drawDragSource();
+				} else {
+					const char* typeLabel = isModel ? "3D" :
+						isTexture ? "DDS" :
+						extension == ".wav" ? "AUDIO" :
+						extension == ".json" ? "JSON" :
+						(extension == ".hlsl" || extension == ".hlsli") ? "SHADER" : "FILE";
+					clicked = ImGui::Button(
+						typeLabel,
+						ImVec2(projectThumbnailSize_, projectThumbnailSize_)
+					);
+					drawDragSource();
+				}
+				ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + projectThumbnailSize_);
+				ImGui::TextUnformatted(fileName.c_str());
+				ImGui::PopTextWrapPos();
+			} else {
+				const char* prefix = isTexture ? "[Tex]" :
+					isModel ? "[Model]" :
+					extension == ".wav" ? "[Audio]" :
+					extension == ".json" ? "[JSON]" :
+					(extension == ".hlsl" || extension == ".hlsli") ? "[Shader]" : "[File]";
+				const std::string label = std::string(prefix) + "  " + fileName;
+				clicked = ImGui::Selectable(label.c_str(), isSelected);
+				drawDragSource();
+			}
+
+			if (isSelected) {
+				ImGui::PopStyleColor();
+			}
+			if (clicked) {
+				selectedProjectFile_ = filePath;
+				selectedEntityId_ = 0;
+				if (previewSoundData_.pBuffer && Audio::GetInstance()) {
+					Audio::GetInstance()->SoundUnload(&previewSoundData_);
+				}
+			}
+			ImGui::PopID();
+		}
+		}
+		if (tableOpen) {
+			ImGui::EndTable();
 		}
 	}
 	ImGui::Columns(1);

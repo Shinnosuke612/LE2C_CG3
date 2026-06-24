@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "../math/Transform.h"
+#include "../math/Vector2.h"
+#include "../math/Vector4.h"
 
 struct SceneEntity {
 	uint64_t id = 0;
@@ -13,6 +15,12 @@ struct SceneEntity {
 	bool active = true;
 	Transform transform{};
 	std::string modelPath;
+	std::string spriteTexturePath;
+	Vector2 spriteSize = { 100.0f, 100.0f };
+	Vector2 spriteAnchor = { 0.5f, 0.5f };
+	Vector4 spriteColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+	bool spriteFlipX = false;
+	bool spriteFlipY = false;
 	std::vector<std::string> components;
 };
 

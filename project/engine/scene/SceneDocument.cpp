@@ -19,6 +19,14 @@ namespace {
 		return json::array({ value.x, value.y, value.z });
 	}
 
+	json VectorToJson(const Vector2& value) {
+		return json::array({ value.x, value.y });
+	}
+
+	json VectorToJson(const Vector4& value) {
+		return json::array({ value.x, value.y, value.z, value.w });
+	}
+
 	Vector3 JsonToVector(const json& value, const Vector3& fallback) {
 		if (!value.is_array() || value.size() != 3) {
 			return fallback;
@@ -27,6 +35,23 @@ namespace {
 			value[0].get<float>(),
 			value[1].get<float>(),
 			value[2].get<float>()
+		};
+	}
+
+	Vector2 JsonToVector(const json& value, const Vector2& fallback) {
+		if (!value.is_array() || value.size() != 2) {
+			return fallback;
+		}
+		return { value[0].get<float>(), value[1].get<float>() };
+	}
+
+	Vector4 JsonToVector(const json& value, const Vector4& fallback) {
+		if (!value.is_array() || value.size() != 4) {
+			return fallback;
+		}
+		return {
+			value[0].get<float>(), value[1].get<float>(),
+			value[2].get<float>(), value[3].get<float>()
 		};
 	}
 }
@@ -54,7 +79,7 @@ bool SceneDocument::Load(const std::string& filePath) {
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 1;
+	root["version"] = 2;
 	root["sceneName"] = sceneName_;
 	root["entities"] = json::array();
 
@@ -70,6 +95,14 @@ bool SceneDocument::Save(const std::string& filePath) {
 				{ "translate", VectorToJson(entity.transform.translate) }
 			} },
 			{ "modelPath", entity.modelPath },
+			{ "sprite", {
+				{ "texturePath", entity.spriteTexturePath },
+				{ "size", VectorToJson(entity.spriteSize) },
+				{ "anchor", VectorToJson(entity.spriteAnchor) },
+				{ "color", VectorToJson(entity.spriteColor) },
+				{ "flipX", entity.spriteFlipX },
+				{ "flipY", entity.spriteFlipY }
+			} },
 			{ "components", entity.components }
 		});
 	}
@@ -208,6 +241,12 @@ uint64_t SceneDocument::DuplicateEntity(uint64_t id) {
 		duplicate.active = found->active;
 		duplicate.transform = found->transform;
 		duplicate.modelPath = found->modelPath;
+		duplicate.spriteTexturePath = found->spriteTexturePath;
+		duplicate.spriteSize = found->spriteSize;
+		duplicate.spriteAnchor = found->spriteAnchor;
+		duplicate.spriteColor = found->spriteColor;
+		duplicate.spriteFlipX = found->spriteFlipX;
+		duplicate.spriteFlipY = found->spriteFlipY;
 		duplicate.components = found->components;
 		for (const SceneEntity& child : sourceEntities) {
 			if (child.parentId == sourceId) {
@@ -356,6 +395,24 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 			entity.name = source.value("name", std::string("Entity"));
 			entity.active = source.value("active", true);
 			entity.modelPath = source.value("modelPath", std::string{});
+			if (source.contains("sprite") && source.at("sprite").is_object()) {
+				const json& sprite = source.at("sprite");
+				entity.spriteTexturePath = sprite.value(
+					"texturePath",
+					std::string{}
+				);
+				if (sprite.contains("size")) {
+					entity.spriteSize = JsonToVector(sprite.at("size"), entity.spriteSize);
+				}
+				if (sprite.contains("anchor")) {
+					entity.spriteAnchor = JsonToVector(sprite.at("anchor"), entity.spriteAnchor);
+				}
+				if (sprite.contains("color")) {
+					entity.spriteColor = JsonToVector(sprite.at("color"), entity.spriteColor);
+				}
+				entity.spriteFlipX = sprite.value("flipX", false);
+				entity.spriteFlipY = sprite.value("flipY", false);
+			}
 			entity.components = source.value(
 				"components",
 				std::vector<std::string>{}

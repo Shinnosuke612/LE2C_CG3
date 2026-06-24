@@ -82,7 +82,7 @@
       <LanguageStandard_C>stdclatest</LanguageStandard_C>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <AdditionalIncludeDirectories>$(ProjectDir)externals\DirectXTex\;$(ProjectDir)externals\assimp\include;$(ProjectDir)Vector;$(ProjectDir)externals\imgui\</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)externals\DirectXTex\;$(ProjectDir)externals\assimp\include;$(ProjectDir)Vector;$(ProjectDir)externals\imgui\;$(ProjectDir)externals\ImGuizmo\</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -105,7 +105,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)externals\DirectXTex\;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui\;$(ProjectDir);$(ProjectDir)Vector;$(ProjectDir)Matrix</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)externals\DirectXTex\;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui\;$(ProjectDir)externals\ImGuizmo\;$(ProjectDir);$(ProjectDir)Vector;$(ProjectDir)Matrix</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -129,7 +129,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)externals\DirectXTex\;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui\;$(ProjectDir);$(ProjectDir)Vector;$(ProjectDir)Matrix</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)externals\DirectXTex\;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui\;$(ProjectDir)externals\ImGuizmo\;$(ProjectDir);$(ProjectDir)Vector;$(ProjectDir)Matrix</AdditionalIncludeDirectories>
       <Optimization>MaxSpeed</Optimization>
       <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
@@ -144,6 +144,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+	<ClCompile Include="externals\ImGuizmo\ImGuizmo.cpp" />
     <ClCompile Include="engine\collision\Collider.cpp" />
     <ClCompile Include="engine\collision\Collision.cpp" />
     <ClCompile Include="engine\collision\CollisionManager.cpp" />
@@ -273,6 +274,7 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+	<ClInclude Include="externals\ImGuizmo\ImGuizmo.h" />
     <ClInclude Include="engine\collision\Collider.h" />
     <ClInclude Include="engine\collision\CollisionManager.h" />
     <ClInclude Include="engine\collision\OBBCollider.h" />

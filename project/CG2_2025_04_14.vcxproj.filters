@@ -16,6 +16,7 @@
     <FxCompile Include="resources\shaders\SkinningShadowMap.VS.hlsl" />
   </ItemGroup>
   <ItemGroup>
+	<ClCompile Include="externals\ImGuizmo\ImGuizmo.cpp" />
     <ClCompile Include="engine\collision\Collider.cpp" />
     <ClCompile Include="engine\collision\Collision.cpp" />
     <ClCompile Include="engine\collision\CollisionManager.cpp" />
@@ -71,6 +72,7 @@
     <ClCompile Include="engine\3d\Skybox.cpp" />
   </ItemGroup>
   <ItemGroup>
+	<ClInclude Include="externals\ImGuizmo\ImGuizmo.h" />
     <ClInclude Include="engine\collision\Collider.h" />
     <ClInclude Include="engine\collision\CollisionManager.h" />
     <ClInclude Include="engine\collision\OBBCollider.h" />

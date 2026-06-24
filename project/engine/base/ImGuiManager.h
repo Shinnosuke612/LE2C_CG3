@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <unordered_set>
 #include "../Audio/Audio.h"
 
 #include <d3d12.h>
@@ -64,6 +65,14 @@ private:
 	void DrawProjectWindow();
 	void DrawConsoleWindow();
 	void DrawPlaybackControls();
+	void DrawSceneGizmo(
+		float x,
+		float y,
+		float width,
+		float height,
+		uint32_t textureWidth,
+		uint32_t textureHeight
+	);
 
 	// Helper for project tree
 	void DrawDirectoryTreeNode(const std::filesystem::path& path);
@@ -81,6 +90,12 @@ private:
 	int selectedHierarchyItem_ = 0;
 	uint64_t selectedEntityId_ = 0;
 	EditorSession* editorSession_ = nullptr;
+	int gizmoOperation_ = 0;
+	bool gizmoLocalMode_ = true;
+	bool gizmoSnapEnabled_ = false;
+	float gizmoTranslationSnap_ = 0.5f;
+	float gizmoRotationSnapDegrees_ = 15.0f;
+	float gizmoScaleSnap_ = 0.1f;
 
 	static bool sceneViewInputActive_;
 
@@ -90,6 +105,9 @@ private:
 	// Dynamic asset browser state
 	std::string selectedProjectFolder_ = "resources";
 	std::string selectedProjectFile_ = "";
+	bool projectGridView_ = true;
+	float projectThumbnailSize_ = 80.0f;
+	std::unordered_set<std::string> projectPreviewLoadAttempted_;
 	Audio::SoundData previewSoundData_{};
 
 	// Particle loading request

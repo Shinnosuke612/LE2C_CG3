@@ -29,6 +29,7 @@
 #include "../externals/imgui/imgui.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <unordered_set>
 
@@ -58,9 +59,7 @@ namespace {
 		const char* fallback
 	) {
 		const SceneEntity* entity = FindSceneEntity(sceneManager, name);
-		return entity && !entity->modelPath.empty()
-			? entity->modelPath
-			: fallback;
+		return entity ? entity->modelPath : fallback;
 	}
 
 	void ApplySceneTransform(
@@ -112,6 +111,44 @@ namespace {
 			parent = document.FindEntity(parent->parentId);
 		}
 		return true;
+	}
+
+	Transform ResolveScene2DTransform(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		std::unordered_set<uint64_t>& visited
+	) {
+		Transform result = entity.transform;
+		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
+			return result;
+		}
+		const SceneEntity* parent = document.FindEntity(entity.parentId);
+		if (!parent) {
+			return result;
+		}
+		const Transform parentTransform = ResolveScene2DTransform(
+			document,
+			*parent,
+			visited
+		);
+		const float scaledX = result.translate.x * parentTransform.scale.x;
+		const float scaledY = result.translate.y * parentTransform.scale.y;
+		const float cosine = std::cos(parentTransform.rotate.z);
+		const float sine = std::sin(parentTransform.rotate.z);
+		result.translate.x = parentTransform.translate.x + scaledX * cosine - scaledY * sine;
+		result.translate.y = parentTransform.translate.y + scaledX * sine + scaledY * cosine;
+		result.rotate.z += parentTransform.rotate.z;
+		result.scale.x *= parentTransform.scale.x;
+		result.scale.y *= parentTransform.scale.y;
+		return result;
+	}
+
+	Transform ResolveScene2DTransform(
+		const SceneDocument& document,
+		const SceneEntity& entity
+	) {
+		std::unordered_set<uint64_t> visited;
+		return ResolveScene2DTransform(document, entity, visited);
 	}
 }
 
@@ -232,6 +269,88 @@ void GamePlayScene::SyncSceneModelObjects() {
 	}
 }
 
+void GamePlayScene::SyncSceneSpriteObjects() {
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (!document) {
+		ClearSceneSpriteObjects();
+		return;
+	}
+
+	std::unordered_set<uint64_t> requiredIds;
+	for (const SceneEntity& entity : document->GetEntities()) {
+		if (
+			entity.spriteTexturePath.empty() ||
+			!HasComponent(entity, "SpriteRenderer")
+		) {
+			continue;
+		}
+		requiredIds.insert(entity.id);
+		auto found = sceneSpriteObjects_.find(entity.id);
+		if (
+			found != sceneSpriteObjects_.end() &&
+			found->second.texturePath != entity.spriteTexturePath
+		) {
+			delete found->second.sprite;
+			sceneSpriteObjects_.erase(found);
+			found = sceneSpriteObjects_.end();
+		}
+
+		if (found == sceneSpriteObjects_.end()) {
+			TextureManager::GetInstance()->LoadTexture(entity.spriteTexturePath);
+			SceneSpriteObject sceneSprite{};
+			sceneSprite.sprite = new Sprite();
+			sceneSprite.sprite->Initialize(
+				SpriteCommon::GetInstance(),
+				entity.spriteTexturePath
+			);
+			sceneSprite.texturePath = entity.spriteTexturePath;
+			found = sceneSpriteObjects_.emplace(
+				entity.id,
+				std::move(sceneSprite)
+			).first;
+		}
+
+		Sprite* sprite = found->second.sprite;
+		const Transform spriteTransform = ResolveScene2DTransform(*document, entity);
+		sprite->SetPosition({
+			spriteTransform.translate.x,
+			spriteTransform.translate.y
+		});
+		sprite->SetRotation(spriteTransform.rotate.z);
+		sprite->SetSize({
+			entity.spriteSize.x * spriteTransform.scale.x,
+			entity.spriteSize.y * spriteTransform.scale.y
+		});
+		sprite->SetAnchorPoint(entity.spriteAnchor);
+		sprite->SetColor(entity.spriteColor);
+		sprite->SetIsFlipX(entity.spriteFlipX);
+		sprite->SetIsFlipY(entity.spriteFlipY);
+		if (IsEntityActiveInHierarchy(*document, entity)) {
+			sprite->Update();
+		}
+	}
+
+	for (auto iterator = sceneSpriteObjects_.begin(); iterator != sceneSpriteObjects_.end();) {
+		if (!requiredIds.contains(iterator->first)) {
+			delete iterator->second.sprite;
+			iterator = sceneSpriteObjects_.erase(iterator);
+		} else {
+			++iterator;
+		}
+	}
+}
+
+void GamePlayScene::ClearSceneSpriteObjects() {
+	for (auto& [entityId, sceneSprite] : sceneSpriteObjects_) {
+		(void)entityId;
+		delete sceneSprite.sprite;
+		sceneSprite.sprite = nullptr;
+	}
+	sceneSpriteObjects_.clear();
+}
+
 void GamePlayScene::ClearSceneModelObjects() {
 	for (auto& [id, sceneObject] : sceneModelObjects_) {
 		(void)id;
@@ -261,6 +380,15 @@ void GamePlayScene::Initialize()
 	ModelManager::GetInstance()->LoadModel("Cube.obj");
 	ModelManager::GetInstance()->LoadModel("AnimatedCube/AnimatedCube.gltf");
 	ModelManager::GetInstance()->LoadModel("human/walk.gltf");
+	if (SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr) {
+		for (const SceneEntity& entity : document->GetEntities()) {
+			if (!entity.modelPath.empty()) {
+				ModelManager::GetInstance()->LoadModel(entity.modelPath);
+			}
+		}
+	}
 
 	ParticleEffectDesc gameplayEffect{};
 
@@ -652,6 +780,7 @@ void GamePlayScene::Update()
 	for (Sprite* sprite : sprites_) {
 		sprite->Update();
 	}
+	SyncSceneSpriteObjects();
 
 	object3d_->Update();
 	if (plane_) {
@@ -762,6 +891,21 @@ void GamePlayScene::Draw()
 	}
 
 	ParticleManager::GetInstance()->Draw();
+
+	SceneDocument* spriteDocument = sceneManager_->GetActiveSceneDocument();
+	if (!sceneSpriteObjects_.empty() && spriteDocument) {
+		SpriteCommon::GetInstance()->SetCommonRenderState();
+		for (const SceneEntity& entity : spriteDocument->GetEntities()) {
+			const auto found = sceneSpriteObjects_.find(entity.id);
+			if (
+				found != sceneSpriteObjects_.end() &&
+				IsEntityActiveInHierarchy(*spriteDocument, entity) &&
+				found->second.sprite
+			) {
+				found->second.sprite->Draw();
+			}
+		}
+	}
 }
 
 void GamePlayScene::DrawShadow()
@@ -821,6 +965,7 @@ void GamePlayScene::DrawShadow()
 void GamePlayScene::Finalize()
 {
 	ClearSceneModelObjects();
+	ClearSceneSpriteObjects();
 	for (Sprite* sprite : sprites_) {
 		delete sprite;
 	}
