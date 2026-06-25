@@ -1683,6 +1683,24 @@ void ImGuiManager::DrawInspectorWindow() {
 					}
 					ImGui::EndDragDropTarget();
 				}
+				const char* currentCullMode = component.meshCullMode.empty()
+					? "Back"
+					: component.meshCullMode.c_str();
+				if (ImGui::BeginCombo("Cull Mode", currentCullMode)) {
+					const char* cullModes[] = { "Back", "Front", "None" };
+					for (const char* cullMode : cullModes) {
+						if (ImGui::Selectable(
+							cullMode,
+							component.meshCullMode == cullMode ||
+								(component.meshCullMode.empty() &&
+									std::strcmp(cullMode, "Back") == 0)
+						)) {
+							component.meshCullMode = cullMode;
+							document.MarkDirty();
+						}
+					}
+					ImGui::EndCombo();
+				}
 				ImGui::EndDisabled();
 			} else if (component.type == "SpriteRenderer") {
 				const char* currentTexture = component.texturePath.empty()
@@ -1748,6 +1766,112 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "Camera") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool cameraChanged = false;
+				bool isMainCamera = component.cameraIsMain;
+				if (ImGui::Checkbox("Main Camera", &isMainCamera)) {
+					if (isMainCamera) {
+						for (SceneEntity& candidate : document.GetEntities()) {
+							if (SceneComponent* cameraComponent =
+								FindComponent(candidate, "Camera")) {
+								cameraComponent->cameraIsMain = false;
+							}
+						}
+					}
+					component.cameraIsMain = isMainCamera;
+					cameraChanged = true;
+				}
+
+				constexpr float radiansToDegrees = 57.2957795f;
+				constexpr float degreesToRadians = 0.0174532925f;
+				float fovDegrees = component.cameraFovY * radiansToDegrees;
+				if (ImGui::DragFloat("FOV Y", &fovDegrees, 0.5f, 1.0f, 179.0f)) {
+					component.cameraFovY = fovDegrees * degreesToRadians;
+					cameraChanged = true;
+				}
+				cameraChanged |= ImGui::DragFloat(
+					"Near Clip",
+					&component.cameraNearClip,
+					0.01f,
+					0.001f,
+					100.0f
+				);
+				cameraChanged |= ImGui::DragFloat(
+					"Far Clip",
+					&component.cameraFarClip,
+					1.0f,
+					1.0f,
+					10000.0f
+				);
+				if (component.cameraFarClip <= component.cameraNearClip) {
+					component.cameraFarClip = component.cameraNearClip + 0.001f;
+					cameraChanged = true;
+				}
+				if (cameraChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "MonitorRenderer") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool monitorChanged = false;
+				char cameraNameBuffer[128]{};
+				strncpy_s(
+					cameraNameBuffer,
+					component.monitorCameraName.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Target Camera Name",
+					cameraNameBuffer,
+					sizeof(cameraNameBuffer)
+				)) {
+					component.monitorCameraName = cameraNameBuffer;
+					monitorChanged = true;
+				}
+
+				const char* currentCameraName =
+					component.monitorCameraName.empty()
+					? "Select Camera..."
+					: component.monitorCameraName.c_str();
+				if (ImGui::BeginCombo("Camera Entity", currentCameraName)) {
+					for (const SceneEntity& candidate : document.GetEntities()) {
+						const SceneComponent* cameraComponent =
+							FindEnabledComponent(candidate, "Camera");
+						if (!cameraComponent) {
+							continue;
+						}
+						if (ImGui::Selectable(
+							candidate.name.c_str(),
+							component.monitorCameraName == candidate.name
+						)) {
+							component.monitorCameraName = candidate.name;
+							monitorChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+
+				int monitorWidth = static_cast<int>(component.monitorWidth);
+				int monitorHeight = static_cast<int>(component.monitorHeight);
+				if (ImGui::DragInt("Width", &monitorWidth, 16.0f, 64, 2048)) {
+					component.monitorWidth =
+						static_cast<uint32_t>(std::clamp(monitorWidth, 64, 2048));
+					monitorChanged = true;
+				}
+				if (ImGui::DragInt("Height", &monitorHeight, 16.0f, 64, 2048)) {
+					component.monitorHeight =
+						static_cast<uint32_t>(std::clamp(monitorHeight, 64, 2048));
+					monitorChanged = true;
+				}
+				monitorChanged |= ImGui::Checkbox(
+					"Hide Self In View",
+					&component.monitorHideSelf
+				);
+				if (monitorChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			}
 			ImGui::PopID();
 		}
@@ -1763,6 +1887,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				"MeshRenderer",
 				"SpriteRenderer",
 				"Camera",
+				"MonitorRenderer",
 				"PlayerBehavior",
 				"Animator",
 				"OBBCollider"

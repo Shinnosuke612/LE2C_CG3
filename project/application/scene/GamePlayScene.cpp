@@ -6,6 +6,7 @@
 #include "../../engine/scene/SceneDocument.h"
 
 #include "../../engine/base/DirectXCommon.h"
+#include "../../engine/base/SceneRenderTarget.h"
 #include "../../engine/3d/SrvManager.h"
 #include "../../engine/base/ImGuiManager.h"
 #include "../../engine/io/Input.h"
@@ -68,6 +69,16 @@ namespace {
 		) != entity.components.end();
 	}
 
+	Object3dCommon::CullMode ToObjectCullMode(const std::string& cullMode) {
+		if (cullMode == "None") {
+			return Object3dCommon::CullMode::kNone;
+		}
+		if (cullMode == "Front") {
+			return Object3dCommon::CullMode::kFront;
+		}
+		return Object3dCommon::CullMode::kBack;
+	}
+
 	const SceneComponent* FindEnabledComponent(
 		const SceneEntity& entity,
 		const char* componentName
@@ -105,6 +116,60 @@ namespace {
 			parent = document.FindEntity(parent->parentId);
 		}
 		return true;
+	}
+
+	void ApplyMainCameraComponent(
+		const SceneDocument& document,
+		Camera* camera
+	) {
+		if (!camera) {
+			return;
+		}
+
+		const SceneEntity* fallbackEntity = nullptr;
+		const SceneComponent* fallbackCamera = nullptr;
+		const SceneEntity* mainEntity = nullptr;
+		const SceneComponent* mainCamera = nullptr;
+		for (const SceneEntity& entity : document.GetEntities()) {
+			if (!IsEntityActiveInHierarchy(document, entity)) {
+				continue;
+			}
+			const SceneComponent* cameraComponent =
+				FindEnabledComponent(entity, "Camera");
+			if (!cameraComponent) {
+				continue;
+			}
+			if (!fallbackEntity) {
+				fallbackEntity = &entity;
+				fallbackCamera = cameraComponent;
+			}
+			if (cameraComponent->cameraIsMain) {
+				mainEntity = &entity;
+				mainCamera = cameraComponent;
+				break;
+			}
+		}
+
+		const SceneEntity* cameraEntity = mainEntity ? mainEntity : fallbackEntity;
+		const SceneComponent* cameraComponent =
+			mainCamera ? mainCamera : fallbackCamera;
+		if (!cameraEntity || !cameraComponent) {
+			return;
+		}
+
+		camera->SetOrbitMode(false);
+		camera->SetTranslate(cameraEntity->transform.translate);
+		camera->SetRotate(cameraEntity->transform.rotate);
+		camera->SetFovY(std::clamp(
+			cameraComponent->cameraFovY,
+			0.0174532925f,
+			3.12413936f
+		));
+		camera->SetNearClip((std::max)(cameraComponent->cameraNearClip, 0.001f));
+		camera->SetFarClip((std::max)(
+			cameraComponent->cameraFarClip,
+			cameraComponent->cameraNearClip + 0.001f
+		));
 	}
 
 	Transform ResolveScene2DTransform(
@@ -201,6 +266,10 @@ void GamePlayScene::SyncSceneModelObjects() {
 		}
 
 		found->second.object->GetTransform() = entity.transform;
+		found->second.object->SetCullMode(meshRenderer
+			? ToObjectCullMode(meshRenderer->meshCullMode)
+			: Object3dCommon::CullMode::kBack
+		);
 		const bool hasObbCollider = HasComponent(entity, "OBBCollider");
 		found->second.hasCollider = hasObbCollider;
 		if (hasObbCollider) {
@@ -378,6 +447,220 @@ Object3d* GamePlayScene::FindSceneModelObjectByName(const char* name) const {
 	}
 	const auto found = sceneModelObjects_.find(entity->id);
 	return found == sceneModelObjects_.end() ? nullptr : found->second.object;
+}
+
+bool GamePlayScene::ApplyCameraComponentToCamera(
+	const SceneDocument& document,
+	const SceneEntity& cameraEntity,
+	const SceneComponent& cameraComponent,
+	Camera* camera,
+	float aspectRatio
+) const {
+	if (!camera || !IsEntityActiveInHierarchy(document, cameraEntity)) {
+		return false;
+	}
+	camera->SetOrbitMode(false);
+	camera->SetTranslate(cameraEntity.transform.translate);
+	camera->SetRotate(cameraEntity.transform.rotate);
+	camera->SetFovY(std::clamp(
+		cameraComponent.cameraFovY,
+		0.0174532925f,
+		3.12413936f
+	));
+	camera->SetAspectRatio((std::max)(aspectRatio, 0.001f));
+	camera->SetNearClip((std::max)(cameraComponent.cameraNearClip, 0.001f));
+	camera->SetFarClip((std::max)(
+		cameraComponent.cameraFarClip,
+		cameraComponent.cameraNearClip + 0.001f
+	));
+	camera->Update();
+	return true;
+}
+
+void GamePlayScene::ClearMonitorRenderers() {
+	for (auto& [entityId, runtime] : monitorRuntimes_) {
+		const auto sceneObject = sceneModelObjects_.find(entityId);
+		if (sceneObject != sceneModelObjects_.end() && sceneObject->second.object) {
+			sceneObject->second.object->ClearTextureOverride();
+		}
+		delete runtime.camera;
+		runtime.camera = nullptr;
+		delete runtime.renderTarget;
+		runtime.renderTarget = nullptr;
+	}
+	monitorRuntimes_.clear();
+}
+
+void GamePlayScene::SyncMonitorRenderers() {
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (!document) {
+		ClearMonitorRenderers();
+		return;
+	}
+
+	std::unordered_set<uint64_t> requiredIds;
+	for (const SceneEntity& entity : document->GetEntities()) {
+		const SceneComponent* monitorRenderer =
+			FindEnabledComponent(entity, "MonitorRenderer");
+		if (!monitorRenderer) {
+			continue;
+		}
+		requiredIds.insert(entity.id);
+		MonitorRuntime& runtime = monitorRuntimes_[entity.id];
+		const uint32_t width = std::clamp<uint32_t>(
+			monitorRenderer->monitorWidth,
+			64,
+			2048
+		);
+		const uint32_t height = std::clamp<uint32_t>(
+			monitorRenderer->monitorHeight,
+			64,
+			2048
+		);
+		runtime.targetCameraName = monitorRenderer->monitorCameraName;
+		runtime.hideSelf = monitorRenderer->monitorHideSelf;
+		if (!runtime.camera) {
+			runtime.camera = new Camera();
+		}
+		if (
+			!runtime.renderTarget ||
+			runtime.width != width ||
+			runtime.height != height
+		) {
+			delete runtime.renderTarget;
+			runtime.renderTarget = new SceneRenderTarget();
+			SceneRenderTarget::Desc desc{};
+			desc.width = width;
+			desc.height = height;
+			desc.clearColor[0] = 0.02f;
+			desc.clearColor[1] = 0.02f;
+			desc.clearColor[2] = 0.025f;
+			desc.clearColor[3] = 1.0f;
+			runtime.renderTarget->Initialize(
+				Object3dCommon::GetInstance()->GetDxCommon(),
+				SrvManager::GetInstance(),
+				desc
+			);
+			runtime.width = width;
+			runtime.height = height;
+		}
+	}
+
+	for (auto iterator = monitorRuntimes_.begin(); iterator != monitorRuntimes_.end();) {
+		if (!requiredIds.contains(iterator->first)) {
+			const auto sceneObject = sceneModelObjects_.find(iterator->first);
+			if (sceneObject != sceneModelObjects_.end() && sceneObject->second.object) {
+				sceneObject->second.object->ClearTextureOverride();
+			}
+			delete iterator->second.camera;
+			delete iterator->second.renderTarget;
+			iterator = monitorRuntimes_.erase(iterator);
+		} else {
+			++iterator;
+		}
+	}
+}
+
+void GamePlayScene::ApplyRenderCamera(Camera* viewCamera) {
+	for (StageObject& stageObject : stageObjects_) {
+		if (stageObject.object) {
+			stageObject.object->SetCamera(viewCamera);
+			stageObject.object->Update();
+		}
+	}
+	for (auto& [entityId, sceneObject] : sceneModelObjects_) {
+		(void)entityId;
+		if (sceneObject.object) {
+			sceneObject.object->SetCamera(viewCamera);
+			sceneObject.object->Update();
+		}
+	}
+	if (plane_) {
+		plane_->SetCamera(viewCamera);
+		plane_->Update();
+	}
+	if (axis) {
+		axis->SetCamera(viewCamera);
+		axis->Update();
+	}
+	if (skybox_) {
+		skybox_->SetCamera(viewCamera);
+		skybox_->Update();
+	}
+	ParticleManager::GetInstance()->SetCamera(viewCamera);
+}
+
+void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
+	Object3dCommon::GetInstance()->SetCommonRenderState();
+
+	if (lightManager_) {
+		lightManager_->Bind(
+			Object3dCommon::GetInstance()->GetDxCommon()->GetCommandList(),
+			3
+		);
+	}
+
+	if (shadowManager_) {
+		shadowManager_->Bind(
+			Object3dCommon::GetInstance()->GetDxCommon()->GetCommandList(),
+			5,
+			6
+		);
+	}
+
+	if (plane_) {
+		plane_->Draw();
+	}
+	if (axis) {
+		axis->Draw();
+	}
+	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
+		for (const SceneEntity& entity : document->GetEntities()) {
+			if (
+				entity.id == skipEntityId ||
+				!IsEntityActiveInHierarchy(*document, entity)
+			) {
+				continue;
+			}
+			const auto found = sceneModelObjects_.find(entity.id);
+			if (found != sceneModelObjects_.end() && found->second.object) {
+				found->second.object->Draw();
+			}
+		}
+	}
+	for (StageObject& stageObject : stageObjects_) {
+		if (stageObject.object) {
+			stageObject.object->Draw();
+		}
+	}
+
+	if (lightningRenderer_) {
+		lightningRenderer_->Draw(viewCamera);
+	}
+
+	if (skybox_) {
+		skybox_->Draw();
+	}
+
+	ParticleManager::GetInstance()->Draw();
+
+	SceneDocument* spriteDocument = sceneManager_->GetActiveSceneDocument();
+	if (!sceneSpriteObjects_.empty() && spriteDocument) {
+		SpriteCommon::GetInstance()->SetCommonRenderState();
+		for (const SceneEntity& entity : spriteDocument->GetEntities()) {
+			const auto found = sceneSpriteObjects_.find(entity.id);
+			if (
+				entity.id != skipEntityId &&
+				found != sceneSpriteObjects_.end() &&
+				IsEntityActiveInHierarchy(*spriteDocument, entity) &&
+				found->second.sprite
+			) {
+				found->second.sprite->Draw();
+			}
+		}
+	}
 }
 
 void GamePlayScene::RebuildStaticColliders() {
@@ -798,8 +1081,18 @@ void GamePlayScene::Update()
 	}
 	SyncSceneModelObjects();
 	RebuildStaticColliders();
+	if (
+		editorSession &&
+		!editorSession->IsEditing() &&
+		sceneManager_
+	) {
+		if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
+			ApplyMainCameraComponent(*document, camera_);
+			camera_->Update();
+		}
+	}
 	if (player_ && (!editorSession || editorSession->IsPlaying())) {
-		player_->Update(staticColliders_);
+		player_->Update(staticColliders_, camera_);
 		SceneDocument* document = sceneManager_->GetActiveSceneDocument();
 		SceneEntity* playerEntity = document
 			? document->FindEntityByName("Player")
@@ -809,6 +1102,19 @@ void GamePlayScene::Update()
 		}
 	}
 	SyncSceneSpriteObjects();
+	EditorSession* activeEditorSession = sceneManager_
+		? sceneManager_->GetEditorSession()
+		: nullptr;
+	if (
+		activeEditorSession &&
+		!activeEditorSession->IsEditing()
+	) {
+		if (SceneDocument* document = sceneManager_
+			? sceneManager_->GetActiveSceneDocument()
+			: nullptr) {
+			ApplyMainCameraComponent(*document, camera_);
+		}
+	}
 	camera_->Update();
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
@@ -835,70 +1141,81 @@ void GamePlayScene::Update()
 
 void GamePlayScene::Draw()
 {
-	Object3dCommon::GetInstance()->SetCommonRenderState();
+	ApplyRenderCamera(camera_);
+	DrawSceneView(camera_);
+}
 
-	if (lightManager_) {
-		lightManager_->Bind(
-			Object3dCommon::GetInstance()->GetDxCommon()->GetCommandList(),
-			3
+void GamePlayScene::DrawOffscreenViews()
+{
+	SyncMonitorRenderers();
+
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (!document) {
+		return;
+	}
+
+	for (auto& [monitorEntityId, runtime] : monitorRuntimes_) {
+		const SceneEntity* monitorEntity = document->FindEntity(monitorEntityId);
+		const auto monitorObject = sceneModelObjects_.find(monitorEntityId);
+		if (
+			!monitorEntity ||
+			!IsEntityActiveInHierarchy(*document, *monitorEntity) ||
+			runtime.targetCameraName.empty() ||
+			!runtime.camera ||
+			!runtime.renderTarget ||
+			monitorObject == sceneModelObjects_.end() ||
+			!monitorObject->second.object
+		) {
+			if (monitorObject != sceneModelObjects_.end() && monitorObject->second.object) {
+				monitorObject->second.object->ClearTextureOverride();
+			}
+			continue;
+		}
+
+		const SceneEntity* cameraEntity =
+			document->FindEntityByName(runtime.targetCameraName);
+		if (!cameraEntity) {
+			monitorObject->second.object->ClearTextureOverride();
+			continue;
+		}
+		const SceneComponent* cameraComponent =
+			FindEnabledComponent(*cameraEntity, "Camera");
+		if (!cameraComponent) {
+			monitorObject->second.object->ClearTextureOverride();
+			continue;
+		}
+
+		const float aspectRatio =
+			static_cast<float>(runtime.width) /
+			static_cast<float>((std::max)(runtime.height, 1u));
+		if (!ApplyCameraComponentToCamera(
+			*document,
+			*cameraEntity,
+			*cameraComponent,
+			runtime.camera,
+			aspectRatio
+		)) {
+			monitorObject->second.object->ClearTextureOverride();
+			continue;
+		}
+
+		ApplyRenderCamera(runtime.camera);
+		runtime.renderTarget->Begin();
+		SrvManager::GetInstance()->PreDraw();
+		DrawSceneView(
+			runtime.camera,
+			runtime.hideSelf ? monitorEntityId : 0
+		);
+		runtime.renderTarget->End();
+
+		monitorObject->second.object->SetTextureOverride(
+			runtime.renderTarget->GetSrvGpuHandle()
 		);
 	}
 
-	if (shadowManager_) {
-		shadowManager_->Bind(
-			Object3dCommon::GetInstance()->GetDxCommon()->GetCommandList(),
-			5,
-			6
-		);
-	}
-
-	if (plane_) {
-		plane_->Draw();
-	}
-	if (axis) {
-		axis->Draw();
-	}
-	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
-		for (const SceneEntity& entity : document->GetEntities()) {
-			if (!IsEntityActiveInHierarchy(*document, entity)) {
-				continue;
-			}
-			const auto found = sceneModelObjects_.find(entity.id);
-			if (found != sceneModelObjects_.end() && found->second.object) {
-				found->second.object->Draw();
-			}
-		}
-	}
-	for (StageObject& stageObject : stageObjects_) {
-		if (stageObject.object) {
-			stageObject.object->Draw();
-		}
-	}
-
-	if (lightningRenderer_) {
-		lightningRenderer_->Draw(camera_);
-	}
-
-	if (skybox_) {
-		skybox_->Draw();
-	}
-
-	ParticleManager::GetInstance()->Draw();
-
-	SceneDocument* spriteDocument = sceneManager_->GetActiveSceneDocument();
-	if (!sceneSpriteObjects_.empty() && spriteDocument) {
-		SpriteCommon::GetInstance()->SetCommonRenderState();
-		for (const SceneEntity& entity : spriteDocument->GetEntities()) {
-			const auto found = sceneSpriteObjects_.find(entity.id);
-			if (
-				found != sceneSpriteObjects_.end() &&
-				IsEntityActiveInHierarchy(*spriteDocument, entity) &&
-				found->second.sprite
-			) {
-				found->second.sprite->Draw();
-			}
-		}
-	}
+	ApplyRenderCamera(camera_);
 }
 
 void GamePlayScene::DrawShadow()
@@ -948,6 +1265,7 @@ void GamePlayScene::DrawShadow()
 
 void GamePlayScene::Finalize()
 {
+	ClearMonitorRenderers();
 	ClearSceneModelObjects();
 	ClearSceneSpriteObjects();
 	for (Sprite* sprite : sprites_) {

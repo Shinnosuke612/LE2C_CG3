@@ -8,6 +8,12 @@ class SkinCluster;
 
 class Object3dCommon{
 public: //メンバ関数
+	enum class CullMode {
+		kNone,
+		kBack,
+		kFront,
+		kCount
+	};
 
 	// シングルトンインスタンスの取得
 	static Object3dCommon* GetInstance();
@@ -20,7 +26,9 @@ public: //メンバ関数
 	void Initialize(DirectXCommon* dxCommon);
 	//共通描画設定
 	void SetCommonRenderState();
+	void SetCommonRenderState(CullMode cullMode);
 	void SetSkinningRenderState();
+	void SetSkinningRenderState(CullMode cullMode);
 	void SetShadowRenderState();
 	void SetSkinningShadowRenderState();
 	void DispatchSkinning(SkinCluster& skinCluster);
@@ -65,8 +73,10 @@ private://メンバ変数
 	DirectXCommon* dxCommon_ = nullptr;
 	//ルートシグネチャ
 	Microsoft::WRL::ComPtr < ID3D12RootSignature> rootSignature_ = nullptr;
-	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState_ = nullptr;
-	Microsoft::WRL::ComPtr<ID3D12PipelineState> skinningPipelineState_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineStates_
+		[static_cast<uint32_t>(CullMode::kCount)];
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> skinningPipelineStates_
+		[static_cast<uint32_t>(CullMode::kCount)];
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> skinningComputeRootSignature_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> skinningComputePipelineState_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> shadowRootSignature_ = nullptr;

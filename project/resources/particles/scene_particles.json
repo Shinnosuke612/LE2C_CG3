@@ -76,6 +76,26 @@
         ]
       }
     ],
+    "SnoeAsset": [
+      {
+        "count": 50,
+        "effectFilePath": "resources/particles/SnowParticle.json",
+        "emitterActive": true,
+        "enabled": true,
+        "frequency": 0.10000000149011612,
+        "label": "Particle 0",
+        "spawnSize": [
+          200.0,
+          1.0,
+          200.0
+        ],
+        "translate": [
+          0.0,
+          50.0,
+          0.0
+        ]
+      }
+    ],
     "rainAsset": [
       {
         "count": 500,
@@ -119,8 +139,18 @@
     "GAMEPLAY": [
       {
         "assetName": "rainAsset",
-        "enabled": true,
+        "enabled": false,
         "label": "rainAsset 0",
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "assetName": "SnoeAsset",
+        "enabled": true,
+        "label": "SnoeAsset 1",
         "translate": [
           0.0,
           0.0,

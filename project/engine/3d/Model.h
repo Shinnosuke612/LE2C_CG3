@@ -85,7 +85,16 @@ public://公開メンバ関数
 	void DrawForShadow(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
 	void DrawWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView);
 	void DrawWithMaterial(ID3D12Resource* materialOverride, const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
-	void DrawWithVertexBufferAndMaterial(const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView, ID3D12Resource* materialOverride);
+	void DrawWithMaterialAndTexture(
+		ID3D12Resource* materialOverride,
+		D3D12_GPU_DESCRIPTOR_HANDLE textureOverride,
+		const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr
+	);
+	void DrawWithVertexBufferAndMaterial(
+		const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView,
+		ID3D12Resource* materialOverride,
+		D3D12_GPU_DESCRIPTOR_HANDLE textureOverride = {}
+	);
 	void DrawForShadowWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView);
 
 	// getter

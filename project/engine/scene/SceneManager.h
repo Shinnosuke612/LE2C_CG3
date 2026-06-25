@@ -16,6 +16,7 @@ public:
 
 	void Draw();
 	void DrawShadow();
+	void DrawOffscreenViews();
 
 	void ChangeScene(const std::string& sceneName);
 	void ReloadCurrentScene();

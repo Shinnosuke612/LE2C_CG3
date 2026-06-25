@@ -82,6 +82,14 @@ void Model::DrawWithMaterial(
 	ID3D12Resource* materialOverride,
 	const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView
 ) {
+	DrawWithMaterialAndTexture(materialOverride, {}, influenceBufferView);
+}
+
+void Model::DrawWithMaterialAndTexture(
+	ID3D12Resource* materialOverride,
+	D3D12_GPU_DESCRIPTOR_HANDLE textureOverride,
+	const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView
+) {
 	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
 	if (influenceBufferView) {
 		const D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[] = {
@@ -102,9 +110,10 @@ void Model::DrawWithMaterial(
 	commandList->SetGraphicsRootConstantBufferView(0, materialToBind->GetGPUVirtualAddress());
 
 	// SRVのDescriptorTableの先頭を設定（TextureManagerから取得）
-	commandList->SetGraphicsRootDescriptorTable(
-		2, TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureFilePath)
-	);
+	const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle = textureOverride.ptr != 0
+		? textureOverride
+		: TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureFilePath);
+	commandList->SetGraphicsRootDescriptorTable(2, textureHandle);
 
 	// 描画！
 	commandList->DrawIndexedInstanced(
@@ -147,7 +156,8 @@ void Model::DrawWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& customVertexBuf
 
 void Model::DrawWithVertexBufferAndMaterial(
 	const D3D12_VERTEX_BUFFER_VIEW& customVertexBufferView,
-	ID3D12Resource* materialOverride
+	ID3D12Resource* materialOverride,
+	D3D12_GPU_DESCRIPTOR_HANDLE textureOverride
 ) {
 	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
 	commandList->IASetVertexBuffers(0, 1, &customVertexBufferView);
@@ -157,10 +167,10 @@ void Model::DrawWithVertexBufferAndMaterial(
 	ID3D12Resource* materialToBind =
 		materialOverride ? materialOverride : materialResource;
 	commandList->SetGraphicsRootConstantBufferView(0, materialToBind->GetGPUVirtualAddress());
-	commandList->SetGraphicsRootDescriptorTable(
-		2,
-		TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureFilePath)
-	);
+	const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle = textureOverride.ptr != 0
+		? textureOverride
+		: TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureFilePath);
+	commandList->SetGraphicsRootDescriptorTable(2, textureHandle);
 	commandList->DrawIndexedInstanced(
 		static_cast<UINT>(modelData.indices.size()),
 		1,

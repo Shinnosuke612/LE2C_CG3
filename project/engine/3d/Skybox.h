@@ -32,6 +32,7 @@ public:
 
 	void SetScale(const Vector3& scale) { transform_.scale = scale; }
 	void SetColor(const Vector4& color) { materialData_->color = color; }
+	void SetCamera(Camera* camera) { camera_ = camera; }
 
 private:
 	void CreateVertexResource();

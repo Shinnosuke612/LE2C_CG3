@@ -83,6 +83,13 @@ void SceneManager::DrawShadow()
 	}
 }
 
+void SceneManager::DrawOffscreenViews()
+{
+	if (scene_) {
+		scene_->DrawOffscreenViews();
+	}
+}
+
 SceneManager::~SceneManager()
 {
 	if (scene_) {

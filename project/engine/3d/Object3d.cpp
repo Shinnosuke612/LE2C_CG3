@@ -174,10 +174,10 @@ void Object3d::Draw(){
 	auto* commandList = object3dCommon->GetDxCommon()->GetCommandList();
 	if (skinCluster_ && skinCluster_->IsValid()) {
 		object3dCommon->DispatchSkinning(*skinCluster_);
-		object3dCommon->SetCommonRenderState();
+		object3dCommon->SetCommonRenderState(cullMode_);
 	}
 	else {
-		object3dCommon->SetCommonRenderState();
+		object3dCommon->SetCommonRenderState(cullMode_);
 	}
 
 	// 座標変換行列CBufferの場所を設定
@@ -193,11 +193,15 @@ void Object3d::Draw(){
 	if (skinCluster_ && skinCluster_->IsValid()) {
 		model->DrawWithVertexBufferAndMaterial(
 			skinCluster_->GetSkinnedVertexBufferView(),
-			materialResource
+			materialResource,
+			textureOverrideHandle_
 		);
 	}
 	else {
-		model->DrawWithMaterial(materialResource);
+		model->DrawWithMaterialAndTexture(
+			materialResource,
+			textureOverrideHandle_
+		);
 	}
 }
 

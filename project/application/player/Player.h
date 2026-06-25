@@ -8,13 +8,17 @@
 
 class Object3d;
 class Object3dCommon;
+class Camera;
 struct Matrix4x4;
 
 class Player {
 public:
 	void Initialize(Object3dCommon* object3dCommon, const char* modelName);
 	void Initialize(Object3d* object);
-	void Update(const std::vector<OBBCollider*>& staticColliders);
+	void Update(
+		const std::vector<OBBCollider*>& staticColliders,
+		const Camera* camera
+	);
 	void Draw();
 	void DrawShadow(const Matrix4x4& lightViewProjection);
 	void Finalize();
@@ -34,4 +38,5 @@ private:
 	OBBCollider collider_;
 	Vector3 position_ = { 0.0f, 1.0f, -4.0f };
 	float moveSpeed_ = 0.18f;
+	float turnResponsiveness_ = 0.018f;
 };

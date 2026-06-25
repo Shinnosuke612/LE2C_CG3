@@ -64,6 +64,7 @@ namespace {
 		};
 		if (component.type == "MeshRenderer") {
 			result["modelPath"] = component.modelPath;
+			result["cullMode"] = component.meshCullMode;
 		} else if (component.type == "SpriteRenderer") {
 			result["texturePath"] = component.texturePath;
 			result["size"] = VectorToJson(component.spriteSize);
@@ -71,6 +72,16 @@ namespace {
 			result["color"] = VectorToJson(component.spriteColor);
 			result["flipX"] = component.spriteFlipX;
 			result["flipY"] = component.spriteFlipY;
+		} else if (component.type == "Camera") {
+			result["isMain"] = component.cameraIsMain;
+			result["fovY"] = component.cameraFovY;
+			result["nearClip"] = component.cameraNearClip;
+			result["farClip"] = component.cameraFarClip;
+		} else if (component.type == "MonitorRenderer") {
+			result["cameraName"] = component.monitorCameraName;
+			result["width"] = component.monitorWidth;
+			result["height"] = component.monitorHeight;
+			result["hideSelf"] = component.monitorHideSelf;
 		}
 		return result;
 	}
@@ -88,6 +99,10 @@ namespace {
 				component.type = value.value("type", std::string{});
 				component.enabled = value.value("enabled", true);
 				component.modelPath = value.value("modelPath", std::string{});
+				component.meshCullMode = value.value(
+					"cullMode",
+					component.meshCullMode
+				);
 				component.texturePath = value.value("texturePath", std::string{});
 				if (value.contains("size")) {
 					component.spriteSize = JsonToVector(
@@ -109,6 +124,32 @@ namespace {
 				}
 				component.spriteFlipX = value.value("flipX", false);
 				component.spriteFlipY = value.value("flipY", false);
+				component.cameraIsMain = value.value("isMain", false);
+				component.cameraFovY = value.value("fovY", component.cameraFovY);
+				component.cameraNearClip = value.value(
+					"nearClip",
+					component.cameraNearClip
+				);
+				component.cameraFarClip = value.value(
+					"farClip",
+					component.cameraFarClip
+				);
+				component.monitorCameraName = value.value(
+					"cameraName",
+					component.monitorCameraName
+				);
+				component.monitorWidth = value.value(
+					"width",
+					component.monitorWidth
+				);
+				component.monitorHeight = value.value(
+					"height",
+					component.monitorHeight
+				);
+				component.monitorHideSelf = value.value(
+					"hideSelf",
+					component.monitorHideSelf
+				);
 			}
 			if (!component.type.empty()) {
 				const auto duplicate = std::find_if(
@@ -234,7 +275,7 @@ bool SceneDocument::Load(const std::string& filePath) {
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 4;
+	root["version"] = 7;
 	root["sceneName"] = sceneName_;
 	root["entities"] = json::array();
 
@@ -551,6 +592,9 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		if (type == "MeshRenderer" && found->modelPath.empty()) {
 			found->modelPath = entity->modelPath;
 			changed = true;
+		} else if (type == "MeshRenderer" && found->meshCullMode.empty()) {
+			found->meshCullMode = "Back";
+			changed = true;
 		} else if (type == "SpriteRenderer" && found->texturePath.empty()) {
 			found->texturePath = entity->spriteTexturePath;
 			found->spriteSize = entity->spriteSize;
@@ -559,6 +603,31 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 			found->spriteFlipX = entity->spriteFlipX;
 			found->spriteFlipY = entity->spriteFlipY;
 			changed = true;
+		} else if (type == "Camera") {
+			if (found->cameraNearClip <= 0.0f) {
+				found->cameraNearClip = 0.1f;
+				changed = true;
+			}
+			if (found->cameraFarClip <= found->cameraNearClip) {
+				found->cameraFarClip = 1000.0f;
+				changed = true;
+			}
+		} else if (type == "MonitorRenderer") {
+			const uint32_t width = std::clamp<uint32_t>(
+				found->monitorWidth,
+				64,
+				2048
+			);
+			const uint32_t height = std::clamp<uint32_t>(
+				found->monitorHeight,
+				64,
+				2048
+			);
+			if (found->monitorWidth != width || found->monitorHeight != height) {
+				found->monitorWidth = width;
+				found->monitorHeight = height;
+				changed = true;
+			}
 		}
 		if (!found->enabled) {
 			found->enabled = true;
@@ -572,6 +641,7 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 	SceneComponent component{ type, true };
 	if (type == "MeshRenderer") {
 		component.modelPath = entity->modelPath;
+		component.meshCullMode = "Back";
 	} else if (type == "SpriteRenderer") {
 		component.texturePath = entity->spriteTexturePath;
 		component.spriteSize = entity->spriteSize;
@@ -579,6 +649,16 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.spriteColor = entity->spriteColor;
 		component.spriteFlipX = entity->spriteFlipX;
 		component.spriteFlipY = entity->spriteFlipY;
+	} else if (type == "Camera") {
+		component.cameraIsMain = false;
+		component.cameraFovY = 0.45f;
+		component.cameraNearClip = 0.1f;
+		component.cameraFarClip = 1000.0f;
+	} else if (type == "MonitorRenderer") {
+		component.monitorCameraName = "";
+		component.monitorWidth = 512;
+		component.monitorHeight = 512;
+		component.monitorHideSelf = true;
 	}
 	entity->components.push_back(std::move(component));
 	dirty_ = true;

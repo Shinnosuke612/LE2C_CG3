@@ -4,6 +4,7 @@
 #include "../utility/Logger.h"
 #include "SkinCluster.h"
 #include "SrvManager.h"
+#include <algorithm>
 #include <cassert>
 
 Object3dCommon* Object3dCommon::GetInstance() {
@@ -11,10 +12,31 @@ Object3dCommon* Object3dCommon::GetInstance() {
 	return &instance;
 }
 
+namespace {
+	D3D12_CULL_MODE ToD3D12CullMode(Object3dCommon::CullMode cullMode) {
+		switch (cullMode) {
+		case Object3dCommon::CullMode::kBack:
+			return D3D12_CULL_MODE_BACK;
+		case Object3dCommon::CullMode::kFront:
+			return D3D12_CULL_MODE_FRONT;
+		case Object3dCommon::CullMode::kNone:
+		default:
+			return D3D12_CULL_MODE_NONE;
+		}
+	}
+
+	uint32_t ToCullIndex(Object3dCommon::CullMode cullMode) {
+		const uint32_t index = static_cast<uint32_t>(cullMode);
+		const uint32_t maxIndex =
+			static_cast<uint32_t>(Object3dCommon::CullMode::kCount) - 1;
+		return (std::min)(index, maxIndex);
+	}
+}
+
 void Object3dCommon::Initialize(DirectXCommon* dxCommon) {
 	assert(dxCommon);
 
-	if (dxCommon_ == dxCommon && graphicsPipelineState_) {
+	if (dxCommon_ == dxCommon && graphicsPipelineStates_[ToCullIndex(CullMode::kBack)]) {
 		return;
 	}
 
@@ -29,14 +51,26 @@ void Object3dCommon::Initialize(DirectXCommon* dxCommon) {
 }
 
 void Object3dCommon::SetCommonRenderState() {
+	SetCommonRenderState(CullMode::kBack);
+}
+
+void Object3dCommon::SetCommonRenderState(CullMode cullMode) {
 	dxCommon_->GetCommandList()->SetGraphicsRootSignature(rootSignature_.Get());
-	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipelineState_.Get());
+	dxCommon_->GetCommandList()->SetPipelineState(
+		graphicsPipelineStates_[ToCullIndex(cullMode)].Get()
+	);
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
 void Object3dCommon::SetSkinningRenderState() {
+	SetSkinningRenderState(CullMode::kBack);
+}
+
+void Object3dCommon::SetSkinningRenderState(CullMode cullMode) {
 	dxCommon_->GetCommandList()->SetGraphicsRootSignature(rootSignature_.Get());
-	dxCommon_->GetCommandList()->SetPipelineState(skinningPipelineState_.Get());
+	dxCommon_->GetCommandList()->SetPipelineState(
+		skinningPipelineStates_[ToCullIndex(cullMode)].Get()
+	);
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
@@ -256,8 +290,6 @@ void Object3dCommon::GenerateGraphicsPipeline(){
 
 	// RasterizerStateの設定
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
-	// 裏面（時計回り）を表示しない
-	rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
 	// 三角形の中を塗りつぶす
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
 
@@ -280,7 +312,6 @@ void Object3dCommon::GenerateGraphicsPipeline(){
 	graphicsPipelineStateDesc.PS = { pixelShaderBlob->GetBufferPointer(),
 									 pixelShaderBlob->GetBufferSize() };  // PixelShader
 	graphicsPipelineStateDesc.BlendState = blendDesc;         // BlendState
-	graphicsPipelineStateDesc.RasterizerState = rasterizerDesc; // RasterizerState
 
 	// 書き込むRTVの情報
 	graphicsPipelineStateDesc.NumRenderTargets = 1;
@@ -297,11 +328,20 @@ void Object3dCommon::GenerateGraphicsPipeline(){
 	graphicsPipelineStateDesc.DepthStencilState = depthStencilDesc;
 	graphicsPipelineStateDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
-	//実際に生成
-
-	hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(&graphicsPipelineStateDesc,
-															 IID_PPV_ARGS(&graphicsPipelineState_));
-	assert(SUCCEEDED(hr));
+	for (
+		uint32_t cullIndex = 0;
+		cullIndex < static_cast<uint32_t>(CullMode::kCount);
+		++cullIndex
+	) {
+		rasterizerDesc.CullMode =
+			ToD3D12CullMode(static_cast<CullMode>(cullIndex));
+		graphicsPipelineStateDesc.RasterizerState = rasterizerDesc;
+		hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+			&graphicsPipelineStateDesc,
+			IID_PPV_ARGS(&graphicsPipelineStates_[cullIndex])
+		);
+		assert(SUCCEEDED(hr));
+	}
 
 }
 
@@ -344,7 +384,6 @@ void Object3dCommon::GenerateSkinningGraphicsPipeline() {
 	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
-	rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
 	rasterizerDesc.DepthClipEnable = TRUE;
 
@@ -376,7 +415,6 @@ void Object3dCommon::GenerateSkinningGraphicsPipeline() {
 		pixelShaderBlob->GetBufferSize()
 	};
 	pipelineDesc.BlendState = blendDesc;
-	pipelineDesc.RasterizerState = rasterizerDesc;
 	pipelineDesc.DepthStencilState = depthStencilDesc;
 	pipelineDesc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
 	pipelineDesc.PrimitiveTopologyType =
@@ -386,12 +424,21 @@ void Object3dCommon::GenerateSkinningGraphicsPipeline() {
 	pipelineDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	pipelineDesc.SampleDesc.Count = 1;
 
-	const HRESULT hr =
-		dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+	for (
+		uint32_t cullIndex = 0;
+		cullIndex < static_cast<uint32_t>(CullMode::kCount);
+		++cullIndex
+	) {
+		rasterizerDesc.CullMode =
+			ToD3D12CullMode(static_cast<CullMode>(cullIndex));
+		pipelineDesc.RasterizerState = rasterizerDesc;
+		const HRESULT hr =
+			dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 			&pipelineDesc,
-			IID_PPV_ARGS(&skinningPipelineState_)
+			IID_PPV_ARGS(&skinningPipelineStates_[cullIndex])
 		);
-	assert(SUCCEEDED(hr));
+		assert(SUCCEEDED(hr));
+	}
 }
 
 void Object3dCommon::GenerateSkinningComputePipeline() {

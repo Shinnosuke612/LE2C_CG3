@@ -21,6 +21,10 @@ class Object3d;
 class ParticleEmitter;
 class Skybox;
 class Player;
+class SceneRenderTarget;
+class SceneDocument;
+struct SceneEntity;
+struct SceneComponent;
 
 class GamePlayScene : public BaseScene
 {
@@ -43,6 +47,15 @@ private:
 		std::string texturePath;
 	};
 
+	struct MonitorRuntime {
+		Camera* camera = nullptr;
+		SceneRenderTarget* renderTarget = nullptr;
+		std::string targetCameraName;
+		uint32_t width = 512;
+		uint32_t height = 512;
+		bool hideSelf = true;
+	};
+
 public: //メンバ関数
 
 	//初期化
@@ -56,6 +69,7 @@ public: //メンバ関数
 
 	//描画
 	void Draw() override;
+	void DrawOffscreenViews() override;
 	void DrawShadow() override;
 
 private:
@@ -65,6 +79,17 @@ private:
 	void ClearSceneSpriteObjects();
 	void RebuildStaticColliders();
 	Object3d* FindSceneModelObjectByName(const char* name) const;
+	void SyncMonitorRenderers();
+	void ClearMonitorRenderers();
+	void DrawSceneView(Camera* viewCamera, uint64_t skipEntityId = 0);
+	void ApplyRenderCamera(Camera* viewCamera);
+	bool ApplyCameraComponentToCamera(
+		const SceneDocument& document,
+		const SceneEntity& cameraEntity,
+		const SceneComponent& cameraComponent,
+		Camera* camera,
+		float aspectRatio
+	) const;
 
 	SpriteCommon* spriteCommon_ = nullptr;
 	Camera* camera_ = nullptr;
@@ -81,6 +106,7 @@ private:
 	std::vector<StageObject> stageObjects_;
 	std::unordered_map<uint64_t, SceneModelObject> sceneModelObjects_;
 	std::unordered_map<uint64_t, SceneSpriteObject> sceneSpriteObjects_;
+	std::unordered_map<uint64_t, MonitorRuntime> monitorRuntimes_;
 	std::vector<OBBCollider*> staticColliders_;
 	std::vector<Sprite*> sprites_;
 	Audio::SoundData soundData_{};

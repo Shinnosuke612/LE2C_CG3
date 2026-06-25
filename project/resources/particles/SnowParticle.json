@@ -1,0 +1,305 @@
+{
+  "behavior": {
+    "color": {
+      "endColorMax": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "endColorMin": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "mode": "RandomLoop",
+      "randomColorChangeIntervalMax": 0.14100000262260437,
+      "randomColorChangeIntervalMin": 0.20999999344348907,
+      "randomColorLerpSpeed": 8.0600004196167,
+      "randomColorMax": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "randomColorMin": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "startColorMax": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "startColorMin": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "life": {
+      "enableLifeFade": true,
+      "fadeOutStartRatio": 0.9399999976158142,
+      "isLooping": false,
+      "lifeTimeMax": 30.0,
+      "lifeTimeMin": 30.0,
+      "loopDuration": 1.0,
+      "loopPingPong": true
+    },
+    "motion": {
+      "linear": {
+        "accelerationRandomRange": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "baseAcceleration": [
+          0.0,
+          -0.0010000000474974513,
+          0.0
+        ],
+        "baseVelocity": [
+          0.0,
+          -1.7999999523162842,
+          0.0
+        ],
+        "enableAcceleration": true,
+        "velocityRandomRange": [
+          0.0,
+          0.0,
+          0.009999999776482582
+        ]
+      },
+      "mode": "Linear",
+      "pointField": {
+        "attractionStrength": 0.0,
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "damping": 0.0,
+        "enabled": false,
+        "falloff": 1.0,
+        "orbitAxis": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "orbitStrength": 0.0,
+        "radius": 0.0,
+        "repulsionStrength": 0.0,
+        "useEmitterOffset": true
+      },
+      "sway": {
+        "amplitude": 1.4600000381469727,
+        "frequency": 1.3799999952316284
+      },
+      "vortex": {
+        "angularSpeedMax": 8.0,
+        "angularSpeedMin": 4.0,
+        "axis": "Y",
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "inwardSpeedMax": 1.7999999523162842,
+        "inwardSpeedMin": 0.800000011920929,
+        "useEmitterOffset": true,
+        "verticalSpeedMax": 0.10000000149011612,
+        "verticalSpeedMin": -0.10000000149011612
+      },
+      "wind": {
+        "acceleration": 8.0,
+        "boundaryFalloff": 2.0,
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "deceleration": 5.0,
+        "direction": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "enableBoundaryFalloff": true,
+        "enabled": false,
+        "recoverOutsideField": true,
+        "size": [
+          20.0,
+          20.0,
+          20.0
+        ],
+        "smoothVelocity": true,
+        "strength": 0.0,
+        "turbulenceFrequency": 1.0,
+        "turbulenceScale": 0.10000000149011612,
+        "turbulenceStrength": 0.0,
+        "useEmitterOffset": true
+      }
+    },
+    "render": {
+      "alphaCutoff": 0.0,
+      "billboardMode": "Billboard",
+      "cullMode": "None",
+      "cylinder": {
+        "bottomColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "bottomRadius": 1.0,
+        "divisions": 32,
+        "endAngle": 6.2831854820251465,
+        "height": 3.0,
+        "startAngle": 0.0,
+        "topColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "topRadius": 1.0,
+        "uvMode": "Horizontal"
+      },
+      "depthTest": true,
+      "depthWrite": false,
+      "emissiveIntensity": 1.0,
+      "flipU": false,
+      "flipV": false,
+      "primitiveType": "Plane",
+      "ring": {
+        "divisions": 32,
+        "endAngle": 6.2831854820251465,
+        "innerColor": [
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "innerRadius": 0.20000000298023224,
+        "outerColor": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "outerRadius": 1.0,
+        "startAngle": 0.0,
+        "uvMode": "Horizontal"
+      },
+      "uvScrollSpeed": [
+        0.0,
+        0.0
+      ]
+    },
+    "rotation": {
+      "alignAxis": "Y",
+      "alignToVelocity": false,
+      "enableRotationOverTime": false,
+      "initialRotationMax": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "initialRotationMin": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotationSpeed": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "scale": {
+      "enableScaleOverLife": false,
+      "endScaleMax": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "endScaleMin": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "startScaleMax": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "startScaleMin": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ]
+    }
+  },
+  "blendMode": "Add",
+  "emitter": {
+    "count": 50,
+    "frequency": 0.10000000149011612,
+    "isActive": true,
+    "spawnSize": [
+      200.0,
+      1.0,
+      200.0
+    ],
+    "translate": [
+      0.0,
+      50.0,
+      0.0
+    ]
+  },
+  "lightning": {
+    "branchColor": [
+      2.0,
+      4.0,
+      12.0,
+      1.0
+    ],
+    "branchLength": 0.800000011920929,
+    "branchProbability": 0.3499999940395355,
+    "coreColor": [
+      8.0,
+      10.0,
+      16.0,
+      1.0
+    ],
+    "duration": 0.11999999731779099,
+    "enabled": false,
+    "endOffset": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "flashExposure": true,
+    "flashExposureValue": 3.5,
+    "flashReturnSpeed": 6.0,
+    "jitter": 0.44999998807907104,
+    "randomRange": [
+      4.0,
+      0.0,
+      4.0
+    ],
+    "segmentCount": 16,
+    "startOffset": [
+      0.0,
+      6.0,
+      0.0
+    ],
+    "thickness": 0.03999999910593033
+  },
+  "name": "SnowParticle",
+  "textureFilePath": "resources/circleEntity.png"
+}

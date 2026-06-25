@@ -52,13 +52,19 @@ void Game::Initialize() {
 			for (SceneComponent& component : entity.components) {
 				if (component.type == "MeshRenderer") {
 					component.modelPath = entity.modelPath;
+				} else if (component.type == "Camera") {
+					component.cameraIsMain = true;
 				}
 			}
 		};
 		addEntity(
 			"Main Camera",
 			"",
-			Transform{},
+			Transform{
+				{ 1.0f, 1.0f, 1.0f },
+				{ 0.0f, 0.0f, 0.0f },
+				{ 0.0f, 2.0f, -10.0f }
+			},
 			{ "Camera" }
 		);
 		addEntity(
@@ -525,6 +531,7 @@ void Game::Draw() {
 	srvManager_->PreDraw();
 
 	sceneManager_->DrawShadow();
+	sceneManager_->DrawOffscreenViews();
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->DrawEditorWorkspace(

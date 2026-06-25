@@ -10,11 +10,11 @@
 #include "../math/Vector4.h"
 #include "../math/Matrix4x4.h"
 #include "../math/Transform.h"
+#include "Object3dCommon.h"
 #include "Skeleton.h"
 #include "SkinCluster.h"
 #include <d3d12.h> 
 
-class Object3dCommon;
 class Model;
 class Camera;
 
@@ -70,6 +70,9 @@ public: //公開メンバ関数
 	void SetModel(const std::string& filePath);
 	void SetCamera(Camera* camera){ this->camera = camera; }
 	void SetParent(const Object3d* parent) { parent_ = parent; }
+	void SetCullMode(Object3dCommon::CullMode cullMode) {
+		cullMode_ = cullMode;
+	}
 	void SetEnvironmentMap(const std::string& textureFilePath, float coefficient);
 	void SetEnvironmentCoefficient(float coefficient);
 	void SetAnimationPlaying(bool isPlaying) { isAnimationPlaying_ = isPlaying; }
@@ -79,6 +82,10 @@ public: //公開メンバ関数
 	void SetColor(const Vector4& color);
 	void SetEnableLighting(bool enableLighting);
 	void SetEmissive(float intensity, const Vector4& color = { 1.0f, 1.0f, 1.0f, 1.0f });
+	void SetTextureOverride(D3D12_GPU_DESCRIPTOR_HANDLE handle) {
+		textureOverrideHandle_ = handle;
+	}
+	void ClearTextureOverride() { textureOverrideHandle_ = {}; }
 
 	// getter（参照返しが軽くて安全）
 	const Vector3& GetScale() const{return transform.scale;}
@@ -134,5 +141,7 @@ private://メンバ変数
 	float animationSpeed_ = 1.0f;
 	bool isAnimationPlaying_ = true;
 	bool isAnimationLooping_ = true;
+	D3D12_GPU_DESCRIPTOR_HANDLE textureOverrideHandle_{};
+	Object3dCommon::CullMode cullMode_ = Object3dCommon::CullMode::kBack;
 };
 

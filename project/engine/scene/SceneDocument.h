@@ -18,12 +18,21 @@ struct SceneComponent {
 	std::string type;
 	bool enabled = true;
 	std::string modelPath;
+	std::string meshCullMode = "Back";
 	std::string texturePath;
 	Vector2 spriteSize = { 100.0f, 100.0f };
 	Vector2 spriteAnchor = { 0.5f, 0.5f };
 	Vector4 spriteColor = { 1.0f, 1.0f, 1.0f, 1.0f };
 	bool spriteFlipX = false;
 	bool spriteFlipY = false;
+	bool cameraIsMain = false;
+	float cameraFovY = 0.45f;
+	float cameraNearClip = 0.1f;
+	float cameraFarClip = 1000.0f;
+	std::string monitorCameraName;
+	uint32_t monitorWidth = 512;
+	uint32_t monitorHeight = 512;
+	bool monitorHideSelf = true;
 };
 
 struct SceneEntity {
