@@ -13,6 +13,7 @@ public:
 	~SceneManager();
 
 	void Update();
+	void UpdatePaused();
 
 	void Draw();
 	void DrawShadow();

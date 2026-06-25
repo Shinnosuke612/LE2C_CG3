@@ -28,10 +28,12 @@
 #include "../player/Player.h"
 #include "../../engine/utility/EditableResourcePath.h"
 #include "../../engine/math/Math.h"
+#include "../../engine/math/Vector2.h"
 
 #include "../../externals/imgui/imgui.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <functional>
 #include <unordered_set>
@@ -79,6 +81,16 @@ namespace {
 			return Object3dCommon::CullMode::kFront;
 		}
 		return Object3dCommon::CullMode::kBack;
+	}
+
+	PhysicsBodyType ToPhysicsBodyType(const std::string& bodyType) {
+		if (bodyType == "Dynamic") {
+			return PhysicsBodyType::Dynamic;
+		}
+		if (bodyType == "Kinematic") {
+			return PhysicsBodyType::Kinematic;
+		}
+		return PhysicsBodyType::Static;
 	}
 
 	const SceneComponent* FindEnabledComponent(
@@ -414,11 +426,53 @@ void GamePlayScene::SyncSceneModelObjects() {
 				&found->second.object->GetTransform()
 			);
 			found->second.collider.SetHalfSize({
-				(std::max)(entity.transform.scale.x * 0.5f, 0.001f),
-				(std::max)(entity.transform.scale.y * 0.5f, 0.001f),
-				(std::max)(entity.transform.scale.z * 0.5f, 0.001f)
+				(std::max)(entity.transform.scale.x, 0.001f),
+				(std::max)(entity.transform.scale.y, 0.001f),
+				(std::max)(entity.transform.scale.z, 0.001f)
 			});
 			found->second.collider.SetOffset({ 0.0f, 0.0f, 0.0f });
+		}
+
+		const SceneComponent* physicsBody =
+			FindEnabledComponent(entity, "PhysicsBody");
+		const bool wasPhysicsBody = found->second.hasPhysicsBody;
+		found->second.hasPhysicsBody = physicsBody != nullptr;
+		if (physicsBody) {
+			const Vector3 previousVelocity = found->second.physicsBody.velocity;
+			found->second.physicsBody.type =
+				ToPhysicsBodyType(physicsBody->physicsBodyType);
+			found->second.physicsBody.transform =
+				&found->second.object->GetTransform();
+			found->second.physicsBody.obbCollider = hasObbCollider
+				? &found->second.collider
+				: nullptr;
+			found->second.physicsBody.mass =
+				(std::max)(physicsBody->physicsMass, 0.001f);
+			found->second.physicsBody.useGravity =
+				physicsBody->physicsUseGravity;
+			found->second.physicsBody.gravityScale =
+				physicsBody->physicsGravityScale;
+			found->second.physicsBody.drag =
+				(std::max)(physicsBody->physicsDrag, 0.0f);
+			found->second.physicsBody.restitution =
+				std::clamp(physicsBody->physicsRestitution, 0.0f, 1.0f);
+			found->second.physicsBody.friction =
+				std::clamp(physicsBody->physicsFriction, 0.0f, 1.0f);
+			found->second.physicsBody.maxFallSpeed =
+				(std::max)(physicsBody->physicsMaxFallSpeed, 0.0f);
+			const EditorSession* editorSession = sceneManager_
+				? sceneManager_->GetEditorSession()
+				: nullptr;
+			found->second.physicsBody.velocity =
+				(!wasPhysicsBody || (editorSession && editorSession->IsEditing()))
+				? physicsBody->physicsVelocity
+				: previousVelocity;
+			found->second.physicsBody.freezePositionX =
+				physicsBody->physicsFreezePositionX;
+			found->second.physicsBody.freezePositionY =
+				physicsBody->physicsFreezePositionY;
+			found->second.physicsBody.freezePositionZ =
+				physicsBody->physicsFreezePositionZ;
 		}
 	}
 
@@ -586,6 +640,59 @@ Object3d* GamePlayScene::FindSceneModelObjectByName(const char* name) const {
 	return found == sceneModelObjects_.end() ? nullptr : found->second.object;
 }
 
+void GamePlayScene::StepPhysics(float deltaTime) {
+	EditorSession* editorSession = sceneManager_
+		? sceneManager_->GetEditorSession()
+		: nullptr;
+	if (!editorSession || !editorSession->IsPlaying()) {
+		return;
+	}
+
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (!document) {
+		return;
+	}
+
+	physicsWorld_.Clear();
+	for (StageObject& stageObject : stageObjects_) {
+		physicsWorld_.AddStaticCollider(&stageObject.collider);
+	}
+	if (player_) {
+		physicsWorld_.AddStaticCollider(&player_->GetCollider());
+	}
+	for (auto& [entityId, sceneObject] : sceneModelObjects_) {
+		const SceneEntity* entity = document->FindEntity(entityId);
+		if (
+			!sceneObject.object ||
+			!sceneObject.hasPhysicsBody ||
+			(entity && HasComponent(*entity, "PlayerBehavior"))
+		) {
+			continue;
+		}
+		physicsWorld_.AddBody(&sceneObject.physicsBody);
+	}
+
+	physicsWorld_.Step(deltaTime);
+
+	for (const SceneEntity& entity : document->GetEntities()) {
+		const auto found = sceneModelObjects_.find(entity.id);
+		if (
+			found == sceneModelObjects_.end() ||
+			!found->second.object ||
+			!found->second.hasPhysicsBody ||
+			HasComponent(entity, "PlayerBehavior")
+		) {
+			continue;
+		}
+		found->second.object->Update();
+		if (SceneEntity* writableEntity = document->FindEntity(entity.id)) {
+			writableEntity->transform = found->second.object->GetTransform();
+		}
+	}
+}
+
 bool GamePlayScene::ApplyCameraComponentToCamera(
 	const SceneDocument& document,
 	const SceneEntity& cameraEntity,
@@ -611,6 +718,123 @@ bool GamePlayScene::ApplyCameraComponentToCamera(
 		cameraComponent.cameraNearClip + 0.001f
 	));
 	camera->Update();
+	return true;
+}
+
+bool GamePlayScene::ApplyPlayerCameraMouseLook(SceneDocument& document) {
+	EditorSession* editorSession = sceneManager_
+		? sceneManager_->GetEditorSession()
+		: nullptr;
+	if (!editorSession || !editorSession->IsPlaying() || !camera_ || !player_) {
+		playerCameraInitialized_ = false;
+		return false;
+	}
+
+	const SceneEntity* fallbackEntity = nullptr;
+	const SceneComponent* fallbackCamera = nullptr;
+	const SceneEntity* mainEntity = nullptr;
+	const SceneComponent* mainCamera = nullptr;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			continue;
+		}
+		const SceneComponent* cameraComponent =
+			FindEnabledComponent(entity, "Camera");
+		if (!cameraComponent) {
+			continue;
+		}
+		if (!fallbackEntity) {
+			fallbackEntity = &entity;
+			fallbackCamera = cameraComponent;
+		}
+		if (cameraComponent->cameraIsMain) {
+			mainEntity = &entity;
+			mainCamera = cameraComponent;
+			break;
+		}
+	}
+
+	const SceneEntity* cameraEntity = mainEntity ? mainEntity : fallbackEntity;
+	const SceneComponent* cameraComponent =
+		mainCamera ? mainCamera : fallbackCamera;
+	if (
+		!cameraEntity ||
+		!cameraComponent ||
+		!HasComponent(*cameraEntity, "PlayerBehavior")
+	) {
+		playerCameraInitialized_ = false;
+		return false;
+	}
+
+	if (!playerCameraInitialized_) {
+		playerCameraController_.Initialize(camera_);
+		playerCameraController_.SetYawPitch(
+			cameraEntity->transform.rotate.y,
+			cameraEntity->transform.rotate.x
+		);
+		playerCameraInitialized_ = true;
+	}
+
+	Input* input = Input::GetInstance();
+	const bool altHeld =
+		input && (input->PushKey(DIK_LMENU) || input->PushKey(DIK_RMENU));
+	camera_->SetOrbitMode(false);
+	camera_->SetFovY(std::clamp(
+		cameraComponent->cameraFovY,
+		0.0174532925f,
+		3.12413936f
+	));
+	camera_->SetNearClip((std::max)(cameraComponent->cameraNearClip, 0.001f));
+	camera_->SetFarClip((std::max)(
+		cameraComponent->cameraFarClip,
+		cameraComponent->cameraNearClip + 0.001f
+	));
+	playerCameraController_.SetMouseInvert(
+		cameraComponent->cameraInvertYaw,
+		cameraComponent->cameraInvertPitch
+	);
+	std::vector<OBBCollider*> cameraObstacles;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (
+			HasComponent(entity, "PlayerBehavior") ||
+			!IsEntityActiveInHierarchy(document, entity)
+		) {
+			continue;
+		}
+		std::string modelPath = entity.modelPath;
+		if (const SceneComponent* meshRenderer =
+			FindEnabledComponent(entity, "MeshRenderer")) {
+			modelPath = meshRenderer->modelPath;
+		}
+		std::transform(
+			modelPath.begin(),
+			modelPath.end(),
+			modelPath.begin(),
+			[](unsigned char c) {
+				return static_cast<char>(std::tolower(c));
+			}
+		);
+		if (modelPath.find("terrain") != std::string::npos) {
+			continue;
+		}
+		const auto found = sceneModelObjects_.find(entity.id);
+		if (
+			found != sceneModelObjects_.end() &&
+			found->second.hasCollider
+		) {
+			cameraObstacles.push_back(&found->second.collider);
+		}
+	}
+	for (StageObject& stageObject : stageObjects_) {
+		if (stageObject.object) {
+			cameraObstacles.push_back(&stageObject.collider);
+		}
+	}
+	playerCameraController_.Update(
+		player_->GetPosition(),
+		cameraObstacles,
+		!altHeld
+	);
 	return true;
 }
 
@@ -1024,7 +1248,11 @@ void GamePlayScene::Update()
 		}
 	}
 
-	if (Input::GetInstance()->TriggerKey(DIK_SPACE)) {
+	if (
+		editorSession &&
+		editorSession->IsEditing() &&
+		Input::GetInstance()->TriggerKey(DIK_SPACE)
+	) {
 		ParticleManager::GetInstance()->CycleSceneParticleAssets("GAMEPLAY");
 	}
 
@@ -1098,6 +1326,7 @@ void GamePlayScene::Update()
 		ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
 	}
 	ImGui::SeparatorText("Skeleton");
+	ImGui::Checkbox("Show Camera Direction", &showCameraDebug_);
 	ImGui::Checkbox("Show Skeleton", &showSkeletonDebug_);
 	if (showSkeletonDebug_) {
 		ImGui::Checkbox("Show Joint Names", &showJointNames_);
@@ -1217,6 +1446,7 @@ void GamePlayScene::Update()
 		axis->Update();
 	}
 	SyncSceneModelObjects();
+	StepPhysics(1.0f / 60.0f);
 	RebuildStaticColliders();
 	if (
 		editorSession &&
@@ -1225,6 +1455,7 @@ void GamePlayScene::Update()
 	) {
 		if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
 			ApplyMainCameraComponent(*document, camera_);
+			ApplyPlayerCameraMouseLook(*document);
 			camera_->Update();
 		}
 	}
@@ -1250,26 +1481,29 @@ void GamePlayScene::Update()
 			? sceneManager_->GetActiveSceneDocument()
 			: nullptr) {
 			ApplyMainCameraComponent(*document, camera_);
+			ApplyPlayerCameraMouseLook(*document);
 		}
 	}
 	camera_->Update();
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	if (SceneDocument* document = sceneManager_
-		? sceneManager_->GetActiveSceneDocument()
-		: nullptr) {
-		const float aspectRatio = camera_
-			? camera_->GetAspectRatio()
-			: 1.0f;
-		for (const SceneEntity& entity : document->GetEntities()) {
-			if (const SceneComponent* cameraComponent =
-				FindEnabledComponent(entity, "Camera")) {
-				AddCameraDebugDraw(
-					*document,
-					entity,
-					*cameraComponent,
-					aspectRatio
-				);
+	if (showCameraDebug_) {
+		if (SceneDocument* document = sceneManager_
+			? sceneManager_->GetActiveSceneDocument()
+			: nullptr) {
+			const float aspectRatio = camera_
+				? camera_->GetAspectRatio()
+				: 1.0f;
+			for (const SceneEntity& entity : document->GetEntities()) {
+				if (const SceneComponent* cameraComponent =
+					FindEnabledComponent(entity, "Camera")) {
+					AddCameraDebugDraw(
+						*document,
+						entity,
+						*cameraComponent,
+						aspectRatio
+					);
+				}
 			}
 		}
 	}
@@ -1293,6 +1527,43 @@ void GamePlayScene::Update()
 			jointRadius_,
 			jointAxisLength_
 			);
+		}
+	}
+#endif
+}
+
+void GamePlayScene::UpdatePaused()
+{
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	ImGui::Begin("Scene Controls");
+	ImGui::TextDisabled("Paused Debug View");
+	ImGui::Checkbox("Show Camera Direction", &showCameraDebug_);
+	ImGui::End();
+#endif
+
+	if (camera_) {
+		camera_->Update();
+	}
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (showCameraDebug_) {
+		if (SceneDocument* document = sceneManager_
+			? sceneManager_->GetActiveSceneDocument()
+			: nullptr) {
+			const float aspectRatio = camera_
+				? camera_->GetAspectRatio()
+				: 1.0f;
+			for (const SceneEntity& entity : document->GetEntities()) {
+				if (const SceneComponent* cameraComponent =
+					FindEnabledComponent(entity, "Camera")) {
+					AddCameraDebugDraw(
+						*document,
+						entity,
+						*cameraComponent,
+						aspectRatio
+					);
+				}
+			}
 		}
 	}
 #endif

@@ -1,60 +1,418 @@
 {
-  "version": 1,
-  "sceneName": "GAMEPLAY",
   "entities": [
     {
+      "active": true,
+      "components": [
+        {
+          "enabled": true,
+          "farClip": 1000.0,
+          "fovY": 0.44999998807907104,
+          "isMain": false,
+          "nearClip": 0.10000000149011612,
+          "type": "Camera"
+        }
+      ],
       "id": 1,
-      "parentId": 0,
+      "locked": false,
+      "modelPath": "",
       "name": "Main Camera",
-      "active": true,
-      "transform": { "scale": [1.0, 1.0, 1.0], "rotate": [0.0, 0.0, 0.0], "translate": [0.0, 0.0, 0.0] },
-      "modelPath": "",
-      "components": ["Camera"]
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
     },
     {
+      "active": true,
+      "components": [
+        {
+          "enabled": true,
+          "type": "Environment"
+        }
+      ],
       "id": 2,
-      "parentId": 0,
-      "name": "Environment",
-      "active": true,
-      "transform": { "scale": [1.0, 1.0, 1.0], "rotate": [0.0, 0.0, 0.0], "translate": [0.0, 0.0, 0.0] },
+      "locked": false,
       "modelPath": "",
-      "components": ["Environment"]
+      "name": "Environment",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
     },
     {
+      "active": false,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "modelPath": "terrain.obj",
+          "type": "MeshRenderer"
+        }
+      ],
       "id": 3,
-      "parentId": 0,
-      "name": "Terrain",
-      "active": true,
-      "transform": { "scale": [10.0, 10.0, 10.0], "rotate": [0.0, 0.0, 0.0], "translate": [0.0, -5.0, 0.0] },
+      "locked": false,
       "modelPath": "terrain.obj",
-      "components": ["MeshRenderer"]
+      "name": "Terrain",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          10.0,
+          10.0,
+          10.0
+        ],
+        "translate": [
+          0.0,
+          -5.0,
+          0.0
+        ]
+      }
     },
     {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "modelPath": "AnimatedCube/AnimatedCube.gltf",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "Animator"
+        }
+      ],
       "id": 4,
-      "parentId": 0,
-      "name": "Animated Cube",
-      "active": true,
-      "transform": { "scale": [0.65, 0.65, 0.65], "rotate": [0.0, 0.0, 0.0], "translate": [3.0, 10.5, -2.0] },
+      "locked": false,
       "modelPath": "AnimatedCube/AnimatedCube.gltf",
-      "components": ["MeshRenderer", "Animator"]
+      "name": "Animated Cube",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.6499999761581421,
+          0.6499999761581421,
+          0.6499999761581421
+        ],
+        "translate": [
+          3.0,
+          10.5,
+          -2.0
+        ]
+      }
     },
     {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "modelPath": "human/walk.gltf",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "Animator"
+        }
+      ],
       "id": 5,
-      "parentId": 0,
-      "name": "Human",
-      "active": true,
-      "transform": { "scale": [1.0, 1.0, 1.0], "rotate": [0.0, 0.0, 0.0], "translate": [-2.0, 0.0, -2.0] },
+      "locked": false,
       "modelPath": "human/walk.gltf",
-      "components": ["MeshRenderer", "Animator"]
+      "name": "Human",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -2.0,
+          0.0,
+          -2.0
+        ]
+      }
     },
     {
-      "id": 6,
-      "parentId": 0,
-      "name": "Player",
       "active": true,
-      "transform": { "scale": [1.0, 1.0, 1.0], "rotate": [0.0, 0.0, 0.0], "translate": [0.0, 1.0, -4.0] },
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "PlayerBehavior"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        },
+        {
+          "enabled": true,
+          "farClip": 1000.0,
+          "fovY": 0.44999998807907104,
+          "isMain": true,
+          "nearClip": 0.10000000149011612,
+          "type": "Camera"
+        },
+        {
+          "bodyType": "Dynamic",
+          "drag": 0.0,
+          "enabled": true,
+          "freezePositionX": false,
+          "freezePositionY": false,
+          "freezePositionZ": false,
+          "friction": 0.0,
+          "gravityScale": 1.0,
+          "mass": 1.0,
+          "maxFallSpeed": 100.0,
+          "restitution": 0.0,
+          "type": "PhysicsBody",
+          "useGravity": true,
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "id": 6,
+      "locked": false,
       "modelPath": "Cube.obj",
-      "components": ["MeshRenderer", "PlayerBehavior", "OBBCollider"]
+      "name": "Player",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          1.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 7,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "Entity",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          200.0,
+          1.0,
+          200.0
+        ],
+        "translate": [
+          0.0,
+          -1.5,
+          0.0
+        ]
+      }
     }
-  ]
+  ],
+  "sceneName": "GAMEPLAY",
+  "version": 9
 }

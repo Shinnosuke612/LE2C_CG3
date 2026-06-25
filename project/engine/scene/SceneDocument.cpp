@@ -77,11 +77,26 @@ namespace {
 			result["fovY"] = component.cameraFovY;
 			result["nearClip"] = component.cameraNearClip;
 			result["farClip"] = component.cameraFarClip;
+			result["invertYaw"] = component.cameraInvertYaw;
+			result["invertPitch"] = component.cameraInvertPitch;
 		} else if (component.type == "MonitorRenderer") {
 			result["cameraName"] = component.monitorCameraName;
 			result["width"] = component.monitorWidth;
 			result["height"] = component.monitorHeight;
 			result["hideSelf"] = component.monitorHideSelf;
+		} else if (component.type == "PhysicsBody") {
+			result["bodyType"] = component.physicsBodyType;
+			result["mass"] = component.physicsMass;
+			result["useGravity"] = component.physicsUseGravity;
+			result["gravityScale"] = component.physicsGravityScale;
+			result["drag"] = component.physicsDrag;
+			result["restitution"] = component.physicsRestitution;
+			result["friction"] = component.physicsFriction;
+			result["maxFallSpeed"] = component.physicsMaxFallSpeed;
+			result["velocity"] = VectorToJson(component.physicsVelocity);
+			result["freezePositionX"] = component.physicsFreezePositionX;
+			result["freezePositionY"] = component.physicsFreezePositionY;
+			result["freezePositionZ"] = component.physicsFreezePositionZ;
 		}
 		return result;
 	}
@@ -134,6 +149,14 @@ namespace {
 					"farClip",
 					component.cameraFarClip
 				);
+				component.cameraInvertYaw = value.value(
+					"invertYaw",
+					component.cameraInvertYaw
+				);
+				component.cameraInvertPitch = value.value(
+					"invertPitch",
+					component.cameraInvertPitch
+				);
 				component.monitorCameraName = value.value(
 					"cameraName",
 					component.monitorCameraName
@@ -149,6 +172,56 @@ namespace {
 				component.monitorHideSelf = value.value(
 					"hideSelf",
 					component.monitorHideSelf
+				);
+				component.physicsBodyType = value.value(
+					"bodyType",
+					component.physicsBodyType
+				);
+				component.physicsMass = value.value(
+					"mass",
+					component.physicsMass
+				);
+				component.physicsUseGravity = value.value(
+					"useGravity",
+					component.physicsUseGravity
+				);
+				component.physicsGravityScale = value.value(
+					"gravityScale",
+					component.physicsGravityScale
+				);
+				component.physicsDrag = value.value(
+					"drag",
+					component.physicsDrag
+				);
+				component.physicsRestitution = value.value(
+					"restitution",
+					component.physicsRestitution
+				);
+				component.physicsFriction = value.value(
+					"friction",
+					component.physicsFriction
+				);
+				component.physicsMaxFallSpeed = value.value(
+					"maxFallSpeed",
+					component.physicsMaxFallSpeed
+				);
+				if (value.contains("velocity")) {
+					component.physicsVelocity = JsonToVector(
+						value.at("velocity"),
+						component.physicsVelocity
+					);
+				}
+				component.physicsFreezePositionX = value.value(
+					"freezePositionX",
+					component.physicsFreezePositionX
+				);
+				component.physicsFreezePositionY = value.value(
+					"freezePositionY",
+					component.physicsFreezePositionY
+				);
+				component.physicsFreezePositionZ = value.value(
+					"freezePositionZ",
+					component.physicsFreezePositionZ
 				);
 			}
 			if (!component.type.empty()) {
@@ -276,7 +349,7 @@ bool SceneDocument::Load(const std::string& filePath) {
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 7;
+	root["version"] = 9;
 	root["sceneName"] = sceneName_;
 	root["entities"] = json::array();
 
@@ -629,6 +702,19 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->monitorHeight = height;
 				changed = true;
 			}
+		} else if (type == "PhysicsBody") {
+			if (found->physicsBodyType.empty()) {
+				found->physicsBodyType = "Static";
+				changed = true;
+			}
+			if (found->physicsMass <= 0.0f) {
+				found->physicsMass = 1.0f;
+				changed = true;
+			}
+			if (found->physicsMaxFallSpeed <= 0.0f) {
+				found->physicsMaxFallSpeed = 100.0f;
+				changed = true;
+			}
 		}
 		if (!found->enabled) {
 			found->enabled = true;
@@ -655,11 +741,23 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.cameraFovY = 0.45f;
 		component.cameraNearClip = 0.1f;
 		component.cameraFarClip = 1000.0f;
+		component.cameraInvertYaw = false;
+		component.cameraInvertPitch = false;
 	} else if (type == "MonitorRenderer") {
 		component.monitorCameraName = "";
 		component.monitorWidth = 512;
 		component.monitorHeight = 512;
 		component.monitorHideSelf = true;
+	} else if (type == "PhysicsBody") {
+		component.physicsBodyType = "Static";
+		component.physicsMass = 1.0f;
+		component.physicsUseGravity = true;
+		component.physicsGravityScale = 1.0f;
+		component.physicsDrag = 0.0f;
+		component.physicsRestitution = 0.0f;
+		component.physicsFriction = 0.0f;
+		component.physicsMaxFallSpeed = 100.0f;
+		component.physicsVelocity = { 0.0f, 0.0f, 0.0f };
 	}
 	entity->components.push_back(std::move(component));
 	MarkDirty();

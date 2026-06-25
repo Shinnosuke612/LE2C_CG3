@@ -149,7 +149,7 @@
       },
       {
         "assetName": "SnoeAsset",
-        "enabled": true,
+        "enabled": false,
         "label": "SnoeAsset 1",
         "translate": [
           0.0,

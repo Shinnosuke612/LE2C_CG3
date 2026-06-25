@@ -39,6 +39,8 @@ private:
 	void DrawModelPreview();
 	CameraSnapshot CaptureCameraSnapshot() const;
 	void RestoreCameraSnapshot(const CameraSnapshot& snapshot) const;
+	void BeginPauseDebugCamera();
+	void EndPauseDebugCamera();
 
 	SceneManager* sceneManager_ = nullptr;
 	EditorSession* editorSession_ = nullptr;
@@ -49,6 +51,10 @@ private:
 	SceneRenderTarget* modelPreviewRenderTarget_ = nullptr;
 	Camera* modelPreviewCamera_ = nullptr;
 	Object3d* modelPreviewObject_ = nullptr;
+	CameraSnapshot editorCameraSnapshot_{};
+	CameraSnapshot pauseMainCameraSnapshot_{};
+	bool editorWasEditingLastFrame_ = true;
+	bool wasPausedLastFrame_ = false;
 	std::string modelPreviewPath_;
 	float modelPreviewFitDistance_ = 5.0f;
 	BloomRenderer::Parameters bloomParameters_{};

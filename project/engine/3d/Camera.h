@@ -17,7 +17,12 @@ public://メンバ関数
 	void DrawImGui(const char* label = "Camera");
 
 	// OrbitCamera設定
-	void SetOrbitMode(bool isOrbitMode) { isOrbitMode_ = isOrbitMode; }
+	void SetOrbitMode(bool isOrbitMode) {
+		isOrbitMode_ = isOrbitMode;
+		if (isOrbitMode_) {
+			usesLookAtMatrix_ = false;
+		}
+	}
 	bool IsOrbitMode() const { return isOrbitMode_; }
 
 	void SetOrbitTarget(const Vector3& target) { orbitTarget_ = target; }
@@ -31,8 +36,15 @@ public://メンバ関数
 	Camera();
 
 	// ---- setter ----
-	void SetRotate(const Vector3& rotate){ transform.rotate = rotate; }
-	void SetTranslate(const Vector3& translate){ transform.translate = translate; }
+	void SetRotate(const Vector3& rotate){
+		usesLookAtMatrix_ = false;
+		transform.rotate = rotate;
+	}
+	void SetTranslate(const Vector3& translate){
+		usesLookAtMatrix_ = false;
+		transform.translate = translate;
+	}
+	void SetLookAt(const Vector3& translate, const Vector3& target);
 
 	void SetFovY(float fovY){ fovY_ = fovY; }
 	void SetAspectRatio(float aspectRatio){ aspectRatio_ = aspectRatio; }
@@ -72,6 +84,7 @@ private:
 	Matrix4x4 viewProjectionMatrix;
 
 	bool isOrbitMode_ = false;
+	bool usesLookAtMatrix_ = false;
 
 	Vector3 orbitTarget_ = { 0.0f, 0.0f, 0.0f };
 	float orbitDistance_ = 10.0f;

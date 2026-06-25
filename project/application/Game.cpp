@@ -26,7 +26,31 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <utility>
+
+namespace {
+	std::string ResolveProjectResourcePath(const std::filesystem::path& relativePath) {
+		std::filesystem::path current = std::filesystem::current_path();
+		for (std::filesystem::path cursor = current; !cursor.empty(); cursor = cursor.parent_path()) {
+			const std::filesystem::path projectCandidate =
+				cursor / "project" / relativePath;
+			if (std::filesystem::exists(projectCandidate)) {
+				return projectCandidate.generic_string();
+			}
+
+			const std::filesystem::path candidate = cursor / relativePath;
+			if (std::filesystem::exists(candidate)) {
+				return candidate.generic_string();
+			}
+
+			if (cursor == cursor.parent_path()) {
+				break;
+			}
+		}
+		return relativePath.generic_string();
+	}
+}
 
 void Game::Initialize() {
 	// 基底クラスの初期化処理
@@ -35,7 +59,7 @@ void Game::Initialize() {
 	editorSession_ = new EditorSession();
 	const bool sceneLoaded = editorSession_->Initialize(
 		"GAMEPLAY",
-		"resources/scenes/gameplay.scene.json"
+		ResolveProjectResourcePath("resources/scenes/gameplay.scene.json")
 	);
 	if (!sceneLoaded) {
 		SceneDocument& document = editorSession_->GetEditDocument();
@@ -200,6 +224,12 @@ void Game::Update() {
 
 	if (noiseAnimate_) {
 		noiseTime_ += (1.0f / 60.0f) * noiseSpeed_;
+	}
+
+	const bool isEditingAtFrameStart = editorSession_->IsEditing();
+	const bool continuedEditing = isEditingAtFrameStart && editorWasEditingLastFrame_;
+	if (continuedEditing) {
+		editorCameraSnapshot_ = CaptureCameraSnapshot();
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
@@ -503,17 +533,52 @@ void Game::Update() {
 	const bool reloadRequested = editorSession_->ConsumeReloadRequest();
 	const bool preserveEditorCamera =
 		editorSession_->IsEditing() && reloadRequested;
-	const CameraSnapshot editorCameraSnapshot =
-		preserveEditorCamera ? CaptureCameraSnapshot() : CameraSnapshot{};
+	const CameraSnapshot editorCameraSnapshot = preserveEditorCamera
+		? (
+			continuedEditing
+				? CaptureCameraSnapshot()
+				: editorCameraSnapshot_
+		)
+		: CameraSnapshot{};
 	if (reloadRequested) {
 		sceneManager_->ReloadCurrentScene();
 	}
+	if (Input* input = Input::GetInstance()) {
+		const bool altHeld =
+			input->PushKey(DIK_LMENU) || input->PushKey(DIK_RMENU);
+		if (
+			imguiManager_ &&
+			editorSession_->IsPlaying() &&
+			!altHeld
+		) {
+			input->SetCursorCaptureRect(
+				imguiManager_->GetSceneViewMinX(),
+				imguiManager_->GetSceneViewMinY(),
+				imguiManager_->GetSceneViewMaxX(),
+				imguiManager_->GetSceneViewMaxY()
+			);
+		}
+		input->SetCursorCapture(editorSession_->IsPlaying() && !altHeld);
+	}
+	const bool pauseStarted =
+		editorSession_->IsPaused() && !wasPausedLastFrame_;
+	const bool pauseEnded =
+		!editorSession_->IsPaused() && wasPausedLastFrame_;
+	if (pauseStarted) {
+		BeginPauseDebugCamera();
+	} else if (pauseEnded) {
+		EndPauseDebugCamera();
+	}
 	if (!editorSession_->IsPaused()) {
 		sceneManager_->Update();
+	} else {
+		sceneManager_->UpdatePaused();
 	}
 	if (preserveEditorCamera) {
 		RestoreCameraSnapshot(editorCameraSnapshot);
 	}
+	editorWasEditingLastFrame_ = editorSession_->IsEditing();
+	wasPausedLastFrame_ = editorSession_->IsPaused();
 
 	ParticleManager::ExposureFlashEvent exposureFlash{};
 	while (ParticleManager::GetInstance()->ConsumeExposureFlashEvent(exposureFlash)) {
@@ -759,6 +824,59 @@ void Game::RestoreCameraSnapshot(const CameraSnapshot& snapshot) const {
 	camera->UpdatePreviewMatrices();
 }
 
+void Game::BeginPauseDebugCamera() {
+	pauseMainCameraSnapshot_ = CaptureCameraSnapshot();
+	if (!pauseMainCameraSnapshot_.valid) {
+		return;
+	}
+
+	Object3dCommon* object3dCommon = Object3dCommon::GetInstance();
+	Camera* camera = object3dCommon
+		? object3dCommon->GetDefaultCamera()
+		: nullptr;
+	if (!camera) {
+		return;
+	}
+
+	const Matrix4x4& cameraWorld = camera->GetWorldMatrix();
+	Vector3 forward{
+		cameraWorld.m[2][0],
+		cameraWorld.m[2][1],
+		cameraWorld.m[2][2]
+	};
+	const float forwardLength = std::sqrt(
+		forward.x * forward.x +
+		forward.y * forward.y +
+		forward.z * forward.z
+	);
+	if (forwardLength > 0.000001f) {
+		forward.x /= forwardLength;
+		forward.y /= forwardLength;
+		forward.z /= forwardLength;
+	} else {
+		forward = { 0.0f, 0.0f, 1.0f };
+	}
+
+	const float orbitDistance = 10.0f;
+	camera->SetOrbitMode(true);
+	camera->SetOrbitDistance(orbitDistance);
+	camera->SetOrbitTarget({
+		pauseMainCameraSnapshot_.translate.x + forward.x * orbitDistance,
+		pauseMainCameraSnapshot_.translate.y + forward.y * orbitDistance,
+		pauseMainCameraSnapshot_.translate.z + forward.z * orbitDistance
+	});
+	camera->SetOrbitAngle(
+		std::atan2(-forward.x, forward.z),
+		std::asin(std::clamp(-forward.y, -1.0f, 1.0f))
+	);
+	camera->UpdatePreviewMatrices();
+}
+
+void Game::EndPauseDebugCamera() {
+	RestoreCameraSnapshot(pauseMainCameraSnapshot_);
+	pauseMainCameraSnapshot_ = {};
+}
+
 void Game::DrawModelPreview() {
 	if (
 		!imguiManager_ ||
@@ -845,6 +963,9 @@ void Game::DrawModelPreview() {
 }
 
 void Game::Finalize() {
+	if (Input* input = Input::GetInstance()) {
+		input->SetCursorCapture(false);
+	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	if (imguiManager_) {

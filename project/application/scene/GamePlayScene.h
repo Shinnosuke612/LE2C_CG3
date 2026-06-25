@@ -11,8 +11,11 @@
 #include "../../engine/3d/LightManager.h"
 #include "../../engine/3d/ShadowManager.h"
 #include "../../engine/collision/OBBCollider.h"
+#include "../../engine/physics/PhysicsBody.h"
+#include "../../engine/physics/PhysicsWorld.h"
 #include "../../engine/effect/LightningRenderer.h"
 #include "../../engine/3d/StarFieldGenerator.h"
+#include "../camera/ThirdPersonCameraController.h"
 
 class SpriteCommon;
 class Sprite;
@@ -40,6 +43,8 @@ private:
 		bool hasRenderer = false;
 		OBBCollider collider;
 		bool hasCollider = false;
+		PhysicsBody physicsBody;
+		bool hasPhysicsBody = false;
 	};
 
 	struct SceneSpriteObject {
@@ -66,6 +71,7 @@ public: //メンバ関数
 
 	//更新
 	void Update() override;
+	void UpdatePaused() override;
 
 	//描画
 	void Draw() override;
@@ -78,6 +84,7 @@ private:
 	void SyncSceneSpriteObjects();
 	void ClearSceneSpriteObjects();
 	void RebuildStaticColliders();
+	void StepPhysics(float deltaTime);
 	Object3d* FindSceneModelObjectByName(const char* name) const;
 	void SyncMonitorRenderers();
 	void ClearMonitorRenderers();
@@ -90,6 +97,7 @@ private:
 		Camera* camera,
 		float aspectRatio
 	) const;
+	bool ApplyPlayerCameraMouseLook(SceneDocument& document);
 
 	SpriteCommon* spriteCommon_ = nullptr;
 	Camera* camera_ = nullptr;
@@ -98,16 +106,20 @@ private:
 	Object3d* plane_ = nullptr;
 	Object3d* axis = nullptr;
 	bool showSkeletonDebug_ = false;
+	bool showCameraDebug_ = true;
 	bool showJointNames_ = false;
 	bool showJointAxes_ = true;
 	float jointRadius_ = 0.018f;
 	float jointAxisLength_ = 0.06f;
 	Player* player_ = nullptr;
+	ThirdPersonCameraController playerCameraController_;
+	bool playerCameraInitialized_ = false;
 	std::vector<StageObject> stageObjects_;
 	std::unordered_map<uint64_t, SceneModelObject> sceneModelObjects_;
 	std::unordered_map<uint64_t, SceneSpriteObject> sceneSpriteObjects_;
 	std::unordered_map<uint64_t, MonitorRuntime> monitorRuntimes_;
 	std::vector<OBBCollider*> staticColliders_;
+	PhysicsWorld physicsWorld_;
 	std::vector<Sprite*> sprites_;
 	Audio::SoundData soundData_{};
 	

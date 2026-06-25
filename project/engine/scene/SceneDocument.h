@@ -29,10 +29,24 @@ struct SceneComponent {
 	float cameraFovY = 0.45f;
 	float cameraNearClip = 0.1f;
 	float cameraFarClip = 1000.0f;
+	bool cameraInvertYaw = false;
+	bool cameraInvertPitch = false;
 	std::string monitorCameraName;
 	uint32_t monitorWidth = 512;
 	uint32_t monitorHeight = 512;
 	bool monitorHideSelf = true;
+	std::string physicsBodyType = "Static";
+	float physicsMass = 1.0f;
+	bool physicsUseGravity = true;
+	float physicsGravityScale = 1.0f;
+	float physicsDrag = 0.0f;
+	float physicsRestitution = 0.0f;
+	float physicsFriction = 0.0f;
+	float physicsMaxFallSpeed = 100.0f;
+	Vector3 physicsVelocity = { 0.0f, 0.0f, 0.0f };
+	bool physicsFreezePositionX = false;
+	bool physicsFreezePositionY = false;
+	bool physicsFreezePositionZ = false;
 };
 
 struct SceneEntity {

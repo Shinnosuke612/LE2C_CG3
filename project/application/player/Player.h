@@ -39,4 +39,9 @@ private:
 	Vector3 position_ = { 0.0f, 1.0f, -4.0f };
 	float moveSpeed_ = 0.18f;
 	float turnResponsiveness_ = 0.018f;
+	float verticalVelocity_ = 0.0f;
+	float gravity_ = -0.035f;
+	float jumpVelocity_ = 0.62f;
+	float maxFallSpeed_ = 1.0f;
+	bool isGrounded_ = false;
 };

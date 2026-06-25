@@ -69,6 +69,13 @@ void SceneManager::Update()
 	}
 }
 
+void SceneManager::UpdatePaused()
+{
+	if (scene_) {
+		scene_->UpdatePaused();
+	}
+}
+
 void SceneManager::Draw()
 {
 	if (scene_) {

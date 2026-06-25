@@ -52,8 +52,13 @@ public:
 	float GetMouseWheel() const {
 		return static_cast<float>(mouseState_.lZ) / static_cast<float>(WHEEL_DELTA);
 	}
+	void SetCursorCapture(bool enabled);
+	void SetCursorCaptureRect(float minX, float minY, float maxX, float maxY);
+	bool IsCursorCaptured() const { return cursorCaptured_; }
 
 private:
+	void ApplyCursorCapture();
+
 	//キーボードデバイスの生成
 	IDirectInputDevice8* keyboard = nullptr;
 	IDirectInputDevice8* mouse_ = nullptr;
@@ -62,6 +67,10 @@ private:
 	DIMOUSESTATE2 mouseState_ = {};
 	DIMOUSESTATE2 previousMouseState_ = {};
 	Vector2 mousePosition_ = {};
+	bool cursorCaptured_ = false;
+	bool cursorHidden_ = false;
+	RECT cursorCaptureRect_ = {};
+	bool hasCursorCaptureRect_ = false;
 
 	IDirectInput8* directInput = nullptr;
 	//WindowAPI

@@ -1,5 +1,7 @@
 #include "Input.h"
 
+#include <cmath>
+
 #pragma comment(lib,"dinput8.lib")
 #pragma comment(lib,"dxguid.lib")
 
@@ -31,6 +33,7 @@ void Input::Finalize() {
 	}
 
 	winApp_ = nullptr;
+	SetCursorCapture(false);
 
 	delete instance_;
 	instance_ = nullptr;
@@ -95,6 +98,7 @@ void Input::Update(){
 			static_cast<float>(mousePoint.y)
 		};
 	}
+	ApplyCursorCapture();
 }
 
 bool Input::PushKey(BYTE keyNumber){
@@ -126,4 +130,72 @@ bool Input::ReleaseMouse(MouseButton button) const {
 	const uint8_t index = static_cast<uint8_t>(button);
 	return (mouseState_.rgbButtons[index] & 0x80) == 0 &&
 		(previousMouseState_.rgbButtons[index] & 0x80) != 0;
+}
+
+void Input::SetCursorCapture(bool enabled) {
+	if (cursorCaptured_ == enabled) {
+		if (cursorCaptured_) {
+			ApplyCursorCapture();
+		}
+		return;
+	}
+
+	cursorCaptured_ = enabled;
+	if (!cursorCaptured_) {
+		ClipCursor(nullptr);
+		hasCursorCaptureRect_ = false;
+		if (cursorHidden_) {
+			while (ShowCursor(TRUE) < 0) {
+			}
+			cursorHidden_ = false;
+		}
+		return;
+	}
+
+	if (!cursorHidden_) {
+		while (ShowCursor(FALSE) >= 0) {
+		}
+		cursorHidden_ = true;
+	}
+	ApplyCursorCapture();
+}
+
+void Input::SetCursorCaptureRect(
+	float minX,
+	float minY,
+	float maxX,
+	float maxY
+) {
+	cursorCaptureRect_ = {
+		static_cast<LONG>(std::floor(minX)),
+		static_cast<LONG>(std::floor(minY)),
+		static_cast<LONG>(std::ceil(maxX)),
+		static_cast<LONG>(std::ceil(maxY))
+	};
+	hasCursorCaptureRect_ = true;
+	if (cursorCaptured_) {
+		ApplyCursorCapture();
+	}
+}
+
+void Input::ApplyCursorCapture() {
+	if (!cursorCaptured_ || !winApp_ || !winApp_->GetHwnd()) {
+		return;
+	}
+
+	RECT clientRect = cursorCaptureRect_;
+	if (!hasCursorCaptureRect_) {
+		GetClientRect(winApp_->GetHwnd(), &clientRect);
+	}
+	POINT topLeft{ clientRect.left, clientRect.top };
+	POINT bottomRight{ clientRect.right, clientRect.bottom };
+	ClientToScreen(winApp_->GetHwnd(), &topLeft);
+	ClientToScreen(winApp_->GetHwnd(), &bottomRight);
+	RECT screenRect{
+		topLeft.x,
+		topLeft.y,
+		bottomRight.x,
+		bottomRight.y
+	};
+	ClipCursor(&screenRect);
 }

@@ -137,6 +137,33 @@ void Player::Update(
 	else {
 		object_->Update();
 	}
+
+	if (isGrounded_ && input->TriggerKey(DIK_SPACE)) {
+		verticalVelocity_ = jumpVelocity_;
+		isGrounded_ = false;
+	}
+
+	verticalVelocity_ = (std::max)(
+		verticalVelocity_ + gravity_,
+		-maxFallSpeed_
+	);
+	if (std::abs(verticalVelocity_) > 0.000001f) {
+		const Vector3 previous = position_;
+		position_.y += verticalVelocity_;
+		ApplyPosition();
+		object_->Update();
+		if (IsColliding(staticColliders)) {
+			position_ = previous;
+			ApplyPosition();
+			object_->Update();
+			if (verticalVelocity_ < 0.0f) {
+				isGrounded_ = true;
+			}
+			verticalVelocity_ = 0.0f;
+		} else {
+			isGrounded_ = false;
+		}
+	}
 }
 
 void Player::Draw() {
@@ -164,6 +191,8 @@ void Player::SetTransform(const Transform& transform) {
 		return;
 	}
 	position_ = transform.translate;
+	verticalVelocity_ = 0.0f;
+	isGrounded_ = false;
 	object_->GetTransform() = transform;
 	ApplyPosition();
 	object_->Update();

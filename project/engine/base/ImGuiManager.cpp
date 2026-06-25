@@ -409,6 +409,10 @@ void ImGuiManager::DrawEditorWorkspace(
 	const bool sceneImageHovered = ImGui::IsItemHovered();
 	const ImVec2 sceneMin = ImGui::GetItemRectMin();
 	const ImVec2 sceneMax = ImGui::GetItemRectMax();
+	sceneViewMinX_ = sceneMin.x;
+	sceneViewMinY_ = sceneMin.y;
+	sceneViewMaxX_ = sceneMax.x;
+	sceneViewMaxY_ = sceneMax.y;
 	if (
 		editorSession_ &&
 		editorSession_->IsEditing() &&
@@ -2133,6 +2137,14 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.cameraFarClip = component.cameraNearClip + 0.001f;
 					cameraChanged = true;
 				}
+				cameraChanged |= ImGui::Checkbox(
+					"Invert Horizontal",
+					&component.cameraInvertYaw
+				);
+				cameraChanged |= ImGui::Checkbox(
+					"Invert Vertical",
+					&component.cameraInvertPitch
+				);
 				if (cameraChanged) {
 					document.MarkDirty();
 				}
@@ -2197,6 +2209,113 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "PhysicsBody") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool physicsChanged = false;
+				const char* currentBodyType = component.physicsBodyType.empty()
+					? "Static"
+					: component.physicsBodyType.c_str();
+				if (ImGui::BeginCombo("Body Type", currentBodyType)) {
+					const char* bodyTypes[] = { "Static", "Dynamic", "Kinematic" };
+					for (const char* bodyType : bodyTypes) {
+						if (ImGui::Selectable(
+							bodyType,
+							component.physicsBodyType == bodyType ||
+								(component.physicsBodyType.empty() &&
+									std::strcmp(bodyType, "Static") == 0)
+						)) {
+							component.physicsBodyType = bodyType;
+							physicsChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				physicsChanged |= ImGui::DragFloat(
+					"Mass",
+					&component.physicsMass,
+					0.05f,
+					0.001f,
+					10000.0f
+				);
+				physicsChanged |= ImGui::Checkbox(
+					"Use Gravity",
+					&component.physicsUseGravity
+				);
+				physicsChanged |= ImGui::DragFloat(
+					"Gravity Scale",
+					&component.physicsGravityScale,
+					0.05f,
+					-10.0f,
+					10.0f
+				);
+				physicsChanged |= ImGui::DragFloat(
+					"Drag",
+					&component.physicsDrag,
+					0.02f,
+					0.0f,
+					100.0f
+				);
+				physicsChanged |= ImGui::SliderFloat(
+					"Restitution",
+					&component.physicsRestitution,
+					0.0f,
+					1.0f
+				);
+				physicsChanged |= ImGui::SliderFloat(
+					"Friction",
+					&component.physicsFriction,
+					0.0f,
+					1.0f
+				);
+				physicsChanged |= ImGui::DragFloat(
+					"Max Fall Speed",
+					&component.physicsMaxFallSpeed,
+					0.1f,
+					0.0f,
+					1000.0f
+				);
+				physicsChanged |= ImGui::DragFloat3(
+					"Velocity",
+					&component.physicsVelocity.x,
+					0.05f
+				);
+				ImGui::TextDisabled("Freeze Position");
+				physicsChanged |= ImGui::Checkbox(
+					"X##FreezePosition",
+					&component.physicsFreezePositionX
+				);
+				ImGui::SameLine();
+				physicsChanged |= ImGui::Checkbox(
+					"Y##FreezePosition",
+					&component.physicsFreezePositionY
+				);
+				ImGui::SameLine();
+				physicsChanged |= ImGui::Checkbox(
+					"Z##FreezePosition",
+					&component.physicsFreezePositionZ
+				);
+				if (component.physicsMass <= 0.0f) {
+					component.physicsMass = 0.001f;
+					physicsChanged = true;
+				}
+				component.physicsRestitution = std::clamp(
+					component.physicsRestitution,
+					0.0f,
+					1.0f
+				);
+				component.physicsFriction = std::clamp(
+					component.physicsFriction,
+					0.0f,
+					1.0f
+				);
+				if (component.physicsMaxFallSpeed < 0.0f) {
+					component.physicsMaxFallSpeed = 0.0f;
+					physicsChanged = true;
+				}
+				if (physicsChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			}
 			ImGui::PopID();
 		}
@@ -2213,6 +2332,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				"SpriteRenderer",
 				"Camera",
 				"MonitorRenderer",
+				"PhysicsBody",
 				"PlayerBehavior",
 				"Animator",
 				"OBBCollider"

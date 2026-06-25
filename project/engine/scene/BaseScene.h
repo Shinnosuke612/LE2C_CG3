@@ -18,6 +18,7 @@ public:
 
 	// 更新
 	virtual void Update() = 0;
+	virtual void UpdatePaused() {}
 
 	// 描画
 	virtual void Draw() = 0;

@@ -39,6 +39,10 @@ public:
 
 	uint32_t GetSceneViewWidth() const { return sceneViewWidth_; }
 	uint32_t GetSceneViewHeight() const { return sceneViewHeight_; }
+	float GetSceneViewMinX() const { return sceneViewMinX_; }
+	float GetSceneViewMinY() const { return sceneViewMinY_; }
+	float GetSceneViewMaxX() const { return sceneViewMaxX_; }
+	float GetSceneViewMaxY() const { return sceneViewMaxY_; }
 	static bool IsSceneViewInputActive();
 	void SetEditorSession(EditorSession* editorSession) {
 		editorSession_ = editorSession;
@@ -100,6 +104,10 @@ private:
 	SrvManager* srvManager_ = nullptr;
 	uint32_t sceneViewWidth_ = 1;
 	uint32_t sceneViewHeight_ = 1;
+	float sceneViewMinX_ = 0.0f;
+	float sceneViewMinY_ = 0.0f;
+	float sceneViewMaxX_ = 1.0f;
+	float sceneViewMaxY_ = 1.0f;
 	bool resetLayout_ = false;
 	bool showHierarchy_ = true;
 	bool showInspector_ = true;

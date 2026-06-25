@@ -15,6 +15,9 @@ void Camera::Update() {
 		UpdateOrbitMouseControl();
 		UpdateOrbitTransform();
 	}
+	else if (usesLookAtMatrix_) {
+		viewMatrix = Inverse(worldMatrix);
+	}
 	else {
 		worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
 		viewMatrix = Inverse(worldMatrix);
@@ -27,6 +30,8 @@ void Camera::Update() {
 void Camera::UpdatePreviewMatrices() {
 	if (isOrbitMode_) {
 		UpdateOrbitTransform();
+	} else if (usesLookAtMatrix_) {
+		viewMatrix = Inverse(worldMatrix);
 	} else {
 		worldMatrix = MakeAffineMatrix(
 			transform.scale,
@@ -44,7 +49,68 @@ void Camera::UpdatePreviewMatrices() {
 	viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 }
 
+void Camera::SetLookAt(const Vector3& translate, const Vector3& target) {
+	isOrbitMode_ = false;
+	usesLookAtMatrix_ = true;
+	transform.translate = translate;
+
+	Vector3 forward = Math::Normalize(Math::Subtract(target, translate));
+	if (Math::Length(forward) < 0.000001f) {
+		forward = { 0.0f, 0.0f, 1.0f };
+	}
+
+	const Vector3 worldUp = { 0.0f, 1.0f, 0.0f };
+	Vector3 up = Math::Subtract(
+		worldUp,
+		Math::Multiply(forward, Math::Dot(worldUp, forward))
+	);
+	if (Math::Length(up) < 0.000001f) {
+		up = { 0.0f, 0.0f, 1.0f };
+		up = Math::Subtract(
+			up,
+			Math::Multiply(forward, Math::Dot(up, forward))
+		);
+	}
+	up = Math::Normalize(up);
+	Vector3 right = Math::Normalize(Math::Cross(up, forward));
+	if (Math::Length(right) < 0.000001f) {
+		right = { 1.0f, 0.0f, 0.0f };
+	}
+	up = Math::Normalize(Math::Cross(forward, right));
+
+	worldMatrix = MakeIdentity4x4();
+	worldMatrix.m[0][0] = right.x;
+	worldMatrix.m[0][1] = right.y;
+	worldMatrix.m[0][2] = right.z;
+	worldMatrix.m[1][0] = up.x;
+	worldMatrix.m[1][1] = up.y;
+	worldMatrix.m[1][2] = up.z;
+	worldMatrix.m[2][0] = forward.x;
+	worldMatrix.m[2][1] = forward.y;
+	worldMatrix.m[2][2] = forward.z;
+	worldMatrix.m[3][0] = translate.x;
+	worldMatrix.m[3][1] = translate.y;
+	worldMatrix.m[3][2] = translate.z;
+	worldMatrix.m[3][3] = 1.0f;
+
+	viewMatrix = Inverse(worldMatrix);
+	projectionMatrix = MakePerspectiveFovMatrix(
+		fovY_,
+		aspectRatio_,
+		nearClip_,
+		farClip_
+	);
+	viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
+
+	transform.rotate = {
+		std::asin(std::clamp(-forward.y, -1.0f, 1.0f)),
+		std::atan2(forward.x, forward.z),
+		0.0f
+	};
+}
+
 void Camera::UpdateOrbitTransform() {
+	usesLookAtMatrix_ = false;
 
 	orbitDistance_ = std::max(orbitDistance_, orbitMinDistance_);
 	orbitPitch_ = std::clamp(orbitPitch_, -orbitMaxPitch_, orbitMaxPitch_);

@@ -150,8 +150,10 @@
     <ClCompile Include="engine\collision\CollisionManager.cpp" />
     <ClCompile Include="engine\collision\OBBCollider.cpp" />
     <ClCompile Include="engine\collision\SphereCollider.cpp" />
+    <ClCompile Include="engine\physics\PhysicsWorld.cpp" />
     <ClCompile Include="engine\debug\DebugRenderer.cpp" />
     <ClCompile Include="engine\effect\LightningRenderer.cpp" />
+    <ClCompile Include="application\camera\ThirdPersonCameraController.cpp" />
     <ClCompile Include="application\player\Player.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectEditor.cpp" />
     <ClCompile Include="engine\scene\BaseScene.cpp" />
@@ -279,8 +281,11 @@
     <ClInclude Include="engine\collision\CollisionManager.h" />
     <ClInclude Include="engine\collision\OBBCollider.h" />
     <ClInclude Include="engine\collision\SphereCollider.h" />
+    <ClInclude Include="engine\physics\PhysicsBody.h" />
+    <ClInclude Include="engine\physics\PhysicsWorld.h" />
     <ClInclude Include="engine\debug\DebugRenderer.h" />
     <ClInclude Include="engine\effect\LightningRenderer.h" />
+    <ClInclude Include="application\camera\ThirdPersonCameraController.h" />
     <ClInclude Include="application\player\Player.h" />
     <ClInclude Include="engine\particle\ParticleEffectEditor.h" />
     <ClInclude Include="engine\scene\BaseScene.h" />

@@ -146,6 +146,16 @@
           0.0,
           0.0
         ]
+      },
+      {
+        "assetName": "SnoeAsset",
+        "enabled": true,
+        "label": "SnoeAsset 1",
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
       }
     ],
     "TITLE": [

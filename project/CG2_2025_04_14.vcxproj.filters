@@ -22,8 +22,14 @@
     <ClCompile Include="engine\collision\CollisionManager.cpp" />
     <ClCompile Include="engine\collision\OBBCollider.cpp" />
     <ClCompile Include="engine\collision\SphereCollider.cpp" />
+    <ClCompile Include="engine\physics\PhysicsWorld.cpp">
+      <Filter>Engine\Physics</Filter>
+    </ClCompile>
     <ClCompile Include="engine\debug\DebugRenderer.cpp" />
     <ClCompile Include="engine\effect\LightningRenderer.cpp" />
+    <ClCompile Include="application\camera\ThirdPersonCameraController.cpp">
+      <Filter>Application\Camera</Filter>
+    </ClCompile>
     <ClCompile Include="application\player\Player.cpp">
       <Filter>Application\Player</Filter>
     </ClCompile>
@@ -95,8 +101,17 @@
     <ClInclude Include="engine\collision\CollisionManager.h" />
     <ClInclude Include="engine\collision\OBBCollider.h" />
     <ClInclude Include="engine\collision\SphereCollider.h" />
+    <ClInclude Include="engine\physics\PhysicsBody.h">
+      <Filter>Engine\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\physics\PhysicsWorld.h">
+      <Filter>Engine\Physics</Filter>
+    </ClInclude>
     <ClInclude Include="engine\debug\DebugRenderer.h" />
     <ClInclude Include="engine\effect\LightningRenderer.h" />
+    <ClInclude Include="application\camera\ThirdPersonCameraController.h">
+      <Filter>Application\Camera</Filter>
+    </ClInclude>
     <ClInclude Include="application\player\Player.h">
       <Filter>Application\Player</Filter>
     </ClInclude>
@@ -210,11 +225,17 @@
     <Filter Include="Application\Player">
       <UniqueIdentifier>{B036426C-18BA-46FA-AF76-09C613290F87}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Application\Camera">
+      <UniqueIdentifier>{0F657130-92A6-4B0A-B8E1-2E719420B9C7}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Engine">
       <UniqueIdentifier>{02D12CE6-08BE-4CF7-AB0D-44A74121F821}</UniqueIdentifier>
     </Filter>
     <Filter Include="Engine\Scene">
       <UniqueIdentifier>{7C7F6FE3-650C-434C-A360-17FE2C5DB753}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Physics">
+      <UniqueIdentifier>{5D0AF557-1B52-4E2C-93B1-257B4D0E0F7D}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>
