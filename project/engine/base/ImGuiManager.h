@@ -101,6 +101,8 @@ private:
 	bool showConsole_ = true;
 	int selectedHierarchyItem_ = 0;
 	uint64_t selectedEntityId_ = 0;
+	char hierarchySearchBuffer_[128] = {};
+	bool focusInspectorRequested_ = false;
 	EditorSession* editorSession_ = nullptr;
 	int gizmoOperation_ = 0;
 	bool gizmoLocalMode_ = true;

@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <functional>
 #include <numbers>
@@ -409,18 +410,34 @@ bool ImGuiManager::GetModelPreviewRequest(
 	float& pitch,
 	float& zoom
 ) const {
-	if (selectedProjectFile_.empty()) {
-		return false;
+	if (!selectedProjectFile_.empty()) {
+		const std::filesystem::path selectedPath(selectedProjectFile_);
+		if (IsModelAssetPath(selectedPath)) {
+			modelPath = GetPathRelativeToResources(selectedPath.generic_string());
+			yaw = modelPreviewYaw_;
+			pitch = modelPreviewPitch_;
+			zoom = modelPreviewZoom_;
+			return true;
+		}
 	}
-	const std::filesystem::path selectedPath(selectedProjectFile_);
-	if (!IsModelAssetPath(selectedPath)) {
-		return false;
+
+	if (editorSession_ && selectedEntityId_ != 0) {
+		const SceneDocument& document = editorSession_->GetActiveDocument();
+		if (const SceneEntity* entity = document.FindEntity(selectedEntityId_)) {
+			if (
+				HasComponent(*entity, "MeshRenderer") &&
+				!entity->modelPath.empty()
+			) {
+				modelPath = entity->modelPath;
+				yaw = modelPreviewYaw_;
+				pitch = modelPreviewPitch_;
+				zoom = modelPreviewZoom_;
+				return true;
+			}
+		}
 	}
-	modelPath = GetPathRelativeToResources(selectedPath.generic_string());
-	yaw = modelPreviewYaw_;
-	pitch = modelPreviewPitch_;
-	zoom = modelPreviewZoom_;
-	return true;
+
+	return false;
 }
 
 void ImGuiManager::DrawSceneGizmo(
@@ -517,6 +534,9 @@ void ImGuiManager::DrawSceneGizmo(
 		? Object3dCommon::GetInstance()->GetDefaultCamera()
 		: nullptr;
 	if (!entity || !camera) {
+		return;
+	}
+	if (entity->locked) {
 		return;
 	}
 
@@ -808,6 +828,13 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		ImGui::EndDisabled();
 		ImGui::SameLine();
 		ImGui::TextDisabled("%zu entities", document.GetEntities().size());
+		ImGui::SetNextItemWidth(-1.0f);
+		ImGui::InputTextWithHint(
+			"##HierarchySearch",
+			"Search entities...",
+			hierarchySearchBuffer_,
+			sizeof(hierarchySearchBuffer_)
+		);
 		ImGui::Separator();
 
 		uint64_t removeId = 0;
@@ -822,14 +849,17 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
 			!ImGui::GetIO().WantTextInput
 		) {
-			if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
-				removeId = selectedEntityId_;
-			}
-			if (
-				ImGui::GetIO().KeyCtrl &&
-				ImGui::IsKeyPressed(ImGuiKey_D, false)
-			) {
-				duplicateId = selectedEntityId_;
+			const SceneEntity* selectedEntity = document.FindEntity(selectedEntityId_);
+			if (selectedEntity && !selectedEntity->locked) {
+				if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+					removeId = selectedEntityId_;
+				}
+				if (
+					ImGui::GetIO().KeyCtrl &&
+					ImGui::IsKeyPressed(ImGuiKey_D, false)
+				) {
+					duplicateId = selectedEntityId_;
+				}
 			}
 		}
 
@@ -851,21 +881,108 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			}
 		};
 
+		auto toLower = [](std::string value) {
+			std::transform(
+				value.begin(),
+				value.end(),
+				value.begin(),
+				[](unsigned char ch) {
+					return static_cast<char>(std::tolower(ch));
+				}
+			);
+			return value;
+		};
+		const std::string hierarchySearch = toLower(hierarchySearchBuffer_);
+		const bool searchActive = !hierarchySearch.empty();
+		auto entityNameMatches = [&](const SceneEntity& entity) {
+			if (!searchActive) {
+				return true;
+			}
+			return toLower(entity.name).find(hierarchySearch) != std::string::npos;
+		};
+		std::function<bool(uint64_t)> entityVisibleInFilter;
+		entityVisibleInFilter = [&](uint64_t entityId) {
+			const SceneEntity* entity = document.FindEntity(entityId);
+			if (!entity) {
+				return false;
+			}
+			if (entityNameMatches(*entity)) {
+				return true;
+			}
+			for (const SceneEntity& child : document.GetEntities()) {
+				if (
+					child.parentId == entityId &&
+					entityVisibleInFilter(child.id)
+				) {
+					return true;
+				}
+			}
+			return false;
+		};
+		std::function<bool(uint64_t)> entitySubtreeHasLocked;
+		entitySubtreeHasLocked = [&](uint64_t entityId) {
+			const SceneEntity* entity = document.FindEntity(entityId);
+			if (!entity) {
+				return false;
+			}
+			if (entity->locked) {
+				return true;
+			}
+			for (const SceneEntity& child : document.GetEntities()) {
+				if (
+					child.parentId == entityId &&
+					entitySubtreeHasLocked(child.id)
+				) {
+					return true;
+				}
+			}
+			return false;
+		};
+
 		std::function<void(uint64_t)> drawEntity;
 		drawEntity = [&](uint64_t entityId) {
 			const SceneEntity* entity = document.FindEntity(entityId);
 			if (!entity) {
 				return;
 			}
+			if (!entityVisibleInFilter(entityId)) {
+				return;
+			}
 			const bool hasChildren = std::any_of(
 				document.GetEntities().begin(),
 				document.GetEntities().end(),
-				[entityId](const SceneEntity& candidate) {
-					return candidate.parentId == entityId;
+				[&](const SceneEntity& candidate) {
+					return candidate.parentId == entityId &&
+						entityVisibleInFilter(candidate.id);
 				}
 			);
+			const bool editable = editorSession_->IsEditing() && !entity->locked;
 
 			ImGui::PushID(static_cast<int>(entity->id));
+			ImGui::BeginDisabled(!editorSession_->IsEditing());
+			bool active = entity->active;
+			if (ImGui::SmallButton(active ? "V" : "-")) {
+				if (SceneEntity* mutableEntity = document.FindEntity(entity->id)) {
+					mutableEntity->active = !mutableEntity->active;
+					document.MarkDirty();
+				}
+			}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(active ? "Hide Entity" : "Show Entity");
+			}
+			ImGui::SameLine();
+			bool locked = entity->locked;
+			if (ImGui::SmallButton(locked ? "L" : "U")) {
+				if (SceneEntity* mutableEntity = document.FindEntity(entity->id)) {
+					mutableEntity->locked = !mutableEntity->locked;
+					document.MarkDirty();
+				}
+			}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(locked ? "Unlock Editing" : "Lock Editing");
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
 			ImGuiTreeNodeFlags flags =
 				ImGuiTreeNodeFlags_OpenOnArrow |
 				ImGuiTreeNodeFlags_SpanAvailWidth;
@@ -876,9 +993,14 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			if (selectedEntityId_ == entity->id) {
 				flags |= ImGuiTreeNodeFlags_Selected;
 			}
-			const std::string label = entity->active
-				? entity->name
-				: entity->name + " (inactive)";
+			const std::string label = entity->locked
+				? entity->name + " [locked]"
+				: entity->active
+					? entity->name
+					: entity->name + " (inactive)";
+			if (searchActive) {
+				ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+			}
 			const bool open = ImGui::TreeNodeEx(
 				"##Entity",
 				flags,
@@ -888,9 +1010,11 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
 				selectedEntityId_ = entity->id;
 				selectedProjectFile_.clear();
+				showInspector_ = true;
+				focusInspectorRequested_ = true;
 			}
 
-			if (editorSession_->IsEditing() && ImGui::BeginDragDropSource()) {
+			if (editable && ImGui::BeginDragDropSource()) {
 				const uint64_t draggedId = entity->id;
 				ImGui::SetDragDropPayload(
 					"SCENE_ENTITY_ID",
@@ -900,12 +1024,12 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				ImGui::TextUnformatted(entity->name.c_str());
 				ImGui::EndDragDropSource();
 			}
-			if (editorSession_->IsEditing()) {
+			if (editable) {
 				acceptEntityDrop(entity->id);
 			}
 
 			if (
-				editorSession_->IsEditing() &&
+				editable &&
 				ImGui::BeginPopupContextItem("EntityContext")
 			) {
 				if (ImGui::MenuItem("Create Child")) {
@@ -933,7 +1057,10 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 
 			if (hasChildren && open) {
 				for (const SceneEntity& child : document.GetEntities()) {
-					if (child.parentId == entity->id) {
+					if (
+						child.parentId == entity->id &&
+						entityVisibleInFilter(child.id)
+					) {
 						drawEntity(child.id);
 					}
 				}
@@ -966,22 +1093,42 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		}
 
 		if (reparentId != 0) {
-			document.SetParent(reparentId, reparentTargetId);
+			const SceneEntity* reparentEntity = document.FindEntity(reparentId);
+			const SceneEntity* targetEntity = document.FindEntity(reparentTargetId);
+			if (
+				reparentEntity &&
+				!reparentEntity->locked &&
+				(reparentTargetId == 0 || (targetEntity && !targetEntity->locked))
+			) {
+				document.SetParent(reparentId, reparentTargetId);
+			}
 		}
 		if (moveId != 0) {
-			document.MoveEntity(moveId, moveDirection);
+			if (const SceneEntity* entity = document.FindEntity(moveId)) {
+				if (!entity->locked) {
+					document.MoveEntity(moveId, moveDirection);
+				}
+			}
 		}
 		if (removeId != 0) {
-			if (
-				selectedEntityId_ == removeId ||
-				document.IsDescendantOf(selectedEntityId_, removeId)
-			) {
-				selectedEntityId_ = 0;
+			if (const SceneEntity* entity = document.FindEntity(removeId)) {
+				if (!entitySubtreeHasLocked(entity->id)) {
+					if (
+						selectedEntityId_ == removeId ||
+						document.IsDescendantOf(selectedEntityId_, removeId)
+					) {
+						selectedEntityId_ = 0;
+					}
+					document.RemoveEntity(removeId);
+				}
 			}
-			document.RemoveEntity(removeId);
 		}
 		if (duplicateId != 0) {
-			selectedEntityId_ = document.DuplicateEntity(duplicateId);
+			if (const SceneEntity* entity = document.FindEntity(duplicateId)) {
+				if (!entity->locked) {
+					selectedEntityId_ = document.DuplicateEntity(duplicateId);
+				}
+			}
 		}
 		if (createRequested) {
 			SceneEntity& entity = document.CreateEntity("Entity", createParentId);
@@ -1019,6 +1166,10 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 }
 
 void ImGuiManager::DrawInspectorWindow() {
+	if (focusInspectorRequested_) {
+		ImGui::SetNextWindowFocus();
+		focusInspectorRequested_ = false;
+	}
 	ImGui::Begin("Inspector", &showInspector_);
 
 	if (!selectedProjectFile_.empty()) {
@@ -1264,19 +1415,26 @@ void ImGuiManager::DrawInspectorWindow() {
 			ImGui::End();
 			return;
 		}
+		const bool entityLocked = entity->locked;
 
 		char nameBuffer[128]{};
 		strncpy_s(nameBuffer, entity->name.c_str(), _TRUNCATE);
+		ImGui::BeginDisabled(entityLocked);
 		if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
 			entity->name = nameBuffer;
 			document.MarkDirty();
 		}
+		ImGui::EndDisabled();
 		if (ImGui::Checkbox("Active", &entity->active)) {
+			document.MarkDirty();
+		}
+		if (ImGui::Checkbox("Locked", &entity->locked)) {
 			document.MarkDirty();
 		}
 
 		const SceneEntity* parent = document.FindEntity(entity->parentId);
 		const char* parentName = parent ? parent->name.c_str() : "None (Root)";
+		ImGui::BeginDisabled(entityLocked);
 		if (ImGui::BeginCombo("Parent", parentName)) {
 			if (ImGui::Selectable("None (Root)", entity->parentId == 0)) {
 				document.SetParent(entity->id, 0);
@@ -1297,9 +1455,11 @@ void ImGuiManager::DrawInspectorWindow() {
 			}
 			ImGui::EndCombo();
 		}
+		ImGui::EndDisabled();
 
 		ImGui::SeparatorText("Transform");
 		bool transformChanged = false;
+		ImGui::BeginDisabled(entityLocked);
 		if (HasComponent(*entity, "SpriteRenderer")) {
 			transformChanged |= ImGui::DragFloat2(
 				"Position",
@@ -1337,6 +1497,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				1000.0f
 			);
 		}
+		ImGui::EndDisabled();
 		if (transformChanged) {
 			document.MarkDirty();
 		}
@@ -1344,15 +1505,107 @@ void ImGuiManager::DrawInspectorWindow() {
 		for (const std::string& component : entity->components) {
 			ImGui::SeparatorText(component.c_str());
 			if (component == "MeshRenderer") {
+				const bool modelEditingDisabled =
+					!editorSession_->IsEditing() || entityLocked;
+				auto assignModel = [&](const std::string& modelPath) {
+					if (entity->modelPath == modelPath) {
+						return;
+					}
+					entity->modelPath = modelPath;
+					document.MarkDirty();
+					editorSession_->RequestSceneReload();
+				};
+
+				if (!entity->modelPath.empty()) {
+					const bool previewReady =
+						modelPreviewRenderedPath_ == entity->modelPath &&
+						modelPreviewTexture_.ptr != 0;
+					const float previewSize = std::clamp(
+						ImGui::GetContentRegionAvail().x,
+						180.0f,
+						320.0f
+					);
+					if (previewReady) {
+						ImGui::Image(
+							ImTextureRef(static_cast<ImTextureID>(modelPreviewTexture_.ptr)),
+							ImVec2(previewSize, previewSize)
+						);
+						if (ImGui::IsItemHovered()) {
+							const ImGuiIO& io = ImGui::GetIO();
+							if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+								modelPreviewYaw_ += io.MouseDelta.x * 0.01f;
+								modelPreviewPitch_ = std::clamp(
+									modelPreviewPitch_ + io.MouseDelta.y * 0.01f,
+									-1.45f,
+									1.45f
+								);
+							}
+							if (io.MouseWheel != 0.0f) {
+								modelPreviewZoom_ = std::clamp(
+									modelPreviewZoom_ * (1.0f - io.MouseWheel * 0.12f),
+									0.25f,
+									4.0f
+								);
+							}
+							ImGui::SetTooltip(
+								"Drag to orbit | Wheel to zoom | Drop model to replace"
+							);
+						}
+					} else {
+						ImGui::Button(
+							"Preparing model preview...",
+							ImVec2(previewSize, previewSize)
+						);
+					}
+					if (!modelEditingDisabled && ImGui::BeginDragDropTarget()) {
+						if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+							"PROJECT_MODEL_PATH"
+						)) {
+							const char* droppedPath =
+								static_cast<const char*>(payload->Data);
+							if (droppedPath && droppedPath[0] != '\0') {
+								assignModel(GetPathRelativeToResources(droppedPath));
+							}
+						}
+						ImGui::EndDragDropTarget();
+					}
+					if (ImGui::SmallButton("Reset Preview")) {
+						modelPreviewYaw_ = 0.65f;
+						modelPreviewPitch_ = 0.25f;
+						modelPreviewZoom_ = 1.0f;
+					}
+					ImGui::SameLine();
+					ImGui::BeginDisabled(modelEditingDisabled);
+					if (ImGui::SmallButton("Clear Model")) {
+						assignModel({});
+					}
+					ImGui::EndDisabled();
+				} else {
+					ImGui::BeginDisabled(modelEditingDisabled);
+					ImGui::Button("Drop Model Here", ImVec2(-1.0f, 48.0f));
+					ImGui::EndDisabled();
+					if (!modelEditingDisabled && ImGui::BeginDragDropTarget()) {
+						if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+							"PROJECT_MODEL_PATH"
+						)) {
+							const char* droppedPath =
+								static_cast<const char*>(payload->Data);
+							if (droppedPath && droppedPath[0] != '\0') {
+								assignModel(GetPathRelativeToResources(droppedPath));
+							}
+						}
+						ImGui::EndDragDropTarget();
+					}
+					ImGui::TextDisabled("No model assigned. Select or drop a model.");
+				}
+
 				const char* currentModel = entity->modelPath.empty()
 					? "None"
 					: entity->modelPath.c_str();
-				ImGui::BeginDisabled(!editorSession_->IsEditing());
+				ImGui::BeginDisabled(modelEditingDisabled);
 				if (ImGui::BeginCombo("Model", currentModel)) {
 					if (ImGui::Selectable("None", entity->modelPath.empty())) {
-						entity->modelPath.clear();
-						document.MarkDirty();
-						editorSession_->RequestSceneReload();
+						assignModel({});
 					}
 					const std::vector<std::string> modelPaths =
 						CollectModelAssetPaths();
@@ -1361,22 +1614,18 @@ void ImGuiManager::DrawInspectorWindow() {
 							modelPath.c_str(),
 							entity->modelPath == modelPath
 						)) {
-							entity->modelPath = modelPath;
-							document.MarkDirty();
-							editorSession_->RequestSceneReload();
+							assignModel(modelPath);
 						}
 					}
 					ImGui::EndCombo();
 				}
-				if (ImGui::BeginDragDropTarget()) {
+				if (!modelEditingDisabled && ImGui::BeginDragDropTarget()) {
 					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
 						"PROJECT_MODEL_PATH"
 					)) {
 						const char* droppedPath = static_cast<const char*>(payload->Data);
 						if (droppedPath && droppedPath[0] != '\0') {
-							entity->modelPath = GetPathRelativeToResources(droppedPath);
-							document.MarkDirty();
-							editorSession_->RequestSceneReload();
+							assignModel(GetPathRelativeToResources(droppedPath));
 						}
 					}
 					ImGui::EndDragDropTarget();
@@ -1386,7 +1635,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const char* currentTexture = entity->spriteTexturePath.empty()
 					? "None"
 					: entity->spriteTexturePath.c_str();
-				ImGui::BeginDisabled(!editorSession_->IsEditing());
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				if (ImGui::BeginCombo("Texture", currentTexture)) {
 					for (const std::string& texturePath : CollectTextureAssetPaths()) {
 						if (ImGui::Selectable(
@@ -1522,16 +1771,38 @@ void ImGuiManager::DrawProjectWindow() {
 
 	std::error_code ec;
 	if (std::filesystem::exists(selectedProjectFolder_, ec)) {
-		std::vector<std::filesystem::directory_entry> files;
+		const std::filesystem::path currentProjectFolder(selectedProjectFolder_);
+		if (
+			currentProjectFolder.has_parent_path() &&
+			currentProjectFolder.generic_string() != "resources"
+		) {
+			if (ImGui::SmallButton("..")) {
+				const std::filesystem::path parent = currentProjectFolder.parent_path();
+				selectedProjectFolder_ = parent.empty()
+					? std::string("resources")
+					: parent.generic_string();
+				selectedProjectFile_.clear();
+			}
+			ImGui::SameLine();
+			ImGui::TextDisabled("Back to parent folder");
+			ImGui::Separator();
+		}
+
+		std::vector<std::filesystem::directory_entry> entries;
 		for (const auto& entry : std::filesystem::directory_iterator(selectedProjectFolder_, ec)) {
-			if (entry.is_regular_file()) {
-				files.push_back(entry);
+			if (entry.is_directory(ec) || entry.is_regular_file(ec)) {
+				entries.push_back(entry);
 			}
 		}
 		std::sort(
-			files.begin(),
-			files.end(),
+			entries.begin(),
+			entries.end(),
 			[](const auto& left, const auto& right) {
+				const bool leftIsDirectory = left.is_directory();
+				const bool rightIsDirectory = right.is_directory();
+				if (leftIsDirectory != rightIsDirectory) {
+					return leftIsDirectory;
+				}
 				return left.path().filename().string() < right.path().filename().string();
 			}
 		);
@@ -1551,20 +1822,21 @@ void ImGuiManager::DrawProjectWindow() {
 		}
 
 		if (!projectGridView_ || tableOpen) {
-		for (const auto& entry : files) {
+		for (const auto& entry : entries) {
 			const std::string fileName = entry.path().filename().string();
 			const std::string filePath = entry.path().generic_string();
+			const bool isDirectory = entry.is_directory(ec);
 			std::string extension = entry.path().extension().string();
 			std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-			const bool isTexture = IsTextureAssetPath(entry.path());
-			const bool isModel = IsModelAssetPath(entry.path());
+			const bool isTexture = !isDirectory && IsTextureAssetPath(entry.path());
+			const bool isModel = !isDirectory && IsModelAssetPath(entry.path());
 			const bool isSelected = selectedProjectFile_ == filePath;
 
 			if (projectGridView_) {
 				ImGui::TableNextColumn();
 			}
 			ImGui::PushID(filePath.c_str());
-			if (isSelected) {
+			if (isSelected || selectedProjectFolder_ == filePath) {
 				ImGui::PushStyleColor(
 					ImGuiCol_Button,
 					ImGui::GetStyleColorVec4(ImGuiCol_Header)
@@ -1663,7 +1935,8 @@ void ImGuiManager::DrawProjectWindow() {
 					}
 					drawDragSource();
 				} else {
-					const char* typeLabel = isModel ? "3D" :
+					const char* typeLabel = isDirectory ? "DIR" :
+						isModel ? "3D" :
 						isTexture ? "DDS" :
 						extension == ".wav" ? "AUDIO" :
 						extension == ".json" ? "JSON" :
@@ -1678,24 +1951,37 @@ void ImGuiManager::DrawProjectWindow() {
 				ImGui::TextUnformatted(fileName.c_str());
 				ImGui::PopTextWrapPos();
 			} else {
-				const char* prefix = isTexture ? "[Tex]" :
+				const char* prefix = isDirectory ? "[Folder]" :
+					isTexture ? "[Tex]" :
 					isModel ? "[Model]" :
 					extension == ".wav" ? "[Audio]" :
 					extension == ".json" ? "[JSON]" :
 					(extension == ".hlsl" || extension == ".hlsli") ? "[Shader]" : "[File]";
 				const std::string label = std::string(prefix) + "  " + fileName;
-				clicked = ImGui::Selectable(label.c_str(), isSelected);
+				clicked = ImGui::Selectable(
+					label.c_str(),
+					isDirectory ? selectedProjectFolder_ == filePath : isSelected
+				);
 				drawDragSource();
 			}
 
-			if (isSelected) {
+			if (isSelected || selectedProjectFolder_ == filePath) {
 				ImGui::PopStyleColor();
 			}
 			if (clicked) {
-				selectedProjectFile_ = filePath;
-				selectedEntityId_ = 0;
-				if (previewSoundData_.pBuffer && Audio::GetInstance()) {
-					Audio::GetInstance()->SoundUnload(&previewSoundData_);
+				if (isDirectory) {
+					selectedProjectFolder_ = filePath;
+					selectedProjectFile_.clear();
+					selectedEntityId_ = 0;
+					if (previewSoundData_.pBuffer && Audio::GetInstance()) {
+						Audio::GetInstance()->SoundUnload(&previewSoundData_);
+					}
+				} else {
+					selectedProjectFile_ = filePath;
+					selectedEntityId_ = 0;
+					if (previewSoundData_.pBuffer && Audio::GetInstance()) {
+						Audio::GetInstance()->SoundUnload(&previewSoundData_);
+					}
 				}
 			}
 			ImGui::PopID();

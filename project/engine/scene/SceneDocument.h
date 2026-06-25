@@ -13,6 +13,7 @@ struct SceneEntity {
 	uint64_t parentId = 0;
 	std::string name;
 	bool active = true;
+	bool locked = false;
 	Transform transform{};
 	std::string modelPath;
 	std::string spriteTexturePath;

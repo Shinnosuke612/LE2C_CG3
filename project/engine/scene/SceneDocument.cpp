@@ -122,6 +122,7 @@ bool SceneDocument::Save(const std::string& filePath) {
 			{ "parentId", entity.parentId },
 			{ "name", entity.name },
 			{ "active", entity.active },
+			{ "locked", entity.locked },
 			{ "transform", {
 				{ "scale", VectorToJson(entity.transform.scale) },
 				{ "rotate", VectorToJson(entity.transform.rotate) },
@@ -272,6 +273,7 @@ uint64_t SceneDocument::DuplicateEntity(uint64_t id) {
 		);
 		const uint64_t duplicateId = duplicate.id;
 		duplicate.active = found->active;
+		duplicate.locked = found->locked;
 		duplicate.transform = found->transform;
 		duplicate.modelPath = found->modelPath;
 		duplicate.spriteTexturePath = found->spriteTexturePath;
@@ -454,6 +456,7 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 			entity.parentId = source.value("parentId", uint64_t{});
 			entity.name = source.value("name", std::string("Entity"));
 			entity.active = source.value("active", true);
+			entity.locked = source.value("locked", false);
 			entity.modelPath = source.value("modelPath", std::string{});
 			if (source.contains("sprite") && source.at("sprite").is_object()) {
 				const json& sprite = source.at("sprite");
