@@ -47,6 +47,10 @@ public://メンバ関数
 
 	const Vector3& GetRotate() const{ return transform.rotate; }
 	const Vector3& GetTranslate() const{ return transform.translate; }
+	const Vector3& GetOrbitTarget() const { return orbitTarget_; }
+	float GetOrbitDistance() const { return orbitDistance_; }
+	float GetOrbitYaw() const { return orbitYaw_; }
+	float GetOrbitPitch() const { return orbitPitch_; }
 
 	float GetFovY() const{ return fovY_; }
 	float GetAspectRatio() const{ return aspectRatio_; }

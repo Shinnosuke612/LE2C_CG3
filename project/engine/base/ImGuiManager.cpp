@@ -4,9 +4,11 @@
 #include <cassert>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include <numbers>
+#include <limits>
 #include <unordered_set>
 
 #include "WinApp.h"
@@ -18,6 +20,7 @@
 #include "../3d/Object3dCommon.h"
 #include "../3d/Camera.h"
 #include "../math/Matrix4x4.h"
+#include "../math/Math.h"
 #include "../particle/ParticleEffectResource.h"
 #include "../scene/EditorSession.h"
 #include "../scene/SceneDocument.h"
@@ -159,6 +162,114 @@ namespace {
 		std::unordered_set<uint64_t> visited;
 		return CalculateSceneWorldMatrix(document, entity, visited);
 	}
+
+	Vector3 TransformCoord(const Vector3& value, const Matrix4x4& matrix) {
+		const float x =
+			value.x * matrix.m[0][0] +
+			value.y * matrix.m[1][0] +
+			value.z * matrix.m[2][0] +
+			matrix.m[3][0];
+		const float y =
+			value.x * matrix.m[0][1] +
+			value.y * matrix.m[1][1] +
+			value.z * matrix.m[2][1] +
+			matrix.m[3][1];
+		const float z =
+			value.x * matrix.m[0][2] +
+			value.y * matrix.m[1][2] +
+			value.z * matrix.m[2][2] +
+			matrix.m[3][2];
+		const float w =
+			value.x * matrix.m[0][3] +
+			value.y * matrix.m[1][3] +
+			value.z * matrix.m[2][3] +
+			matrix.m[3][3];
+		const float inverseW = std::abs(w) > 0.000001f ? 1.0f / w : 1.0f;
+		return { x * inverseW, y * inverseW, z * inverseW };
+	}
+
+	bool IntersectRayAabb(
+		const Vector3& rayOrigin,
+		const Vector3& rayDirection,
+		const Vector3& boundsMin,
+		const Vector3& boundsMax,
+		float& outDistance
+	) {
+		float tMin = 0.0f;
+		float tMax = (std::numeric_limits<float>::max)();
+		const float origin[3] = {
+			rayOrigin.x,
+			rayOrigin.y,
+			rayOrigin.z
+		};
+		const float direction[3] = {
+			rayDirection.x,
+			rayDirection.y,
+			rayDirection.z
+		};
+		const float minimum[3] = {
+			boundsMin.x,
+			boundsMin.y,
+			boundsMin.z
+		};
+		const float maximum[3] = {
+			boundsMax.x,
+			boundsMax.y,
+			boundsMax.z
+		};
+		for (uint32_t axis = 0; axis < 3; ++axis) {
+			if (std::abs(direction[axis]) < 0.000001f) {
+				if (origin[axis] < minimum[axis] || origin[axis] > maximum[axis]) {
+					return false;
+				}
+				continue;
+			}
+			float t1 = (minimum[axis] - origin[axis]) / direction[axis];
+			float t2 = (maximum[axis] - origin[axis]) / direction[axis];
+			if (t1 > t2) {
+				std::swap(t1, t2);
+			}
+			tMin = (std::max)(tMin, t1);
+			tMax = (std::min)(tMax, t2);
+			if (tMin > tMax) {
+				return false;
+			}
+		}
+		outDistance = tMin;
+		return true;
+	}
+
+	bool IsLowPriorityPickTarget(
+		const SceneEntity& entity,
+		const SceneComponent& meshRenderer,
+		const Vector3& localMin,
+		const Vector3& localMax
+	) {
+		std::string name = entity.name;
+		std::string modelPath = meshRenderer.modelPath;
+		std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+		std::transform(
+			modelPath.begin(),
+			modelPath.end(),
+			modelPath.begin(),
+			::tolower
+		);
+		if (
+			name.find("terrain") != std::string::npos ||
+			modelPath.find("terrain") != std::string::npos
+		) {
+			return true;
+		}
+
+		const Vector3 extent = {
+			std::abs((localMax.x - localMin.x) * entity.transform.scale.x),
+			std::abs((localMax.y - localMin.y) * entity.transform.scale.y),
+			std::abs((localMax.z - localMin.z) * entity.transform.scale.z)
+		};
+		const float footprint = extent.x * extent.z;
+		return footprint > 2500.0f || (extent.x > 80.0f && extent.z > 80.0f);
+	}
+
 }
 
 ImGuiManager* ImGuiManager::instance = nullptr;
@@ -267,6 +378,10 @@ void ImGuiManager::DrawEditorWorkspace(
 	uint32_t textureHeight,
 	const char* sceneName
 ) {
+	if (editorSession_) {
+		editorSession_->BeginEditFrame();
+	}
+
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 	ImGui::Begin(
 		"Scene",
@@ -394,6 +509,30 @@ void ImGuiManager::DrawEditorWorkspace(
 		textureHeight
 	);
 
+	if (
+		sceneImageHovered &&
+		editorSession_ &&
+		editorSession_->IsEditing() &&
+		ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+		!ImGuizmo::IsUsing() &&
+		!ImGuizmo::IsOver()
+	) {
+		const ImVec2 mouse = ImGui::GetMousePos();
+		const bool overSceneToolbar =
+			mouse.x >= sceneMin.x &&
+			mouse.x <= sceneMin.x + 280.0f &&
+			mouse.y >= sceneMin.y &&
+			mouse.y <= sceneMin.y + 40.0f;
+		if (!overSceneToolbar) {
+			PickSceneEntity(
+				sceneMin.x,
+				sceneMin.y,
+				sceneMax.x - sceneMin.x,
+				sceneMax.y - sceneMin.y
+			);
+		}
+	}
+
 	ImGui::GetWindowDrawList()->AddText(
 		ImVec2(sceneMin.x + 16.0f, sceneMin.y + 44.0f),
 		IM_COL32(255, 255, 255, 255),
@@ -419,6 +558,16 @@ void ImGuiManager::DrawEditorWorkspace(
 	}
 	if (showConsole_) {
 		DrawConsoleWindow();
+	}
+
+	if (editorSession_) {
+		const bool editingInteractionActive =
+			ImGui::IsAnyItemActive() ||
+			ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
+			ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
+			ImGui::IsMouseDown(ImGuiMouseButton_Middle) ||
+			ImGuizmo::IsUsing();
+		editorSession_->EndEditFrame(!editingInteractionActive);
 	}
 
 	(void)textureWidth;
@@ -472,6 +621,155 @@ bool ImGuiManager::GetModelPreviewRequest(
 	}
 
 	return false;
+}
+
+bool ImGuiManager::PickSceneEntity(
+	float x,
+	float y,
+	float width,
+	float height
+) {
+	if (
+		!editorSession_ ||
+		!editorSession_->IsEditing() ||
+		width <= 1.0f ||
+		height <= 1.0f
+	) {
+		return false;
+	}
+
+	Camera* camera = Object3dCommon::GetInstance()
+		? Object3dCommon::GetInstance()->GetDefaultCamera()
+		: nullptr;
+	if (!camera) {
+		return false;
+	}
+
+	const ImVec2 mouse = ImGui::GetMousePos();
+	const float normalizedX = (mouse.x - x) / width;
+	const float normalizedY = (mouse.y - y) / height;
+	if (
+		normalizedX < 0.0f ||
+		normalizedX > 1.0f ||
+		normalizedY < 0.0f ||
+		normalizedY > 1.0f
+	) {
+		return false;
+	}
+
+	const float ndcX = normalizedX * 2.0f - 1.0f;
+	const float ndcY = 1.0f - normalizedY * 2.0f;
+	const Matrix4x4 inverseViewProjection = Inverse(
+		Multiply(camera->GetViewMatrix(), camera->GetProjectionMatrix())
+	);
+	const Vector3 nearPoint =
+		TransformCoord({ ndcX, ndcY, 0.0f }, inverseViewProjection);
+	const Vector3 farPoint =
+		TransformCoord({ ndcX, ndcY, 1.0f }, inverseViewProjection);
+	const Vector3 rayDirection =
+		Math::Normalize(Math::Subtract(farPoint, nearPoint));
+
+	SceneDocument& document = editorSession_->GetEditDocument();
+	uint64_t bestEntityId = 0;
+	float bestDistance = (std::numeric_limits<float>::max)();
+	uint64_t bestLowPriorityEntityId = 0;
+	float bestLowPriorityDistance = (std::numeric_limits<float>::max)();
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (entity.locked || !entity.active) {
+			continue;
+		}
+		const SceneComponent* meshRenderer =
+			FindEnabledComponent(entity, "MeshRenderer");
+		if (!meshRenderer || meshRenderer->modelPath.empty()) {
+			continue;
+		}
+		ModelManager::GetInstance()->LoadModel(meshRenderer->modelPath);
+		Model* model = ModelManager::GetInstance()->FindModel(
+			meshRenderer->modelPath
+		);
+		if (!model) {
+			continue;
+		}
+		Vector3 localMin{};
+		Vector3 localMax{};
+		if (!model->GetLocalBounds(localMin, localMax)) {
+			continue;
+		}
+		const Matrix4x4 inverseWorld =
+			Inverse(CalculateSceneWorldMatrix(document, entity));
+		const Vector3 localRayOrigin =
+			TransformCoord(nearPoint, inverseWorld);
+		const Vector3 localRayFar =
+			TransformCoord(farPoint, inverseWorld);
+		const Vector3 localRayDirection =
+			Math::Normalize(Math::Subtract(localRayFar, localRayOrigin));
+		float distance = 0.0f;
+		if (
+			IntersectRayAabb(
+				localRayOrigin,
+				localRayDirection,
+				localMin,
+				localMax,
+				distance
+			)
+		) {
+			const Vector3 localHit = Math::Add(
+				localRayOrigin,
+				Math::Multiply(localRayDirection, distance)
+			);
+			const Vector3 worldHit = TransformCoord(
+				localHit,
+				CalculateSceneWorldMatrix(document, entity)
+			);
+			const float worldDistance =
+				Math::Length(Math::Subtract(worldHit, nearPoint));
+			if (worldDistance >= bestDistance) {
+				const bool lowPriority = IsLowPriorityPickTarget(
+					entity,
+					*meshRenderer,
+					localMin,
+					localMax
+				);
+				if (
+					lowPriority &&
+					worldDistance < bestLowPriorityDistance
+				) {
+					bestLowPriorityDistance = worldDistance;
+					bestLowPriorityEntityId = entity.id;
+				}
+				continue;
+			}
+			const bool lowPriority = IsLowPriorityPickTarget(
+				entity,
+				*meshRenderer,
+				localMin,
+				localMax
+			);
+			if (lowPriority) {
+				if (worldDistance < bestLowPriorityDistance) {
+					bestLowPriorityDistance = worldDistance;
+					bestLowPriorityEntityId = entity.id;
+				}
+			} else {
+				bestDistance = worldDistance;
+				bestEntityId = entity.id;
+			}
+		}
+	}
+
+	if (bestEntityId == 0) {
+		bestEntityId = bestLowPriorityEntityId;
+	}
+
+	if (bestEntityId == 0) {
+		return false;
+	}
+
+	selectedEntityId_ = bestEntityId;
+	selectedProjectFile_.clear();
+	showInspector_ = true;
+	focusInspectorRequested_ = true;
+	return true;
 }
 
 void ImGuiManager::DrawSceneGizmo(
@@ -781,6 +1079,33 @@ void ImGuiManager::DrawPlaybackControls() {
 		(saveRequested || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)))
 	) {
 		editorSession_->Save();
+	}
+
+	ImGui::SameLine();
+	ImGui::BeginDisabled(
+		!editorSession_->IsEditing() ||
+		!editorSession_->CanUndo()
+	);
+	const bool undoRequested = ImGui::SmallButton("Undo");
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(
+		!editorSession_->IsEditing() ||
+		!editorSession_->CanRedo()
+	);
+	const bool redoRequested = ImGui::SmallButton("Redo");
+	ImGui::EndDisabled();
+	if (
+		editorSession_->IsEditing() &&
+		(undoRequested || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)))
+	) {
+		editorSession_->Undo();
+	}
+	if (
+		editorSession_->IsEditing() &&
+		(redoRequested || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)))
+	) {
+		editorSession_->Redo();
 	}
 
 	ImGui::SameLine();

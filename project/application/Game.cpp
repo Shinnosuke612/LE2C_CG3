@@ -500,11 +500,19 @@ void Game::Update() {
 	}
 #endif
 
-	if (editorSession_->ConsumeReloadRequest()) {
+	const bool reloadRequested = editorSession_->ConsumeReloadRequest();
+	const bool preserveEditorCamera =
+		editorSession_->IsEditing() && reloadRequested;
+	const CameraSnapshot editorCameraSnapshot =
+		preserveEditorCamera ? CaptureCameraSnapshot() : CameraSnapshot{};
+	if (reloadRequested) {
 		sceneManager_->ReloadCurrentScene();
 	}
 	if (!editorSession_->IsPaused()) {
 		sceneManager_->Update();
+	}
+	if (preserveEditorCamera) {
+		RestoreCameraSnapshot(editorCameraSnapshot);
 	}
 
 	ParticleManager::ExposureFlashEvent exposureFlash{};
@@ -699,6 +707,56 @@ void Game::Draw() {
 #endif
 
 	dxCommon_->PostDraw();
+}
+
+Game::CameraSnapshot Game::CaptureCameraSnapshot() const {
+	CameraSnapshot snapshot{};
+	const Object3dCommon* object3dCommon = Object3dCommon::GetInstance();
+	const Camera* camera = object3dCommon
+		? object3dCommon->GetDefaultCamera()
+		: nullptr;
+	if (!camera) {
+		return snapshot;
+	}
+
+	snapshot.valid = true;
+	snapshot.orbitMode = camera->IsOrbitMode();
+	snapshot.translate = camera->GetTranslate();
+	snapshot.rotate = camera->GetRotate();
+	snapshot.orbitTarget = camera->GetOrbitTarget();
+	snapshot.orbitDistance = camera->GetOrbitDistance();
+	snapshot.orbitYaw = camera->GetOrbitYaw();
+	snapshot.orbitPitch = camera->GetOrbitPitch();
+	snapshot.fovY = camera->GetFovY();
+	snapshot.aspectRatio = camera->GetAspectRatio();
+	snapshot.nearClip = camera->GetNearClip();
+	snapshot.farClip = camera->GetFarClip();
+	return snapshot;
+}
+
+void Game::RestoreCameraSnapshot(const CameraSnapshot& snapshot) const {
+	if (!snapshot.valid) {
+		return;
+	}
+	Object3dCommon* object3dCommon = Object3dCommon::GetInstance();
+	Camera* camera = object3dCommon
+		? object3dCommon->GetDefaultCamera()
+		: nullptr;
+	if (!camera) {
+		return;
+	}
+
+	camera->SetOrbitMode(snapshot.orbitMode);
+	camera->SetTranslate(snapshot.translate);
+	camera->SetRotate(snapshot.rotate);
+	camera->SetOrbitTarget(snapshot.orbitTarget);
+	camera->SetOrbitDistance(snapshot.orbitDistance);
+	camera->SetOrbitAngle(snapshot.orbitYaw, snapshot.orbitPitch);
+	camera->SetFovY(snapshot.fovY);
+	camera->SetAspectRatio(snapshot.aspectRatio);
+	camera->SetNearClip(snapshot.nearClip);
+	camera->SetFarClip(snapshot.farClip);
+	camera->UpdatePreviewMatrices();
 }
 
 void Game::DrawModelPreview() {

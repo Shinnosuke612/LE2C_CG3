@@ -1,5 +1,11 @@
 #include "EditorSession.h"
 
+#include <algorithm>
+
+namespace {
+	constexpr size_t kMaxUndoSnapshots = 100;
+}
+
 bool EditorSession::Initialize(
 	const std::string& sceneName,
 	const std::string& sceneFilePath
@@ -7,12 +13,18 @@ bool EditorSession::Initialize(
 	sceneFilePath_ = sceneFilePath;
 	state_ = EditorPlayState::Edit;
 	reloadRequested_ = false;
+	editFrameActive_ = false;
+	frameStartRevision_ = 0;
+	undoStack_.clear();
+	redoStack_.clear();
 
 	if (editDocument_.Load(sceneFilePath_)) {
+		frameStartDocument_ = editDocument_;
 		return true;
 	}
 
 	editDocument_.Clear(sceneName);
+	frameStartDocument_ = editDocument_;
 	return false;
 }
 
@@ -51,7 +63,72 @@ bool EditorSession::Save() {
 	if (!IsEditing() || sceneFilePath_.empty()) {
 		return false;
 	}
-	return editDocument_.Save(sceneFilePath_);
+	const bool saved = editDocument_.Save(sceneFilePath_);
+	if (saved) {
+		frameStartDocument_ = editDocument_;
+		frameStartRevision_ = editDocument_.GetRevision();
+		editFrameActive_ = false;
+	}
+	return saved;
+}
+
+void EditorSession::BeginEditFrame() {
+	if (!IsEditing() || editFrameActive_) {
+		return;
+	}
+	frameStartDocument_ = editDocument_;
+	frameStartRevision_ = editDocument_.GetRevision();
+	editFrameActive_ = true;
+}
+
+void EditorSession::EndEditFrame(bool commit) {
+	if (!editFrameActive_) {
+		return;
+	}
+	if (!IsEditing()) {
+		editFrameActive_ = false;
+		return;
+	}
+	if (editDocument_.GetRevision() == frameStartRevision_) {
+		editFrameActive_ = false;
+		return;
+	}
+	if (!commit) {
+		return;
+	}
+	editFrameActive_ = false;
+	PushUndoSnapshot(frameStartDocument_);
+	redoStack_.clear();
+}
+
+bool EditorSession::Undo() {
+	if (!IsEditing() || undoStack_.empty()) {
+		return false;
+	}
+	redoStack_.push_back(editDocument_);
+	editDocument_ = undoStack_.back();
+	undoStack_.pop_back();
+	editDocument_.MarkDirty();
+	frameStartDocument_ = editDocument_;
+	frameStartRevision_ = editDocument_.GetRevision();
+	editFrameActive_ = false;
+	reloadRequested_ = true;
+	return true;
+}
+
+bool EditorSession::Redo() {
+	if (!IsEditing() || redoStack_.empty()) {
+		return false;
+	}
+	undoStack_.push_back(editDocument_);
+	editDocument_ = redoStack_.back();
+	redoStack_.pop_back();
+	editDocument_.MarkDirty();
+	frameStartDocument_ = editDocument_;
+	frameStartRevision_ = editDocument_.GetRevision();
+	editFrameActive_ = false;
+	reloadRequested_ = true;
+	return true;
 }
 
 SceneDocument& EditorSession::GetActiveDocument() {
@@ -66,4 +143,11 @@ bool EditorSession::ConsumeReloadRequest() {
 	const bool requested = reloadRequested_;
 	reloadRequested_ = false;
 	return requested;
+}
+
+void EditorSession::PushUndoSnapshot(const SceneDocument& snapshot) {
+	undoStack_.push_back(snapshot);
+	if (undoStack_.size() > kMaxUndoSnapshots) {
+		undoStack_.erase(undoStack_.begin());
+	}
 }

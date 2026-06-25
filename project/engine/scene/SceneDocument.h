@@ -75,12 +75,16 @@ public:
 	const std::string& GetSceneName() const { return sceneName_; }
 	void SetSceneName(const std::string& sceneName) {
 		sceneName_ = sceneName;
-		dirty_ = true;
+		MarkDirty();
 	}
 	std::vector<SceneEntity>& GetEntities() { return entities_; }
 	const std::vector<SceneEntity>& GetEntities() const { return entities_; }
 	bool IsDirty() const { return dirty_; }
-	void MarkDirty() { dirty_ = true; }
+	uint64_t GetRevision() const { return revision_; }
+	void MarkDirty() {
+		dirty_ = true;
+		++revision_;
+	}
 	void MarkClean() { dirty_ = false; }
 
 private:
@@ -92,4 +96,5 @@ private:
 	std::vector<SceneEntity> entities_;
 	uint64_t nextId_ = 1;
 	bool dirty_ = false;
+	uint64_t revision_ = 0;
 };

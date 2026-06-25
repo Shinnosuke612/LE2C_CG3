@@ -2,6 +2,7 @@
 #include "../engine/base/Framework.h"
 #include "../engine/base/BloomRenderer.h"
 #include "../engine/scene/SceneManager.h"
+#include "../engine/math/Vector3.h"
 #include <string>
 
 class SceneRenderTarget;
@@ -18,9 +19,26 @@ public:
 	void Draw() override;
 
 private:
+	struct CameraSnapshot {
+		bool valid = false;
+		bool orbitMode = false;
+		Vector3 translate{};
+		Vector3 rotate{};
+		Vector3 orbitTarget{};
+		float orbitDistance = 10.0f;
+		float orbitYaw = 0.0f;
+		float orbitPitch = 0.0f;
+		float fovY = 0.45f;
+		float aspectRatio = 1.0f;
+		float nearClip = 0.1f;
+		float farClip = 1000.0f;
+	};
+
 	int GetEnabledPostEffectCount() const;
 	SceneRenderTarget* GetPostProcessOutputTarget() const;
 	void DrawModelPreview();
+	CameraSnapshot CaptureCameraSnapshot() const;
+	void RestoreCameraSnapshot(const CameraSnapshot& snapshot) const;
 
 	SceneManager* sceneManager_ = nullptr;
 	EditorSession* editorSession_ = nullptr;

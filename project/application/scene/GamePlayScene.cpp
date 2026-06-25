@@ -10,6 +10,7 @@
 #include "../../engine/3d/SrvManager.h"
 #include "../../engine/base/ImGuiManager.h"
 #include "../../engine/io/Input.h"
+#include "../../engine/debug/DebugRenderer.h"
 
 #include "../../engine/2d/SpriteCommon.h"
 #include "../../engine/2d/Sprite.h"
@@ -26,6 +27,7 @@
 #include "../../engine/effect/LightningRenderer.h"
 #include "../player/Player.h"
 #include "../../engine/utility/EditableResourcePath.h"
+#include "../../engine/math/Math.h"
 
 #include "../../externals/imgui/imgui.h"
 
@@ -208,6 +210,141 @@ namespace {
 	) {
 		std::unordered_set<uint64_t> visited;
 		return ResolveScene2DTransform(document, entity, visited);
+	}
+
+	Vector3 TransformCoord(const Vector3& value, const Matrix4x4& matrix) {
+		const float x =
+			value.x * matrix.m[0][0] +
+			value.y * matrix.m[1][0] +
+			value.z * matrix.m[2][0] +
+			matrix.m[3][0];
+		const float y =
+			value.x * matrix.m[0][1] +
+			value.y * matrix.m[1][1] +
+			value.z * matrix.m[2][1] +
+			matrix.m[3][1];
+		const float z =
+			value.x * matrix.m[0][2] +
+			value.y * matrix.m[1][2] +
+			value.z * matrix.m[2][2] +
+			matrix.m[3][2];
+		const float w =
+			value.x * matrix.m[0][3] +
+			value.y * matrix.m[1][3] +
+			value.z * matrix.m[2][3] +
+			matrix.m[3][3];
+		const float inverseW = std::abs(w) > 0.000001f ? 1.0f / w : 1.0f;
+		return { x * inverseW, y * inverseW, z * inverseW };
+	}
+
+	void AddCameraDebugDraw(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& cameraComponent,
+		float aspectRatio
+	) {
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			return;
+		}
+
+		Camera debugCamera;
+		debugCamera.SetOrbitMode(false);
+		debugCamera.SetTranslate(entity.transform.translate);
+		debugCamera.SetRotate(entity.transform.rotate);
+		debugCamera.SetFovY(std::clamp(
+			cameraComponent.cameraFovY,
+			0.0174532925f,
+			3.12413936f
+		));
+		debugCamera.SetAspectRatio((std::max)(aspectRatio, 0.001f));
+		debugCamera.SetNearClip((std::max)(cameraComponent.cameraNearClip, 0.001f));
+		debugCamera.SetFarClip((std::max)(
+			(std::min)(cameraComponent.cameraFarClip, 20.0f),
+			cameraComponent.cameraNearClip + 0.001f
+		));
+		debugCamera.Update();
+
+		const Matrix4x4 cameraWorld = debugCamera.GetWorldMatrix();
+		const Vector3 origin = debugCamera.GetTranslate();
+		const Vector3 right = Math::Normalize({
+			cameraWorld.m[0][0],
+			cameraWorld.m[0][1],
+			cameraWorld.m[0][2]
+		});
+		const Vector3 up = Math::Normalize({
+			cameraWorld.m[1][0],
+			cameraWorld.m[1][1],
+			cameraWorld.m[1][2]
+		});
+		const Vector3 forward = Math::Normalize({
+			cameraWorld.m[2][0],
+			cameraWorld.m[2][1],
+			cameraWorld.m[2][2]
+		});
+
+		DebugRenderer* debugRenderer = DebugRenderer::GetInstance();
+		debugRenderer->AddSphere(
+			origin,
+			cameraComponent.cameraIsMain ? 0.16f : 0.11f,
+			cameraComponent.cameraIsMain
+				? Vector4{ 1.0f, 0.85f, 0.15f, 1.0f }
+				: Vector4{ 0.15f, 0.85f, 1.0f, 1.0f },
+			8
+		);
+		debugRenderer->AddLine(
+			origin,
+			Math::Add(origin, Math::Multiply(forward, 1.2f)),
+			{ 0.25f, 0.55f, 1.0f, 1.0f }
+		);
+		debugRenderer->AddLine(
+			origin,
+			Math::Add(origin, Math::Multiply(up, 0.7f)),
+			{ 0.2f, 1.0f, 0.35f, 1.0f }
+		);
+		debugRenderer->AddLine(
+			origin,
+			Math::Add(origin, Math::Multiply(right, 0.7f)),
+			{ 1.0f, 0.25f, 0.25f, 1.0f }
+		);
+
+		const Matrix4x4 inverseViewProjection = Inverse(
+			debugCamera.GetViewProjectionMatrix()
+		);
+		Vector3 corners[8]{};
+		uint32_t index = 0;
+		for (float z : { 0.0f, 1.0f }) {
+			for (float y : { -1.0f, 1.0f }) {
+				for (float x : { -1.0f, 1.0f }) {
+					corners[index++] = TransformCoord(
+						{ x, y, z },
+						inverseViewProjection
+					);
+				}
+			}
+		}
+		const Vector4 frustumColor =
+			cameraComponent.cameraIsMain
+				? Vector4{ 1.0f, 0.8f, 0.1f, 1.0f }
+				: Vector4{ 0.2f, 0.85f, 1.0f, 1.0f };
+		const uint32_t edges[][2] = {
+			{ 0, 1 }, { 1, 3 }, { 3, 2 }, { 2, 0 },
+			{ 4, 5 }, { 5, 7 }, { 7, 6 }, { 6, 4 },
+			{ 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 }
+		};
+		for (const auto& edge : edges) {
+			debugRenderer->AddLine(
+				corners[edge[0]],
+				corners[edge[1]],
+				frustumColor
+			);
+		}
+#else
+		(void)document;
+		(void)entity;
+		(void)cameraComponent;
+		(void)aspectRatio;
+#endif
 	}
 }
 
@@ -1116,6 +1253,28 @@ void GamePlayScene::Update()
 		}
 	}
 	camera_->Update();
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr) {
+		const float aspectRatio = camera_
+			? camera_->GetAspectRatio()
+			: 1.0f;
+		for (const SceneEntity& entity : document->GetEntities()) {
+			if (const SceneComponent* cameraComponent =
+				FindEnabledComponent(entity, "Camera")) {
+				AddCameraDebugDraw(
+					*document,
+					entity,
+					*cameraComponent,
+					aspectRatio
+				);
+			}
+		}
+	}
+#endif
+
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
 			stageObject.object->Update();

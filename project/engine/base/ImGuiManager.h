@@ -85,6 +85,12 @@ private:
 		uint32_t textureWidth,
 		uint32_t textureHeight
 	);
+	bool PickSceneEntity(
+		float x,
+		float y,
+		float width,
+		float height
+	);
 
 	// Helper for project tree
 	void DrawDirectoryTreeNode(const std::filesystem::path& path);

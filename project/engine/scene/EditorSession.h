@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "SceneDocument.h"
 
@@ -22,6 +23,12 @@ public:
 	void Resume();
 	void Stop();
 	bool Save();
+	void BeginEditFrame();
+	void EndEditFrame(bool commit);
+	bool Undo();
+	bool Redo();
+	bool CanUndo() const { return !undoStack_.empty(); }
+	bool CanRedo() const { return !redoStack_.empty(); }
 
 	EditorPlayState GetState() const { return state_; }
 	bool IsPlaying() const { return state_ == EditorPlayState::Playing; }
@@ -38,9 +45,16 @@ public:
 	bool ConsumeReloadRequest();
 
 private:
+	void PushUndoSnapshot(const SceneDocument& snapshot);
+
 	SceneDocument editDocument_;
 	SceneDocument runtimeDocument_;
+	SceneDocument frameStartDocument_;
 	std::string sceneFilePath_;
 	EditorPlayState state_ = EditorPlayState::Edit;
 	bool reloadRequested_ = false;
+	bool editFrameActive_ = false;
+	uint64_t frameStartRevision_ = 0;
+	std::vector<SceneDocument> undoStack_;
+	std::vector<SceneDocument> redoStack_;
 };

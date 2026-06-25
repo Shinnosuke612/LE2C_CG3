@@ -257,6 +257,7 @@ void SceneDocument::Clear(const std::string& sceneName) {
 	entities_.clear();
 	nextId_ = 1;
 	dirty_ = false;
+	revision_ = 0;
 }
 
 bool SceneDocument::Load(const std::string& filePath) {
@@ -269,7 +270,7 @@ bool SceneDocument::Load(const std::string& filePath) {
 		return false;
 	}
 
-	dirty_ = true;
+	MarkDirty();
 	return true;
 }
 
@@ -391,7 +392,7 @@ SceneEntity& SceneDocument::CreateEntity(
 	entity.parentId = FindEntity(parentId) ? parentId : 0;
 	entity.name = name.empty() ? "Entity" : name;
 	entities_.push_back(entity);
-	dirty_ = true;
+	MarkDirty();
 	return entities_.back();
 }
 
@@ -429,7 +430,7 @@ bool SceneDocument::RemoveEntity(uint64_t id) {
 	if (entities_.size() == oldSize) {
 		return false;
 	}
-	dirty_ = true;
+	MarkDirty();
 	return true;
 }
 
@@ -526,7 +527,7 @@ bool SceneDocument::SetParent(uint64_t id, uint64_t parentId) {
 	entity->transform.scale = localScale;
 	entity->transform.rotate = localRotate;
 	entity->transform.translate = localTranslate;
-	dirty_ = true;
+	MarkDirty();
 	return true;
 }
 
@@ -568,7 +569,7 @@ bool SceneDocument::MoveEntity(uint64_t id, int direction) {
 		entities_[siblingIndices[position]],
 		entities_[siblingIndices[targetPosition]]
 	);
-	dirty_ = true;
+	MarkDirty();
 	return true;
 }
 
@@ -634,7 +635,7 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 			changed = true;
 		}
 		if (changed) {
-			dirty_ = true;
+			MarkDirty();
 		}
 		return true;
 	}
@@ -661,7 +662,7 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.monitorHideSelf = true;
 	}
 	entity->components.push_back(std::move(component));
-	dirty_ = true;
+	MarkDirty();
 	return true;
 }
 
@@ -684,7 +685,7 @@ bool SceneDocument::RemoveComponent(uint64_t id, const std::string& type) {
 	if (entity->components.size() == oldSize) {
 		return false;
 	}
-	dirty_ = true;
+	MarkDirty();
 	return true;
 }
 
