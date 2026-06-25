@@ -1,15 +1,15 @@
 #include "TitleScene.h"
-#include "../externals/imgui/imgui.h"
-#include "SceneManager.h"
+#include "../../externals/imgui/imgui.h"
+#include "../../engine/scene/SceneManager.h"
 #include "GamePlayScene.h"
-#include "../base/ImGuiManager.h"
+#include "../../engine/base/ImGuiManager.h"
 
-#include "../3d/Camera.h"
-#include "../3d/Object3dCommon.h"
-#include "../particle/ParticleManager.h"
-#include "../particle/ParticleEmitter.h"
-#include "../io/Input.h"
-#include "../particle/ParticleEffectResource.h"
+#include "../../engine/3d/Camera.h"
+#include "../../engine/3d/Object3dCommon.h"
+#include "../../engine/particle/ParticleManager.h"
+#include "../../engine/particle/ParticleEmitter.h"
+#include "../../engine/io/Input.h"
+#include "../../engine/particle/ParticleEffectResource.h"
 
 void TitleScene::Initialize()
 {

@@ -1,7 +1,7 @@
 #pragma once
-#include "../base/Framework.h"
-#include "../base/BloomRenderer.h"
-#include "SceneManager.h"
+#include "../engine/base/Framework.h"
+#include "../engine/base/BloomRenderer.h"
+#include "../engine/scene/SceneManager.h"
 #include <string>
 
 class SceneRenderTarget;

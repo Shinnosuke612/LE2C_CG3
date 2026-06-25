@@ -95,8 +95,38 @@ namespace {
 	}
 
 	bool HasComponent(const SceneEntity& entity, const char* name) {
-		return std::find(entity.components.begin(), entity.components.end(), name) !=
-			entity.components.end();
+		return std::find_if(
+			entity.components.begin(),
+			entity.components.end(),
+			[name](const SceneComponent& component) {
+				return component.enabled && component.type == name;
+			}
+		) != entity.components.end();
+	}
+
+	SceneComponent* FindComponent(SceneEntity& entity, const char* name) {
+		const auto found = std::find_if(
+			entity.components.begin(),
+			entity.components.end(),
+			[name](const SceneComponent& component) {
+				return component.type == name;
+			}
+		);
+		return found == entity.components.end() ? nullptr : &(*found);
+	}
+
+	const SceneComponent* FindEnabledComponent(
+		const SceneEntity& entity,
+		const char* name
+	) {
+		const auto found = std::find_if(
+			entity.components.begin(),
+			entity.components.end(),
+			[name](const SceneComponent& component) {
+				return component.enabled && component.type == name;
+			}
+		);
+		return found == entity.components.end() ? nullptr : &(*found);
 	}
 
 	Matrix4x4 CalculateSceneWorldMatrix(
@@ -288,6 +318,7 @@ void ImGuiManager::DrawEditorWorkspace(
 				SceneEntity& entity = document.CreateEntity(entityName);
 				entity.spriteTexturePath = texturePath.generic_string();
 				entity.components = { "SpriteRenderer" };
+				entity.components.front().texturePath = entity.spriteTexturePath;
 				const ImVec2 mouse = ImGui::GetMousePos();
 				const float normalizedX = (mouse.x - sceneMin.x) /
 					(std::max)(sceneMax.x - sceneMin.x, 1.0f);
@@ -307,6 +338,7 @@ void ImGuiManager::DrawEditorWorkspace(
 						static_cast<float>(metadata.width),
 						static_cast<float>(metadata.height)
 					};
+					entity.components.front().spriteSize = entity.spriteSize;
 				}
 				selectedEntityId_ = entity.id;
 				selectedProjectFile_.clear();
@@ -331,6 +363,7 @@ void ImGuiManager::DrawEditorWorkspace(
 				SceneEntity& entity = document.CreateEntity(entityName);
 				entity.modelPath = GetPathRelativeToResources(modelPath.generic_string());
 				entity.components = { "MeshRenderer" };
+				entity.components.front().modelPath = entity.modelPath;
 				Object3dCommon* object3dCommon = Object3dCommon::GetInstance();
 				if (Camera* camera = object3dCommon
 					? object3dCommon->GetDefaultCamera()
@@ -424,11 +457,12 @@ bool ImGuiManager::GetModelPreviewRequest(
 	if (editorSession_ && selectedEntityId_ != 0) {
 		const SceneDocument& document = editorSession_->GetActiveDocument();
 		if (const SceneEntity* entity = document.FindEntity(selectedEntityId_)) {
-			if (
-				HasComponent(*entity, "MeshRenderer") &&
-				!entity->modelPath.empty()
-			) {
-				modelPath = entity->modelPath;
+			if (const SceneComponent* meshRenderer =
+				FindEnabledComponent(*entity, "MeshRenderer")) {
+				if (meshRenderer->modelPath.empty()) {
+					return false;
+				}
+				modelPath = meshRenderer->modelPath;
 				yaw = modelPreviewYaw_;
 				pitch = modelPreviewPitch_;
 				zoom = modelPreviewZoom_;
@@ -540,14 +574,16 @@ void ImGuiManager::DrawSceneGizmo(
 		return;
 	}
 
-	const bool isSprite = HasComponent(*entity, "SpriteRenderer");
+	const SceneComponent* spriteRenderer =
+		FindEnabledComponent(*entity, "SpriteRenderer");
+	const bool isSprite = spriteRenderer != nullptr;
 	Matrix4x4 worldMatrix{};
 	Matrix4x4 viewMatrix{};
 	Matrix4x4 projectionMatrix{};
 	if (isSprite) {
 		const Vector3 spriteScale = {
-			entity->spriteSize.x * entity->transform.scale.x,
-			entity->spriteSize.y * entity->transform.scale.y,
+			spriteRenderer->spriteSize.x * entity->transform.scale.x,
+			spriteRenderer->spriteSize.y * entity->transform.scale.y,
 			1.0f
 		};
 		worldMatrix = MakeAffineMatrix(
@@ -631,8 +667,8 @@ void ImGuiManager::DrawSceneGizmo(
 		entity->transform.translate.x = translation[0];
 		entity->transform.translate.y = translation[1];
 		entity->transform.rotate.z = rotationDegrees[2] * degreesToRadians;
-		entity->transform.scale.x = scale[0] / (std::max)(entity->spriteSize.x, 0.001f);
-		entity->transform.scale.y = scale[1] / (std::max)(entity->spriteSize.y, 0.001f);
+		entity->transform.scale.x = scale[0] / (std::max)(spriteRenderer->spriteSize.x, 0.001f);
+		entity->transform.scale.y = scale[1] / (std::max)(spriteRenderer->spriteSize.y, 0.001f);
 	} else {
 		entity->transform.translate = {
 			translation[0], translation[1], translation[2]
@@ -1250,6 +1286,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				SceneEntity& entity = document.CreateEntity(entityName);
 				entity.spriteTexturePath = path.generic_string();
 				entity.components = { "SpriteRenderer" };
+				entity.components.front().texturePath = entity.spriteTexturePath;
 				entity.transform.translate = {
 					static_cast<float>(dxCommon_->GetClientWidth()) * 0.5f,
 					static_cast<float>(dxCommon_->GetClientHeight()) * 0.5f,
@@ -1264,6 +1301,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						static_cast<float>(metadata.width),
 						static_cast<float>(metadata.height)
 					};
+					entity.components.front().spriteSize = entity.spriteSize;
 				}
 				selectedEntityId_ = entity.id;
 				selectedProjectFile_.clear();
@@ -1353,6 +1391,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				SceneEntity& entity = document.CreateEntity(entityName);
 				entity.modelPath = relativePath;
 				entity.components = { "MeshRenderer" };
+				entity.components.front().modelPath = entity.modelPath;
 				selectedEntityId_ = entity.id;
 				selectedProjectFile_.clear();
 			}
@@ -1502,23 +1541,37 @@ void ImGuiManager::DrawInspectorWindow() {
 			document.MarkDirty();
 		}
 
-		for (const std::string& component : entity->components) {
-			ImGui::SeparatorText(component.c_str());
-			if (component == "MeshRenderer") {
+		std::string removeComponentType;
+		for (SceneComponent& component : entity->components) {
+			ImGui::PushID(component.type.c_str());
+			ImGui::SeparatorText(component.type.c_str());
+			ImGui::BeginDisabled(entityLocked || !editorSession_->IsEditing());
+			if (ImGui::Checkbox("Enabled", &component.enabled)) {
+				document.MarkDirty();
+				editorSession_->RequestSceneReload();
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Remove")) {
+				removeComponentType = component.type;
+			}
+			ImGui::EndDisabled();
+
+			if (component.type == "MeshRenderer") {
 				const bool modelEditingDisabled =
 					!editorSession_->IsEditing() || entityLocked;
 				auto assignModel = [&](const std::string& modelPath) {
-					if (entity->modelPath == modelPath) {
+					if (component.modelPath == modelPath) {
 						return;
 					}
-					entity->modelPath = modelPath;
+					component.modelPath = modelPath;
+					entity->modelPath = component.modelPath;
 					document.MarkDirty();
 					editorSession_->RequestSceneReload();
 				};
 
-				if (!entity->modelPath.empty()) {
+				if (!component.modelPath.empty()) {
 					const bool previewReady =
-						modelPreviewRenderedPath_ == entity->modelPath &&
+						modelPreviewRenderedPath_ == component.modelPath &&
 						modelPreviewTexture_.ptr != 0;
 					const float previewSize = std::clamp(
 						ImGui::GetContentRegionAvail().x,
@@ -1599,12 +1652,12 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::TextDisabled("No model assigned. Select or drop a model.");
 				}
 
-				const char* currentModel = entity->modelPath.empty()
+				const char* currentModel = component.modelPath.empty()
 					? "None"
-					: entity->modelPath.c_str();
+					: component.modelPath.c_str();
 				ImGui::BeginDisabled(modelEditingDisabled);
 				if (ImGui::BeginCombo("Model", currentModel)) {
-					if (ImGui::Selectable("None", entity->modelPath.empty())) {
+					if (ImGui::Selectable("None", component.modelPath.empty())) {
 						assignModel({});
 					}
 					const std::vector<std::string> modelPaths =
@@ -1612,7 +1665,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					for (const std::string& modelPath : modelPaths) {
 						if (ImGui::Selectable(
 							modelPath.c_str(),
-							entity->modelPath == modelPath
+							component.modelPath == modelPath
 						)) {
 							assignModel(modelPath);
 						}
@@ -1631,18 +1684,19 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndDragDropTarget();
 				}
 				ImGui::EndDisabled();
-			} else if (component == "SpriteRenderer") {
-				const char* currentTexture = entity->spriteTexturePath.empty()
+			} else if (component.type == "SpriteRenderer") {
+				const char* currentTexture = component.texturePath.empty()
 					? "None"
-					: entity->spriteTexturePath.c_str();
+					: component.texturePath.c_str();
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				if (ImGui::BeginCombo("Texture", currentTexture)) {
 					for (const std::string& texturePath : CollectTextureAssetPaths()) {
 						if (ImGui::Selectable(
 							texturePath.c_str(),
-							entity->spriteTexturePath == texturePath
+							component.texturePath == texturePath
 						)) {
-							entity->spriteTexturePath = texturePath;
+							component.texturePath = texturePath;
+							entity->spriteTexturePath = component.texturePath;
 							TextureManager::GetInstance()->LoadTexture(texturePath);
 							document.MarkDirty();
 						}
@@ -1655,7 +1709,8 @@ void ImGuiManager::DrawInspectorWindow() {
 					)) {
 						const char* droppedPath = static_cast<const char*>(payload->Data);
 						if (droppedPath && droppedPath[0] != '\0') {
-							entity->spriteTexturePath = droppedPath;
+							component.texturePath = droppedPath;
+							entity->spriteTexturePath = component.texturePath;
 							TextureManager::GetInstance()->LoadTexture(droppedPath);
 							document.MarkDirty();
 						}
@@ -1665,31 +1720,66 @@ void ImGuiManager::DrawInspectorWindow() {
 				bool spriteChanged = false;
 				spriteChanged |= ImGui::DragFloat2(
 					"Size",
-					&entity->spriteSize.x,
+					&component.spriteSize.x,
 					1.0f,
 					1.0f,
 					8192.0f
 				);
 				spriteChanged |= ImGui::DragFloat2(
 					"Anchor",
-					&entity->spriteAnchor.x,
+					&component.spriteAnchor.x,
 					0.01f,
 					0.0f,
 					1.0f
 				);
 				spriteChanged |= ImGui::ColorEdit4(
 					"Color",
-					&entity->spriteColor.x
+					&component.spriteColor.x
 				);
-				spriteChanged |= ImGui::Checkbox("Flip X", &entity->spriteFlipX);
+				spriteChanged |= ImGui::Checkbox("Flip X", &component.spriteFlipX);
 				ImGui::SameLine();
-				spriteChanged |= ImGui::Checkbox("Flip Y", &entity->spriteFlipY);
+				spriteChanged |= ImGui::Checkbox("Flip Y", &component.spriteFlipY);
 				if (spriteChanged) {
+					entity->spriteSize = component.spriteSize;
+					entity->spriteAnchor = component.spriteAnchor;
+					entity->spriteColor = component.spriteColor;
+					entity->spriteFlipX = component.spriteFlipX;
+					entity->spriteFlipY = component.spriteFlipY;
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
 			}
+			ImGui::PopID();
 		}
+		if (!removeComponentType.empty()) {
+			document.RemoveComponent(entity->id, removeComponentType);
+			editorSession_->RequestSceneReload();
+		}
+
+		ImGui::SeparatorText("Add Component");
+		ImGui::BeginDisabled(entityLocked || !editorSession_->IsEditing());
+		if (ImGui::BeginCombo("Component", "Select...")) {
+			const char* availableComponents[] = {
+				"MeshRenderer",
+				"SpriteRenderer",
+				"Camera",
+				"PlayerBehavior",
+				"Animator",
+				"OBBCollider"
+			};
+			for (const char* componentType : availableComponents) {
+				if (HasComponent(*entity, componentType)) {
+					continue;
+				}
+				if (ImGui::Selectable(componentType)) {
+					document.AddComponent(entity->id, componentType);
+					editorSession_->RequestSceneReload();
+				}
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::EndDisabled();
+
 		if (editorSession_->IsPlaying() || editorSession_->IsPaused()) {
 			ImGui::TextDisabled("Play mode changes are temporary");
 		}

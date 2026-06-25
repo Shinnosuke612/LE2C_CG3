@@ -1,32 +1,32 @@
 #include "GamePlayScene.h"
 
 #include "TitleScene.h"
-#include "SceneManager.h"
-#include "EditorSession.h"
-#include "SceneDocument.h"
+#include "../../engine/scene/SceneManager.h"
+#include "../../engine/scene/EditorSession.h"
+#include "../../engine/scene/SceneDocument.h"
 
-#include "../base/DirectXCommon.h"
-#include "../3d/SrvManager.h"
-#include "../base/ImGuiManager.h"
-#include "../io/Input.h"
+#include "../../engine/base/DirectXCommon.h"
+#include "../../engine/3d/SrvManager.h"
+#include "../../engine/base/ImGuiManager.h"
+#include "../../engine/io/Input.h"
 
-#include "../2d/SpriteCommon.h"
-#include "../2d/Sprite.h"
-#include "../2d/TextureManager.h"
-#include "../3d/Camera.h"
-#include "../3d/Object3dCommon.h"
-#include "../3d/Object3d.h"
-#include "../3d/ModelManager.h"
-#include "../particle/ParticleManager.h"
-#include "../particle/ParticleEmitter.h"
-#include "../3d/LightManager.h"
-#include "../3d/ShadowManager.h"
-#include "../3d/Skybox.h"
-#include "../effect/LightningRenderer.h"
+#include "../../engine/2d/SpriteCommon.h"
+#include "../../engine/2d/Sprite.h"
+#include "../../engine/2d/TextureManager.h"
+#include "../../engine/3d/Camera.h"
+#include "../../engine/3d/Object3dCommon.h"
+#include "../../engine/3d/Object3d.h"
+#include "../../engine/3d/ModelManager.h"
+#include "../../engine/particle/ParticleManager.h"
+#include "../../engine/particle/ParticleEmitter.h"
+#include "../../engine/3d/LightManager.h"
+#include "../../engine/3d/ShadowManager.h"
+#include "../../engine/3d/Skybox.h"
+#include "../../engine/effect/LightningRenderer.h"
 #include "../player/Player.h"
-#include "../utility/EditableResourcePath.h"
+#include "../../engine/utility/EditableResourcePath.h"
 
-#include "../externals/imgui/imgui.h"
+#include "../../externals/imgui/imgui.h"
 
 #include <algorithm>
 #include <cmath>
@@ -53,39 +53,33 @@ namespace {
 		return entity ? entity->transform : fallback;
 	}
 
-	std::string GetSceneModelPath(
-		const SceneManager* sceneManager,
-		const char* name,
-		const char* fallback
-	) {
-		const SceneEntity* entity = FindSceneEntity(sceneManager, name);
-		return entity ? entity->modelPath : fallback;
-	}
-
-	void ApplySceneTransform(
-		const SceneManager* sceneManager,
-		const char* name,
-		Object3d* object
-	) {
-		const SceneEntity* entity = FindSceneEntity(sceneManager, name);
-		if (entity && object) {
-			object->GetTransform() = entity->transform;
-		}
-	}
+	const SceneComponent* FindEnabledComponent(
+		const SceneEntity& entity,
+		const char* componentName
+	);
 
 	bool HasComponent(const SceneEntity& entity, const char* componentName) {
-		return std::find(
+		return std::find_if(
 			entity.components.begin(),
 			entity.components.end(),
-			componentName
+			[componentName](const SceneComponent& component) {
+				return component.enabled && component.type == componentName;
+			}
 		) != entity.components.end();
 	}
 
-	bool IsSpecializedSceneEntity(const SceneEntity& entity) {
-		return entity.name == "Terrain" ||
-			entity.name == "Animated Cube" ||
-			entity.name == "Human" ||
-			entity.name == "Player";
+	const SceneComponent* FindEnabledComponent(
+		const SceneEntity& entity,
+		const char* componentName
+	) {
+		const auto found = std::find_if(
+			entity.components.begin(),
+			entity.components.end(),
+			[componentName](const SceneComponent& component) {
+				return component.enabled && component.type == componentName;
+			}
+		);
+		return found == entity.components.end() ? nullptr : &(*found);
 	}
 
 	bool IsSceneEntityActive(
@@ -163,19 +157,18 @@ void GamePlayScene::SyncSceneModelObjects() {
 
 	std::unordered_set<uint64_t> requiredIds;
 	for (const SceneEntity& entity : document->GetEntities()) {
-		if (IsSpecializedSceneEntity(entity)) {
-			continue;
-		}
-
-		const bool hasRenderer =
-			!entity.modelPath.empty() &&
-			HasComponent(entity, "MeshRenderer");
+		const SceneComponent* meshRenderer =
+			FindEnabledComponent(entity, "MeshRenderer");
+		const std::string modelPath = meshRenderer
+			? meshRenderer->modelPath
+			: std::string{};
+		const bool hasRenderer = !modelPath.empty();
 		requiredIds.insert(entity.id);
 		auto found = sceneModelObjects_.find(entity.id);
 		if (
 			found != sceneModelObjects_.end() &&
 			(
-				found->second.modelPath != entity.modelPath ||
+				found->second.modelPath != modelPath ||
 				found->second.hasRenderer != hasRenderer
 			)
 		) {
@@ -189,10 +182,17 @@ void GamePlayScene::SyncSceneModelObjects() {
 			sceneObject.object = new Object3d();
 			sceneObject.object->Initialize(Object3dCommon::GetInstance());
 			if (hasRenderer) {
-				ModelManager::GetInstance()->LoadModel(entity.modelPath);
-				sceneObject.object->SetModel(entity.modelPath);
+				ModelManager::GetInstance()->LoadModel(modelPath);
+				sceneObject.object->SetModel(modelPath);
 			}
-			sceneObject.modelPath = entity.modelPath;
+			if (HasComponent(entity, "Animator")) {
+				sceneObject.object->SetAnimationLoop(true);
+				sceneObject.object->SetAnimationSpeed(1.0f);
+			}
+			if (!environmentMapPath_.empty()) {
+				sceneObject.object->SetEnvironmentMap(environmentMapPath_, 0.01f);
+			}
+			sceneObject.modelPath = modelPath;
 			sceneObject.hasRenderer = hasRenderer;
 			found = sceneModelObjects_.emplace(
 				entity.id,
@@ -201,6 +201,19 @@ void GamePlayScene::SyncSceneModelObjects() {
 		}
 
 		found->second.object->GetTransform() = entity.transform;
+		const bool hasObbCollider = HasComponent(entity, "OBBCollider");
+		found->second.hasCollider = hasObbCollider;
+		if (hasObbCollider) {
+			found->second.collider.SetWorldTransform(
+				&found->second.object->GetTransform()
+			);
+			found->second.collider.SetHalfSize({
+				(std::max)(entity.transform.scale.x * 0.5f, 0.001f),
+				(std::max)(entity.transform.scale.y * 0.5f, 0.001f),
+				(std::max)(entity.transform.scale.z * 0.5f, 0.001f)
+			});
+			found->second.collider.SetOffset({ 0.0f, 0.0f, 0.0f });
+		}
 	}
 
 	for (auto iterator = sceneModelObjects_.begin(); iterator != sceneModelObjects_.end();) {
@@ -224,18 +237,6 @@ void GamePlayScene::SyncSceneModelObjects() {
 		if (!entity) {
 			return nullptr;
 		}
-		if (entity->name == "Terrain") {
-			return object3d_;
-		}
-		if (entity->name == "Animated Cube") {
-			return animatedCube_;
-		}
-		if (entity->name == "Human") {
-			return human_;
-		}
-		if (entity->name == "Player" && player_) {
-			return player_->GetObject();
-		}
 		return nullptr;
 	};
 
@@ -243,9 +244,6 @@ void GamePlayScene::SyncSceneModelObjects() {
 		Object3d* object = resolveObject(entity.id);
 		if (!object) {
 			continue;
-		}
-		if (IsSpecializedSceneEntity(entity)) {
-			object->GetTransform() = entity.transform;
 		}
 		object->SetParent(resolveObject(entity.parentId));
 	}
@@ -288,17 +286,16 @@ void GamePlayScene::SyncSceneSpriteObjects() {
 
 	std::unordered_set<uint64_t> requiredIds;
 	for (const SceneEntity& entity : document->GetEntities()) {
-		if (
-			entity.spriteTexturePath.empty() ||
-			!HasComponent(entity, "SpriteRenderer")
-		) {
+		const SceneComponent* spriteRenderer =
+			FindEnabledComponent(entity, "SpriteRenderer");
+		if (!spriteRenderer || spriteRenderer->texturePath.empty()) {
 			continue;
 		}
 		requiredIds.insert(entity.id);
 		auto found = sceneSpriteObjects_.find(entity.id);
 		if (
 			found != sceneSpriteObjects_.end() &&
-			found->second.texturePath != entity.spriteTexturePath
+			found->second.texturePath != spriteRenderer->texturePath
 		) {
 			delete found->second.sprite;
 			sceneSpriteObjects_.erase(found);
@@ -306,14 +303,14 @@ void GamePlayScene::SyncSceneSpriteObjects() {
 		}
 
 		if (found == sceneSpriteObjects_.end()) {
-			TextureManager::GetInstance()->LoadTexture(entity.spriteTexturePath);
+			TextureManager::GetInstance()->LoadTexture(spriteRenderer->texturePath);
 			SceneSpriteObject sceneSprite{};
 			sceneSprite.sprite = new Sprite();
 			sceneSprite.sprite->Initialize(
 				SpriteCommon::GetInstance(),
-				entity.spriteTexturePath
+				spriteRenderer->texturePath
 			);
-			sceneSprite.texturePath = entity.spriteTexturePath;
+			sceneSprite.texturePath = spriteRenderer->texturePath;
 			found = sceneSpriteObjects_.emplace(
 				entity.id,
 				std::move(sceneSprite)
@@ -328,13 +325,13 @@ void GamePlayScene::SyncSceneSpriteObjects() {
 		});
 		sprite->SetRotation(spriteTransform.rotate.z);
 		sprite->SetSize({
-			entity.spriteSize.x * spriteTransform.scale.x,
-			entity.spriteSize.y * spriteTransform.scale.y
+			spriteRenderer->spriteSize.x * spriteTransform.scale.x,
+			spriteRenderer->spriteSize.y * spriteTransform.scale.y
 		});
-		sprite->SetAnchorPoint(entity.spriteAnchor);
-		sprite->SetColor(entity.spriteColor);
-		sprite->SetIsFlipX(entity.spriteFlipX);
-		sprite->SetIsFlipY(entity.spriteFlipY);
+		sprite->SetAnchorPoint(spriteRenderer->spriteAnchor);
+		sprite->SetColor(spriteRenderer->spriteColor);
+		sprite->SetIsFlipX(spriteRenderer->spriteFlipX);
+		sprite->SetIsFlipY(spriteRenderer->spriteFlipY);
 		if (IsEntityActiveInHierarchy(*document, entity)) {
 			sprite->Update();
 		}
@@ -368,6 +365,49 @@ void GamePlayScene::ClearSceneModelObjects() {
 	sceneModelObjects_.clear();
 }
 
+Object3d* GamePlayScene::FindSceneModelObjectByName(const char* name) const {
+	if (!sceneManager_ || !name) {
+		return nullptr;
+	}
+	SceneDocument* document = sceneManager_->GetActiveSceneDocument();
+	const SceneEntity* entity = document
+		? document->FindEntityByName(name)
+		: nullptr;
+	if (!entity) {
+		return nullptr;
+	}
+	const auto found = sceneModelObjects_.find(entity->id);
+	return found == sceneModelObjects_.end() ? nullptr : found->second.object;
+}
+
+void GamePlayScene::RebuildStaticColliders() {
+	staticColliders_.clear();
+	if (SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr) {
+		for (const SceneEntity& entity : document->GetEntities()) {
+			if (
+				HasComponent(entity, "PlayerBehavior") ||
+				!IsEntityActiveInHierarchy(*document, entity)
+			) {
+				continue;
+			}
+			const auto found = sceneModelObjects_.find(entity.id);
+			if (
+				found != sceneModelObjects_.end() &&
+				found->second.hasCollider
+			) {
+				staticColliders_.push_back(&found->second.collider);
+			}
+		}
+	}
+	for (StageObject& stageObject : stageObjects_) {
+		if (stageObject.object) {
+			staticColliders_.push_back(&stageObject.collider);
+		}
+	}
+}
+
 void GamePlayScene::Initialize()
 {
 	// ゲーム固有の初期化
@@ -392,8 +432,13 @@ void GamePlayScene::Initialize()
 		? sceneManager_->GetActiveSceneDocument()
 		: nullptr) {
 		for (const SceneEntity& entity : document->GetEntities()) {
-			if (!entity.modelPath.empty()) {
-				ModelManager::GetInstance()->LoadModel(entity.modelPath);
+			const SceneComponent* meshRenderer =
+				FindEnabledComponent(entity, "MeshRenderer");
+			const std::string modelPath = meshRenderer
+				? meshRenderer->modelPath
+				: entity.modelPath;
+			if (!modelPath.empty()) {
+				ModelManager::GetInstance()->LoadModel(modelPath);
 			}
 		}
 	}
@@ -431,50 +476,9 @@ void GamePlayScene::Initialize()
 			ParticleEffectResource::CreateEmitter(ringBurstEffect_);
 	}
 
-	object3d_ = new Object3d();
-	object3d_->Initialize(Object3dCommon::GetInstance());
-	object3d_->SetModel(GetSceneModelPath(
-		sceneManager_,
-		"Terrain",
-		"terrain.obj"
-	));
-	object3d_->GetTransform() = GetSceneTransform(
-		sceneManager_,
-		"Terrain",
-		Transform{
-			{ 10.0f, 10.0f, 10.0f },
-			{ 0.0f, 0.0f, 0.0f },
-			{ 0.0f, -5.0f, 0.0f }
-		}
-	);
+	SyncSceneModelObjects();
 
-	animatedCube_ = new Object3d();
-	animatedCube_->Initialize(Object3dCommon::GetInstance());
-	animatedCube_->SetModel(GetSceneModelPath(
-		sceneManager_,
-		"Animated Cube",
-		"AnimatedCube/AnimatedCube.gltf"
-	));
-	animatedCube_->GetTransform() = GetSceneTransform(
-		sceneManager_,
-		"Animated Cube",
-		Transform{
-			{ 0.65f, 0.65f, 0.65f },
-			{ 0.0f, 0.0f, 0.0f },
-			{ 3.0f, 10.5f, -2.0f }
-		}
-	);
-	animatedCube_->SetAnimationLoop(true);
-	animatedCube_->SetAnimationSpeed(1.0f);
-
-	human_ = new Object3d();
-	human_->Initialize(Object3dCommon::GetInstance());
-	human_->SetModel(GetSceneModelPath(
-		sceneManager_,
-		"Human",
-		"human/walk.gltf"
-	));
-	human_->GetTransform() = GetSceneTransform(
+	Vector3 target = GetSceneTransform(
 		sceneManager_,
 		"Human",
 		Transform{
@@ -482,24 +486,11 @@ void GamePlayScene::Initialize()
 			{ 0.0f, 0.0f, 0.0f },
 			{ -2.0f, 0.0f, -2.0f }
 		}
-	);
-	human_->SetAnimationLoop(true);
-	human_->SetAnimationSpeed(1.0f);
-	human_->SetEnvironmentMap(
-		"resources/rostock_laage_airport_4k.dds",
-		0.01f
-	);
-
-	Vector3 target = human_->GetTranslate();
+	).translate;
 	camera_->SetOrbitTarget(target);
 
 	player_ = new Player();
-	const std::string playerModelPath = GetSceneModelPath(
-		sceneManager_,
-		"Player",
-		"Cube.obj"
-	);
-	player_->Initialize(Object3dCommon::GetInstance(), playerModelPath.c_str());
+	player_->Initialize(FindSceneModelObjectByName("Player"));
 	player_->SetTransform(GetSceneTransform(
 		sceneManager_,
 		"Player",
@@ -530,14 +521,11 @@ void GamePlayScene::Initialize()
 			stageObject.collider.SetHalfSize(halfSize);
 
 			stageObjects_.push_back(stageObject);
-			if (collidable) {
-				staticColliders_.push_back(&stageObjects_.back().collider);
-			}
+			(void)collidable;
 		};
 
 	stageObjects_.clear();
 	stageObjects_.reserve(4);
-	staticColliders_.clear();
 	//addStageObject("Cube.obj", { 0.0f, -0.1f, 0.0f }, { 5.0f, 0.1f, 5.0f }, { 5.0f, 0.1f, 5.0f }, false);
 	//addStageObject("Cube.obj", { 0.0f, 2.0f, 5.0f }, { 5.0f, 2.0f, 0.2f }, { 5.0f, 2.0f, 0.2f }, true);
 	//addStageObject("Cube.obj", { -5.0f, 2.0f, 0.0f }, { 0.2f, 2.0f, 5.0f }, { 0.2f, 2.0f, 5.0f }, true);
@@ -554,9 +542,16 @@ void GamePlayScene::Initialize()
 		skyboxLoaded = TextureManager::GetInstance()->LoadTexture(skyboxPath);
 	}
 	if (skyboxLoaded) {
+		environmentMapPath_ = skyboxPath;
 		skybox_ = new Skybox();
 		skybox_->Initialize(Object3dCommon::GetInstance(), skyboxPath);
 		skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
+		for (auto& [entityId, sceneObject] : sceneModelObjects_) {
+			(void)entityId;
+			if (sceneObject.object) {
+				sceneObject.object->SetEnvironmentMap(skyboxPath, 0.01f);
+			}
+		}
 		if (player_ && player_->GetObject()) {
 			player_->GetObject()->SetEnvironmentMap(skyboxPath, 0.01f);
 		}
@@ -582,9 +577,6 @@ void GamePlayScene::Initialize()
 
 void GamePlayScene::Update()
 {
-	ApplySceneTransform(sceneManager_, "Terrain", object3d_);
-	ApplySceneTransform(sceneManager_, "Animated Cube", animatedCube_);
-	ApplySceneTransform(sceneManager_, "Human", human_);
 	EditorSession* editorSession = sceneManager_
 		? sceneManager_->GetEditorSession()
 		: nullptr;
@@ -652,18 +644,19 @@ void GamePlayScene::Update()
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	ImGui::Begin("Scene Controls");
-	if (animatedCube_ && animatedCube_->HasAnimation()) {
-		bool isPlaying = animatedCube_->IsAnimationPlaying();
+	Object3d* animatedCube = FindSceneModelObjectByName("Animated Cube");
+	if (animatedCube && animatedCube->HasAnimation()) {
+		bool isPlaying = animatedCube->IsAnimationPlaying();
 		if (ImGui::Checkbox("Play Animation", &isPlaying)) {
-			animatedCube_->SetAnimationPlaying(isPlaying);
+			animatedCube->SetAnimationPlaying(isPlaying);
 		}
 
-		bool isLooping = animatedCube_->IsAnimationLooping();
+		bool isLooping = animatedCube->IsAnimationLooping();
 		if (ImGui::Checkbox("Loop Animation", &isLooping)) {
-			animatedCube_->SetAnimationLoop(isLooping);
+			animatedCube->SetAnimationLoop(isLooping);
 		}
 
-		float animationSpeed = animatedCube_->GetAnimationSpeed();
+		float animationSpeed = animatedCube->GetAnimationSpeed();
 		if (ImGui::DragFloat(
 			"Animation Speed",
 			&animationSpeed,
@@ -671,16 +664,16 @@ void GamePlayScene::Update()
 			-4.0f,
 			4.0f
 		)) {
-			animatedCube_->SetAnimationSpeed(animationSpeed);
+			animatedCube->SetAnimationSpeed(animationSpeed);
 		}
 
 		if (ImGui::Button("Reset Animation")) {
-			animatedCube_->ResetAnimation();
+			animatedCube->ResetAnimation();
 		}
 
-		const float duration = animatedCube_->GetAnimationDuration();
+		const float duration = animatedCube->GetAnimationDuration();
 		const float progress = duration > 0.0f
-			? animatedCube_->GetAnimationTime() / duration
+			? animatedCube->GetAnimationTime() / duration
 			: 0.0f;
 		ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
 	}
@@ -704,18 +697,19 @@ void GamePlayScene::Update()
 			0.5f
 		);
 	}
-	if (human_ && human_->GetSkeleton()) {
-		bool isPlaying = human_->IsAnimationPlaying();
+	Object3d* human = FindSceneModelObjectByName("Human");
+	if (human && human->GetSkeleton()) {
+		bool isPlaying = human->IsAnimationPlaying();
 		if (ImGui::Checkbox("Play Skeleton Animation", &isPlaying)) {
-			human_->SetAnimationPlaying(isPlaying);
+			human->SetAnimationPlaying(isPlaying);
 		}
 
-		bool isLooping = human_->IsAnimationLooping();
+		bool isLooping = human->IsAnimationLooping();
 		if (ImGui::Checkbox("Loop Skeleton Animation", &isLooping)) {
-			human_->SetAnimationLoop(isLooping);
+			human->SetAnimationLoop(isLooping);
 		}
 
-		float animationSpeed = human_->GetAnimationSpeed();
+		float animationSpeed = human->GetAnimationSpeed();
 		if (ImGui::DragFloat(
 			"Skeleton Animation Speed",
 			&animationSpeed,
@@ -723,21 +717,21 @@ void GamePlayScene::Update()
 			-4.0f,
 			4.0f
 		)) {
-			human_->SetAnimationSpeed(animationSpeed);
+			human->SetAnimationSpeed(animationSpeed);
 		}
 
 		if (ImGui::Button("Reset Skeleton Animation")) {
-			human_->ResetAnimation();
+			human->ResetAnimation();
 		}
 
 		ImGui::Text(
 			"Joints: %zu",
-			human_->GetSkeleton()->joints.size()
+			human->GetSkeleton()->joints.size()
 		);
 
-		const float duration = human_->GetAnimationDuration();
+		const float duration = human->GetAnimationDuration();
 		const float progress = duration > 0.0f
-			? human_->GetAnimationTime() / duration
+			? human->GetAnimationTime() / duration
 			: 0.0f;
 		ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
 	}
@@ -750,9 +744,16 @@ void GamePlayScene::Update()
 	if (const auto generatedSkybox = starFieldGenerator_.DrawImGui("Environment")) {
 		if (TextureManager::GetInstance()->ReloadTexture(*generatedSkybox)) {
 			delete skybox_;
+			environmentMapPath_ = *generatedSkybox;
 			skybox_ = new Skybox();
 			skybox_->Initialize(Object3dCommon::GetInstance(), *generatedSkybox);
 			skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
+			for (auto& [entityId, sceneObject] : sceneModelObjects_) {
+				(void)entityId;
+				if (sceneObject.object) {
+					sceneObject.object->SetEnvironmentMap(*generatedSkybox, 0.01f);
+				}
+			}
 			if (player_ && player_->GetObject()) {
 				player_->GetObject()->SetEnvironmentMap(*generatedSkybox, 0.01f);
 			}
@@ -795,6 +796,8 @@ void GamePlayScene::Update()
 	if (axis) {
 		axis->Update();
 	}
+	SyncSceneModelObjects();
+	RebuildStaticColliders();
 	if (player_ && (!editorSession || editorSession->IsPlaying())) {
 		player_->Update(staticColliders_);
 		SceneDocument* document = sceneManager_->GetActiveSceneDocument();
@@ -805,7 +808,6 @@ void GamePlayScene::Update()
 			playerEntity->transform = player_->GetObject()->GetTransform();
 		}
 	}
-	SyncSceneModelObjects();
 	SyncSceneSpriteObjects();
 	camera_->Update();
 	for (StageObject& stageObject : stageObjects_) {
@@ -818,13 +820,15 @@ void GamePlayScene::Update()
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	if (showSkeletonDebug_ && human_) {
-		human_->DrawSkeletonDebug(
+	if (showSkeletonDebug_) {
+		if (Object3d* human = FindSceneModelObjectByName("Human")) {
+			human->DrawSkeletonDebug(
 			showJointNames_,
 			showJointAxes_,
 			jointRadius_,
 			jointAxisLength_
-		);
+			);
+		}
 	}
 #endif
 }
@@ -848,23 +852,11 @@ void GamePlayScene::Draw()
 		);
 	}
 
-	if (object3d_ && IsSceneEntityActive(sceneManager_, "Terrain")) {
-		object3d_->Draw();
-	}
 	if (plane_) {
 		plane_->Draw();
 	}
 	if (axis) {
 		axis->Draw();
-	}
-	if (animatedCube_ && IsSceneEntityActive(sceneManager_, "Animated Cube")) {
-		animatedCube_->Draw();
-	}
-	if (human_ && IsSceneEntityActive(sceneManager_, "Human")) {
-		human_->Draw();
-	}
-	if (player_ && IsSceneEntityActive(sceneManager_, "Player")) {
-		player_->Draw();
 	}
 	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
 		for (const SceneEntity& entity : document->GetEntities()) {
@@ -917,23 +909,14 @@ void GamePlayScene::DrawShadow()
 
 	std::vector<Object3d*> shadowCasters;
 	shadowCasters.reserve(
-		4 + stageObjects_.size() + sceneModelObjects_.size() +
+		stageObjects_.size() + sceneModelObjects_.size() +
 		(player_ ? 1 : 0)
 	);
-	if (object3d_ && IsSceneEntityActive(sceneManager_, "Terrain")) {
-		shadowCasters.push_back(object3d_);
-	}
 	//if (plane_) {
 	//	shadowCasters.push_back(plane_);
 	//}
 	//if (axis) {
 	//	shadowCasters.push_back(axis);
-	//}
-	//if (animatedCube_) {
-	//	shadowCasters.push_back(animatedCube_);
-	//}
-	//if (human_) {
-	//	shadowCasters.push_back(human_);
 	//}
 	//if (player_) {
 	//	shadowCasters.push_back(player_->GetObject());
@@ -972,20 +955,11 @@ void GamePlayScene::Finalize()
 	}
 	sprites_.clear();
 
-	delete object3d_;
-	object3d_ = nullptr;
-
 	delete plane_;
 	plane_ = nullptr;
 
 	delete axis;
 	axis = nullptr;
-
-	delete animatedCube_;
-	animatedCube_ = nullptr;
-
-	delete human_;
-	human_ = nullptr;
 
 	if (player_) {
 		player_->Finalize();

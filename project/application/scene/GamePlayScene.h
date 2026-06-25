@@ -1,18 +1,18 @@
 #pragma once
-#include "BaseScene.h"
+#include "../../engine/scene/BaseScene.h"
 #include <cstdint>
 #include <vector>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include "../audio/Audio.h"
-#include "../particle/ParticleEffectResource.h"
-#include "../particle/ParticleEffectEditor.h"
-#include "../3d/LightManager.h"
-#include "../3d/ShadowManager.h"
-#include "../collision/OBBCollider.h"
-#include "../effect/LightningRenderer.h"
-#include "../3d/StarFieldGenerator.h"
+#include "../../engine/audio/Audio.h"
+#include "../../engine/particle/ParticleEffectResource.h"
+#include "../../engine/particle/ParticleEffectEditor.h"
+#include "../../engine/3d/LightManager.h"
+#include "../../engine/3d/ShadowManager.h"
+#include "../../engine/collision/OBBCollider.h"
+#include "../../engine/effect/LightningRenderer.h"
+#include "../../engine/3d/StarFieldGenerator.h"
 
 class SpriteCommon;
 class Sprite;
@@ -34,6 +34,8 @@ private:
 		Object3d* object = nullptr;
 		std::string modelPath;
 		bool hasRenderer = false;
+		OBBCollider collider;
+		bool hasCollider = false;
 	};
 
 	struct SceneSpriteObject {
@@ -61,16 +63,15 @@ private:
 	void ClearSceneModelObjects();
 	void SyncSceneSpriteObjects();
 	void ClearSceneSpriteObjects();
+	void RebuildStaticColliders();
+	Object3d* FindSceneModelObjectByName(const char* name) const;
 
 	SpriteCommon* spriteCommon_ = nullptr;
 	Camera* camera_ = nullptr;
 	ParticleEmitter* emitter_ = nullptr;
 
-	Object3d* object3d_ = nullptr;
 	Object3d* plane_ = nullptr;
 	Object3d* axis = nullptr;
-	Object3d* animatedCube_ = nullptr;
-	Object3d* human_ = nullptr;
 	bool showSkeletonDebug_ = false;
 	bool showJointNames_ = false;
 	bool showJointAxes_ = true;
@@ -95,6 +96,7 @@ private:
 	std::unique_ptr<ShadowManager> shadowManager_;
 	std::unique_ptr<LightningRenderer> lightningRenderer_;
 	Skybox* skybox_ = nullptr;
+	std::string environmentMapPath_;
 	StarFieldGenerator starFieldGenerator_;
 };
 

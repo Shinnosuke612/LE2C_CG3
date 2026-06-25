@@ -2,11 +2,29 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../math/Transform.h"
 #include "../math/Vector2.h"
 #include "../math/Vector4.h"
+
+struct SceneComponent {
+	SceneComponent() = default;
+	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
+	SceneComponent(std::string componentType, bool componentEnabled = true)
+		: type(std::move(componentType)), enabled(componentEnabled) {}
+
+	std::string type;
+	bool enabled = true;
+	std::string modelPath;
+	std::string texturePath;
+	Vector2 spriteSize = { 100.0f, 100.0f };
+	Vector2 spriteAnchor = { 0.5f, 0.5f };
+	Vector4 spriteColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+	bool spriteFlipX = false;
+	bool spriteFlipY = false;
+};
 
 struct SceneEntity {
 	uint64_t id = 0;
@@ -22,7 +40,7 @@ struct SceneEntity {
 	Vector4 spriteColor = { 1.0f, 1.0f, 1.0f, 1.0f };
 	bool spriteFlipX = false;
 	bool spriteFlipY = false;
-	std::vector<std::string> components;
+	std::vector<SceneComponent> components;
 };
 
 class SceneDocument {
@@ -37,6 +55,8 @@ public:
 	uint64_t DuplicateEntity(uint64_t id);
 	bool SetParent(uint64_t id, uint64_t parentId);
 	bool MoveEntity(uint64_t id, int direction);
+	bool AddComponent(uint64_t id, const std::string& type);
+	bool RemoveComponent(uint64_t id, const std::string& type);
 	bool IsDescendantOf(uint64_t id, uint64_t potentialAncestorId) const;
 	SceneEntity* FindEntity(uint64_t id);
 	const SceneEntity* FindEntity(uint64_t id) const;

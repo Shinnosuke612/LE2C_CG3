@@ -57,6 +57,128 @@ namespace {
 		};
 	}
 
+	json ComponentToJson(const SceneComponent& component) {
+		json result = {
+			{ "type", component.type },
+			{ "enabled", component.enabled }
+		};
+		if (component.type == "MeshRenderer") {
+			result["modelPath"] = component.modelPath;
+		} else if (component.type == "SpriteRenderer") {
+			result["texturePath"] = component.texturePath;
+			result["size"] = VectorToJson(component.spriteSize);
+			result["anchor"] = VectorToJson(component.spriteAnchor);
+			result["color"] = VectorToJson(component.spriteColor);
+			result["flipX"] = component.spriteFlipX;
+			result["flipY"] = component.spriteFlipY;
+		}
+		return result;
+	}
+
+	std::vector<SceneComponent> ComponentsFromJson(const json& source) {
+		std::vector<SceneComponent> components;
+		if (!source.is_array()) {
+			return components;
+		}
+		for (const json& value : source) {
+			SceneComponent component{};
+			if (value.is_string()) {
+				component.type = value.get<std::string>();
+			} else if (value.is_object()) {
+				component.type = value.value("type", std::string{});
+				component.enabled = value.value("enabled", true);
+				component.modelPath = value.value("modelPath", std::string{});
+				component.texturePath = value.value("texturePath", std::string{});
+				if (value.contains("size")) {
+					component.spriteSize = JsonToVector(
+						value.at("size"),
+						component.spriteSize
+					);
+				}
+				if (value.contains("anchor")) {
+					component.spriteAnchor = JsonToVector(
+						value.at("anchor"),
+						component.spriteAnchor
+					);
+				}
+				if (value.contains("color")) {
+					component.spriteColor = JsonToVector(
+						value.at("color"),
+						component.spriteColor
+					);
+				}
+				component.spriteFlipX = value.value("flipX", false);
+				component.spriteFlipY = value.value("flipY", false);
+			}
+			if (!component.type.empty()) {
+				const auto duplicate = std::find_if(
+					components.begin(),
+					components.end(),
+					[&component](const SceneComponent& existing) {
+						return existing.type == component.type;
+					}
+				);
+				if (duplicate == components.end()) {
+					components.push_back(std::move(component));
+				}
+			}
+		}
+		return components;
+	}
+
+	SceneComponent* FindComponent(
+		SceneEntity& entity,
+		const std::string& type
+	) {
+		const auto found = std::find_if(
+			entity.components.begin(),
+			entity.components.end(),
+			[&type](const SceneComponent& component) {
+				return component.type == type;
+			}
+		);
+		return found == entity.components.end() ? nullptr : &(*found);
+	}
+
+	const SceneComponent* FindComponent(
+		const SceneEntity& entity,
+		const std::string& type
+	) {
+		const auto found = std::find_if(
+			entity.components.begin(),
+			entity.components.end(),
+			[&type](const SceneComponent& component) {
+				return component.type == type;
+			}
+		);
+		return found == entity.components.end() ? nullptr : &(*found);
+	}
+
+	void SynchronizeLegacyRendererFields(SceneEntity& entity) {
+		if (SceneComponent* meshRenderer = FindComponent(entity, "MeshRenderer")) {
+			if (meshRenderer->modelPath.empty()) {
+				meshRenderer->modelPath = entity.modelPath;
+			}
+			entity.modelPath = meshRenderer->modelPath;
+		}
+		if (SceneComponent* spriteRenderer = FindComponent(entity, "SpriteRenderer")) {
+			if (spriteRenderer->texturePath.empty() && !entity.spriteTexturePath.empty()) {
+				spriteRenderer->texturePath = entity.spriteTexturePath;
+				spriteRenderer->spriteSize = entity.spriteSize;
+				spriteRenderer->spriteAnchor = entity.spriteAnchor;
+				spriteRenderer->spriteColor = entity.spriteColor;
+				spriteRenderer->spriteFlipX = entity.spriteFlipX;
+				spriteRenderer->spriteFlipY = entity.spriteFlipY;
+			}
+			entity.spriteTexturePath = spriteRenderer->texturePath;
+			entity.spriteSize = spriteRenderer->spriteSize;
+			entity.spriteAnchor = spriteRenderer->spriteAnchor;
+			entity.spriteColor = spriteRenderer->spriteColor;
+			entity.spriteFlipX = spriteRenderer->spriteFlipX;
+			entity.spriteFlipY = spriteRenderer->spriteFlipY;
+		}
+	}
+
 	Matrix4x4 CalculateEntityWorldMatrix(
 		const SceneDocument& document,
 		const SceneEntity& entity,
@@ -112,11 +234,38 @@ bool SceneDocument::Load(const std::string& filePath) {
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 2;
+	root["version"] = 4;
 	root["sceneName"] = sceneName_;
 	root["entities"] = json::array();
 
 	for (const SceneEntity& entity : entities_) {
+		json components = json::array();
+		for (const SceneComponent& component : entity.components) {
+			components.push_back(ComponentToJson(component));
+		}
+		const SceneComponent* meshRenderer = FindComponent(entity, "MeshRenderer");
+		const SceneComponent* spriteRenderer = FindComponent(entity, "SpriteRenderer");
+		const std::string modelPath = meshRenderer
+			? meshRenderer->modelPath
+			: entity.modelPath;
+		const std::string spriteTexturePath = spriteRenderer
+			? spriteRenderer->texturePath
+			: entity.spriteTexturePath;
+		const Vector2 spriteSize = spriteRenderer
+			? spriteRenderer->spriteSize
+			: entity.spriteSize;
+		const Vector2 spriteAnchor = spriteRenderer
+			? spriteRenderer->spriteAnchor
+			: entity.spriteAnchor;
+		const Vector4 spriteColor = spriteRenderer
+			? spriteRenderer->spriteColor
+			: entity.spriteColor;
+		const bool spriteFlipX = spriteRenderer
+			? spriteRenderer->spriteFlipX
+			: entity.spriteFlipX;
+		const bool spriteFlipY = spriteRenderer
+			? spriteRenderer->spriteFlipY
+			: entity.spriteFlipY;
 		root["entities"].push_back({
 			{ "id", entity.id },
 			{ "parentId", entity.parentId },
@@ -128,16 +277,16 @@ bool SceneDocument::Save(const std::string& filePath) {
 				{ "rotate", VectorToJson(entity.transform.rotate) },
 				{ "translate", VectorToJson(entity.transform.translate) }
 			} },
-			{ "modelPath", entity.modelPath },
+			{ "modelPath", modelPath },
 			{ "sprite", {
-				{ "texturePath", entity.spriteTexturePath },
-				{ "size", VectorToJson(entity.spriteSize) },
-				{ "anchor", VectorToJson(entity.spriteAnchor) },
-				{ "color", VectorToJson(entity.spriteColor) },
-				{ "flipX", entity.spriteFlipX },
-				{ "flipY", entity.spriteFlipY }
+				{ "texturePath", spriteTexturePath },
+				{ "size", VectorToJson(spriteSize) },
+				{ "anchor", VectorToJson(spriteAnchor) },
+				{ "color", VectorToJson(spriteColor) },
+				{ "flipX", spriteFlipX },
+				{ "flipY", spriteFlipY }
 			} },
-			{ "components", entity.components }
+			{ "components", components }
 		});
 	}
 
@@ -382,6 +531,83 @@ bool SceneDocument::MoveEntity(uint64_t id, int direction) {
 	return true;
 }
 
+bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
+	if (type.empty()) {
+		return false;
+	}
+	SceneEntity* entity = FindEntity(id);
+	if (!entity) {
+		return false;
+	}
+	const auto found = std::find_if(
+		entity->components.begin(),
+		entity->components.end(),
+		[&type](const SceneComponent& component) {
+			return component.type == type;
+		}
+	);
+	if (found != entity->components.end()) {
+		bool changed = false;
+		if (type == "MeshRenderer" && found->modelPath.empty()) {
+			found->modelPath = entity->modelPath;
+			changed = true;
+		} else if (type == "SpriteRenderer" && found->texturePath.empty()) {
+			found->texturePath = entity->spriteTexturePath;
+			found->spriteSize = entity->spriteSize;
+			found->spriteAnchor = entity->spriteAnchor;
+			found->spriteColor = entity->spriteColor;
+			found->spriteFlipX = entity->spriteFlipX;
+			found->spriteFlipY = entity->spriteFlipY;
+			changed = true;
+		}
+		if (!found->enabled) {
+			found->enabled = true;
+			changed = true;
+		}
+		if (changed) {
+			dirty_ = true;
+		}
+		return true;
+	}
+	SceneComponent component{ type, true };
+	if (type == "MeshRenderer") {
+		component.modelPath = entity->modelPath;
+	} else if (type == "SpriteRenderer") {
+		component.texturePath = entity->spriteTexturePath;
+		component.spriteSize = entity->spriteSize;
+		component.spriteAnchor = entity->spriteAnchor;
+		component.spriteColor = entity->spriteColor;
+		component.spriteFlipX = entity->spriteFlipX;
+		component.spriteFlipY = entity->spriteFlipY;
+	}
+	entity->components.push_back(std::move(component));
+	dirty_ = true;
+	return true;
+}
+
+bool SceneDocument::RemoveComponent(uint64_t id, const std::string& type) {
+	SceneEntity* entity = FindEntity(id);
+	if (!entity) {
+		return false;
+	}
+	const auto oldSize = entity->components.size();
+	entity->components.erase(
+		std::remove_if(
+			entity->components.begin(),
+			entity->components.end(),
+			[&type](const SceneComponent& component) {
+				return component.type == type;
+			}
+		),
+		entity->components.end()
+	);
+	if (entity->components.size() == oldSize) {
+		return false;
+	}
+	dirty_ = true;
+	return true;
+}
+
 bool SceneDocument::IsDescendantOf(
 	uint64_t id,
 	uint64_t potentialAncestorId
@@ -476,10 +702,9 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 				entity.spriteFlipX = sprite.value("flipX", false);
 				entity.spriteFlipY = sprite.value("flipY", false);
 			}
-			entity.components = source.value(
-				"components",
-				std::vector<std::string>{}
-			);
+			if (source.contains("components")) {
+				entity.components = ComponentsFromJson(source.at("components"));
+			}
 			if (source.contains("transform")) {
 				const json& transform = source.at("transform");
 				if (transform.contains("scale")) {
@@ -502,6 +727,7 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 				}
 			}
 			if (entity.id != 0) {
+				SynchronizeLegacyRendererFields(entity);
 				entities_.push_back(std::move(entity));
 			}
 		}

@@ -1,8 +1,8 @@
 #pragma once
 #include <vector>
-#include "BaseScene.h"
-#include "../particle/ParticleEffectResource.h"
-#include "../particle/ParticleEffectEditor.h"
+#include "../../engine/scene/BaseScene.h"
+#include "../../engine/particle/ParticleEffectResource.h"
+#include "../../engine/particle/ParticleEffectEditor.h"
 
 class Camera;
 class ParticleEmitter;

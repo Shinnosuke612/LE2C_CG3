@@ -1,15 +1,16 @@
 #include "Player.h"
 
-#include "../3d/Object3d.h"
-#include "../3d/Object3dCommon.h"
-#include "../io/Input.h"
-#include "../math/Math.h"
-#include "../math/Matrix4x4.h"
+#include "../../engine/3d/Object3d.h"
+#include "../../engine/3d/Object3dCommon.h"
+#include "../../engine/io/Input.h"
+#include "../../engine/math/Math.h"
+#include "../../engine/math/Matrix4x4.h"
 
 #include <cmath>
 
 void Player::Initialize(Object3dCommon* object3dCommon, const char* modelName) {
 	object_ = new Object3d();
+	ownsObject_ = true;
 	object_->Initialize(object3dCommon);
 	object_->SetModel(modelName);
 	object_->SetScale({ 1.0f, 1.0f, 1.0f });
@@ -21,7 +22,22 @@ void Player::Initialize(Object3dCommon* object3dCommon, const char* modelName) {
 	collider_.SetOffset({ 0.0f, 0.0f, 0.0f });
 }
 
+void Player::Initialize(Object3d* object) {
+	object_ = object;
+	ownsObject_ = false;
+	if (!object_) {
+		return;
+	}
+	position_ = object_->GetTransform().translate;
+	collider_.SetWorldTransform(&object_->GetTransform());
+	collider_.SetHalfSize({ 1.0f, 1.0f, 1.0f });
+	collider_.SetOffset({ 0.0f, 0.0f, 0.0f });
+}
+
 void Player::Update(const std::vector<OBBCollider*>& staticColliders) {
+	if (!object_) {
+		return;
+	}
 	Vector3 move{};
 	Input* input = Input::GetInstance();
 
@@ -74,8 +90,11 @@ void Player::DrawShadow(const Matrix4x4& lightViewProjection) {
 }
 
 void Player::Finalize() {
-	delete object_;
+	if (ownsObject_) {
+		delete object_;
+	}
 	object_ = nullptr;
+	ownsObject_ = false;
 }
 
 void Player::SetTransform(const Transform& transform) {

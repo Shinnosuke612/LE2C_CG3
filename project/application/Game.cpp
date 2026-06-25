@@ -1,27 +1,27 @@
 #include "Game.h"
-#include "SceneFactory.h"
-#include "EditorSession.h"
+#include "scene/SceneFactory.h"
+#include "../engine/scene/EditorSession.h"
 
-#include "../base/DirectXCommon.h"
-#include "../base/BloomRenderer.h"
-#include "../base/FullscreenCopy.h"
-#include "../base/ImGuiManager.h"
-#include "../base/RenderFormats.h"
-#include "../base/SceneRenderTarget.h"
-#include "../io/Input.h"
-#include "../2d/Sprite.h"
-#include "../2d/SpriteCommon.h"
-#include "../2d/TextureManager.h"
-#include "../3d/Camera.h"
-#include "../3d/Object3dCommon.h"
-#include "../3d/Object3d.h"
-#include "../3d/Model.h"
-#include "../3d/ModelManager.h"
-#include "../3d/SrvManager.h"
-#include "../particle/ParticleCommon.h"
-#include "../particle/ParticleManager.h"
-#include "../particle/ParticleEmitter.h"
-#include "../debug/DebugRenderer.h"
+#include "../engine/base/DirectXCommon.h"
+#include "../engine/base/BloomRenderer.h"
+#include "../engine/base/FullscreenCopy.h"
+#include "../engine/base/ImGuiManager.h"
+#include "../engine/base/RenderFormats.h"
+#include "../engine/base/SceneRenderTarget.h"
+#include "../engine/io/Input.h"
+#include "../engine/2d/Sprite.h"
+#include "../engine/2d/SpriteCommon.h"
+#include "../engine/2d/TextureManager.h"
+#include "../engine/3d/Camera.h"
+#include "../engine/3d/Object3dCommon.h"
+#include "../engine/3d/Object3d.h"
+#include "../engine/3d/Model.h"
+#include "../engine/3d/ModelManager.h"
+#include "../engine/3d/SrvManager.h"
+#include "../engine/particle/ParticleCommon.h"
+#include "../engine/particle/ParticleManager.h"
+#include "../engine/particle/ParticleEmitter.h"
+#include "../engine/debug/DebugRenderer.h"
 #include "../externals/imgui/imgui.h"
 
 #include <algorithm>
@@ -43,12 +43,17 @@ void Game::Initialize() {
 			const char* name,
 			const char* modelPath,
 			const Transform& transform,
-			std::vector<std::string> components
+			std::vector<SceneComponent> components
 		) {
 			SceneEntity& entity = document.CreateEntity(name);
 			entity.modelPath = modelPath ? modelPath : "";
 			entity.transform = transform;
 			entity.components = std::move(components);
+			for (SceneComponent& component : entity.components) {
+				if (component.type == "MeshRenderer") {
+					component.modelPath = entity.modelPath;
+				}
+			}
 		};
 		addEntity(
 			"Main Camera",

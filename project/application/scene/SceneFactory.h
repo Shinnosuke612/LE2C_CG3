@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AbstractSceneFactory.h"
+#include "../../engine/scene/AbstractSceneFactory.h"
 
 class SceneFactory : public AbstractSceneFactory {
 public:
