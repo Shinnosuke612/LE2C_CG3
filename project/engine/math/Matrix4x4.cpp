@@ -1,6 +1,7 @@
 #include "Matrix4x4.h"
 #include "Math.h"
 #include "Quaternion.h"
+#include <algorithm>
 
 Matrix4x4 Multiply(const Matrix4x4& m1, const Matrix4x4& m2) {
 	Matrix4x4 result = {};
@@ -137,6 +138,78 @@ Matrix4x4 MakeAffineMatrix(
 	const Matrix4x4 rotateMatrix = MakeRotateMatrix(rotate);
 	const Matrix4x4 translateMatrix = MakeTranslateMatrix(translate);
 	return Multiply(Multiply(scaleMatrix, rotateMatrix), translateMatrix);
+}
+
+bool DecomposeAffineMatrix(
+	const Matrix4x4& matrix,
+	Vector3& scale,
+	Vector3& rotate,
+	Vector3& translate
+) {
+	translate = { matrix.m[3][0], matrix.m[3][1], matrix.m[3][2] };
+	scale = {
+		std::sqrt(
+			matrix.m[0][0] * matrix.m[0][0] +
+			matrix.m[0][1] * matrix.m[0][1] +
+			matrix.m[0][2] * matrix.m[0][2]
+		),
+		std::sqrt(
+			matrix.m[1][0] * matrix.m[1][0] +
+			matrix.m[1][1] * matrix.m[1][1] +
+			matrix.m[1][2] * matrix.m[1][2]
+		),
+		std::sqrt(
+			matrix.m[2][0] * matrix.m[2][0] +
+			matrix.m[2][1] * matrix.m[2][1] +
+			matrix.m[2][2] * matrix.m[2][2]
+		)
+	};
+	constexpr float epsilon = 0.000001f;
+	if (scale.x < epsilon || scale.y < epsilon || scale.z < epsilon) {
+		return false;
+	}
+
+	const float determinant3x3 =
+		matrix.m[0][0] * (
+			matrix.m[1][1] * matrix.m[2][2] -
+			matrix.m[1][2] * matrix.m[2][1]
+		) -
+		matrix.m[0][1] * (
+			matrix.m[1][0] * matrix.m[2][2] -
+			matrix.m[1][2] * matrix.m[2][0]
+		) +
+		matrix.m[0][2] * (
+			matrix.m[1][0] * matrix.m[2][1] -
+			matrix.m[1][1] * matrix.m[2][0]
+		);
+	if (determinant3x3 < 0.0f) {
+		scale.x = -scale.x;
+	}
+
+	float rotation[3][3]{};
+	const float inverseScale[3] = {
+		1.0f / scale.x,
+		1.0f / scale.y,
+		1.0f / scale.z
+	};
+	for (int row = 0; row < 3; ++row) {
+		for (int column = 0; column < 3; ++column) {
+			rotation[row][column] =
+				matrix.m[row][column] * inverseScale[row];
+		}
+	}
+
+	const float sinY = std::clamp(rotation[2][0], -1.0f, 1.0f);
+	rotate.y = std::asin(sinY);
+	const float cosY = std::cos(rotate.y);
+	if (std::abs(cosY) > epsilon) {
+		rotate.x = std::atan2(-rotation[2][1], rotation[2][2]);
+		rotate.z = std::atan2(-rotation[1][0], rotation[0][0]);
+	} else {
+		rotate.x = 0.0f;
+		rotate.z = std::atan2(rotation[0][1], rotation[1][1]);
+	}
+	return true;
 }
 
 Matrix4x4 MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearClip, float farClip) {

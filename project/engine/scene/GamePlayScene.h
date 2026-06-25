@@ -33,6 +33,7 @@ private:
 	struct SceneModelObject {
 		Object3d* object = nullptr;
 		std::string modelPath;
+		bool hasRenderer = false;
 	};
 
 	struct SceneSpriteObject {

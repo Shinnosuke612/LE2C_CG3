@@ -2,10 +2,13 @@
 #include "../base/Framework.h"
 #include "../base/BloomRenderer.h"
 #include "SceneManager.h"
+#include <string>
 
 class SceneRenderTarget;
 class FullscreenCopy;
 class EditorSession;
+class Camera;
+class Object3d;
 
 class Game : public Framework {
 public:
@@ -17,6 +20,7 @@ public:
 private:
 	int GetEnabledPostEffectCount() const;
 	SceneRenderTarget* GetPostProcessOutputTarget() const;
+	void DrawModelPreview();
 
 	SceneManager* sceneManager_ = nullptr;
 	EditorSession* editorSession_ = nullptr;
@@ -24,6 +28,11 @@ private:
 	SceneRenderTarget* postProcessRenderTargets_[2]{};
 	FullscreenCopy* fullscreenCopy_ = nullptr;
 	BloomRenderer* bloomRenderer_ = nullptr;
+	SceneRenderTarget* modelPreviewRenderTarget_ = nullptr;
+	Camera* modelPreviewCamera_ = nullptr;
+	Object3d* modelPreviewObject_ = nullptr;
+	std::string modelPreviewPath_;
+	float modelPreviewFitDistance_ = 5.0f;
 	BloomRenderer::Parameters bloomParameters_{};
 	float baseExposure_ = 1.0f;
 	float currentExposure_ = 1.0f;

@@ -13,6 +13,7 @@
 #include "../3d/SrvManager.h"
 #include "../2d/TextureManager.h"
 #include "../3d/ModelManager.h"
+#include "../3d/Model.h"
 #include "../3d/Object3dCommon.h"
 #include "../3d/Camera.h"
 #include "../math/Matrix4x4.h"
@@ -388,6 +389,38 @@ void ImGuiManager::DrawEditorWorkspace(
 
 	(void)textureWidth;
 	(void)textureHeight;
+}
+
+void ImGuiManager::SetModelPreviewTexture(
+	const std::string& modelPath,
+	D3D12_GPU_DESCRIPTOR_HANDLE texture,
+	uint32_t width,
+	uint32_t height
+) {
+	modelPreviewRenderedPath_ = modelPath;
+	modelPreviewTexture_ = texture;
+	modelPreviewWidth_ = (std::max)(width, 1u);
+	modelPreviewHeight_ = (std::max)(height, 1u);
+}
+
+bool ImGuiManager::GetModelPreviewRequest(
+	std::string& modelPath,
+	float& yaw,
+	float& pitch,
+	float& zoom
+) const {
+	if (selectedProjectFile_.empty()) {
+		return false;
+	}
+	const std::filesystem::path selectedPath(selectedProjectFile_);
+	if (!IsModelAssetPath(selectedPath)) {
+		return false;
+	}
+	modelPath = GetPathRelativeToResources(selectedPath.generic_string());
+	yaw = modelPreviewYaw_;
+	pitch = modelPreviewPitch_;
+	zoom = modelPreviewZoom_;
+	return true;
 }
 
 void ImGuiManager::DrawSceneGizmo(
@@ -1089,11 +1122,15 @@ void ImGuiManager::DrawInspectorWindow() {
 		else if (ext == ".obj" || ext == ".gltf") {
 			// Model asset inspector
 			std::string relativePath = GetPathRelativeToResources(selectedProjectFile_);
-			bool isLoaded = ModelManager::GetInstance() && (ModelManager::GetInstance()->FindModel(relativePath) != nullptr);
+			Model* loadedModel = ModelManager::GetInstance()
+				? ModelManager::GetInstance()->FindModel(relativePath)
+				: nullptr;
+			bool isLoaded = loadedModel != nullptr;
 			
 			if (isLoaded) {
 				ImGui::Text("Status: Loaded in ModelManager");
 				ImGui::Text("Key: %s", relativePath.c_str());
+				ImGui::Text("Vertices: %u", loadedModel->GetVertexCount());
 			} else {
 				ImGui::Text("Status: Not loaded");
 				if (ImGui::Button("Load Model")) {
@@ -1101,6 +1138,50 @@ void ImGuiManager::DrawInspectorWindow() {
 						ModelManager::GetInstance()->LoadModel(relativePath);
 					}
 				}
+			}
+
+			ImGui::SeparatorText("Preview");
+			if (
+				modelPreviewRenderedPath_ == relativePath &&
+				modelPreviewTexture_.ptr != 0
+			) {
+				const float availableWidth = ImGui::GetContentRegionAvail().x;
+				const float previewSize = std::clamp(
+					availableWidth,
+					160.0f,
+					360.0f
+				);
+				const ImVec2 imageSize(previewSize, previewSize);
+				ImGui::Image(
+					ImTextureRef(static_cast<ImTextureID>(modelPreviewTexture_.ptr)),
+					imageSize
+				);
+				if (ImGui::IsItemHovered()) {
+					const ImGuiIO& io = ImGui::GetIO();
+					if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+						modelPreviewYaw_ += io.MouseDelta.x * 0.01f;
+						modelPreviewPitch_ = std::clamp(
+							modelPreviewPitch_ + io.MouseDelta.y * 0.01f,
+							-1.45f,
+							1.45f
+						);
+					}
+					if (io.MouseWheel != 0.0f) {
+						modelPreviewZoom_ = std::clamp(
+							modelPreviewZoom_ * (1.0f - io.MouseWheel * 0.12f),
+							0.25f,
+							4.0f
+						);
+					}
+					ImGui::SetTooltip("Drag to orbit | Wheel to zoom");
+				}
+			} else {
+				ImGui::TextDisabled("Preparing preview...");
+			}
+			if (ImGui::SmallButton("Reset View")) {
+				modelPreviewYaw_ = 0.65f;
+				modelPreviewPitch_ = 0.25f;
+				modelPreviewZoom_ = 1.0f;
 			}
 
 			ImGui::Separator();

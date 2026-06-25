@@ -7,6 +7,8 @@
 #include <assimp/postprocess.h>
 #include <filesystem>
 #include <cstdlib>
+#include <algorithm>
+#include <limits>
 
 namespace {
 
@@ -53,6 +55,27 @@ void Model::Initialize(ModelCommon* modelCommon, const std::string& directoryPat
 }
 void Model::Draw(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView) {
 	DrawWithMaterial(materialResource, influenceBufferView);
+}
+
+bool Model::GetLocalBounds(Vector3& boundsMin, Vector3& boundsMax) const {
+	if (modelData.vertices.empty()) {
+		boundsMin = {};
+		boundsMax = {};
+		return false;
+	}
+
+	const float maximum = (std::numeric_limits<float>::max)();
+	boundsMin = { maximum, maximum, maximum };
+	boundsMax = { -maximum, -maximum, -maximum };
+	for (const VertexData& vertex : modelData.vertices) {
+		boundsMin.x = (std::min)(boundsMin.x, vertex.position.x);
+		boundsMin.y = (std::min)(boundsMin.y, vertex.position.y);
+		boundsMin.z = (std::min)(boundsMin.z, vertex.position.z);
+		boundsMax.x = (std::max)(boundsMax.x, vertex.position.x);
+		boundsMax.y = (std::max)(boundsMax.y, vertex.position.y);
+		boundsMax.z = (std::max)(boundsMax.z, vertex.position.z);
+	}
+	return true;
 }
 
 void Model::DrawWithMaterial(

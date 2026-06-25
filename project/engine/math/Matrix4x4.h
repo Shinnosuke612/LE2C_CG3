@@ -44,6 +44,13 @@ Matrix4x4 Inverse(const Matrix4x4& m);
 
 Matrix4x4 Transpose(const Matrix4x4& m);
 
+bool DecomposeAffineMatrix(
+	const Matrix4x4& matrix,
+	Vector3& scale,
+	Vector3& rotate,
+	Vector3& translate
+);
+
 Matrix4x4 MakeBillboardMatrix(
 	const Matrix4x4& cameraWorldMatrix,
 	const Vector3& scale,

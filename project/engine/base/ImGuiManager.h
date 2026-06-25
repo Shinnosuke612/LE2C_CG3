@@ -43,6 +43,18 @@ public:
 	void SetEditorSession(EditorSession* editorSession) {
 		editorSession_ = editorSession;
 	}
+	void SetModelPreviewTexture(
+		const std::string& modelPath,
+		D3D12_GPU_DESCRIPTOR_HANDLE texture,
+		uint32_t width,
+		uint32_t height
+	);
+	bool GetModelPreviewRequest(
+		std::string& modelPath,
+		float& yaw,
+		float& pitch,
+		float& zoom
+	) const;
 
 	// Communication with scenes
 	const std::string& GetSelectedProjectFile() const { return selectedProjectFile_; }
@@ -109,6 +121,13 @@ private:
 	float projectThumbnailSize_ = 80.0f;
 	std::unordered_set<std::string> projectPreviewLoadAttempted_;
 	Audio::SoundData previewSoundData_{};
+	std::string modelPreviewRenderedPath_;
+	D3D12_GPU_DESCRIPTOR_HANDLE modelPreviewTexture_{};
+	uint32_t modelPreviewWidth_ = 1;
+	uint32_t modelPreviewHeight_ = 1;
+	float modelPreviewYaw_ = 0.65f;
+	float modelPreviewPitch_ = 0.25f;
+	float modelPreviewZoom_ = 1.0f;
 
 	// Particle loading request
 	bool requestLoadParticle_ = false;

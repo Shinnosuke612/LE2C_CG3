@@ -24,6 +24,26 @@ void Camera::Update() {
 	viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 }
 
+void Camera::UpdatePreviewMatrices() {
+	if (isOrbitMode_) {
+		UpdateOrbitTransform();
+	} else {
+		worldMatrix = MakeAffineMatrix(
+			transform.scale,
+			transform.rotate,
+			transform.translate
+		);
+		viewMatrix = Inverse(worldMatrix);
+	}
+	projectionMatrix = MakePerspectiveFovMatrix(
+		fovY_,
+		aspectRatio_,
+		nearClip_,
+		farClip_
+	);
+	viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
+}
+
 void Camera::UpdateOrbitTransform() {
 
 	orbitDistance_ = std::max(orbitDistance_, orbitMinDistance_);

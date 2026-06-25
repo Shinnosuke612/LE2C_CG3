@@ -11,6 +11,7 @@ public://メンバ関数
 	//更新
 	void Update();
 	void UpdateOrbitTransform();
+	void UpdatePreviewMatrices();
 
 	// ImGui表示
 	void DrawImGui(const char* label = "Camera");

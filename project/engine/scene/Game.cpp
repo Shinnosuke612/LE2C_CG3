@@ -15,6 +15,8 @@
 #include "../3d/Camera.h"
 #include "../3d/Object3dCommon.h"
 #include "../3d/Object3d.h"
+#include "../3d/Model.h"
+#include "../3d/ModelManager.h"
 #include "../3d/SrvManager.h"
 #include "../particle/ParticleCommon.h"
 #include "../particle/ParticleManager.h"
@@ -23,6 +25,7 @@
 #include "../externals/imgui/imgui.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 void Game::Initialize() {
@@ -140,6 +143,35 @@ void Game::Initialize() {
 	fullscreenCopy_->Initialize(dxCommon_);
 	bloomRenderer_ = new BloomRenderer();
 	bloomRenderer_->Initialize(dxCommon_, srvManager_);
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	modelPreviewRenderTarget_ = new SceneRenderTarget();
+	SceneRenderTarget::Desc modelPreviewDesc{};
+	modelPreviewDesc.width = 512;
+	modelPreviewDesc.height = 512;
+	modelPreviewDesc.format = RenderFormats::kSceneHdrFormat;
+	modelPreviewDesc.createDepth = true;
+	modelPreviewDesc.clearColor[0] = 0.035f;
+	modelPreviewDesc.clearColor[1] = 0.04f;
+	modelPreviewDesc.clearColor[2] = 0.05f;
+	modelPreviewDesc.clearColor[3] = 1.0f;
+	modelPreviewRenderTarget_->Initialize(
+		dxCommon_,
+		srvManager_,
+		modelPreviewDesc
+	);
+	modelPreviewCamera_ = new Camera();
+	modelPreviewCamera_->SetOrbitMode(true);
+	modelPreviewCamera_->SetFovY(0.7f);
+	modelPreviewCamera_->SetAspectRatio(1.0f);
+	modelPreviewCamera_->SetNearClip(0.01f);
+	modelPreviewCamera_->SetFarClip(10000.0f);
+	modelPreviewObject_ = new Object3d();
+	modelPreviewObject_->Initialize(Object3dCommon::GetInstance());
+	modelPreviewObject_->SetCamera(modelPreviewCamera_);
+	// Asset previews must not depend on the active scene's light bindings.
+	modelPreviewObject_->SetEnableLighting(false);
+#endif
 	baseExposure_ = bloomParameters_.exposure;
 	currentExposure_ = baseExposure_;
 
@@ -530,6 +562,10 @@ void Game::Draw() {
 #endif
 	sceneRenderTarget_->End();
 
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	DrawModelPreview();
+#endif
+
 	fullscreenCopy_->BeginFrame();
 	bloomRenderer_->BeginFrame();
 	bloomRenderer_->SetParameters(bloomParameters_);
@@ -653,6 +689,91 @@ void Game::Draw() {
 	dxCommon_->PostDraw();
 }
 
+void Game::DrawModelPreview() {
+	if (
+		!imguiManager_ ||
+		!modelPreviewRenderTarget_ ||
+		!modelPreviewCamera_ ||
+		!modelPreviewObject_
+	) {
+		return;
+	}
+
+	std::string modelPath;
+	float yaw = 0.0f;
+	float pitch = 0.0f;
+	float zoom = 1.0f;
+	if (!imguiManager_->GetModelPreviewRequest(modelPath, yaw, pitch, zoom)) {
+		return;
+	}
+
+	if (modelPath != modelPreviewPath_) {
+		ModelManager* modelManager = ModelManager::GetInstance();
+		modelManager->LoadModel(modelPath);
+		Model* model = modelManager->FindModel(modelPath);
+		if (!model) {
+			return;
+		}
+
+		modelPreviewObject_->SetModel(model);
+		modelPreviewObject_->SetScale({ 1.0f, 1.0f, 1.0f });
+		Vector3 boundsMin{};
+		Vector3 boundsMax{};
+		if (model->GetLocalBounds(boundsMin, boundsMax)) {
+			const Vector3 center = {
+				(boundsMin.x + boundsMax.x) * 0.5f,
+				(boundsMin.y + boundsMax.y) * 0.5f,
+				(boundsMin.z + boundsMax.z) * 0.5f
+			};
+			const Vector3 halfExtent = {
+				(boundsMax.x - boundsMin.x) * 0.5f,
+				(boundsMax.y - boundsMin.y) * 0.5f,
+				(boundsMax.z - boundsMin.z) * 0.5f
+			};
+			const float radius = (std::max)(
+				std::sqrt(
+					halfExtent.x * halfExtent.x +
+					halfExtent.y * halfExtent.y +
+					halfExtent.z * halfExtent.z
+				),
+				0.01f
+			);
+			modelPreviewObject_->SetTranslate({
+				-center.x,
+				-center.y,
+				-center.z
+			});
+			modelPreviewFitDistance_ =
+				radius / std::tan(modelPreviewCamera_->GetFovY() * 0.5f) * 1.25f;
+		} else {
+			modelPreviewObject_->SetTranslate({ 0.0f, 0.0f, 0.0f });
+			modelPreviewFitDistance_ = 5.0f;
+		}
+		modelPreviewPath_ = modelPath;
+	}
+
+	modelPreviewCamera_->SetOrbitTarget({ 0.0f, 0.0f, 0.0f });
+	modelPreviewCamera_->SetOrbitAngle(yaw, pitch);
+	modelPreviewCamera_->SetOrbitDistance(
+		(std::max)(modelPreviewFitDistance_ * zoom, 0.02f)
+	);
+	modelPreviewCamera_->UpdatePreviewMatrices();
+	modelPreviewObject_->Update();
+
+	modelPreviewRenderTarget_->Begin();
+	srvManager_->PreDraw();
+	Object3dCommon::GetInstance()->SetCommonRenderState();
+	modelPreviewObject_->Draw();
+	modelPreviewRenderTarget_->End();
+
+	imguiManager_->SetModelPreviewTexture(
+		modelPath,
+		modelPreviewRenderTarget_->GetSrvGpuHandle(),
+		modelPreviewRenderTarget_->GetWidth(),
+		modelPreviewRenderTarget_->GetHeight()
+	);
+}
+
 void Game::Finalize() {
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
@@ -660,6 +781,12 @@ void Game::Finalize() {
 		imguiManager_->SetEditorSession(nullptr);
 	}
 #endif
+	delete modelPreviewObject_;
+	modelPreviewObject_ = nullptr;
+	delete modelPreviewCamera_;
+	modelPreviewCamera_ = nullptr;
+	delete modelPreviewRenderTarget_;
+	modelPreviewRenderTarget_ = nullptr;
 
 	delete bloomRenderer_;
 	bloomRenderer_ = nullptr;

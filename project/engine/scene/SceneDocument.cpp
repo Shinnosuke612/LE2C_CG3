@@ -1,6 +1,8 @@
 #include "SceneDocument.h"
+#include "../math/Matrix4x4.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -53,6 +55,37 @@ namespace {
 			value[0].get<float>(), value[1].get<float>(),
 			value[2].get<float>(), value[3].get<float>()
 		};
+	}
+
+	Matrix4x4 CalculateEntityWorldMatrix(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		std::unordered_set<uint64_t>& visited
+	) {
+		const Matrix4x4 local = MakeAffineMatrix(
+			entity.transform.scale,
+			entity.transform.rotate,
+			entity.transform.translate
+		);
+		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
+			return local;
+		}
+		const SceneEntity* parent = document.FindEntity(entity.parentId);
+		if (!parent) {
+			return local;
+		}
+		return Multiply(
+			local,
+			CalculateEntityWorldMatrix(document, *parent, visited)
+		);
+	}
+
+	Matrix4x4 CalculateEntityWorldMatrix(
+		const SceneDocument& document,
+		const SceneEntity& entity
+	) {
+		std::unordered_set<uint64_t> visited;
+		return CalculateEntityWorldMatrix(document, entity, visited);
 	}
 }
 
@@ -273,7 +306,34 @@ bool SceneDocument::SetParent(uint64_t id, uint64_t parentId) {
 	if (entity->parentId == parentId) {
 		return true;
 	}
+	const Matrix4x4 worldMatrix = CalculateEntityWorldMatrix(*this, *entity);
+	Matrix4x4 localMatrix = worldMatrix;
+	if (const SceneEntity* newParent = FindEntity(parentId)) {
+		const Matrix4x4 parentWorld =
+			CalculateEntityWorldMatrix(*this, *newParent);
+		if (std::abs(Determinant(parentWorld)) < 0.000001f) {
+			return false;
+		}
+		localMatrix = Multiply(
+			worldMatrix,
+			Inverse(parentWorld)
+		);
+	}
+	Vector3 localScale{};
+	Vector3 localRotate{};
+	Vector3 localTranslate{};
+	if (!DecomposeAffineMatrix(
+		localMatrix,
+		localScale,
+		localRotate,
+		localTranslate
+	)) {
+		return false;
+	}
 	entity->parentId = parentId;
+	entity->transform.scale = localScale;
+	entity->transform.rotate = localRotate;
+	entity->transform.translate = localTranslate;
 	dirty_ = true;
 	return true;
 }

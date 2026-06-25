@@ -163,19 +163,21 @@ void GamePlayScene::SyncSceneModelObjects() {
 
 	std::unordered_set<uint64_t> requiredIds;
 	for (const SceneEntity& entity : document->GetEntities()) {
-		if (
-			entity.modelPath.empty() ||
-			!HasComponent(entity, "MeshRenderer") ||
-			IsSpecializedSceneEntity(entity)
-		) {
+		if (IsSpecializedSceneEntity(entity)) {
 			continue;
 		}
 
+		const bool hasRenderer =
+			!entity.modelPath.empty() &&
+			HasComponent(entity, "MeshRenderer");
 		requiredIds.insert(entity.id);
 		auto found = sceneModelObjects_.find(entity.id);
 		if (
 			found != sceneModelObjects_.end() &&
-			found->second.modelPath != entity.modelPath
+			(
+				found->second.modelPath != entity.modelPath ||
+				found->second.hasRenderer != hasRenderer
+			)
 		) {
 			delete found->second.object;
 			sceneModelObjects_.erase(found);
@@ -183,12 +185,15 @@ void GamePlayScene::SyncSceneModelObjects() {
 		}
 
 		if (found == sceneModelObjects_.end()) {
-			ModelManager::GetInstance()->LoadModel(entity.modelPath);
 			SceneModelObject sceneObject{};
 			sceneObject.object = new Object3d();
 			sceneObject.object->Initialize(Object3dCommon::GetInstance());
-			sceneObject.object->SetModel(entity.modelPath);
+			if (hasRenderer) {
+				ModelManager::GetInstance()->LoadModel(entity.modelPath);
+				sceneObject.object->SetModel(entity.modelPath);
+			}
 			sceneObject.modelPath = entity.modelPath;
+			sceneObject.hasRenderer = hasRenderer;
 			found = sceneModelObjects_.emplace(
 				entity.id,
 				std::move(sceneObject)
@@ -235,10 +240,14 @@ void GamePlayScene::SyncSceneModelObjects() {
 	};
 
 	for (const SceneEntity& entity : document->GetEntities()) {
-		const auto found = sceneModelObjects_.find(entity.id);
-		if (found != sceneModelObjects_.end() && found->second.object) {
-			found->second.object->SetParent(resolveObject(entity.parentId));
+		Object3d* object = resolveObject(entity.id);
+		if (!object) {
+			continue;
 		}
+		if (IsSpecializedSceneEntity(entity)) {
+			object->GetTransform() = entity.transform;
+		}
+		object->SetParent(resolveObject(entity.parentId));
 	}
 
 	std::unordered_set<uint64_t> updatedIds;
@@ -249,23 +258,22 @@ void GamePlayScene::SyncSceneModelObjects() {
 			return;
 		}
 		const SceneEntity* entity = document->FindEntity(entityId);
-		const auto found = sceneModelObjects_.find(entityId);
-		if (!entity || found == sceneModelObjects_.end() || !found->second.object) {
+		Object3d* object = resolveObject(entityId);
+		if (!entity || !object) {
 			return;
 		}
 		updatingIds.insert(entityId);
-		if (sceneModelObjects_.contains(entity->parentId)) {
+		if (resolveObject(entity->parentId)) {
 			updateEntity(entity->parentId);
 		}
 		if (IsEntityActiveInHierarchy(*document, *entity)) {
-			found->second.object->Update();
+			object->Update();
 		}
 		updatingIds.erase(entityId);
 		updatedIds.insert(entityId);
 	};
-	for (const auto& [entityId, sceneObject] : sceneModelObjects_) {
-		(void)sceneObject;
-		updateEntity(entityId);
+	for (const SceneEntity& entity : document->GetEntities()) {
+		updateEntity(entity.id);
 	}
 }
 
@@ -780,20 +788,12 @@ void GamePlayScene::Update()
 	for (Sprite* sprite : sprites_) {
 		sprite->Update();
 	}
-	SyncSceneSpriteObjects();
 
-	object3d_->Update();
 	if (plane_) {
 		plane_->Update();
 	}
 	if (axis) {
 		axis->Update();
-	}
-	if (animatedCube_) {
-		animatedCube_->Update();
-	}
-	if (human_) {
-		human_->Update();
 	}
 	if (player_ && (!editorSession || editorSession->IsPlaying())) {
 		player_->Update(staticColliders_);
@@ -806,6 +806,7 @@ void GamePlayScene::Update()
 		}
 	}
 	SyncSceneModelObjects();
+	SyncSceneSpriteObjects();
 	camera_->Update();
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
