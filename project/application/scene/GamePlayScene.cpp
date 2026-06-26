@@ -778,6 +778,10 @@ bool GamePlayScene::ApplyPlayerCameraMouseLook(SceneDocument& document) {
 	Input* input = Input::GetInstance();
 	const bool altHeld =
 		input && (input->PushKey(DIK_LMENU) || input->PushKey(DIK_RMENU));
+	if (altHeld) {
+		return true;
+	}
+
 	camera_->SetOrbitMode(false);
 	camera_->SetFovY(std::clamp(
 		cameraComponent->cameraFovY,

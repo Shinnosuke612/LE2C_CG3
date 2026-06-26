@@ -226,6 +226,21 @@ void Game::Update() {
 		noiseTime_ += (1.0f / 60.0f) * noiseSpeed_;
 	}
 
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (Input* input = Input::GetInstance()) {
+		if (!editorSession_->IsEditing() && input->TriggerKey(DIK_F1)) {
+			editorSession_->Stop();
+		}
+		if (input->TriggerKey(DIK_F2)) {
+			if (editorSession_->IsPlaying()) {
+				editorSession_->Pause();
+			} else if (editorSession_->IsPaused()) {
+				editorSession_->Resume();
+			}
+		}
+	}
+#endif
+
 	const bool isEditingAtFrameStart = editorSession_->IsEditing();
 	const bool continuedEditing = isEditingAtFrameStart && editorWasEditingLastFrame_;
 	if (continuedEditing) {
@@ -607,12 +622,6 @@ void Game::Draw() {
 	sceneManager_->DrawOffscreenViews();
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	imguiManager_->DrawEditorWorkspace(
-		GetPostProcessOutputTarget()->GetSrvGpuHandle(),
-		GetPostProcessOutputTarget()->GetWidth(),
-		GetPostProcessOutputTarget()->GetHeight(),
-		sceneManager_->GetCurrentSceneName().c_str()
-	);
 	sceneRenderTarget_->Resize(
 		imguiManager_->GetSceneViewWidth(),
 		imguiManager_->GetSceneViewHeight()
@@ -764,6 +773,16 @@ void Game::Draw() {
 		}
 		applyEffect(FullscreenCopy::Effect::kOutline, parameters);
 	}
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	imguiManager_->DrawEditorWorkspace(
+		sourceHandle,
+		GetPostProcessOutputTarget()->GetWidth(),
+		GetPostProcessOutputTarget()->GetHeight(),
+		sceneManager_->GetCurrentSceneName().c_str()
+	);
+#endif
+
 	dxCommon_->PreDraw();
 	srvManager_->PreDraw();
 	fullscreenCopy_->Draw(sourceHandle, depthHandle, maskHandle);
@@ -884,6 +903,9 @@ void Game::DrawModelPreview() {
 		!modelPreviewCamera_ ||
 		!modelPreviewObject_
 	) {
+		return;
+	}
+	if (editorSession_ && !editorSession_->IsEditing()) {
 		return;
 	}
 

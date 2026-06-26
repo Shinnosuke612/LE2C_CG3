@@ -379,7 +379,19 @@ void ImGuiManager::DrawEditorWorkspace(
 	const char* sceneName
 ) {
 	if (editorSession_) {
-		editorSession_->BeginEditFrame();
+		const ImGuiIO& io = ImGui::GetIO();
+		const bool mayEditThisFrame =
+			ImGui::IsAnyItemActive() ||
+			io.WantTextInput ||
+			io.MouseDown[ImGuiMouseButton_Left] ||
+			io.MouseDown[ImGuiMouseButton_Right] ||
+			io.MouseDown[ImGuiMouseButton_Middle] ||
+			io.MouseClicked[ImGuiMouseButton_Left] ||
+			io.MouseClicked[ImGuiMouseButton_Right] ||
+			io.MouseClicked[ImGuiMouseButton_Middle];
+		if (mayEditThisFrame) {
+			editorSession_->BeginEditFrame();
+		}
 	}
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -588,6 +600,124 @@ void ImGuiManager::SetModelPreviewTexture(
 	modelPreviewTexture_ = texture;
 	modelPreviewWidth_ = (std::max)(width, 1u);
 	modelPreviewHeight_ = (std::max)(height, 1u);
+}
+
+const std::vector<std::string>& ImGuiManager::GetCachedModelAssetPaths() {
+	if (assetPathCacheDirty_) {
+		RefreshAssetPathCache();
+	}
+	return cachedModelAssetPaths_;
+}
+
+const std::vector<std::string>& ImGuiManager::GetCachedTextureAssetPaths() {
+	if (assetPathCacheDirty_) {
+		RefreshAssetPathCache();
+	}
+	return cachedTextureAssetPaths_;
+}
+
+void ImGuiManager::RefreshAssetPathCache() {
+	cachedModelAssetPaths_ = CollectModelAssetPaths();
+	cachedTextureAssetPaths_ = CollectTextureAssetPaths();
+	assetPathCacheDirty_ = false;
+}
+
+void ImGuiManager::InvalidateProjectCache() {
+	assetPathCacheDirty_ = true;
+	projectDirectoryCacheDirty_ = true;
+	projectTreeCacheDirty_ = true;
+	cachedProjectFolder_.clear();
+}
+
+const std::vector<ImGuiManager::ProjectDirectoryEntry>&
+ImGuiManager::GetCachedProjectDirectoryEntries() {
+	if (
+		projectDirectoryCacheDirty_ ||
+		cachedProjectFolder_ != selectedProjectFolder_
+	) {
+		RefreshProjectDirectoryCache();
+	}
+	return cachedProjectEntries_;
+}
+
+void ImGuiManager::RefreshProjectDirectoryCache() {
+	cachedProjectEntries_.clear();
+	cachedProjectFolder_ = selectedProjectFolder_;
+	projectDirectoryCacheDirty_ = false;
+
+	std::error_code ec;
+	if (!std::filesystem::exists(selectedProjectFolder_, ec)) {
+		return;
+	}
+
+	for (const auto& entry : std::filesystem::directory_iterator(selectedProjectFolder_, ec)) {
+		const bool isDirectory = entry.is_directory(ec);
+		const bool isRegularFile = entry.is_regular_file(ec);
+		if (!isDirectory && !isRegularFile) {
+			continue;
+		}
+
+		ProjectDirectoryEntry cachedEntry{};
+		cachedEntry.fileName = entry.path().filename().string();
+		cachedEntry.filePath = entry.path().generic_string();
+		cachedEntry.extension = entry.path().extension().string();
+		std::transform(
+			cachedEntry.extension.begin(),
+			cachedEntry.extension.end(),
+			cachedEntry.extension.begin(),
+			::tolower
+		);
+		cachedEntry.isDirectory = isDirectory;
+		cachedEntry.isTexture = !isDirectory && IsTextureAssetPath(entry.path());
+		cachedEntry.isModel = !isDirectory && IsModelAssetPath(entry.path());
+		cachedProjectEntries_.push_back(cachedEntry);
+	}
+
+	std::sort(
+		cachedProjectEntries_.begin(),
+		cachedProjectEntries_.end(),
+		[](const ProjectDirectoryEntry& left, const ProjectDirectoryEntry& right) {
+			if (left.isDirectory != right.isDirectory) {
+				return left.isDirectory;
+			}
+			return left.fileName < right.fileName;
+		}
+	);
+}
+
+ImGuiManager::ProjectDirectoryNode ImGuiManager::BuildProjectDirectoryNode(
+	const std::filesystem::path& path
+) {
+	ProjectDirectoryNode node{};
+	node.folderName = path.filename().string();
+	if (node.folderName.empty()) {
+		node.folderName = path.generic_string();
+	}
+	node.folderPath = path.generic_string();
+
+	std::error_code ec;
+	if (!std::filesystem::exists(path, ec)) {
+		return node;
+	}
+
+	for (const auto& entry : std::filesystem::directory_iterator(path, ec)) {
+		if (entry.is_directory(ec)) {
+			node.children.push_back(BuildProjectDirectoryNode(entry.path()));
+		}
+	}
+	std::sort(
+		node.children.begin(),
+		node.children.end(),
+		[](const ProjectDirectoryNode& left, const ProjectDirectoryNode& right) {
+			return left.folderName < right.folderName;
+		}
+	);
+	return node;
+}
+
+void ImGuiManager::RefreshProjectTreeCache() {
+	cachedProjectTreeRoot_ = BuildProjectDirectoryNode("resources");
+	projectTreeCacheDirty_ = false;
 }
 
 bool ImGuiManager::GetModelPreviewRequest(
@@ -1072,6 +1202,8 @@ void ImGuiManager::DrawPlaybackControls() {
 			editorSession_->Pause();
 		}
 	}
+	ImGui::SameLine();
+	ImGui::TextDisabled("F1 Stop / F2 Pause");
 
 	ImGui::SameLine();
 	ImGui::BeginDisabled(!editorSession_->IsEditing());
@@ -1989,9 +2121,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					if (ImGui::Selectable("None", component.modelPath.empty())) {
 						assignModel({});
 					}
-					const std::vector<std::string> modelPaths =
-						CollectModelAssetPaths();
-					for (const std::string& modelPath : modelPaths) {
+					for (const std::string& modelPath : GetCachedModelAssetPaths()) {
 						if (ImGui::Selectable(
 							modelPath.c_str(),
 							component.modelPath == modelPath
@@ -2037,7 +2167,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					: component.texturePath.c_str();
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				if (ImGui::BeginCombo("Texture", currentTexture)) {
-					for (const std::string& texturePath : CollectTextureAssetPaths()) {
+					for (const std::string& texturePath : GetCachedTextureAssetPaths()) {
 						if (ImGui::Selectable(
 							texturePath.c_str(),
 							component.texturePath == texturePath
@@ -2388,7 +2518,10 @@ void ImGuiManager::DrawProjectWindow() {
 	ImGui::Separator();
 	
 	// Draw recursive tree starting from "resources"
-	DrawDirectoryTreeNode("resources");
+	if (projectTreeCacheDirty_) {
+		RefreshProjectTreeCache();
+	}
+	DrawDirectoryTreeNode(cachedProjectTreeRoot_);
 	
 	ImGui::NextColumn();
 
@@ -2416,6 +2549,11 @@ void ImGuiManager::DrawProjectWindow() {
 	if (!projectGridView_) {
 		ImGui::PopStyleColor();
 	}
+	ImGui::SameLine();
+	if (ImGui::SmallButton("Refresh")) {
+		InvalidateProjectCache();
+		projectPreviewLoadAttempted_.clear();
+	}
 	if (projectGridView_) {
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(100.0f);
@@ -2442,30 +2580,15 @@ void ImGuiManager::DrawProjectWindow() {
 					? std::string("resources")
 					: parent.generic_string();
 				selectedProjectFile_.clear();
+				projectDirectoryCacheDirty_ = true;
 			}
 			ImGui::SameLine();
 			ImGui::TextDisabled("Back to parent folder");
 			ImGui::Separator();
 		}
 
-		std::vector<std::filesystem::directory_entry> entries;
-		for (const auto& entry : std::filesystem::directory_iterator(selectedProjectFolder_, ec)) {
-			if (entry.is_directory(ec) || entry.is_regular_file(ec)) {
-				entries.push_back(entry);
-			}
-		}
-		std::sort(
-			entries.begin(),
-			entries.end(),
-			[](const auto& left, const auto& right) {
-				const bool leftIsDirectory = left.is_directory();
-				const bool rightIsDirectory = right.is_directory();
-				if (leftIsDirectory != rightIsDirectory) {
-					return leftIsDirectory;
-				}
-				return left.path().filename().string() < right.path().filename().string();
-			}
-		);
+		const std::vector<ProjectDirectoryEntry>& entries =
+			GetCachedProjectDirectoryEntries();
 
 		const float cellWidth = projectThumbnailSize_ + 18.0f;
 		const float panelWidth = ImGui::GetContentRegionAvail().x;
@@ -2483,13 +2606,12 @@ void ImGuiManager::DrawProjectWindow() {
 
 		if (!projectGridView_ || tableOpen) {
 		for (const auto& entry : entries) {
-			const std::string fileName = entry.path().filename().string();
-			const std::string filePath = entry.path().generic_string();
-			const bool isDirectory = entry.is_directory(ec);
-			std::string extension = entry.path().extension().string();
-			std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-			const bool isTexture = !isDirectory && IsTextureAssetPath(entry.path());
-			const bool isModel = !isDirectory && IsModelAssetPath(entry.path());
+			const std::string& fileName = entry.fileName;
+			const std::string& filePath = entry.filePath;
+			const bool isDirectory = entry.isDirectory;
+			const std::string& extension = entry.extension;
+			const bool isTexture = entry.isTexture;
+			const bool isModel = entry.isModel;
 			const bool isSelected = selectedProjectFile_ == filePath;
 
 			if (projectGridView_) {
@@ -2507,14 +2629,6 @@ void ImGuiManager::DrawProjectWindow() {
 			float texturePreviewAspect = 1.0f;
 			D3D12_GPU_DESCRIPTOR_HANDLE textureHandle{};
 			if (isTexture && TextureManager::GetInstance()) {
-				if (
-					extension == ".png" &&
-					!TextureManager::GetInstance()->HasTexture(filePath) &&
-					projectPreviewLoadAttempted_.size() < 96 &&
-					projectPreviewLoadAttempted_.insert(filePath).second
-				) {
-					TextureManager::GetInstance()->LoadTexture(filePath);
-				}
 				if (TextureManager::GetInstance()->HasTexture(filePath)) {
 					const auto& metadata = TextureManager::GetInstance()->GetMetaData(filePath);
 					texturePreviewAvailable = !metadata.IsCubemap();
@@ -2529,6 +2643,18 @@ void ImGuiManager::DrawProjectWindow() {
 			}
 
 			bool clicked = false;
+			auto loadHoveredTexturePreview = [&]() {
+				if (
+					isTexture &&
+					extension == ".png" &&
+					TextureManager::GetInstance() &&
+					!TextureManager::GetInstance()->HasTexture(filePath) &&
+					projectPreviewLoadAttempted_.size() < 96 &&
+					projectPreviewLoadAttempted_.insert(filePath).second
+				) {
+					TextureManager::GetInstance()->LoadTexture(filePath);
+				}
+			};
 			auto drawDragSource = [&]() {
 				if (!(isModel || isTexture) || !ImGui::BeginDragDropSource()) {
 					return;
@@ -2605,6 +2731,9 @@ void ImGuiManager::DrawProjectWindow() {
 						typeLabel,
 						ImVec2(projectThumbnailSize_, projectThumbnailSize_)
 					);
+					if (ImGui::IsItemHovered()) {
+						loadHoveredTexturePreview();
+					}
 					drawDragSource();
 				}
 				ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + projectThumbnailSize_);
@@ -2622,6 +2751,9 @@ void ImGuiManager::DrawProjectWindow() {
 					label.c_str(),
 					isDirectory ? selectedProjectFolder_ == filePath : isSelected
 				);
+				if (ImGui::IsItemHovered()) {
+					loadHoveredTexturePreview();
+				}
 				drawDragSource();
 			}
 
@@ -2633,6 +2765,7 @@ void ImGuiManager::DrawProjectWindow() {
 					selectedProjectFolder_ = filePath;
 					selectedProjectFile_.clear();
 					selectedEntityId_ = 0;
+					projectDirectoryCacheDirty_ = true;
 					if (previewSoundData_.pBuffer && Audio::GetInstance()) {
 						Audio::GetInstance()->SoundUnload(&previewSoundData_);
 					}
@@ -2655,47 +2788,29 @@ void ImGuiManager::DrawProjectWindow() {
 	ImGui::End();
 }
 
-void ImGuiManager::DrawDirectoryTreeNode(const std::filesystem::path& path) {
-	std::string folderName = path.filename().string();
-	if (folderName.empty()) {
-		folderName = path.generic_string();
-	}
-
+void ImGuiManager::DrawDirectoryTreeNode(const ProjectDirectoryNode& node) {
+	ImGui::PushID(node.folderPath.c_str());
 	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
-	if (selectedProjectFolder_ == path.generic_string()) {
+	if (selectedProjectFolder_ == node.folderPath) {
 		flags |= ImGuiTreeNodeFlags_Selected;
 	}
-
-	// Check if this directory has subdirectories
-	bool hasSubdirs = false;
-	std::error_code ec;
-	if (std::filesystem::exists(path, ec)) {
-		for (const auto& entry : std::filesystem::directory_iterator(path, ec)) {
-			if (entry.is_directory()) {
-				hasSubdirs = true;
-				break;
-			}
-		}
-	}
-	if (!hasSubdirs) {
+	if (node.children.empty()) {
 		flags |= ImGuiTreeNodeFlags_Leaf;
 	}
 
-	bool open = ImGui::TreeNodeEx(folderName.c_str(), flags);
+	bool open = ImGui::TreeNodeEx(node.folderName.c_str(), flags);
 	if (ImGui::IsItemClicked()) {
-		selectedProjectFolder_ = path.generic_string();
+		selectedProjectFolder_ = node.folderPath;
+		projectDirectoryCacheDirty_ = true;
 	}
 
 	if (open) {
-		if (hasSubdirs && std::filesystem::exists(path, ec)) {
-			for (const auto& entry : std::filesystem::directory_iterator(path, ec)) {
-				if (entry.is_directory()) {
-					DrawDirectoryTreeNode(entry.path());
-				}
-			}
+		for (const ProjectDirectoryNode& child : node.children) {
+			DrawDirectoryTreeNode(child);
 		}
 		ImGui::TreePop();
 	}
+	ImGui::PopID();
 }
 
 void ImGuiManager::DrawConsoleWindow() {

@@ -71,6 +71,8 @@ private:
 	bool cursorHidden_ = false;
 	RECT cursorCaptureRect_ = {};
 	bool hasCursorCaptureRect_ = false;
+	RECT appliedCursorCaptureRect_ = {};
+	bool hasAppliedCursorCaptureRect_ = false;
 
 	IDirectInput8* directInput = nullptr;
 	//WindowAPI

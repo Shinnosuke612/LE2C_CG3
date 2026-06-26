@@ -134,9 +134,6 @@ bool Input::ReleaseMouse(MouseButton button) const {
 
 void Input::SetCursorCapture(bool enabled) {
 	if (cursorCaptured_ == enabled) {
-		if (cursorCaptured_) {
-			ApplyCursorCapture();
-		}
 		return;
 	}
 
@@ -144,6 +141,7 @@ void Input::SetCursorCapture(bool enabled) {
 	if (!cursorCaptured_) {
 		ClipCursor(nullptr);
 		hasCursorCaptureRect_ = false;
+		hasAppliedCursorCaptureRect_ = false;
 		if (cursorHidden_) {
 			while (ShowCursor(TRUE) < 0) {
 			}
@@ -166,14 +164,21 @@ void Input::SetCursorCaptureRect(
 	float maxX,
 	float maxY
 ) {
-	cursorCaptureRect_ = {
+	const RECT newRect = {
 		static_cast<LONG>(std::floor(minX)),
 		static_cast<LONG>(std::floor(minY)),
 		static_cast<LONG>(std::ceil(maxX)),
 		static_cast<LONG>(std::ceil(maxY))
 	};
+	const bool sameRect =
+		hasCursorCaptureRect_ &&
+		cursorCaptureRect_.left == newRect.left &&
+		cursorCaptureRect_.top == newRect.top &&
+		cursorCaptureRect_.right == newRect.right &&
+		cursorCaptureRect_.bottom == newRect.bottom;
+	cursorCaptureRect_ = newRect;
 	hasCursorCaptureRect_ = true;
-	if (cursorCaptured_) {
+	if (cursorCaptured_ && !sameRect) {
 		ApplyCursorCapture();
 	}
 }
@@ -197,5 +202,16 @@ void Input::ApplyCursorCapture() {
 		bottomRight.x,
 		bottomRight.y
 	};
+	if (
+		hasAppliedCursorCaptureRect_ &&
+		appliedCursorCaptureRect_.left == screenRect.left &&
+		appliedCursorCaptureRect_.top == screenRect.top &&
+		appliedCursorCaptureRect_.right == screenRect.right &&
+		appliedCursorCaptureRect_.bottom == screenRect.bottom
+	) {
+		return;
+	}
 	ClipCursor(&screenRect);
+	appliedCursorCaptureRect_ = screenRect;
+	hasAppliedCursorCaptureRect_ = true;
 }

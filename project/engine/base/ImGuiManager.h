@@ -95,9 +95,30 @@ private:
 		float width,
 		float height
 	);
+	const std::vector<std::string>& GetCachedModelAssetPaths();
+	const std::vector<std::string>& GetCachedTextureAssetPaths();
+	void RefreshAssetPathCache();
+	void InvalidateProjectCache();
 
 	// Helper for project tree
-	void DrawDirectoryTreeNode(const std::filesystem::path& path);
+	struct ProjectDirectoryEntry {
+		std::string fileName;
+		std::string filePath;
+		std::string extension;
+		bool isDirectory = false;
+		bool isTexture = false;
+		bool isModel = false;
+	};
+	struct ProjectDirectoryNode {
+		std::string folderName;
+		std::string folderPath;
+		std::vector<ProjectDirectoryNode> children;
+	};
+	void DrawDirectoryTreeNode(const ProjectDirectoryNode& node);
+	ProjectDirectoryNode BuildProjectDirectoryNode(const std::filesystem::path& path);
+	void RefreshProjectTreeCache();
+	const std::vector<ProjectDirectoryEntry>& GetCachedProjectDirectoryEntries();
+	void RefreshProjectDirectoryCache();
 
 	WinApp* winApp_ = nullptr;
 	DirectXCommon* dxCommon_ = nullptr;
@@ -136,6 +157,14 @@ private:
 	bool projectGridView_ = true;
 	float projectThumbnailSize_ = 80.0f;
 	std::unordered_set<std::string> projectPreviewLoadAttempted_;
+	bool assetPathCacheDirty_ = true;
+	std::vector<std::string> cachedModelAssetPaths_;
+	std::vector<std::string> cachedTextureAssetPaths_;
+	bool projectDirectoryCacheDirty_ = true;
+	std::string cachedProjectFolder_;
+	std::vector<ProjectDirectoryEntry> cachedProjectEntries_;
+	bool projectTreeCacheDirty_ = true;
+	ProjectDirectoryNode cachedProjectTreeRoot_;
 	Audio::SoundData previewSoundData_{};
 	std::string modelPreviewRenderedPath_;
 	D3D12_GPU_DESCRIPTOR_HANDLE modelPreviewTexture_{};
