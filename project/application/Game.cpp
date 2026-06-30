@@ -135,7 +135,14 @@ void Game::Initialize() {
 				{ 0.0f, 0.0f, 0.0f },
 				{ 0.0f, 1.0f, -4.0f }
 			},
-			{ "MeshRenderer", "PlayerBehavior", "OBBCollider" }
+			{
+				"MeshRenderer",
+				"PlayerBehavior",
+				"OBBCollider",
+				"Camera",
+				"ThirdPersonCamera",
+				"PhysicsBody"
+			}
 		);
 		editorSession_->Save();
 	}
@@ -845,54 +852,9 @@ void Game::RestoreCameraSnapshot(const CameraSnapshot& snapshot) const {
 
 void Game::BeginPauseDebugCamera() {
 	pauseMainCameraSnapshot_ = CaptureCameraSnapshot();
-	if (!pauseMainCameraSnapshot_.valid) {
-		return;
-	}
-
-	Object3dCommon* object3dCommon = Object3dCommon::GetInstance();
-	Camera* camera = object3dCommon
-		? object3dCommon->GetDefaultCamera()
-		: nullptr;
-	if (!camera) {
-		return;
-	}
-
-	const Matrix4x4& cameraWorld = camera->GetWorldMatrix();
-	Vector3 forward{
-		cameraWorld.m[2][0],
-		cameraWorld.m[2][1],
-		cameraWorld.m[2][2]
-	};
-	const float forwardLength = std::sqrt(
-		forward.x * forward.x +
-		forward.y * forward.y +
-		forward.z * forward.z
-	);
-	if (forwardLength > 0.000001f) {
-		forward.x /= forwardLength;
-		forward.y /= forwardLength;
-		forward.z /= forwardLength;
-	} else {
-		forward = { 0.0f, 0.0f, 1.0f };
-	}
-
-	const float orbitDistance = 10.0f;
-	camera->SetOrbitMode(true);
-	camera->SetOrbitDistance(orbitDistance);
-	camera->SetOrbitTarget({
-		pauseMainCameraSnapshot_.translate.x + forward.x * orbitDistance,
-		pauseMainCameraSnapshot_.translate.y + forward.y * orbitDistance,
-		pauseMainCameraSnapshot_.translate.z + forward.z * orbitDistance
-	});
-	camera->SetOrbitAngle(
-		std::atan2(-forward.x, forward.z),
-		std::asin(std::clamp(-forward.y, -1.0f, 1.0f))
-	);
-	camera->UpdatePreviewMatrices();
 }
 
 void Game::EndPauseDebugCamera() {
-	RestoreCameraSnapshot(pauseMainCameraSnapshot_);
 	pauseMainCameraSnapshot_ = {};
 }
 

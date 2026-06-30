@@ -45,6 +45,14 @@ void Player::Initialize(Object3dCommon* object3dCommon, const char* modelName) {
 	collider_.SetWorldTransform(&object_->GetTransform());
 	collider_.SetHalfSize({ 1.0f, 1.0f, 1.0f });
 	collider_.SetOffset({ 0.0f, 0.0f, 0.0f });
+
+	physicsBody_.type = PhysicsBodyType::Dynamic;
+	physicsBody_.transform = &object_->GetTransform();
+	physicsBody_.obbCollider = &collider_;
+	physicsBody_.useGravity = true;
+	physicsBody_.gravityScale = 8.0f;
+	physicsBody_.maxFallSpeed = 60.0f;
+	physicsBody_.friction = 0.0f;
 }
 
 void Player::Initialize(Object3d* object) {
@@ -57,10 +65,17 @@ void Player::Initialize(Object3d* object) {
 	collider_.SetWorldTransform(&object_->GetTransform());
 	collider_.SetHalfSize({ 1.0f, 1.0f, 1.0f });
 	collider_.SetOffset({ 0.0f, 0.0f, 0.0f });
+
+	physicsBody_.type = PhysicsBodyType::Dynamic;
+	physicsBody_.transform = &object_->GetTransform();
+	physicsBody_.obbCollider = &collider_;
+	physicsBody_.useGravity = true;
+	physicsBody_.gravityScale = 8.0f;
+	physicsBody_.maxFallSpeed = 60.0f;
+	physicsBody_.friction = 0.0f;
 }
 
 void Player::Update(
-	const std::vector<OBBCollider*>& staticColliders,
 	const Camera* camera
 ) {
 	if (!object_) {
@@ -82,10 +97,14 @@ void Player::Update(
 		inputMove.x += 1.0f;
 	}
 
+	Vector3 desiredVelocity = physicsBody_.velocity;
+	desiredVelocity.x = 0.0f;
+	desiredVelocity.z = 0.0f;
+
 	if (Math::Length(inputMove) > 0.000001f) {
 		Vector3 forward = { 0.0f, 0.0f, 1.0f };
 		Vector3 right = { 1.0f, 0.0f, 0.0f };
-		if (camera) {
+		if (cameraRelativeMove_ && camera) {
 			const Matrix4x4& cameraWorld = camera->GetWorldMatrix();
 			right = FlattenAndNormalize({
 				cameraWorld.m[0][0],
@@ -110,13 +129,13 @@ void Player::Update(
 			Math::Multiply(forward, inputMove.z)
 		);
 		move = Math::Multiply(Math::Normalize(move), moveSpeed_);
-		Vector3 previous = position_;
-		position_ = Math::Add(position_, move);
+		desiredVelocity.x = move.x;
+		desiredVelocity.z = move.z;
 
 		// S入力を含む後退移動中は、向きを変えない
 		const bool isMovingBackward = inputMove.z < 0.0f;
 
-		if(!isMovingBackward && (move.x != 0.0f || move.z != 0.0f)){
+		if (!isMovingBackward && (move.x != 0.0f || move.z != 0.0f)) {
 			const float targetYaw = std::atan2(move.x, move.z);
 			const float currentYaw = object_->GetRotate().y;
 			const float yawDelta = NormalizeAngle(targetYaw - currentYaw);
@@ -124,46 +143,23 @@ void Player::Update(
 				std::clamp(turnResponsiveness_, 0.0f, 1.0f);
 			object_->SetRotate({ 0.0f, nextYaw, 0.0f });
 		}
-
-		ApplyPosition();
-		object_->Update();
-
-		if (IsColliding(staticColliders)) {
-			position_ = previous;
-			ApplyPosition();
-			object_->Update();
-		}
-	}
-	else {
-		object_->Update();
 	}
 
-	if (isGrounded_ && input->TriggerKey(DIK_SPACE)) {
-		verticalVelocity_ = jumpVelocity_;
-		isGrounded_ = false;
+	if (allowJump_ && physicsBody_.isGrounded && input->TriggerKey(DIK_SPACE)) {
+		desiredVelocity.y = jumpVelocity_;
+		physicsBody_.isGrounded = false;
 	}
 
-	verticalVelocity_ = (std::max)(
-		verticalVelocity_ + gravity_,
-		-maxFallSpeed_
-	);
-	if (std::abs(verticalVelocity_) > 0.000001f) {
-		const Vector3 previous = position_;
-		position_.y += verticalVelocity_;
-		ApplyPosition();
-		object_->Update();
-		if (IsColliding(staticColliders)) {
-			position_ = previous;
-			ApplyPosition();
-			object_->Update();
-			if (verticalVelocity_ < 0.0f) {
-				isGrounded_ = true;
-			}
-			verticalVelocity_ = 0.0f;
-		} else {
-			isGrounded_ = false;
-		}
+	physicsBody_.velocity = desiredVelocity;
+	object_->Update();
+}
+
+void Player::PostPhysicsUpdate() {
+	if (!object_) {
+		return;
 	}
+	position_ = object_->GetTransform().translate;
+	object_->Update();
 }
 
 void Player::Draw() {
@@ -191,21 +187,25 @@ void Player::SetTransform(const Transform& transform) {
 		return;
 	}
 	position_ = transform.translate;
-	verticalVelocity_ = 0.0f;
-	isGrounded_ = false;
+	physicsBody_.velocity = {};
+	physicsBody_.isGrounded = false;
 	object_->GetTransform() = transform;
 	ApplyPosition();
 	object_->Update();
 }
 
-bool Player::IsColliding(const std::vector<OBBCollider*>& staticColliders) const {
-	for (const OBBCollider* staticCollider : staticColliders) {
-		if (staticCollider && collider_.Intersects(*staticCollider)) {
-			return true;
-		}
-	}
-
-	return false;
+void Player::SetBehaviorSettings(
+	float moveSpeed,
+	float jumpVelocity,
+	float turnResponsiveness,
+	bool cameraRelativeMove,
+	bool allowJump
+) {
+	moveSpeed_ = (std::max)(moveSpeed, 0.0f);
+	jumpVelocity_ = (std::max)(jumpVelocity, 0.0f);
+	turnResponsiveness_ = std::clamp(turnResponsiveness, 0.0f, 1.0f);
+	cameraRelativeMove_ = cameraRelativeMove;
+	allowJump_ = allowJump;
 }
 
 void Player::ApplyPosition() {

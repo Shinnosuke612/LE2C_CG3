@@ -1,8 +1,7 @@
 #pragma once
 
-#include <vector>
-
 #include "../../engine/collision/OBBCollider.h"
+#include "../../engine/physics/PhysicsBody.h"
 #include "../../engine/math/Vector3.h"
 #include "../../engine/math/Transform.h"
 
@@ -16,32 +15,38 @@ public:
 	void Initialize(Object3dCommon* object3dCommon, const char* modelName);
 	void Initialize(Object3d* object);
 	void Update(
-		const std::vector<OBBCollider*>& staticColliders,
 		const Camera* camera
 	);
+	void PostPhysicsUpdate();
 	void Draw();
 	void DrawShadow(const Matrix4x4& lightViewProjection);
 	void Finalize();
 
 	const Vector3& GetPosition() const { return position_; }
 	OBBCollider& GetCollider() { return collider_; }
+	PhysicsBody& GetPhysicsBody() { return physicsBody_; }
 	Object3d* GetObject() const { return object_; }
 	void SetTransform(const Transform& transform);
+	void SetBehaviorSettings(
+		float moveSpeed,
+		float jumpVelocity,
+		float turnResponsiveness,
+		bool cameraRelativeMove,
+		bool allowJump
+	);
 
 private:
-	bool IsColliding(const std::vector<OBBCollider*>& staticColliders) const;
 	void ApplyPosition();
 
 private:
 	Object3d* object_ = nullptr;
 	bool ownsObject_ = false;
 	OBBCollider collider_;
+	PhysicsBody physicsBody_;
 	Vector3 position_ = { 0.0f, 1.0f, -4.0f };
-	float moveSpeed_ = 0.18f;
+	float moveSpeed_ = 10.8f;
 	float turnResponsiveness_ = 0.018f;
-	float verticalVelocity_ = 0.0f;
-	float gravity_ = -0.022f;
-	float jumpVelocity_ = 0.62f;
-	float maxFallSpeed_ = 1.0f;
-	bool isGrounded_ = false;
+	float jumpVelocity_ = 37.2f;
+	bool cameraRelativeMove_ = true;
+	bool allowJump_ = true;
 };

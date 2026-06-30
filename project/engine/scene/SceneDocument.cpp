@@ -84,6 +84,18 @@ namespace {
 			result["width"] = component.monitorWidth;
 			result["height"] = component.monitorHeight;
 			result["hideSelf"] = component.monitorHideSelf;
+		} else if (component.type == "ThirdPersonCamera") {
+			result["distance"] = component.thirdPersonDistance;
+			result["aimDistance"] = component.thirdPersonAimDistance;
+			result["targetOffset"] = VectorToJson(component.thirdPersonTargetOffset);
+			result["aimTargetOffset"] =
+				VectorToJson(component.thirdPersonAimTargetOffset);
+			result["mouseSensitivity"] = component.thirdPersonMouseSensitivity;
+			result["minPitch"] = component.thirdPersonMinPitch;
+			result["maxPitch"] = component.thirdPersonMaxPitch;
+			result["occlusionMargin"] = component.thirdPersonOcclusionMargin;
+			result["invertYaw"] = component.thirdPersonInvertYaw;
+			result["invertPitch"] = component.thirdPersonInvertPitch;
 		} else if (component.type == "PhysicsBody") {
 			result["bodyType"] = component.physicsBodyType;
 			result["mass"] = component.physicsMass;
@@ -97,6 +109,12 @@ namespace {
 			result["freezePositionX"] = component.physicsFreezePositionX;
 			result["freezePositionY"] = component.physicsFreezePositionY;
 			result["freezePositionZ"] = component.physicsFreezePositionZ;
+		} else if (component.type == "PlayerBehavior") {
+			result["moveSpeed"] = component.playerMoveSpeed;
+			result["jumpVelocity"] = component.playerJumpVelocity;
+			result["turnResponsiveness"] = component.playerTurnResponsiveness;
+			result["cameraRelativeMove"] = component.playerCameraRelativeMove;
+			result["allowJump"] = component.playerAllowJump;
 		}
 		return result;
 	}
@@ -173,6 +191,50 @@ namespace {
 					"hideSelf",
 					component.monitorHideSelf
 				);
+				component.thirdPersonDistance = value.value(
+					"distance",
+					component.thirdPersonDistance
+				);
+				component.thirdPersonAimDistance = value.value(
+					"aimDistance",
+					component.thirdPersonAimDistance
+				);
+				if (value.contains("targetOffset")) {
+					component.thirdPersonTargetOffset = JsonToVector(
+						value.at("targetOffset"),
+						component.thirdPersonTargetOffset
+					);
+				}
+				if (value.contains("aimTargetOffset")) {
+					component.thirdPersonAimTargetOffset = JsonToVector(
+						value.at("aimTargetOffset"),
+						component.thirdPersonAimTargetOffset
+					);
+				}
+				component.thirdPersonMouseSensitivity = value.value(
+					"mouseSensitivity",
+					component.thirdPersonMouseSensitivity
+				);
+				component.thirdPersonMinPitch = value.value(
+					"minPitch",
+					component.thirdPersonMinPitch
+				);
+				component.thirdPersonMaxPitch = value.value(
+					"maxPitch",
+					component.thirdPersonMaxPitch
+				);
+				component.thirdPersonOcclusionMargin = value.value(
+					"occlusionMargin",
+					component.thirdPersonOcclusionMargin
+				);
+				component.thirdPersonInvertYaw = value.value(
+					"invertYaw",
+					component.thirdPersonInvertYaw
+				);
+				component.thirdPersonInvertPitch = value.value(
+					"invertPitch",
+					component.thirdPersonInvertPitch
+				);
 				component.physicsBodyType = value.value(
 					"bodyType",
 					component.physicsBodyType
@@ -222,6 +284,26 @@ namespace {
 				component.physicsFreezePositionZ = value.value(
 					"freezePositionZ",
 					component.physicsFreezePositionZ
+				);
+				component.playerMoveSpeed = value.value(
+					"moveSpeed",
+					component.playerMoveSpeed
+				);
+				component.playerJumpVelocity = value.value(
+					"jumpVelocity",
+					component.playerJumpVelocity
+				);
+				component.playerTurnResponsiveness = value.value(
+					"turnResponsiveness",
+					component.playerTurnResponsiveness
+				);
+				component.playerCameraRelativeMove = value.value(
+					"cameraRelativeMove",
+					component.playerCameraRelativeMove
+				);
+				component.playerAllowJump = value.value(
+					"allowJump",
+					component.playerAllowJump
 				);
 			}
 			if (!component.type.empty()) {
@@ -702,6 +784,27 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->monitorHeight = height;
 				changed = true;
 			}
+		} else if (type == "ThirdPersonCamera") {
+			if (found->thirdPersonDistance < 0.01f) {
+				found->thirdPersonDistance = 0.01f;
+				changed = true;
+			}
+			if (found->thirdPersonAimDistance < 0.01f) {
+				found->thirdPersonAimDistance = 0.01f;
+				changed = true;
+			}
+			if (found->thirdPersonMouseSensitivity < 0.0f) {
+				found->thirdPersonMouseSensitivity = 0.0f;
+				changed = true;
+			}
+			if (found->thirdPersonMaxPitch < found->thirdPersonMinPitch) {
+				std::swap(found->thirdPersonMinPitch, found->thirdPersonMaxPitch);
+				changed = true;
+			}
+			if (found->thirdPersonOcclusionMargin < 0.0f) {
+				found->thirdPersonOcclusionMargin = 0.0f;
+				changed = true;
+			}
 		} else if (type == "PhysicsBody") {
 			if (found->physicsBodyType.empty()) {
 				found->physicsBodyType = "Static";
@@ -713,6 +816,24 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 			}
 			if (found->physicsMaxFallSpeed <= 0.0f) {
 				found->physicsMaxFallSpeed = 100.0f;
+				changed = true;
+			}
+		} else if (type == "PlayerBehavior") {
+			if (found->playerMoveSpeed < 0.0f) {
+				found->playerMoveSpeed = 0.0f;
+				changed = true;
+			}
+			if (found->playerJumpVelocity < 0.0f) {
+				found->playerJumpVelocity = 0.0f;
+				changed = true;
+			}
+			const float turnResponsiveness = std::clamp(
+				found->playerTurnResponsiveness,
+				0.0f,
+				1.0f
+			);
+			if (found->playerTurnResponsiveness != turnResponsiveness) {
+				found->playerTurnResponsiveness = turnResponsiveness;
 				changed = true;
 			}
 		}
@@ -748,6 +869,17 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.monitorWidth = 512;
 		component.monitorHeight = 512;
 		component.monitorHideSelf = true;
+	} else if (type == "ThirdPersonCamera") {
+		component.thirdPersonDistance = 8.0f;
+		component.thirdPersonAimDistance = 3.0f;
+		component.thirdPersonTargetOffset = { 0.0f, 1.35f, 0.0f };
+		component.thirdPersonAimTargetOffset = { 0.0f, 1.55f, 0.0f };
+		component.thirdPersonMouseSensitivity = 0.005f;
+		component.thirdPersonMinPitch = -1.45f;
+		component.thirdPersonMaxPitch = 1.35f;
+		component.thirdPersonOcclusionMargin = 0.45f;
+		component.thirdPersonInvertYaw = false;
+		component.thirdPersonInvertPitch = false;
 	} else if (type == "PhysicsBody") {
 		component.physicsBodyType = "Static";
 		component.physicsMass = 1.0f;
@@ -758,6 +890,12 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.physicsFriction = 0.0f;
 		component.physicsMaxFallSpeed = 100.0f;
 		component.physicsVelocity = { 0.0f, 0.0f, 0.0f };
+	} else if (type == "PlayerBehavior") {
+		component.playerMoveSpeed = 10.8f;
+		component.playerJumpVelocity = 37.2f;
+		component.playerTurnResponsiveness = 0.018f;
+		component.playerCameraRelativeMove = true;
+		component.playerAllowJump = true;
 	}
 	entity->components.push_back(std::move(component));
 	MarkDirty();

@@ -278,7 +278,12 @@
           "type": "MeshRenderer"
         },
         {
+          "allowJump": true,
+          "cameraRelativeMove": true,
           "enabled": true,
+          "jumpVelocity": 37.20000076293945,
+          "moveSpeed": 10.800000190734863,
+          "turnResponsiveness": 0.017999999225139618,
           "type": "PlayerBehavior"
         },
         {
@@ -294,6 +299,28 @@
           "type": "Camera"
         },
         {
+          "aimDistance": 3.0,
+          "aimTargetOffset": [
+            0.0,
+            1.5499999523162842,
+            0.0
+          ],
+          "distance": 8.0,
+          "enabled": true,
+          "invertPitch": false,
+          "invertYaw": false,
+          "maxPitch": 1.350000023841858,
+          "minPitch": -1.4500000476837158,
+          "mouseSensitivity": 0.004999999888241291,
+          "occlusionMargin": 0.44999998807907104,
+          "targetOffset": [
+            0.0,
+            1.350000023841858,
+            0.0
+          ],
+          "type": "ThirdPersonCamera"
+        },
+        {
           "bodyType": "Dynamic",
           "drag": 0.0,
           "enabled": true,
@@ -301,9 +328,9 @@
           "freezePositionY": false,
           "freezePositionZ": false,
           "friction": 0.0,
-          "gravityScale": 1.0,
+          "gravityScale": 8.0,
           "mass": 1.0,
-          "maxFallSpeed": 100.0,
+          "maxFallSpeed": 60.0,
           "restitution": 0.0,
           "type": "PhysicsBody",
           "useGravity": true,

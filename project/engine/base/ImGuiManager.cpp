@@ -2267,14 +2267,6 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.cameraFarClip = component.cameraNearClip + 0.001f;
 					cameraChanged = true;
 				}
-				cameraChanged |= ImGui::Checkbox(
-					"Invert Horizontal",
-					&component.cameraInvertYaw
-				);
-				cameraChanged |= ImGui::Checkbox(
-					"Invert Vertical",
-					&component.cameraInvertPitch
-				);
 				if (cameraChanged) {
 					document.MarkDirty();
 				}
@@ -2336,6 +2328,97 @@ void ImGuiManager::DrawInspectorWindow() {
 					&component.monitorHideSelf
 				);
 				if (monitorChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "ThirdPersonCamera") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool thirdPersonChanged = false;
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Distance",
+					&component.thirdPersonDistance,
+					0.05f,
+					0.01f,
+					30.0f
+				);
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Aim Distance",
+					&component.thirdPersonAimDistance,
+					0.05f,
+					0.01f,
+					30.0f
+				);
+				thirdPersonChanged |= ImGui::DragFloat3(
+					"Target Offset",
+					&component.thirdPersonTargetOffset.x,
+					0.01f
+				);
+				thirdPersonChanged |= ImGui::DragFloat3(
+					"Aim Target Offset",
+					&component.thirdPersonAimTargetOffset.x,
+					0.01f
+				);
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Mouse Sensitivity",
+					&component.thirdPersonMouseSensitivity,
+					0.0001f,
+					0.0f,
+					0.1f,
+					"%.4f"
+				);
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Min Pitch",
+					&component.thirdPersonMinPitch,
+					0.01f,
+					-1.56f,
+					1.56f
+				);
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Max Pitch",
+					&component.thirdPersonMaxPitch,
+					0.01f,
+					-1.56f,
+					1.56f
+				);
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Occlusion Margin",
+					&component.thirdPersonOcclusionMargin,
+					0.01f,
+					0.0f,
+					5.0f
+				);
+				thirdPersonChanged |= ImGui::Checkbox(
+					"Invert Horizontal",
+					&component.thirdPersonInvertYaw
+				);
+				thirdPersonChanged |= ImGui::Checkbox(
+					"Invert Vertical",
+					&component.thirdPersonInvertPitch
+				);
+				if (component.thirdPersonDistance < 0.01f) {
+					component.thirdPersonDistance = 0.01f;
+					thirdPersonChanged = true;
+				}
+				if (component.thirdPersonAimDistance < 0.01f) {
+					component.thirdPersonAimDistance = 0.01f;
+					thirdPersonChanged = true;
+				}
+				if (component.thirdPersonMouseSensitivity < 0.0f) {
+					component.thirdPersonMouseSensitivity = 0.0f;
+					thirdPersonChanged = true;
+				}
+				if (component.thirdPersonMaxPitch < component.thirdPersonMinPitch) {
+					std::swap(
+						component.thirdPersonMinPitch,
+						component.thirdPersonMaxPitch
+					);
+					thirdPersonChanged = true;
+				}
+				if (component.thirdPersonOcclusionMargin < 0.0f) {
+					component.thirdPersonOcclusionMargin = 0.0f;
+					thirdPersonChanged = true;
+				}
+				if (thirdPersonChanged) {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
@@ -2446,6 +2529,54 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "PlayerBehavior") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool playerChanged = false;
+				playerChanged |= ImGui::DragFloat(
+					"Move Speed",
+					&component.playerMoveSpeed,
+					0.1f,
+					0.0f,
+					100.0f
+				);
+				playerChanged |= ImGui::DragFloat(
+					"Jump Velocity",
+					&component.playerJumpVelocity,
+					0.1f,
+					0.0f,
+					200.0f
+				);
+				playerChanged |= ImGui::SliderFloat(
+					"Turn Responsiveness",
+					&component.playerTurnResponsiveness,
+					0.0f,
+					1.0f
+				);
+				playerChanged |= ImGui::Checkbox(
+					"Camera Relative Move",
+					&component.playerCameraRelativeMove
+				);
+				playerChanged |= ImGui::Checkbox(
+					"Allow Jump",
+					&component.playerAllowJump
+				);
+				if (component.playerMoveSpeed < 0.0f) {
+					component.playerMoveSpeed = 0.0f;
+					playerChanged = true;
+				}
+				if (component.playerJumpVelocity < 0.0f) {
+					component.playerJumpVelocity = 0.0f;
+					playerChanged = true;
+				}
+				component.playerTurnResponsiveness = std::clamp(
+					component.playerTurnResponsiveness,
+					0.0f,
+					1.0f
+				);
+				if (playerChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			}
 			ImGui::PopID();
 		}
@@ -2462,6 +2593,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				"SpriteRenderer",
 				"Camera",
 				"MonitorRenderer",
+				"ThirdPersonCamera",
 				"PhysicsBody",
 				"PlayerBehavior",
 				"Animator",

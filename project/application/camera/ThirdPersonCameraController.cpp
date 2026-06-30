@@ -44,6 +44,10 @@ void ThirdPersonCameraController::SetDistance(float distance) {
 	distance_ = normalDistance_;
 }
 
+void ThirdPersonCameraController::SetAimDistance(float distance) {
+	aimDistance_ = std::clamp(distance, minDistance_, maxDistance_);
+}
+
 void ThirdPersonCameraController::SetPitchLimit(float minPitch, float maxPitch) {
 	minPitch_ = std::min(minPitch, maxPitch);
 	maxPitch_ = std::max(minPitch, maxPitch);

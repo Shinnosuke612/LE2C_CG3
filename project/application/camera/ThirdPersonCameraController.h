@@ -23,6 +23,7 @@ public:
 	bool IsAimMode() const { return isAimMode_; }
 
 	void SetDistance(float distance);
+	void SetAimDistance(float distance);
 	void SetTargetOffset(const Vector3& offset) { targetOffset_ = offset; }
 	void SetAimTargetOffset(const Vector3& offset) { aimTargetOffset_ = offset; }
 	void SetMouseSensitivity(float sensitivity) { mouseSensitivity_ = sensitivity; }

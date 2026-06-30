@@ -84,12 +84,16 @@ private:
 	void SyncSceneSpriteObjects();
 	void ClearSceneSpriteObjects();
 	void RebuildStaticColliders();
+	void ApplyPlayerBehaviorComponent(const SceneDocument& document);
+	void ApplyPlayerPhysicsComponent(const SceneDocument& document);
 	void StepPhysics(float deltaTime);
 	Object3d* FindSceneModelObjectByName(const char* name) const;
 	void SyncMonitorRenderers();
 	void ClearMonitorRenderers();
 	void DrawSceneView(Camera* viewCamera, uint64_t skipEntityId = 0);
 	void ApplyRenderCamera(Camera* viewCamera);
+	Camera* GetSceneViewCamera() const;
+	void InitializePauseDebugCamera();
 	bool ApplyCameraComponentToCamera(
 		const SceneDocument& document,
 		const SceneEntity& cameraEntity,
@@ -101,6 +105,7 @@ private:
 
 	SpriteCommon* spriteCommon_ = nullptr;
 	Camera* camera_ = nullptr;
+	Camera* debugCamera_ = nullptr;
 	ParticleEmitter* emitter_ = nullptr;
 
 	Object3d* plane_ = nullptr;
@@ -114,6 +119,7 @@ private:
 	Player* player_ = nullptr;
 	ThirdPersonCameraController playerCameraController_;
 	bool playerCameraInitialized_ = false;
+	bool debugCameraInitialized_ = false;
 	std::vector<StageObject> stageObjects_;
 	std::unordered_map<uint64_t, SceneModelObject> sceneModelObjects_;
 	std::unordered_map<uint64_t, SceneSpriteObject> sceneSpriteObjects_;

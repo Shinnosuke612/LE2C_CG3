@@ -8,6 +8,8 @@
 
 namespace {
 	constexpr float kBounceVelocityThreshold = 0.01f;
+	constexpr float kGroundProbeDistance = 0.05f;
+	constexpr uint32_t kAxisSweepIterations = 10;
 }
 
 void PhysicsWorld::Clear() {
@@ -92,6 +94,14 @@ void PhysicsWorld::Step(float deltaTime) {
 			body->velocity.z *= frictionFactor;
 		}
 		IntegrateAxis(*body, delta.z, 2);
+		if (
+			!body->isGrounded &&
+			body->velocity.y <= 0.0f &&
+			SnapToGround(*body, kGroundProbeDistance)
+		) {
+			body->isGrounded = true;
+			body->velocity.y = 0.0f;
+		}
 	}
 }
 
@@ -115,12 +125,51 @@ bool PhysicsWorld::CollidesWithStatic(const PhysicsBody& body) const {
 	}
 
 	for (const OBBCollider* collider : staticColliders_) {
-		if (collider && body.obbCollider->Intersects(*collider)) {
+		if (
+			collider &&
+			collider != body.obbCollider &&
+			body.obbCollider->Intersects(*collider)
+		) {
 			return true;
 		}
 	}
 
 	return false;
+}
+
+bool PhysicsWorld::SnapToGround(
+	PhysicsBody& body,
+	float probeDistance
+) const {
+	if (
+		!body.transform ||
+		!body.obbCollider ||
+		probeDistance <= 0.0f
+	) {
+		return false;
+	}
+
+	const float startY = body.transform->translate.y;
+	const float delta = -probeDistance;
+	body.transform->translate.y = startY + delta;
+	if (!CollidesWithStatic(body)) {
+		body.transform->translate.y = startY;
+		return false;
+	}
+
+	float safeRate = 0.0f;
+	float hitRate = 1.0f;
+	for (uint32_t i = 0; i < kAxisSweepIterations; ++i) {
+		const float testRate = (safeRate + hitRate) * 0.5f;
+		body.transform->translate.y = startY + delta * testRate;
+		if (CollidesWithStatic(body)) {
+			hitRate = testRate;
+		} else {
+			safeRate = testRate;
+		}
+	}
+	body.transform->translate.y = startY + delta * safeRate;
+	return true;
 }
 
 bool PhysicsWorld::IntegrateAxis(
@@ -143,9 +192,22 @@ bool PhysicsWorld::IntegrateAxis(
 		&body.velocity.z
 	};
 
+	const float startPosition = *components[axis];
 	*components[axis] += delta;
 	if (CollidesWithStatic(body)) {
-		*components[axis] -= delta;
+		*components[axis] = startPosition;
+		float safeRate = 0.0f;
+		float hitRate = 1.0f;
+		for (uint32_t i = 0; i < kAxisSweepIterations; ++i) {
+			const float testRate = (safeRate + hitRate) * 0.5f;
+			*components[axis] = startPosition + delta * testRate;
+			if (CollidesWithStatic(body)) {
+				hitRate = testRate;
+			} else {
+				safeRate = testRate;
+			}
+		}
+		*components[axis] = startPosition + delta * safeRate;
 		const float velocity = *velocityComponents[axis];
 		if (
 			body.restitution > 0.0f &&

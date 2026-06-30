@@ -253,32 +253,50 @@ namespace {
 		const SceneDocument& document,
 		const SceneEntity& entity,
 		const SceneComponent& cameraComponent,
-		float aspectRatio
+		float aspectRatio,
+		const Transform* overrideTransform = nullptr,
+		const Camera* overrideCamera = nullptr
 	) {
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 		if (!IsEntityActiveInHierarchy(document, entity)) {
 			return;
 		}
 
-		Camera debugCamera;
-		debugCamera.SetOrbitMode(false);
-		debugCamera.SetTranslate(entity.transform.translate);
-		debugCamera.SetRotate(entity.transform.rotate);
-		debugCamera.SetFovY(std::clamp(
-			cameraComponent.cameraFovY,
-			0.0174532925f,
-			3.12413936f
-		));
-		debugCamera.SetAspectRatio((std::max)(aspectRatio, 0.001f));
-		debugCamera.SetNearClip((std::max)(cameraComponent.cameraNearClip, 0.001f));
-		debugCamera.SetFarClip((std::max)(
-			(std::min)(cameraComponent.cameraFarClip, 20.0f),
-			cameraComponent.cameraNearClip + 0.001f
-		));
-		debugCamera.Update();
+		Matrix4x4 cameraWorld{};
+		Matrix4x4 cameraViewProjection{};
+		Vector3 origin{};
+		if (overrideCamera) {
+			cameraWorld = overrideCamera->GetWorldMatrix();
+			cameraViewProjection = overrideCamera->GetViewProjectionMatrix();
+			origin = overrideCamera->GetTranslate();
+		} else {
+			const Transform& cameraTransform = overrideTransform
+				? *overrideTransform
+				: entity.transform;
+			Camera debugCamera;
+			debugCamera.SetOrbitMode(false);
+			debugCamera.SetTranslate(cameraTransform.translate);
+			debugCamera.SetRotate(cameraTransform.rotate);
+			debugCamera.SetFovY(std::clamp(
+				cameraComponent.cameraFovY,
+				0.0174532925f,
+				3.12413936f
+			));
+			debugCamera.SetAspectRatio((std::max)(aspectRatio, 0.001f));
+			debugCamera.SetNearClip((std::max)(
+				cameraComponent.cameraNearClip,
+				0.001f
+			));
+			debugCamera.SetFarClip((std::max)(
+				(std::min)(cameraComponent.cameraFarClip, 20.0f),
+				cameraComponent.cameraNearClip + 0.001f
+			));
+			debugCamera.Update();
+			cameraWorld = debugCamera.GetWorldMatrix();
+			cameraViewProjection = debugCamera.GetViewProjectionMatrix();
+			origin = debugCamera.GetTranslate();
+		}
 
-		const Matrix4x4 cameraWorld = debugCamera.GetWorldMatrix();
-		const Vector3 origin = debugCamera.GetTranslate();
 		const Vector3 right = Math::Normalize({
 			cameraWorld.m[0][0],
 			cameraWorld.m[0][1],
@@ -321,7 +339,7 @@ namespace {
 		);
 
 		const Matrix4x4 inverseViewProjection = Inverse(
-			debugCamera.GetViewProjectionMatrix()
+			cameraViewProjection
 		);
 		Vector3 corners[8]{};
 		uint32_t index = 0;
@@ -356,6 +374,43 @@ namespace {
 		(void)entity;
 		(void)cameraComponent;
 		(void)aspectRatio;
+		(void)overrideTransform;
+		(void)overrideCamera;
+#endif
+	}
+
+	void AddThirdPersonCameraDebugDraw(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& thirdPersonCamera,
+		const Vector3& cameraPosition
+	) {
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			return;
+		}
+
+		const Vector3 focus = Math::Add(
+			entity.transform.translate,
+			thirdPersonCamera.thirdPersonTargetOffset
+		);
+		DebugRenderer* debugRenderer = DebugRenderer::GetInstance();
+		debugRenderer->AddSphere(
+			focus,
+			0.12f,
+			{ 0.95f, 0.35f, 1.0f, 1.0f },
+			8
+		);
+		debugRenderer->AddLine(
+			focus,
+			cameraPosition,
+			{ 0.95f, 0.35f, 1.0f, 1.0f }
+		);
+#else
+		(void)document;
+		(void)entity;
+		(void)thirdPersonCamera;
+		(void)cameraPosition;
 #endif
 	}
 }
@@ -640,6 +695,85 @@ Object3d* GamePlayScene::FindSceneModelObjectByName(const char* name) const {
 	return found == sceneModelObjects_.end() ? nullptr : found->second.object;
 }
 
+void GamePlayScene::ApplyPlayerBehaviorComponent(
+	const SceneDocument& document
+) {
+	if (!player_) {
+		return;
+	}
+
+	const SceneEntity* playerEntity = document.FindEntityByName("Player");
+	if (!playerEntity) {
+		return;
+	}
+
+	const SceneComponent* playerBehavior =
+		FindEnabledComponent(*playerEntity, "PlayerBehavior");
+	if (!playerBehavior) {
+		return;
+	}
+
+	player_->SetBehaviorSettings(
+		playerBehavior->playerMoveSpeed,
+		playerBehavior->playerJumpVelocity,
+		playerBehavior->playerTurnResponsiveness,
+		playerBehavior->playerCameraRelativeMove,
+		playerBehavior->playerAllowJump
+	);
+}
+
+void GamePlayScene::ApplyPlayerPhysicsComponent(
+	const SceneDocument& document
+) {
+	if (!player_ || !player_->GetObject()) {
+		return;
+	}
+
+	const SceneEntity* playerEntity = document.FindEntityByName("Player");
+	if (!playerEntity || !HasComponent(*playerEntity, "PlayerBehavior")) {
+		return;
+	}
+
+	const SceneComponent* physicsBody =
+		FindEnabledComponent(*playerEntity, "PhysicsBody");
+	if (!physicsBody) {
+		return;
+	}
+
+	PhysicsBody& body = player_->GetPhysicsBody();
+	const Vector3 runtimeVelocity = body.velocity;
+	body.type = ToPhysicsBodyType(physicsBody->physicsBodyType);
+	if (body.type == PhysicsBodyType::Static) {
+		body.type = PhysicsBodyType::Dynamic;
+	}
+	body.transform = &player_->GetObject()->GetTransform();
+	body.mass = (std::max)(physicsBody->physicsMass, 0.001f);
+	body.useGravity = physicsBody->physicsUseGravity;
+	body.gravityScale = physicsBody->physicsGravityScale;
+	body.drag = (std::max)(physicsBody->physicsDrag, 0.0f);
+	body.restitution = std::clamp(
+		physicsBody->physicsRestitution,
+		0.0f,
+		1.0f
+	);
+	body.friction = std::clamp(
+		physicsBody->physicsFriction,
+		0.0f,
+		1.0f
+	);
+	body.maxFallSpeed = (std::max)(physicsBody->physicsMaxFallSpeed, 0.0f);
+	body.freezePositionX = physicsBody->physicsFreezePositionX;
+	body.freezePositionY = physicsBody->physicsFreezePositionY;
+	body.freezePositionZ = physicsBody->physicsFreezePositionZ;
+
+	const EditorSession* editorSession = sceneManager_
+		? sceneManager_->GetEditorSession()
+		: nullptr;
+	body.velocity = (editorSession && editorSession->IsEditing())
+		? physicsBody->physicsVelocity
+		: runtimeVelocity;
+}
+
 void GamePlayScene::StepPhysics(float deltaTime) {
 	EditorSession* editorSession = sceneManager_
 		? sceneManager_->GetEditorSession()
@@ -656,11 +790,11 @@ void GamePlayScene::StepPhysics(float deltaTime) {
 	}
 
 	physicsWorld_.Clear();
-	for (StageObject& stageObject : stageObjects_) {
-		physicsWorld_.AddStaticCollider(&stageObject.collider);
+	for (OBBCollider* staticCollider : staticColliders_) {
+		physicsWorld_.AddStaticCollider(staticCollider);
 	}
-	if (player_) {
-		physicsWorld_.AddStaticCollider(&player_->GetCollider());
+	if (player_ && player_->GetObject()) {
+		physicsWorld_.AddBody(&player_->GetPhysicsBody());
 	}
 	for (auto& [entityId, sceneObject] : sceneModelObjects_) {
 		const SceneEntity* entity = document->FindEntity(entityId);
@@ -732,24 +866,30 @@ bool GamePlayScene::ApplyPlayerCameraMouseLook(SceneDocument& document) {
 
 	const SceneEntity* fallbackEntity = nullptr;
 	const SceneComponent* fallbackCamera = nullptr;
+	const SceneComponent* fallbackThirdPersonCamera = nullptr;
 	const SceneEntity* mainEntity = nullptr;
 	const SceneComponent* mainCamera = nullptr;
+	const SceneComponent* mainThirdPersonCamera = nullptr;
 	for (const SceneEntity& entity : document.GetEntities()) {
 		if (!IsEntityActiveInHierarchy(document, entity)) {
 			continue;
 		}
 		const SceneComponent* cameraComponent =
 			FindEnabledComponent(entity, "Camera");
-		if (!cameraComponent) {
+		const SceneComponent* thirdPersonCamera =
+			FindEnabledComponent(entity, "ThirdPersonCamera");
+		if (!cameraComponent || !thirdPersonCamera) {
 			continue;
 		}
 		if (!fallbackEntity) {
 			fallbackEntity = &entity;
 			fallbackCamera = cameraComponent;
+			fallbackThirdPersonCamera = thirdPersonCamera;
 		}
 		if (cameraComponent->cameraIsMain) {
 			mainEntity = &entity;
 			mainCamera = cameraComponent;
+			mainThirdPersonCamera = thirdPersonCamera;
 			break;
 		}
 	}
@@ -757,9 +897,14 @@ bool GamePlayScene::ApplyPlayerCameraMouseLook(SceneDocument& document) {
 	const SceneEntity* cameraEntity = mainEntity ? mainEntity : fallbackEntity;
 	const SceneComponent* cameraComponent =
 		mainCamera ? mainCamera : fallbackCamera;
+	const SceneComponent* thirdPersonCamera =
+		mainThirdPersonCamera
+			? mainThirdPersonCamera
+			: fallbackThirdPersonCamera;
 	if (
 		!cameraEntity ||
 		!cameraComponent ||
+		!thirdPersonCamera ||
 		!HasComponent(*cameraEntity, "PlayerBehavior")
 	) {
 		playerCameraInitialized_ = false;
@@ -771,6 +916,12 @@ bool GamePlayScene::ApplyPlayerCameraMouseLook(SceneDocument& document) {
 		playerCameraController_.SetYawPitch(
 			cameraEntity->transform.rotate.y,
 			cameraEntity->transform.rotate.x
+		);
+		playerCameraController_.SetDistance(
+			thirdPersonCamera->thirdPersonDistance
+		);
+		playerCameraController_.SetAimDistance(
+			thirdPersonCamera->thirdPersonAimDistance
 		);
 		playerCameraInitialized_ = true;
 	}
@@ -793,9 +944,25 @@ bool GamePlayScene::ApplyPlayerCameraMouseLook(SceneDocument& document) {
 		cameraComponent->cameraFarClip,
 		cameraComponent->cameraNearClip + 0.001f
 	));
+	playerCameraController_.SetTargetOffset(
+		thirdPersonCamera->thirdPersonTargetOffset
+	);
+	playerCameraController_.SetAimTargetOffset(
+		thirdPersonCamera->thirdPersonAimTargetOffset
+	);
+	playerCameraController_.SetMouseSensitivity(
+		thirdPersonCamera->thirdPersonMouseSensitivity
+	);
+	playerCameraController_.SetPitchLimit(
+		thirdPersonCamera->thirdPersonMinPitch,
+		thirdPersonCamera->thirdPersonMaxPitch
+	);
+	playerCameraController_.SetOcclusionMargin(
+		thirdPersonCamera->thirdPersonOcclusionMargin
+	);
 	playerCameraController_.SetMouseInvert(
-		cameraComponent->cameraInvertYaw,
-		cameraComponent->cameraInvertPitch
+		thirdPersonCamera->thirdPersonInvertYaw,
+		thirdPersonCamera->thirdPersonInvertPitch
 	);
 	std::vector<OBBCollider*> cameraObstacles;
 	for (const SceneEntity& entity : document.GetEntities()) {
@@ -929,6 +1096,7 @@ void GamePlayScene::SyncMonitorRenderers() {
 }
 
 void GamePlayScene::ApplyRenderCamera(Camera* viewCamera) {
+	Object3dCommon::GetInstance()->SetDefaultCamera(viewCamera);
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
 			stageObject.object->SetCamera(viewCamera);
@@ -955,6 +1123,54 @@ void GamePlayScene::ApplyRenderCamera(Camera* viewCamera) {
 		skybox_->Update();
 	}
 	ParticleManager::GetInstance()->SetCamera(viewCamera);
+}
+
+Camera* GamePlayScene::GetSceneViewCamera() const {
+	EditorSession* editorSession = sceneManager_
+		? sceneManager_->GetEditorSession()
+		: nullptr;
+	if (editorSession && editorSession->IsPaused() && debugCamera_) {
+		return debugCamera_;
+	}
+	return camera_;
+}
+
+void GamePlayScene::InitializePauseDebugCamera() {
+	if (!camera_ || !debugCamera_ || debugCameraInitialized_) {
+		return;
+	}
+
+	debugCamera_->SetFovY(camera_->GetFovY());
+	debugCamera_->SetAspectRatio(camera_->GetAspectRatio());
+	debugCamera_->SetNearClip(camera_->GetNearClip());
+	debugCamera_->SetFarClip(camera_->GetFarClip());
+
+	const Matrix4x4& cameraWorld = camera_->GetWorldMatrix();
+	Vector3 forward = {
+		cameraWorld.m[2][0],
+		cameraWorld.m[2][1],
+		cameraWorld.m[2][2]
+	};
+	const float forwardLength = Math::Length(forward);
+	if (forwardLength > 0.000001f) {
+		forward = Math::Multiply(forward, 1.0f / forwardLength);
+	} else {
+		forward = { 0.0f, 0.0f, 1.0f };
+	}
+
+	const float orbitDistance = 10.0f;
+	debugCamera_->SetOrbitMode(true);
+	debugCamera_->SetOrbitDistance(orbitDistance);
+	debugCamera_->SetOrbitTarget(Math::Add(
+		camera_->GetTranslate(),
+		Math::Multiply(forward, orbitDistance)
+	));
+	debugCamera_->SetOrbitAngle(
+		std::atan2(-forward.x, forward.z),
+		std::asin(std::clamp(-forward.y, -1.0f, 1.0f))
+	);
+	debugCamera_->UpdatePreviewMatrices();
+	debugCameraInitialized_ = true;
 }
 
 void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
@@ -1066,6 +1282,12 @@ void GamePlayScene::Initialize()
 	camera_->SetOrbitDistance(10.0f);
 	camera_->SetOrbitAngle(0.0f, 0.0f);
 	camera_->Update();
+	debugCamera_ = new Camera();
+	debugCamera_->SetOrbitMode(true);
+	debugCamera_->SetOrbitTarget({ 0.0f, 0.0f, 0.0f });
+	debugCamera_->SetOrbitDistance(10.0f);
+	debugCamera_->SetOrbitAngle(0.0f, 0.0f);
+	debugCamera_->Update();
 
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
 	ParticleManager::GetInstance()->SetCamera(camera_);
@@ -1450,21 +1672,32 @@ void GamePlayScene::Update()
 		axis->Update();
 	}
 	SyncSceneModelObjects();
-	StepPhysics(1.0f / 60.0f);
 	RebuildStaticColliders();
+	SceneDocument* activeDocument = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (activeDocument) {
+		ApplyPlayerBehaviorComponent(*activeDocument);
+		ApplyPlayerPhysicsComponent(*activeDocument);
+	}
 	if (
 		editorSession &&
 		!editorSession->IsEditing() &&
 		sceneManager_
 	) {
-		if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
-			ApplyMainCameraComponent(*document, camera_);
-			ApplyPlayerCameraMouseLook(*document);
+		debugCameraInitialized_ = false;
+		if (activeDocument) {
+			ApplyMainCameraComponent(*activeDocument, camera_);
+			ApplyPlayerCameraMouseLook(*activeDocument);
 			camera_->Update();
 		}
 	}
 	if (player_ && (!editorSession || editorSession->IsPlaying())) {
-		player_->Update(staticColliders_, camera_);
+		player_->Update(camera_);
+	}
+	StepPhysics(1.0f / 60.0f);
+	if (player_ && (!editorSession || editorSession->IsPlaying())) {
+		player_->PostPhysicsUpdate();
 		SceneDocument* document = sceneManager_->GetActiveSceneDocument();
 		SceneEntity* playerEntity = document
 			? document->FindEntityByName("Player")
@@ -1501,12 +1734,44 @@ void GamePlayScene::Update()
 			for (const SceneEntity& entity : document->GetEntities()) {
 				if (const SceneComponent* cameraComponent =
 					FindEnabledComponent(entity, "Camera")) {
-					AddCameraDebugDraw(
-						*document,
-						entity,
-						*cameraComponent,
-						aspectRatio
-					);
+					const SceneComponent* thirdPersonCamera =
+						FindEnabledComponent(entity, "ThirdPersonCamera");
+					if (
+						thirdPersonCamera &&
+						activeEditorSession &&
+						activeEditorSession->IsPlaying()
+					) {
+						continue;
+					}
+					const bool useRuntimeCamera =
+						camera_ &&
+						thirdPersonCamera &&
+						HasComponent(entity, "PlayerBehavior") &&
+						activeEditorSession &&
+						!activeEditorSession->IsEditing();
+					if (useRuntimeCamera) {
+						AddCameraDebugDraw(
+							*document,
+							entity,
+							*cameraComponent,
+							aspectRatio,
+							nullptr,
+							camera_
+						);
+						AddThirdPersonCameraDebugDraw(
+							*document,
+							entity,
+							*thirdPersonCamera,
+							camera_->GetTranslate()
+						);
+					} else {
+						AddCameraDebugDraw(
+							*document,
+							entity,
+							*cameraComponent,
+							aspectRatio
+						);
+					}
 				}
 			}
 		}
@@ -1538,6 +1803,7 @@ void GamePlayScene::Update()
 
 void GamePlayScene::UpdatePaused()
 {
+	InitializePauseDebugCamera();
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	ImGui::Begin("Scene Controls");
 	ImGui::TextDisabled("Paused Debug View");
@@ -1545,8 +1811,8 @@ void GamePlayScene::UpdatePaused()
 	ImGui::End();
 #endif
 
-	if (camera_) {
-		camera_->Update();
+	if (debugCamera_) {
+		debugCamera_->Update();
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
@@ -1560,12 +1826,35 @@ void GamePlayScene::UpdatePaused()
 			for (const SceneEntity& entity : document->GetEntities()) {
 				if (const SceneComponent* cameraComponent =
 					FindEnabledComponent(entity, "Camera")) {
-					AddCameraDebugDraw(
-						*document,
-						entity,
-						*cameraComponent,
-						aspectRatio
-					);
+					const SceneComponent* thirdPersonCamera =
+						FindEnabledComponent(entity, "ThirdPersonCamera");
+					const bool useRuntimeCamera =
+						camera_ &&
+						thirdPersonCamera &&
+						HasComponent(entity, "PlayerBehavior");
+					if (useRuntimeCamera) {
+						AddCameraDebugDraw(
+							*document,
+							entity,
+							*cameraComponent,
+							aspectRatio,
+							nullptr,
+							camera_
+						);
+						AddThirdPersonCameraDebugDraw(
+							*document,
+							entity,
+							*thirdPersonCamera,
+							camera_->GetTranslate()
+						);
+					} else {
+						AddCameraDebugDraw(
+							*document,
+							entity,
+							*cameraComponent,
+							aspectRatio
+						);
+					}
 				}
 			}
 		}
@@ -1575,8 +1864,9 @@ void GamePlayScene::UpdatePaused()
 
 void GamePlayScene::Draw()
 {
-	ApplyRenderCamera(camera_);
-	DrawSceneView(camera_);
+	Camera* viewCamera = GetSceneViewCamera();
+	ApplyRenderCamera(viewCamera);
+	DrawSceneView(viewCamera);
 }
 
 void GamePlayScene::DrawOffscreenViews()
@@ -1649,7 +1939,7 @@ void GamePlayScene::DrawOffscreenViews()
 		);
 	}
 
-	ApplyRenderCamera(camera_);
+	ApplyRenderCamera(GetSceneViewCamera());
 }
 
 void GamePlayScene::DrawShadow()
@@ -1745,6 +2035,10 @@ void GamePlayScene::Finalize()
 
 	delete camera_;
 	camera_ = nullptr;
+
+	delete debugCamera_;
+	debugCamera_ = nullptr;
+	debugCameraInitialized_ = false;
 
 	delete skybox_;
 	skybox_ = nullptr;

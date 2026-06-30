@@ -35,6 +35,16 @@ struct SceneComponent {
 	uint32_t monitorWidth = 512;
 	uint32_t monitorHeight = 512;
 	bool monitorHideSelf = true;
+	float thirdPersonDistance = 8.0f;
+	float thirdPersonAimDistance = 3.0f;
+	Vector3 thirdPersonTargetOffset = { 0.0f, 1.35f, 0.0f };
+	Vector3 thirdPersonAimTargetOffset = { 0.0f, 1.55f, 0.0f };
+	float thirdPersonMouseSensitivity = 0.005f;
+	float thirdPersonMinPitch = -1.45f;
+	float thirdPersonMaxPitch = 1.35f;
+	float thirdPersonOcclusionMargin = 0.45f;
+	bool thirdPersonInvertYaw = false;
+	bool thirdPersonInvertPitch = false;
 	std::string physicsBodyType = "Static";
 	float physicsMass = 1.0f;
 	bool physicsUseGravity = true;
@@ -47,6 +57,11 @@ struct SceneComponent {
 	bool physicsFreezePositionX = false;
 	bool physicsFreezePositionY = false;
 	bool physicsFreezePositionZ = false;
+	float playerMoveSpeed = 10.8f;
+	float playerJumpVelocity = 37.2f;
+	float playerTurnResponsiveness = 0.018f;
+	bool playerCameraRelativeMove = true;
+	bool playerAllowJump = true;
 };
 
 struct SceneEntity {
