@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <numbers>
@@ -1315,12 +1316,20 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		SceneDocument& document = editorSession_->GetActiveDocument();
 		ImGui::BeginDisabled(!editorSession_->IsEditing());
 		bool createRequested = false;
+		bool createCameraPathRequested = false;
 		uint64_t createParentId = 0;
 		if (ImGui::SmallButton("+")) {
 			createRequested = true;
 		}
 		if (ImGui::IsItemHovered()) {
 			ImGui::SetTooltip("Create Empty Entity");
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("+ Path")) {
+			createCameraPathRequested = true;
+		}
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("Create CameraPath with two child points");
 		}
 		ImGui::EndDisabled();
 		ImGui::SameLine();
@@ -1630,6 +1639,19 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		if (createRequested) {
 			SceneEntity& entity = document.CreateEntity("Entity", createParentId);
 			selectedEntityId_ = entity.id;
+			selectedProjectFile_.clear();
+		}
+		if (createCameraPathRequested) {
+			std::string pathName = "CameraPath";
+			const std::string baseName = pathName;
+			uint32_t suffix = 2;
+			while (document.FindEntityByName(pathName)) {
+				pathName = baseName + " " + std::to_string(suffix++);
+			}
+			SceneEntity& entity = document.CreateEntity(pathName, createParentId);
+			const uint64_t pathEntityId = entity.id;
+			document.AddComponent(pathEntityId, "CameraPath");
+			selectedEntityId_ = pathEntityId;
 			selectedProjectFile_.clear();
 		}
 		ImGui::End();
@@ -2422,6 +2444,222 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "CameraPath") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool pathChanged = false;
+				const char* currentTargetCamera =
+					component.cameraPathTargetCameraName.empty()
+					? "Main Camera / Current"
+					: component.cameraPathTargetCameraName.c_str();
+				if (ImGui::BeginCombo("Target Camera Entity", currentTargetCamera)) {
+					if (ImGui::Selectable(
+						"Main Camera / Current",
+						component.cameraPathTargetCameraName.empty()
+					)) {
+						component.cameraPathTargetCameraName.clear();
+						pathChanged = true;
+					}
+					for (const SceneEntity& candidate : document.GetEntities()) {
+						if (!FindEnabledComponent(candidate, "Camera")) {
+							continue;
+						}
+						if (ImGui::Selectable(
+							candidate.name.c_str(),
+							component.cameraPathTargetCameraName == candidate.name
+						)) {
+							component.cameraPathTargetCameraName = candidate.name;
+							pathChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				const char* currentTrigger = component.cameraPathTriggerType.empty()
+					? "Key"
+					: component.cameraPathTriggerType.c_str();
+				if (ImGui::BeginCombo("Trigger Type", currentTrigger)) {
+					const char* triggerTypes[] = { "Manual", "Key" };
+					for (const char* triggerType : triggerTypes) {
+						if (ImGui::Selectable(
+							triggerType,
+							component.cameraPathTriggerType == triggerType
+						)) {
+							component.cameraPathTriggerType = triggerType;
+							pathChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				char triggerKeyBuffer[32]{};
+				strncpy_s(
+					triggerKeyBuffer,
+					component.cameraPathTriggerKey.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Trigger Key",
+					triggerKeyBuffer,
+					sizeof(triggerKeyBuffer)
+				)) {
+					component.cameraPathTriggerKey = triggerKeyBuffer;
+					pathChanged = true;
+				}
+				pathChanged |= ImGui::DragFloat(
+					"Enter Duration",
+					&component.cameraPathEnterDuration,
+					0.01f,
+					0.0f,
+					60.0f
+				);
+				pathChanged |= ImGui::DragFloat(
+					"Exit Duration",
+					&component.cameraPathExitDuration,
+					0.01f,
+					0.0f,
+					60.0f
+				);
+				const char* currentInterpolation =
+					component.cameraPathInterpolation.empty()
+					? "Linear"
+					: component.cameraPathInterpolation.c_str();
+				if (ImGui::BeginCombo("Interpolation", currentInterpolation)) {
+					const char* interpolations[] = { "Linear", "CatmullRom" };
+					for (const char* interpolation : interpolations) {
+						if (ImGui::Selectable(
+							interpolation,
+							component.cameraPathInterpolation == interpolation
+						)) {
+							component.cameraPathInterpolation = interpolation;
+							pathChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				const char* currentEasing =
+					component.cameraPathDefaultEasing.empty()
+					? "SmoothStep"
+					: component.cameraPathDefaultEasing.c_str();
+				if (ImGui::BeginCombo("Default Easing", currentEasing)) {
+					const char* easings[] = {
+						"Linear",
+						"EaseIn",
+						"EaseOut",
+						"EaseInOut",
+						"SmoothStep"
+					};
+					for (const char* easing : easings) {
+						if (ImGui::Selectable(
+							easing,
+							component.cameraPathDefaultEasing == easing
+						)) {
+							component.cameraPathDefaultEasing = easing;
+							pathChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				pathChanged |= ImGui::Checkbox(
+					"Return To Previous Camera",
+					&component.cameraPathReturnToPreviousCamera
+				);
+				pathChanged |= ImGui::Checkbox(
+					"Start From Current Camera",
+					&component.cameraPathStartFromCurrentCamera
+				);
+				pathChanged |= ImGui::Checkbox(
+					"Auto Collect Child Points",
+					&component.cameraPathAutoCollectChildPoints
+				);
+				if (component.cameraPathEnterDuration < 0.0f) {
+					component.cameraPathEnterDuration = 0.0f;
+					pathChanged = true;
+				}
+				if (component.cameraPathExitDuration < 0.0f) {
+					component.cameraPathExitDuration = 0.0f;
+					pathChanged = true;
+				}
+				if (pathChanged) {
+					document.MarkDirty();
+				}
+
+				ImGui::SeparatorText("Child Points");
+				uint32_t pointCount = 0;
+				for (const SceneEntity& candidate : document.GetEntities()) {
+					if (candidate.parentId != entity->id) {
+						continue;
+					}
+					if (!HasComponent(candidate, "CameraPathPoint")) {
+						continue;
+					}
+					ImGui::PushID(static_cast<int>(candidate.id));
+					ImGui::Text("%02u: %s", pointCount, candidate.name.c_str());
+					ImGui::SameLine();
+					if (ImGui::SmallButton("Select")) {
+						selectedEntityId_ = candidate.id;
+					}
+					ImGui::PopID();
+					++pointCount;
+				}
+				if (ImGui::SmallButton("Add Point")) {
+					char pointName[32]{};
+					sprintf_s(pointName, "Point_%02u", pointCount);
+					SceneEntity& point = document.CreateEntity(pointName, entity->id);
+					point.transform.translate = {
+						0.0f,
+						0.0f,
+						static_cast<float>(pointCount) * 5.0f
+					};
+					point.components.push_back(SceneComponent{
+						"CameraPathPoint",
+						true
+					});
+					point.components.back().cameraPathPointDurationToNext = 1.0f;
+					point.components.back().cameraPathPointEasingToNext =
+						"SmoothStep";
+					selectedEntityId_ = point.id;
+					editorSession_->RequestSceneReload();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "CameraPathPoint") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool pointChanged = false;
+				pointChanged |= ImGui::DragFloat(
+					"Duration To Next",
+					&component.cameraPathPointDurationToNext,
+					0.01f,
+					0.0f,
+					60.0f
+				);
+				const char* currentEasing =
+					component.cameraPathPointEasingToNext.empty()
+					? "SmoothStep"
+					: component.cameraPathPointEasingToNext.c_str();
+				if (ImGui::BeginCombo("Easing To Next", currentEasing)) {
+					const char* easings[] = {
+						"Linear",
+						"EaseIn",
+						"EaseOut",
+						"EaseInOut",
+						"SmoothStep"
+					};
+					for (const char* easing : easings) {
+						if (ImGui::Selectable(
+							easing,
+							component.cameraPathPointEasingToNext == easing
+						)) {
+							component.cameraPathPointEasingToNext = easing;
+							pointChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				if (component.cameraPathPointDurationToNext < 0.0f) {
+					component.cameraPathPointDurationToNext = 0.0f;
+					pointChanged = true;
+				}
+				if (pointChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			} else if (component.type == "PhysicsBody") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool physicsChanged = false;
@@ -2594,6 +2832,8 @@ void ImGuiManager::DrawInspectorWindow() {
 				"Camera",
 				"MonitorRenderer",
 				"ThirdPersonCamera",
+				"CameraPath",
+				"CameraPathPoint",
 				"PhysicsBody",
 				"PlayerBehavior",
 				"Animator",

@@ -160,6 +160,7 @@
     <ClCompile Include="application\scene\SceneFactory.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
     <ClCompile Include="engine\3d\Camera.cpp" />
+    <ClCompile Include="engine\3d\CameraPathRuntime.cpp" />
     <ClCompile Include="engine\base\D3DResourceLeadChecker.cpp" />
     <ClCompile Include="engine\base\DirectXCommon.cpp" />
     <ClCompile Include="engine\base\FullscreenCopy.cpp" />
@@ -293,6 +294,7 @@
     <ClInclude Include="application\scene\SceneFactory.h" />
     <ClInclude Include="engine\Audio\Audio.h" />
     <ClInclude Include="engine\3d\Camera.h" />
+    <ClInclude Include="engine\3d\CameraPathRuntime.h" />
     <ClInclude Include="engine\base\D3DResourceLeadChecker.h" />
     <ClInclude Include="engine\base\DirectXCommon.h" />
     <ClInclude Include="engine\base\FullscreenCopy.h" />

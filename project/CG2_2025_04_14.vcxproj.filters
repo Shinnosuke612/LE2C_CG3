@@ -57,6 +57,7 @@
     <ClCompile Include="engine\3d\ModelCommon.cpp" />
     <ClCompile Include="engine\3d\ModelManager.cpp" />
     <ClCompile Include="engine\3d\Camera.cpp" />
+    <ClCompile Include="engine\3d\CameraPathRuntime.cpp" />
     <ClCompile Include="engine\3d\SrvManager.cpp" />
     <ClCompile Include="engine\particle\ParticleCommon.cpp" />
     <ClCompile Include="engine\particle\ParticleManager.cpp" />
@@ -141,6 +142,7 @@
     <ClInclude Include="engine\3d\ModelCommon.h" />
     <ClInclude Include="engine\3d\ModelManager.h" />
     <ClInclude Include="engine\3d\Camera.h" />
+    <ClInclude Include="engine\3d\CameraPathRuntime.h" />
     <ClInclude Include="engine\3d\SrvManager.h" />
     <ClInclude Include="engine\particle\GpuParticle.h" />
     <ClInclude Include="engine\particle\ParticleCommon.h" />

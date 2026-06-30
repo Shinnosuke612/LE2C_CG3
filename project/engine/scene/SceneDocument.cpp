@@ -115,6 +115,25 @@ namespace {
 			result["turnResponsiveness"] = component.playerTurnResponsiveness;
 			result["cameraRelativeMove"] = component.playerCameraRelativeMove;
 			result["allowJump"] = component.playerAllowJump;
+		} else if (component.type == "CameraPath") {
+			result["targetCameraName"] = component.cameraPathTargetCameraName;
+			result["triggerType"] = component.cameraPathTriggerType;
+			result["triggerKey"] = component.cameraPathTriggerKey;
+			result["enterDuration"] = component.cameraPathEnterDuration;
+			result["exitDuration"] = component.cameraPathExitDuration;
+			result["interpolation"] = component.cameraPathInterpolation;
+			result["defaultEasing"] = component.cameraPathDefaultEasing;
+			result["returnToPreviousCamera"] =
+				component.cameraPathReturnToPreviousCamera;
+			result["startFromCurrentCamera"] =
+				component.cameraPathStartFromCurrentCamera;
+			result["autoCollectChildPoints"] =
+				component.cameraPathAutoCollectChildPoints;
+		} else if (component.type == "CameraPathPoint") {
+			result["durationToNext"] =
+				component.cameraPathPointDurationToNext;
+			result["easingToNext"] =
+				component.cameraPathPointEasingToNext;
 		}
 		return result;
 	}
@@ -304,6 +323,54 @@ namespace {
 				component.playerAllowJump = value.value(
 					"allowJump",
 					component.playerAllowJump
+				);
+				component.cameraPathTargetCameraName = value.value(
+					"targetCameraName",
+					component.cameraPathTargetCameraName
+				);
+				component.cameraPathTriggerType = value.value(
+					"triggerType",
+					component.cameraPathTriggerType
+				);
+				component.cameraPathTriggerKey = value.value(
+					"triggerKey",
+					component.cameraPathTriggerKey
+				);
+				component.cameraPathEnterDuration = value.value(
+					"enterDuration",
+					component.cameraPathEnterDuration
+				);
+				component.cameraPathExitDuration = value.value(
+					"exitDuration",
+					component.cameraPathExitDuration
+				);
+				component.cameraPathInterpolation = value.value(
+					"interpolation",
+					component.cameraPathInterpolation
+				);
+				component.cameraPathDefaultEasing = value.value(
+					"defaultEasing",
+					component.cameraPathDefaultEasing
+				);
+				component.cameraPathReturnToPreviousCamera = value.value(
+					"returnToPreviousCamera",
+					component.cameraPathReturnToPreviousCamera
+				);
+				component.cameraPathStartFromCurrentCamera = value.value(
+					"startFromCurrentCamera",
+					component.cameraPathStartFromCurrentCamera
+				);
+				component.cameraPathAutoCollectChildPoints = value.value(
+					"autoCollectChildPoints",
+					component.cameraPathAutoCollectChildPoints
+				);
+				component.cameraPathPointDurationToNext = value.value(
+					"durationToNext",
+					component.cameraPathPointDurationToNext
+				);
+				component.cameraPathPointEasingToNext = value.value(
+					"easingToNext",
+					component.cameraPathPointEasingToNext
 				);
 			}
 			if (!component.type.empty()) {
@@ -836,6 +903,40 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->playerTurnResponsiveness = turnResponsiveness;
 				changed = true;
 			}
+		} else if (type == "CameraPath") {
+			if (found->cameraPathTriggerType.empty()) {
+				found->cameraPathTriggerType = "Key";
+				changed = true;
+			}
+			if (found->cameraPathTriggerKey.empty()) {
+				found->cameraPathTriggerKey = "C";
+				changed = true;
+			}
+			if (found->cameraPathEnterDuration < 0.0f) {
+				found->cameraPathEnterDuration = 0.0f;
+				changed = true;
+			}
+			if (found->cameraPathExitDuration < 0.0f) {
+				found->cameraPathExitDuration = 0.0f;
+				changed = true;
+			}
+			if (found->cameraPathInterpolation.empty()) {
+				found->cameraPathInterpolation = "Linear";
+				changed = true;
+			}
+			if (found->cameraPathDefaultEasing.empty()) {
+				found->cameraPathDefaultEasing = "SmoothStep";
+				changed = true;
+			}
+		} else if (type == "CameraPathPoint") {
+			if (found->cameraPathPointDurationToNext < 0.0f) {
+				found->cameraPathPointDurationToNext = 0.0f;
+				changed = true;
+			}
+			if (found->cameraPathPointEasingToNext.empty()) {
+				found->cameraPathPointEasingToNext = "SmoothStep";
+				changed = true;
+			}
 		}
 		if (!found->enabled) {
 			found->enabled = true;
@@ -896,8 +997,39 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.playerTurnResponsiveness = 0.018f;
 		component.playerCameraRelativeMove = true;
 		component.playerAllowJump = true;
+	} else if (type == "CameraPath") {
+		component.cameraPathTargetCameraName = "";
+		component.cameraPathTriggerType = "Key";
+		component.cameraPathTriggerKey = "C";
+		component.cameraPathEnterDuration = 0.5f;
+		component.cameraPathExitDuration = 0.5f;
+		component.cameraPathInterpolation = "Linear";
+		component.cameraPathDefaultEasing = "SmoothStep";
+		component.cameraPathReturnToPreviousCamera = true;
+		component.cameraPathStartFromCurrentCamera = true;
+		component.cameraPathAutoCollectChildPoints = true;
+	} else if (type == "CameraPathPoint") {
+		component.cameraPathPointDurationToNext = 1.0f;
+		component.cameraPathPointEasingToNext = "SmoothStep";
 	}
 	entity->components.push_back(std::move(component));
+	if (type == "CameraPath") {
+		const uint64_t pathEntityId = entity->id;
+		for (uint32_t index = 0; index < 2; ++index) {
+			SceneEntity& point = CreateEntity(
+				index == 0 ? "Point_00" : "Point_01",
+				pathEntityId
+			);
+			point.transform.translate = {
+				0.0f,
+				0.0f,
+				static_cast<float>(index) * 5.0f
+			};
+			point.components.push_back(SceneComponent{ "CameraPathPoint", true });
+			point.components.back().cameraPathPointDurationToNext = 1.0f;
+			point.components.back().cameraPathPointEasingToNext = "SmoothStep";
+		}
+	}
 	MarkDirty();
 	return true;
 }

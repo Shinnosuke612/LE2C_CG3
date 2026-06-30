@@ -15,6 +15,7 @@
 #include "../../engine/physics/PhysicsWorld.h"
 #include "../../engine/effect/LightningRenderer.h"
 #include "../../engine/3d/StarFieldGenerator.h"
+#include "../../engine/3d/CameraPathRuntime.h"
 #include "../camera/ThirdPersonCameraController.h"
 
 class SpriteCommon;
@@ -94,6 +95,8 @@ private:
 	void ApplyRenderCamera(Camera* viewCamera);
 	Camera* GetSceneViewCamera() const;
 	void InitializePauseDebugCamera();
+	bool TryStartCameraPath(SceneDocument& document);
+	void DrawCameraPathDebug(const SceneDocument& document);
 	bool ApplyCameraComponentToCamera(
 		const SceneDocument& document,
 		const SceneEntity& cameraEntity,
@@ -126,6 +129,7 @@ private:
 	std::unordered_map<uint64_t, MonitorRuntime> monitorRuntimes_;
 	std::vector<OBBCollider*> staticColliders_;
 	PhysicsWorld physicsWorld_;
+	CameraPathRuntime cameraPathRuntime_;
 	std::vector<Sprite*> sprites_;
 	Audio::SoundData soundData_{};
 	

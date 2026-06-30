@@ -224,6 +224,48 @@ namespace {
 		return ResolveScene2DTransform(document, entity, visited);
 	}
 
+	Matrix4x4 ResolveSceneWorldMatrix(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		std::unordered_set<uint64_t>& visited
+	) {
+		const Matrix4x4 local = MakeAffineMatrix(
+			entity.transform.scale,
+			entity.transform.rotate,
+			entity.transform.translate
+		);
+		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
+			return local;
+		}
+		const SceneEntity* parent = document.FindEntity(entity.parentId);
+		if (!parent) {
+			return local;
+		}
+		return Multiply(
+			local,
+			ResolveSceneWorldMatrix(document, *parent, visited)
+		);
+	}
+
+	Transform ResolveScene3DTransform(
+		const SceneDocument& document,
+		const SceneEntity& entity
+	) {
+		std::unordered_set<uint64_t> visited;
+		const Matrix4x4 world =
+			ResolveSceneWorldMatrix(document, entity, visited);
+		Transform result = entity.transform;
+		Vector3 scale{};
+		Vector3 rotate{};
+		Vector3 translate{};
+		if (DecomposeAffineMatrix(world, scale, rotate, translate)) {
+			result.scale = scale;
+			result.rotate = rotate;
+			result.translate = translate;
+		}
+		return result;
+	}
+
 	Vector3 TransformCoord(const Vector3& value, const Matrix4x4& matrix) {
 		const float x =
 			value.x * matrix.m[0][0] +
@@ -1173,6 +1215,174 @@ void GamePlayScene::InitializePauseDebugCamera() {
 	debugCameraInitialized_ = true;
 }
 
+bool GamePlayScene::TryStartCameraPath(SceneDocument& document) {
+	if (!camera_ || cameraPathRuntime_.IsPlaying()) {
+		return false;
+	}
+
+	Input* input = Input::GetInstance();
+	if (!input) {
+		return false;
+	}
+
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			continue;
+		}
+		const SceneComponent* cameraPath =
+			FindEnabledComponent(entity, "CameraPath");
+		if (!cameraPath) {
+			continue;
+		}
+		if (cameraPath->cameraPathTriggerType != "Key") {
+			continue;
+		}
+		std::string triggerKey = cameraPath->cameraPathTriggerKey;
+		std::transform(
+			triggerKey.begin(),
+			triggerKey.end(),
+			triggerKey.begin(),
+			[](unsigned char c) {
+				return static_cast<char>(std::toupper(c));
+			}
+		);
+		const bool triggered =
+			(triggerKey.empty() || triggerKey == "C") &&
+			input->TriggerKey(DIK_C);
+		if (!triggered) {
+			continue;
+		}
+
+		const SceneEntity* targetCameraEntity = nullptr;
+		const SceneComponent* targetCameraComponent = nullptr;
+		if (!cameraPath->cameraPathTargetCameraName.empty()) {
+			targetCameraEntity =
+				document.FindEntityByName(cameraPath->cameraPathTargetCameraName);
+			targetCameraComponent = targetCameraEntity
+				? FindEnabledComponent(*targetCameraEntity, "Camera")
+				: nullptr;
+		} else {
+			const SceneEntity* fallbackEntity = nullptr;
+			const SceneComponent* fallbackCamera = nullptr;
+			for (const SceneEntity& cameraCandidate : document.GetEntities()) {
+				if (!IsEntityActiveInHierarchy(document, cameraCandidate)) {
+					continue;
+				}
+				const SceneComponent* cameraComponent =
+					FindEnabledComponent(cameraCandidate, "Camera");
+				if (!cameraComponent) {
+					continue;
+				}
+				if (!fallbackEntity) {
+					fallbackEntity = &cameraCandidate;
+					fallbackCamera = cameraComponent;
+				}
+				if (cameraComponent->cameraIsMain) {
+					targetCameraEntity = &cameraCandidate;
+					targetCameraComponent = cameraComponent;
+					break;
+				}
+			}
+			if (!targetCameraEntity) {
+				targetCameraEntity = fallbackEntity;
+				targetCameraComponent = fallbackCamera;
+			}
+		}
+		if (!targetCameraEntity || !targetCameraComponent) {
+			continue;
+		}
+		const Vector3 startTranslate = camera_->GetTranslate();
+		const Vector3 startRotate = camera_->GetRotate();
+		if (!ApplyCameraComponentToCamera(
+			document,
+			*targetCameraEntity,
+			*targetCameraComponent,
+			camera_,
+			camera_->GetAspectRatio()
+		)) {
+			continue;
+		}
+		camera_->SetTranslate(startTranslate);
+		camera_->SetRotate(startRotate);
+		camera_->SetOrbitMode(false);
+		camera_->Update();
+		cameraPathRuntime_.Play(document, entity, *cameraPath, *camera_);
+		return cameraPathRuntime_.IsPlaying();
+	}
+	return false;
+}
+
+void GamePlayScene::DrawCameraPathDebug(const SceneDocument& document) {
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	DebugRenderer* debugRenderer = DebugRenderer::GetInstance();
+	for (const SceneEntity& pathEntity : document.GetEntities()) {
+		if (
+			!IsEntityActiveInHierarchy(document, pathEntity) ||
+			!FindEnabledComponent(pathEntity, "CameraPath")
+		) {
+			continue;
+		}
+
+		std::vector<Transform> points;
+		for (const SceneEntity& pointEntity : document.GetEntities()) {
+			if (
+				pointEntity.parentId != pathEntity.id ||
+				!IsEntityActiveInHierarchy(document, pointEntity) ||
+				!FindEnabledComponent(pointEntity, "CameraPathPoint")
+			) {
+				continue;
+			}
+			points.push_back(ResolveScene3DTransform(document, pointEntity));
+		}
+
+		for (size_t index = 0; index < points.size(); ++index) {
+			const Transform& point = points[index];
+			debugRenderer->AddSphere(
+				point.translate,
+				0.14f,
+				{ 1.0f, 0.45f, 0.2f, 1.0f },
+				8
+			);
+			const Matrix4x4 pointWorld = MakeAffineMatrix(
+				{ 1.0f, 1.0f, 1.0f },
+				point.rotate,
+				point.translate
+			);
+			const Vector3 forward = Math::Normalize({
+				pointWorld.m[2][0],
+				pointWorld.m[2][1],
+				pointWorld.m[2][2]
+			});
+			debugRenderer->AddLine(
+				point.translate,
+				Math::Add(point.translate, Math::Multiply(forward, 0.8f)),
+				{ 0.25f, 0.55f, 1.0f, 1.0f }
+			);
+			if (index + 1 < points.size()) {
+				debugRenderer->AddLine(
+					point.translate,
+					points[index + 1].translate,
+					{ 1.0f, 0.45f, 0.2f, 1.0f }
+				);
+			}
+		}
+	}
+
+	if (cameraPathRuntime_.IsPlaying() &&
+		cameraPathRuntime_.HasCurrentTransform()) {
+		const Transform& current = cameraPathRuntime_.GetCurrentTransform();
+		debugRenderer->AddSphere(
+			current.translate,
+			0.18f,
+			{ 0.35f, 1.0f, 0.55f, 1.0f },
+			8
+		);
+	}
+#else
+	(void)document;
+#endif
+}
+
 void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 	Object3dCommon::GetInstance()->SetCommonRenderState();
 
@@ -1687,8 +1897,16 @@ void GamePlayScene::Update()
 	) {
 		debugCameraInitialized_ = false;
 		if (activeDocument) {
-			ApplyMainCameraComponent(*activeDocument, camera_);
-			ApplyPlayerCameraMouseLook(*activeDocument);
+			if (cameraPathRuntime_.IsPlaying()) {
+				cameraPathRuntime_.Update(1.0f / 60.0f, *camera_);
+			} else {
+				ApplyMainCameraComponent(*activeDocument, camera_);
+				ApplyPlayerCameraMouseLook(*activeDocument);
+				TryStartCameraPath(*activeDocument);
+				if (cameraPathRuntime_.IsPlaying()) {
+					cameraPathRuntime_.Update(1.0f / 60.0f, *camera_);
+				}
+			}
 			camera_->Update();
 		}
 	}
@@ -1717,8 +1935,10 @@ void GamePlayScene::Update()
 		if (SceneDocument* document = sceneManager_
 			? sceneManager_->GetActiveSceneDocument()
 			: nullptr) {
-			ApplyMainCameraComponent(*document, camera_);
-			ApplyPlayerCameraMouseLook(*document);
+			if (!cameraPathRuntime_.IsPlaying()) {
+				ApplyMainCameraComponent(*document, camera_);
+				ApplyPlayerCameraMouseLook(*document);
+			}
 		}
 	}
 	camera_->Update();
@@ -1774,6 +1994,7 @@ void GamePlayScene::Update()
 					}
 				}
 			}
+			DrawCameraPathDebug(*document);
 		}
 	}
 #endif
@@ -1857,6 +2078,7 @@ void GamePlayScene::UpdatePaused()
 					}
 				}
 			}
+			DrawCameraPathDebug(*document);
 		}
 	}
 #endif

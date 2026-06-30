@@ -62,6 +62,18 @@ struct SceneComponent {
 	float playerTurnResponsiveness = 0.018f;
 	bool playerCameraRelativeMove = true;
 	bool playerAllowJump = true;
+	std::string cameraPathTargetCameraName;
+	std::string cameraPathTriggerType = "Key";
+	std::string cameraPathTriggerKey = "C";
+	float cameraPathEnterDuration = 0.5f;
+	float cameraPathExitDuration = 0.5f;
+	std::string cameraPathInterpolation = "Linear";
+	std::string cameraPathDefaultEasing = "SmoothStep";
+	bool cameraPathReturnToPreviousCamera = true;
+	bool cameraPathStartFromCurrentCamera = true;
+	bool cameraPathAutoCollectChildPoints = true;
+	float cameraPathPointDurationToNext = 1.0f;
+	std::string cameraPathPointEasingToNext = "SmoothStep";
 };
 
 struct SceneEntity {
