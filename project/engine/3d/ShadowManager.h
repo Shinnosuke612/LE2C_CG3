@@ -50,7 +50,10 @@ private:
 	void EndShadowPass();
 
 	Matrix4x4 MakeLookAtMatrix(const Vector3& eye, const Vector3& target, const Vector3& up) const;
-	Matrix4x4 MakeDirectionalLightViewProjection(const LightManager::DirectionalLight& light) const;
+	Matrix4x4 MakeDirectionalLightViewProjection(
+		const LightManager::DirectionalLight& light,
+		const LightManager::ShadowSettings& shadowSettings
+	) const;
 	Matrix4x4 MakeSpotLightViewProjection(const LightManager::SpotLight& light) const;
 	D3D12_CPU_DESCRIPTOR_HANDLE GetDsvHandle(uint32_t index) const;
 

@@ -9,6 +9,61 @@
 #include "../math/Vector2.h"
 #include "../math/Vector4.h"
 
+struct ScenePostProcessSettings {
+	bool bloomEnabled = true;
+	float baseExposure = 1.0f;
+	int toneMapMode = 0;
+	float bloomThreshold = 1.0f;
+	float bloomSoftKnee = 0.5f;
+	float bloomIntensity = 0.7f;
+	int bloomBlurIterations = 4;
+	int bloomDownsampleScale = 2;
+	float bloomBlurRadius = 1.0f;
+	bool grayscaleEnabled = false;
+	bool vignetteEnabled = false;
+	bool boxBlurEnabled = false;
+	bool gaussianBlurEnabled = false;
+	bool depthOfFieldEnabled = false;
+	bool radialBlurEnabled = false;
+	bool noiseEnabled = false;
+	bool dissolveEnabled = false;
+	bool outlineEnabled = false;
+	float vignetteScale = 16.0f;
+	float vignettePower = 0.8f;
+	float vignetteIntensity = 1.0f;
+	int boxBlurKernelSize = 3;
+	float boxBlurStrength = 1.0f;
+	int gaussianBlurKernelSize = 3;
+	float gaussianBlurSigma = 1.0f;
+	float gaussianBlurStrength = 1.0f;
+	float depthOfFieldFocusDistance = 10.0f;
+	float depthOfFieldFocusRange = 2.0f;
+	float depthOfFieldBlurStrength = 1.0f;
+	float depthOfFieldNearStrength = 0.0f;
+	float depthOfFieldFarStrength = 1.0f;
+	float depthOfFieldMaxRadius = 4.0f;
+	Vector2 radialBlurCenter = { 0.5f, 0.5f };
+	float radialBlurWidth = 0.01f;
+	int radialBlurSamples = 10;
+	bool noiseAnimate = true;
+	float noiseAmount = 0.25f;
+	float noiseScale = 1.0f;
+	float noiseSpeed = 1.0f;
+	float noiseSeed = 0.0f;
+	int dissolveMaskIndex = 0;
+	float dissolveThreshold = 0.0f;
+	float dissolveEdgeWidth = 0.03f;
+	Vector4 dissolveEdgeColor = { 1.0f, 0.4f, 0.3f, 1.0f };
+	bool outlineLuminanceEnabled = false;
+	bool outlineDepthEnabled = true;
+	float outlineLuminanceWeight = 1.0f;
+	float outlineDepthWeight = 1.0f;
+	float outlineThreshold = 0.1f;
+	float outlineSoftness = 0.05f;
+	float outlineThickness = 1.0f;
+	Vector4 outlineColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+};
+
 struct SceneComponent {
 	SceneComponent() = default;
 	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
@@ -19,7 +74,13 @@ struct SceneComponent {
 	bool enabled = true;
 	std::string modelPath;
 	std::string meshCullMode = "Back";
+	bool meshEnvironmentReflectionOverride = false;
+	float meshEnvironmentReflectionIntensity = 0.3f;
 	std::string texturePath;
+	bool environmentSkyboxEnabled = true;
+	std::string environmentSkyboxPath;
+	float environmentSkyboxIntensity = 1.0f;
+	float environmentReflectionIntensity = 0.3f;
 	Vector2 spriteSize = { 100.0f, 100.0f };
 	Vector2 spriteAnchor = { 0.5f, 0.5f };
 	Vector4 spriteColor = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -120,6 +181,16 @@ public:
 	}
 	std::vector<SceneEntity>& GetEntities() { return entities_; }
 	const std::vector<SceneEntity>& GetEntities() const { return entities_; }
+	ScenePostProcessSettings& GetPostProcessSettings() {
+		return postProcessSettings_;
+	}
+	const ScenePostProcessSettings& GetPostProcessSettings() const {
+		return postProcessSettings_;
+	}
+	void SetPostProcessSettings(const ScenePostProcessSettings& settings) {
+		postProcessSettings_ = settings;
+		MarkDirty();
+	}
 	bool IsDirty() const { return dirty_; }
 	uint64_t GetRevision() const { return revision_; }
 	void MarkDirty() {
@@ -135,6 +206,7 @@ private:
 
 	std::string sceneName_;
 	std::vector<SceneEntity> entities_;
+	ScenePostProcessSettings postProcessSettings_{};
 	uint64_t nextId_ = 1;
 	bool dirty_ = false;
 	uint64_t revision_ = 0;

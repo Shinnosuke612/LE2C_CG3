@@ -1,6 +1,7 @@
 #pragma once
 #include "../engine/base/Framework.h"
 #include "../engine/base/BloomRenderer.h"
+#include "../engine/scene/SceneDocument.h"
 #include "../engine/scene/SceneManager.h"
 #include "../engine/math/Vector3.h"
 #include <string>
@@ -36,6 +37,9 @@ private:
 
 	int GetEnabledPostEffectCount() const;
 	SceneRenderTarget* GetPostProcessOutputTarget() const;
+	ScenePostProcessSettings CapturePostProcessSettings() const;
+	void ApplyPostProcessSettings(const ScenePostProcessSettings& settings);
+	void StorePostProcessSettingsToDocument();
 	void DrawModelPreview();
 	CameraSnapshot CaptureCameraSnapshot() const;
 	void RestoreCameraSnapshot(const CameraSnapshot& snapshot) const;
@@ -55,6 +59,7 @@ private:
 	CameraSnapshot pauseMainCameraSnapshot_{};
 	bool editorWasEditingLastFrame_ = true;
 	bool wasPausedLastFrame_ = false;
+	uint64_t appliedPostProcessRevision_ = static_cast<uint64_t>(-1);
 	std::string modelPreviewPath_;
 	float modelPreviewFitDistance_ = 5.0f;
 	BloomRenderer::Parameters bloomParameters_{};
@@ -69,6 +74,7 @@ private:
 	bool noiseEnabled_ = false;
 	bool dissolveEnabled_ = false;
 	bool outlineEnabled_ = false;
+	bool depthOfFieldEnabled_ = false;
 	bool outlineLuminanceEnabled_ = false;
 	bool outlineDepthEnabled_ = true;
 	float vignetteScale_ = 16.0f;
@@ -98,4 +104,10 @@ private:
 	float outlineSoftness_ = 0.05f;
 	float outlineThickness_ = 1.0f;
 	float outlineColor_[4]{ 0.0f, 0.0f, 0.0f, 1.0f };
+	float dofFocusDistance_ = 10.0f;
+	float dofFocusRange_ = 2.0f;
+	float dofBlurStrength_ = 1.0f;
+	float dofNearStrength_ = 0.0f;
+	float dofFarStrength_ = 1.0f;
+	float dofMaxRadius_ = 4.0f;
 };

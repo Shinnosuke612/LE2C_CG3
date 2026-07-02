@@ -3,6 +3,7 @@
 #include "Camera.h"
 #include "../math/Math.h"
 #include "../math/Matrix4x4.h"
+#include "../math/Quaternion.h"
 #include "../scene/SceneDocument.h"
 
 #include <algorithm>
@@ -65,6 +66,28 @@ namespace {
 		return result;
 	}
 
+	Transform ResolveCameraWorldTransform(const Camera& camera) {
+		Transform result{};
+		result.scale = { 1.0f, 1.0f, 1.0f };
+		result.translate = camera.GetTranslate();
+		result.rotate = camera.GetRotate();
+
+		Vector3 scale{};
+		Vector3 rotate{};
+		Vector3 translate{};
+		if (DecomposeAffineMatrix(
+			camera.GetWorldMatrix(),
+			scale,
+			rotate,
+			translate
+		)) {
+			result.scale = { 1.0f, 1.0f, 1.0f };
+			result.rotate = rotate;
+			result.translate = translate;
+		}
+		return result;
+	}
+
 	float ApplyEasing(float t, const std::string& easing) {
 		t = std::clamp(t, 0.0f, 1.0f);
 		if (easing == "EaseIn") {
@@ -103,6 +126,78 @@ namespace {
 		return a + NormalizeAngle(b - a) * t;
 	}
 
+	Quaternion QuaternionFromRotationMatrix(const Matrix4x4& matrix) {
+		const float trace =
+			matrix.m[0][0] + matrix.m[1][1] + matrix.m[2][2];
+		Quaternion result{};
+		if (trace > 0.0f) {
+			const float s = std::sqrt(trace + 1.0f) * 2.0f;
+			result.w = 0.25f * s;
+			result.x = (matrix.m[1][2] - matrix.m[2][1]) / s;
+			result.y = (matrix.m[2][0] - matrix.m[0][2]) / s;
+			result.z = (matrix.m[0][1] - matrix.m[1][0]) / s;
+		} else if (
+			matrix.m[0][0] > matrix.m[1][1] &&
+			matrix.m[0][0] > matrix.m[2][2]
+		) {
+			const float s = std::sqrt(
+				1.0f + matrix.m[0][0] - matrix.m[1][1] -
+				matrix.m[2][2]
+			) * 2.0f;
+			result.w = (matrix.m[1][2] - matrix.m[2][1]) / s;
+			result.x = 0.25f * s;
+			result.y = (matrix.m[0][1] + matrix.m[1][0]) / s;
+			result.z = (matrix.m[2][0] + matrix.m[0][2]) / s;
+		} else if (matrix.m[1][1] > matrix.m[2][2]) {
+			const float s = std::sqrt(
+				1.0f + matrix.m[1][1] - matrix.m[0][0] -
+				matrix.m[2][2]
+			) * 2.0f;
+			result.w = (matrix.m[2][0] - matrix.m[0][2]) / s;
+			result.x = (matrix.m[0][1] + matrix.m[1][0]) / s;
+			result.y = 0.25f * s;
+			result.z = (matrix.m[1][2] + matrix.m[2][1]) / s;
+		} else {
+			const float s = std::sqrt(
+				1.0f + matrix.m[2][2] - matrix.m[0][0] -
+				matrix.m[1][1]
+			) * 2.0f;
+			result.w = (matrix.m[0][1] - matrix.m[1][0]) / s;
+			result.x = (matrix.m[2][0] + matrix.m[0][2]) / s;
+			result.y = (matrix.m[1][2] + matrix.m[2][1]) / s;
+			result.z = 0.25f * s;
+		}
+		return Normalize(result);
+	}
+
+	Quaternion EulerToQuaternion(const Vector3& rotate) {
+		const Matrix4x4 matrix = MakeAffineMatrix(
+			{ 1.0f, 1.0f, 1.0f },
+			rotate,
+			{ 0.0f, 0.0f, 0.0f }
+		);
+		return QuaternionFromRotationMatrix(matrix);
+	}
+
+	Vector3 QuaternionToEuler(const Quaternion& quaternion) {
+		const Matrix4x4 matrix = MakeRotateMatrix(quaternion);
+		Vector3 scale{};
+		Vector3 rotate{};
+		Vector3 translate{};
+		if (DecomposeAffineMatrix(matrix, scale, rotate, translate)) {
+			return rotate;
+		}
+		return {};
+	}
+
+	Vector3 SlerpEuler(const Vector3& a, const Vector3& b, float t) {
+		return QuaternionToEuler(Slerp(
+			EulerToQuaternion(a),
+			EulerToQuaternion(b),
+			t
+		));
+	}
+
 	Transform LerpTransform(
 		const Transform& a,
 		const Transform& b,
@@ -114,11 +209,7 @@ namespace {
 			Lerp(a.translate.y, b.translate.y, t),
 			Lerp(a.translate.z, b.translate.z, t)
 		};
-		result.rotate = {
-			LerpAngle(a.rotate.x, b.rotate.x, t),
-			LerpAngle(a.rotate.y, b.rotate.y, t),
-			LerpAngle(a.rotate.z, b.rotate.z, t)
-		};
+		result.rotate = SlerpEuler(a.rotate, b.rotate, t);
 		result.scale = {
 			Lerp(a.scale.x, b.scale.x, t),
 			Lerp(a.scale.y, b.scale.y, t),
@@ -165,6 +256,7 @@ void CameraPathRuntime::Play(
 	const SceneComponent& pathComponent,
 	const Camera& currentCamera
 ) {
+	finishedThisFrame_ = false;
 	points_.clear();
 	for (const SceneEntity& entity : document.GetEntities()) {
 		if (entity.parentId != pathEntity.id) {
@@ -192,9 +284,7 @@ void CameraPathRuntime::Play(
 		return;
 	}
 
-	startTransform_.scale = { 1.0f, 1.0f, 1.0f };
-	startTransform_.translate = currentCamera.GetTranslate();
-	startTransform_.rotate = currentCamera.GetRotate();
+	startTransform_ = ResolveCameraWorldTransform(currentCamera);
 	returnTransform_ = startTransform_;
 	if (!pathComponent.cameraPathStartFromCurrentCamera) {
 		startTransform_ = points_.front().transform;
@@ -221,35 +311,37 @@ void CameraPathRuntime::Stop() {
 	pathElapsed_ = 0.0f;
 	points_.clear();
 	hasCurrentTransform_ = false;
+	finishedThisFrame_ = false;
 }
 
 void CameraPathRuntime::Update(float deltaTime, Camera& camera) {
+	finishedThisFrame_ = false;
 	if (phase_ == Phase::Finished) {
 		return;
 	}
 
 	deltaTime = (std::max)(deltaTime, 0.0f);
-	elapsed_ += deltaTime;
 
 	Transform evaluated{};
 	if (phase_ == Phase::Enter) {
 		const float t = enterDuration_ <= 0.0f
 			? 1.0f
-			: elapsed_ / enterDuration_;
+			: std::clamp(elapsed_ / enterDuration_, 0.0f, 1.0f);
 		evaluated = LerpTransform(
 			startTransform_,
 			points_.front().transform,
 			ApplyEasing(t, enterEasing_)
 		);
-		if (t >= 1.0f) {
+		elapsed_ += deltaTime;
+		if (enterDuration_ <= 0.0f || elapsed_ >= enterDuration_) {
 			phase_ = Phase::Path;
 			elapsed_ = 0.0f;
 			pathElapsed_ = 0.0f;
 		}
 	} else if (phase_ == Phase::Path) {
-		pathElapsed_ += deltaTime;
 		const float duration = GetPathDuration();
-		evaluated = EvaluatePath(pathElapsed_);
+		evaluated = EvaluatePath((std::min)(pathElapsed_, duration));
+		pathElapsed_ += deltaTime;
 		if (duration <= 0.0f || pathElapsed_ >= duration) {
 			phase_ =
 				returnToPreviousCamera_ && exitDuration_ > 0.0f
@@ -260,20 +352,23 @@ void CameraPathRuntime::Update(float deltaTime, Camera& camera) {
 				evaluated = returnToPreviousCamera_
 					? returnTransform_
 					: points_.back().transform;
+				finishedThisFrame_ = true;
 			}
 		}
 	} else if (phase_ == Phase::Exit) {
 		const float t = exitDuration_ <= 0.0f
 			? 1.0f
-			: elapsed_ / exitDuration_;
+			: std::clamp(elapsed_ / exitDuration_, 0.0f, 1.0f);
 		evaluated = LerpTransform(
 			points_.back().transform,
 			returnTransform_,
 			ApplyEasing(t, exitEasing_)
 		);
-		if (t >= 1.0f) {
+		elapsed_ += deltaTime;
+		if (exitDuration_ <= 0.0f || elapsed_ >= exitDuration_) {
 			phase_ = Phase::Finished;
 			evaluated = returnTransform_;
+			finishedThisFrame_ = true;
 		}
 	}
 

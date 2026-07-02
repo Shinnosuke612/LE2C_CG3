@@ -44,7 +44,9 @@ private://インナークラス
 		Matrix4x4 uvTransform;
 		Vector4 emissiveColor;
 		float shininess;
-		float padding2[3];
+		float dissolveAmount;
+		float dissolveEdgeWidth;
+		float dissolveNoiseScale;
 	};
 
 public: //公開メンバ関数
@@ -82,6 +84,11 @@ public: //公開メンバ関数
 	void SetColor(const Vector4& color);
 	void SetEnableLighting(bool enableLighting);
 	void SetEmissive(float intensity, const Vector4& color = { 1.0f, 1.0f, 1.0f, 1.0f });
+	void SetDissolve(
+		float amount,
+		float edgeWidth = 0.08f,
+		float noiseScale = 6.0f
+	);
 	void SetTextureOverride(D3D12_GPU_DESCRIPTOR_HANDLE handle) {
 		textureOverrideHandle_ = handle;
 	}

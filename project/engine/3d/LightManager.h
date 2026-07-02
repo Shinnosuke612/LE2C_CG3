@@ -63,6 +63,12 @@ public:
 		float bias = 0.0025f;
 		float normalBias = 0.02f;
 		float strength = 0.55f;
+		Vector3 target = { 0.0f, 0.0f, 0.0f };
+		float distance = 45.0f;
+		float orthographicSize = 40.0f;
+		float nearClip = 0.1f;
+		float farClip = 120.0f;
+		bool texelSnap = true;
 	};
 
 public:
@@ -106,7 +112,12 @@ private:
 	PointLight MakeDefaultPointLight() const;
 	SpotLight MakeDefaultSpotLight() const;
 	ShadowSettings MakeDefaultShadowSettings(bool enable) const;
-	void DrawShadowSettingsImGui(const char* label, ShadowSettings& settings, bool canRender);
+	void DrawShadowSettingsImGui(
+		const char* label,
+		ShadowSettings& settings,
+		bool canRender,
+		bool showDirectionalCameraSettings = false
+	);
 
 private:
 	DirectXCommon* dxCommon_ = nullptr;

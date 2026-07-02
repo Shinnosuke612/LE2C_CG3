@@ -24,6 +24,8 @@
 #include "../engine/debug/DebugRenderer.h"
 #include "../externals/imgui/imgui.h"
 
+#include <Windows.h>
+
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -31,6 +33,49 @@
 
 namespace {
 	std::string ResolveProjectResourcePath(const std::filesystem::path& relativePath) {
+		auto findFrom = [&](std::filesystem::path start) -> std::filesystem::path {
+			std::error_code error;
+			start = std::filesystem::absolute(start, error);
+			for (std::filesystem::path cursor = start; !cursor.empty(); cursor = cursor.parent_path()) {
+				const std::filesystem::path projectRootCandidate =
+					cursor / "project";
+				if (
+					std::filesystem::exists(
+						projectRootCandidate / "CG2_2025_04_14.vcxproj"
+					) &&
+					std::filesystem::exists(projectRootCandidate / relativePath)
+				) {
+					return projectRootCandidate / relativePath;
+				}
+
+				if (
+					std::filesystem::exists(cursor / "CG2_2025_04_14.vcxproj") &&
+					std::filesystem::exists(cursor / relativePath)
+				) {
+					return cursor / relativePath;
+				}
+
+				if (cursor == cursor.parent_path()) {
+					break;
+				}
+			}
+			return {};
+		};
+
+		if (const std::filesystem::path projectPath =
+			findFrom(std::filesystem::current_path()); !projectPath.empty()) {
+			return projectPath.generic_string();
+		}
+
+		wchar_t modulePath[MAX_PATH]{};
+		if (GetModuleFileNameW(nullptr, modulePath, MAX_PATH) != 0) {
+			if (const std::filesystem::path projectPath =
+				findFrom(std::filesystem::path(modulePath).parent_path());
+				!projectPath.empty()) {
+				return projectPath.generic_string();
+			}
+		}
+
 		std::filesystem::path current = std::filesystem::current_path();
 		for (std::filesystem::path cursor = current; !cursor.empty(); cursor = cursor.parent_path()) {
 			const std::filesystem::path projectCandidate =
@@ -49,6 +94,81 @@ namespace {
 			}
 		}
 		return relativePath.generic_string();
+	}
+
+	bool NearlyEqual(float a, float b) {
+		return std::abs(a - b) <= 0.000001f;
+	}
+
+	bool EqualVector(const Vector2& a, const Vector2& b) {
+		return NearlyEqual(a.x, b.x) && NearlyEqual(a.y, b.y);
+	}
+
+	bool EqualVector(const Vector4& a, const Vector4& b) {
+		return
+			NearlyEqual(a.x, b.x) &&
+			NearlyEqual(a.y, b.y) &&
+			NearlyEqual(a.z, b.z) &&
+			NearlyEqual(a.w, b.w);
+	}
+
+	bool EqualPostProcessSettings(
+		const ScenePostProcessSettings& a,
+		const ScenePostProcessSettings& b
+	) {
+		return
+			a.bloomEnabled == b.bloomEnabled &&
+			NearlyEqual(a.baseExposure, b.baseExposure) &&
+			a.toneMapMode == b.toneMapMode &&
+			NearlyEqual(a.bloomThreshold, b.bloomThreshold) &&
+			NearlyEqual(a.bloomSoftKnee, b.bloomSoftKnee) &&
+			NearlyEqual(a.bloomIntensity, b.bloomIntensity) &&
+			a.bloomBlurIterations == b.bloomBlurIterations &&
+			a.bloomDownsampleScale == b.bloomDownsampleScale &&
+			NearlyEqual(a.bloomBlurRadius, b.bloomBlurRadius) &&
+			a.grayscaleEnabled == b.grayscaleEnabled &&
+			a.vignetteEnabled == b.vignetteEnabled &&
+			a.boxBlurEnabled == b.boxBlurEnabled &&
+			a.gaussianBlurEnabled == b.gaussianBlurEnabled &&
+			a.depthOfFieldEnabled == b.depthOfFieldEnabled &&
+			a.radialBlurEnabled == b.radialBlurEnabled &&
+			a.noiseEnabled == b.noiseEnabled &&
+			a.dissolveEnabled == b.dissolveEnabled &&
+			a.outlineEnabled == b.outlineEnabled &&
+			NearlyEqual(a.vignetteScale, b.vignetteScale) &&
+			NearlyEqual(a.vignettePower, b.vignettePower) &&
+			NearlyEqual(a.vignetteIntensity, b.vignetteIntensity) &&
+			a.boxBlurKernelSize == b.boxBlurKernelSize &&
+			NearlyEqual(a.boxBlurStrength, b.boxBlurStrength) &&
+			a.gaussianBlurKernelSize == b.gaussianBlurKernelSize &&
+			NearlyEqual(a.gaussianBlurSigma, b.gaussianBlurSigma) &&
+			NearlyEqual(a.gaussianBlurStrength, b.gaussianBlurStrength) &&
+			NearlyEqual(a.depthOfFieldFocusDistance, b.depthOfFieldFocusDistance) &&
+			NearlyEqual(a.depthOfFieldFocusRange, b.depthOfFieldFocusRange) &&
+			NearlyEqual(a.depthOfFieldBlurStrength, b.depthOfFieldBlurStrength) &&
+			NearlyEqual(a.depthOfFieldNearStrength, b.depthOfFieldNearStrength) &&
+			NearlyEqual(a.depthOfFieldFarStrength, b.depthOfFieldFarStrength) &&
+			NearlyEqual(a.depthOfFieldMaxRadius, b.depthOfFieldMaxRadius) &&
+			EqualVector(a.radialBlurCenter, b.radialBlurCenter) &&
+			NearlyEqual(a.radialBlurWidth, b.radialBlurWidth) &&
+			a.radialBlurSamples == b.radialBlurSamples &&
+			a.noiseAnimate == b.noiseAnimate &&
+			NearlyEqual(a.noiseAmount, b.noiseAmount) &&
+			NearlyEqual(a.noiseScale, b.noiseScale) &&
+			NearlyEqual(a.noiseSpeed, b.noiseSpeed) &&
+			NearlyEqual(a.noiseSeed, b.noiseSeed) &&
+			a.dissolveMaskIndex == b.dissolveMaskIndex &&
+			NearlyEqual(a.dissolveThreshold, b.dissolveThreshold) &&
+			NearlyEqual(a.dissolveEdgeWidth, b.dissolveEdgeWidth) &&
+			EqualVector(a.dissolveEdgeColor, b.dissolveEdgeColor) &&
+			a.outlineLuminanceEnabled == b.outlineLuminanceEnabled &&
+			a.outlineDepthEnabled == b.outlineDepthEnabled &&
+			NearlyEqual(a.outlineLuminanceWeight, b.outlineLuminanceWeight) &&
+			NearlyEqual(a.outlineDepthWeight, b.outlineDepthWeight) &&
+			NearlyEqual(a.outlineThreshold, b.outlineThreshold) &&
+			NearlyEqual(a.outlineSoftness, b.outlineSoftness) &&
+			NearlyEqual(a.outlineThickness, b.outlineThickness) &&
+			EqualVector(a.outlineColor, b.outlineColor);
 	}
 }
 
@@ -78,6 +198,12 @@ void Game::Initialize() {
 					component.modelPath = entity.modelPath;
 				} else if (component.type == "Camera") {
 					component.cameraIsMain = true;
+				} else if (component.type == "Environment") {
+					component.environmentSkyboxEnabled = true;
+					component.environmentSkyboxPath =
+						"resources/rostock_laage_airport_4k.dds";
+					component.environmentSkyboxIntensity = 1.0f;
+					component.environmentReflectionIntensity = 0.3f;
 				}
 			}
 		};
@@ -219,6 +345,12 @@ void Game::Initialize() {
 
 	TextureManager::GetInstance()->LoadTexture("resources/noise0.png");
 	TextureManager::GetInstance()->LoadTexture("resources/noise1.png");
+
+	if (editorSession_) {
+		const SceneDocument& document = editorSession_->GetActiveDocument();
+		ApplyPostProcessSettings(document.GetPostProcessSettings());
+		appliedPostProcessRevision_ = document.GetRevision();
+	}
 }
 
 void Game::Update() {
@@ -233,10 +365,26 @@ void Game::Update() {
 		noiseTime_ += (1.0f / 60.0f) * noiseSpeed_;
 	}
 
+	if (editorSession_) {
+		const SceneDocument& document = editorSession_->GetActiveDocument();
+		if (document.GetRevision() != appliedPostProcessRevision_) {
+			const ScenePostProcessSettings& settings =
+				document.GetPostProcessSettings();
+			if (!EqualPostProcessSettings(CapturePostProcessSettings(), settings)) {
+				ApplyPostProcessSettings(settings);
+			}
+			appliedPostProcessRevision_ = document.GetRevision();
+		}
+	}
+
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	if (Input* input = Input::GetInstance()) {
-		if (!editorSession_->IsEditing() && input->TriggerKey(DIK_F1)) {
-			editorSession_->Stop();
+		if (input->TriggerKey(DIK_F1)) {
+			if (editorSession_->IsEditing()) {
+				editorSession_->Play();
+			} else {
+				editorSession_->Stop();
+			}
 		}
 		if (input->TriggerKey(DIK_F2)) {
 			if (editorSession_->IsPlaying()) {
@@ -267,6 +415,7 @@ void Game::Update() {
 		boxBlurEnabled_ = false;
 		gaussianBlurEnabled_ = false;
 		radialBlurEnabled_ = false;
+		depthOfFieldEnabled_ = false;
 		noiseEnabled_ = false;
 		dissolveEnabled_ = false;
 		outlineEnabled_ = false;
@@ -388,6 +537,55 @@ void Game::Update() {
 			&gaussianBlurStrength_,
 			0.0f,
 			1.0f
+		);
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
+	ImGui::Separator();
+
+	ImGui::PushID("DepthOfField");
+	ImGui::Checkbox("##Enabled", &depthOfFieldEnabled_);
+	ImGui::SameLine();
+	if (ImGui::TreeNodeEx(
+		"Depth Of Field",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
+		ImGui::TextDisabled("Depth based focus blur");
+		ImGui::SliderFloat(
+			"Focus Distance",
+			&dofFocusDistance_,
+			0.1f,
+			200.0f
+		);
+		ImGui::SliderFloat(
+			"Focus Range",
+			&dofFocusRange_,
+			0.1f,
+			100.0f
+		);
+		ImGui::SliderFloat(
+			"Blur Strength",
+			&dofBlurStrength_,
+			0.0f,
+			1.0f
+		);
+		ImGui::SliderFloat(
+			"Max Radius",
+			&dofMaxRadius_,
+			0.0f,
+			8.0f
+		);
+		ImGui::SliderFloat(
+			"Near Strength",
+			&dofNearStrength_,
+			0.0f,
+			2.0f
+		);
+		ImGui::SliderFloat(
+			"Far Strength",
+			&dofFarStrength_,
+			0.0f,
+			2.0f
 		);
 		ImGui::TreePop();
 	}
@@ -538,6 +736,8 @@ void Game::Update() {
 
 	ImGui::EndChild();
 	ImGui::End();
+
+	StorePostProcessSettingsToDocument();
 
 	Camera* editorCamera =
 		Object3dCommon::GetInstance()->GetDefaultCamera();
@@ -732,6 +932,22 @@ void Game::Draw() {
 		parameters.gaussianSigma = gaussianBlurSigma_;
 		applyEffect(FullscreenCopy::Effect::kGaussianBlur, parameters);
 	}
+	if (depthOfFieldEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.blurStrength = dofBlurStrength_;
+		parameters.dofFocusDistance = dofFocusDistance_;
+		parameters.dofFocusRange = dofFocusRange_;
+		parameters.dofNearStrength = dofNearStrength_;
+		parameters.dofFarStrength = dofFarStrength_;
+		parameters.dofMaxRadius = dofMaxRadius_;
+		Camera* camera =
+			Object3dCommon::GetInstance()->GetDefaultCamera();
+		if (camera) {
+			parameters.cameraNear = camera->GetNearClip();
+			parameters.cameraFar = camera->GetFarClip();
+		}
+		applyEffect(FullscreenCopy::Effect::kDepthOfField, parameters);
+	}
 	if (radialBlurEnabled_) {
 		FullscreenCopy::Parameters parameters{};
 		parameters.radialBlurCenter[0] = radialBlurCenter_[0];
@@ -856,6 +1072,158 @@ void Game::BeginPauseDebugCamera() {
 
 void Game::EndPauseDebugCamera() {
 	pauseMainCameraSnapshot_ = {};
+}
+
+ScenePostProcessSettings Game::CapturePostProcessSettings() const {
+	ScenePostProcessSettings settings{};
+	settings.bloomEnabled = bloomParameters_.enabled != 0;
+	settings.baseExposure = baseExposure_;
+	settings.toneMapMode = bloomParameters_.toneMapMode;
+	settings.bloomThreshold = bloomParameters_.threshold;
+	settings.bloomSoftKnee = bloomParameters_.softKnee;
+	settings.bloomIntensity = bloomParameters_.intensity;
+	settings.bloomBlurIterations = bloomParameters_.blurIterations;
+	settings.bloomDownsampleScale = bloomParameters_.downsampleScale;
+	settings.bloomBlurRadius = bloomParameters_.blurRadius;
+	settings.grayscaleEnabled = grayscaleEnabled_;
+	settings.vignetteEnabled = vignetteEnabled_;
+	settings.boxBlurEnabled = boxBlurEnabled_;
+	settings.gaussianBlurEnabled = gaussianBlurEnabled_;
+	settings.depthOfFieldEnabled = depthOfFieldEnabled_;
+	settings.radialBlurEnabled = radialBlurEnabled_;
+	settings.noiseEnabled = noiseEnabled_;
+	settings.dissolveEnabled = dissolveEnabled_;
+	settings.outlineEnabled = outlineEnabled_;
+	settings.vignetteScale = vignetteScale_;
+	settings.vignettePower = vignettePower_;
+	settings.vignetteIntensity = vignetteIntensity_;
+	settings.boxBlurKernelSize = boxBlurKernelSize_;
+	settings.boxBlurStrength = boxBlurStrength_;
+	settings.gaussianBlurKernelSize = gaussianBlurKernelSize_;
+	settings.gaussianBlurSigma = gaussianBlurSigma_;
+	settings.gaussianBlurStrength = gaussianBlurStrength_;
+	settings.depthOfFieldFocusDistance = dofFocusDistance_;
+	settings.depthOfFieldFocusRange = dofFocusRange_;
+	settings.depthOfFieldBlurStrength = dofBlurStrength_;
+	settings.depthOfFieldNearStrength = dofNearStrength_;
+	settings.depthOfFieldFarStrength = dofFarStrength_;
+	settings.depthOfFieldMaxRadius = dofMaxRadius_;
+	settings.radialBlurCenter = {
+		radialBlurCenter_[0],
+		radialBlurCenter_[1]
+	};
+	settings.radialBlurWidth = radialBlurWidth_;
+	settings.radialBlurSamples = radialBlurSamples_;
+	settings.noiseAnimate = noiseAnimate_;
+	settings.noiseAmount = noiseAmount_;
+	settings.noiseScale = noiseScale_;
+	settings.noiseSpeed = noiseSpeed_;
+	settings.noiseSeed = noiseSeed_;
+	settings.dissolveMaskIndex = dissolveMaskIndex_;
+	settings.dissolveThreshold = dissolveThreshold_;
+	settings.dissolveEdgeWidth = dissolveEdgeWidth_;
+	settings.dissolveEdgeColor = {
+		dissolveEdgeColor_[0],
+		dissolveEdgeColor_[1],
+		dissolveEdgeColor_[2],
+		dissolveEdgeColor_[3]
+	};
+	settings.outlineLuminanceEnabled = outlineLuminanceEnabled_;
+	settings.outlineDepthEnabled = outlineDepthEnabled_;
+	settings.outlineLuminanceWeight = outlineLuminanceWeight_;
+	settings.outlineDepthWeight = outlineDepthWeight_;
+	settings.outlineThreshold = outlineThreshold_;
+	settings.outlineSoftness = outlineSoftness_;
+	settings.outlineThickness = outlineThickness_;
+	settings.outlineColor = {
+		outlineColor_[0],
+		outlineColor_[1],
+		outlineColor_[2],
+		outlineColor_[3]
+	};
+	return settings;
+}
+
+void Game::ApplyPostProcessSettings(
+	const ScenePostProcessSettings& settings
+) {
+	bloomParameters_.enabled = settings.bloomEnabled ? 1 : 0;
+	baseExposure_ = settings.baseExposure;
+	currentExposure_ = baseExposure_;
+	bloomParameters_.exposure = baseExposure_;
+	bloomParameters_.toneMapMode = settings.toneMapMode;
+	bloomParameters_.threshold = settings.bloomThreshold;
+	bloomParameters_.softKnee = settings.bloomSoftKnee;
+	bloomParameters_.intensity = settings.bloomIntensity;
+	bloomParameters_.blurIterations = settings.bloomBlurIterations;
+	bloomParameters_.downsampleScale = settings.bloomDownsampleScale;
+	bloomParameters_.blurRadius = settings.bloomBlurRadius;
+	grayscaleEnabled_ = settings.grayscaleEnabled;
+	vignetteEnabled_ = settings.vignetteEnabled;
+	boxBlurEnabled_ = settings.boxBlurEnabled;
+	gaussianBlurEnabled_ = settings.gaussianBlurEnabled;
+	depthOfFieldEnabled_ = settings.depthOfFieldEnabled;
+	radialBlurEnabled_ = settings.radialBlurEnabled;
+	noiseEnabled_ = settings.noiseEnabled;
+	dissolveEnabled_ = settings.dissolveEnabled;
+	outlineEnabled_ = settings.outlineEnabled;
+	vignetteScale_ = settings.vignetteScale;
+	vignettePower_ = settings.vignettePower;
+	vignetteIntensity_ = settings.vignetteIntensity;
+	boxBlurKernelSize_ = settings.boxBlurKernelSize;
+	boxBlurStrength_ = settings.boxBlurStrength;
+	gaussianBlurKernelSize_ = settings.gaussianBlurKernelSize;
+	gaussianBlurSigma_ = settings.gaussianBlurSigma;
+	gaussianBlurStrength_ = settings.gaussianBlurStrength;
+	dofFocusDistance_ = settings.depthOfFieldFocusDistance;
+	dofFocusRange_ = settings.depthOfFieldFocusRange;
+	dofBlurStrength_ = settings.depthOfFieldBlurStrength;
+	dofNearStrength_ = settings.depthOfFieldNearStrength;
+	dofFarStrength_ = settings.depthOfFieldFarStrength;
+	dofMaxRadius_ = settings.depthOfFieldMaxRadius;
+	radialBlurCenter_[0] = settings.radialBlurCenter.x;
+	radialBlurCenter_[1] = settings.radialBlurCenter.y;
+	radialBlurWidth_ = settings.radialBlurWidth;
+	radialBlurSamples_ = settings.radialBlurSamples;
+	noiseAnimate_ = settings.noiseAnimate;
+	noiseAmount_ = settings.noiseAmount;
+	noiseScale_ = settings.noiseScale;
+	noiseSpeed_ = settings.noiseSpeed;
+	noiseSeed_ = settings.noiseSeed;
+	dissolveMaskIndex_ = settings.dissolveMaskIndex;
+	dissolveThreshold_ = settings.dissolveThreshold;
+	dissolveEdgeWidth_ = settings.dissolveEdgeWidth;
+	dissolveEdgeColor_[0] = settings.dissolveEdgeColor.x;
+	dissolveEdgeColor_[1] = settings.dissolveEdgeColor.y;
+	dissolveEdgeColor_[2] = settings.dissolveEdgeColor.z;
+	dissolveEdgeColor_[3] = settings.dissolveEdgeColor.w;
+	outlineLuminanceEnabled_ = settings.outlineLuminanceEnabled;
+	outlineDepthEnabled_ = settings.outlineDepthEnabled;
+	outlineLuminanceWeight_ = settings.outlineLuminanceWeight;
+	outlineDepthWeight_ = settings.outlineDepthWeight;
+	outlineThreshold_ = settings.outlineThreshold;
+	outlineSoftness_ = settings.outlineSoftness;
+	outlineThickness_ = settings.outlineThickness;
+	outlineColor_[0] = settings.outlineColor.x;
+	outlineColor_[1] = settings.outlineColor.y;
+	outlineColor_[2] = settings.outlineColor.z;
+	outlineColor_[3] = settings.outlineColor.w;
+}
+
+void Game::StorePostProcessSettingsToDocument() {
+	if (!editorSession_ || !editorSession_->IsEditing()) {
+		return;
+	}
+
+	SceneDocument& document = editorSession_->GetEditDocument();
+	const ScenePostProcessSettings settings = CapturePostProcessSettings();
+	if (EqualPostProcessSettings(settings, document.GetPostProcessSettings())) {
+		appliedPostProcessRevision_ = document.GetRevision();
+		return;
+	}
+
+	document.SetPostProcessSettings(settings);
+	appliedPostProcessRevision_ = document.GetRevision();
 }
 
 void Game::DrawModelPreview() {
@@ -995,6 +1363,7 @@ int Game::GetEnabledPostEffectCount() const {
 		static_cast<int>(vignetteEnabled_) +
 		static_cast<int>(boxBlurEnabled_) +
 		static_cast<int>(gaussianBlurEnabled_) +
+		static_cast<int>(depthOfFieldEnabled_) +
 		static_cast<int>(radialBlurEnabled_) +
 		static_cast<int>(noiseEnabled_) +
 		static_cast<int>(dissolveEnabled_) +

@@ -12,13 +12,9 @@ class Camera;
 
 class Skybox {
 private:
-	struct VertexData {
-		Vector4 position;
-	};
-
 	struct TransformationMatrix {
-		Matrix4x4 WVP;
-		Matrix4x4 World;
+		Matrix4x4 inverseViewProjection;
+		Vector4 cameraPosition;
 	};
 
 	struct Material {
@@ -30,12 +26,11 @@ public:
 	void Update();
 	void Draw();
 
-	void SetScale(const Vector3& scale) { transform_.scale = scale; }
+	void SetScale(const Vector3& scale) { (void)scale; }
 	void SetColor(const Vector4& color) { materialData_->color = color; }
 	void SetCamera(Camera* camera) { camera_ = camera; }
 
 private:
-	void CreateVertexResource();
 	void CreateTransformationMatrixResource();
 	void CreateMaterialResource();
 
@@ -43,14 +38,7 @@ private:
 	Object3dCommon* object3dCommon_ = nullptr;
 	Camera* camera_ = nullptr;
 
-	Transform transform_{};
-
 	std::string textureFilePath_;
-
-	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource_ = nullptr;
-	VertexData* vertexData_ = nullptr;
-	D3D12_VERTEX_BUFFER_VIEW vertexBufferView_{};
-	uint32_t vertexCount_ = 0;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> transformationMatrixResource_ = nullptr;
 	TransformationMatrix* transformationMatrixData_ = nullptr;

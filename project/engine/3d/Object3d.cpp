@@ -209,6 +209,9 @@ void Object3d::DrawShadow(const Matrix4x4& lightViewProjection) {
 	if (!model) {
 		return;
 	}
+	if (materialData && materialData->dissolveAmount >= 0.98f) {
+		return;
+	}
 
 	shadowTransformationMatrixData->WVP = Multiply(transformationMatrixData->World, lightViewProjection);
 
@@ -386,6 +389,18 @@ void Object3d::SetEmissive(float intensity, const Vector4& color) {
 	}
 }
 
+void Object3d::SetDissolve(
+	float amount,
+	float edgeWidth,
+	float noiseScale
+) {
+	if (materialData) {
+		materialData->dissolveAmount = std::clamp(amount, 0.0f, 1.0f);
+		materialData->dissolveEdgeWidth = (std::max)(edgeWidth, 0.0f);
+		materialData->dissolveNoiseScale = (std::max)(noiseScale, 0.001f);
+	}
+}
+
 void Object3d::CreateTransformationMatrixResource(){
 	//WVP用リソースのリソースを作る。Matrix4x4 1つ分のサイズを用意する
 	transformationMatrixResource = *&object3dCommon->GetDxCommon()->CreateBufferResource(sizeof(TransformationMatrix));
@@ -418,4 +433,7 @@ void Object3d::CreateMaterialResource() {
 	materialData->uvTransform = MakeIdentity4x4();
 	materialData->emissiveColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 	materialData->shininess = 40.0f;
+	materialData->dissolveAmount = 0.0f;
+	materialData->dissolveEdgeWidth = 0.08f;
+	materialData->dissolveNoiseScale = 6.0f;
 }

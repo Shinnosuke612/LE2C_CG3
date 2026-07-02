@@ -18,7 +18,9 @@ cbuffer MaterialCB : register(b0)
     float4x4 gUvTransform;
     float4 gEmissiveColor;
     float gShininess;
-    float3 gMaterialPadding2;
+    float gDissolveAmount;
+    float gDissolveEdgeWidth;
+    float gDissolveNoiseScale;
 };
 
 struct DirectionalLight
@@ -93,6 +95,29 @@ struct PixelShaderOutput
 {
     float4 color : SV_TARGET0;
 };
+
+float HashNoise(float2 value)
+{
+    return frac(sin(dot(value, float2(12.9898f, 78.233f))) * 43758.5453f);
+}
+
+void ApplyDissolve(float2 texcoord, float3 worldPosition)
+{
+    const float amount = saturate(gDissolveAmount);
+    if (amount <= 0.0001f)
+    {
+        return;
+    }
+
+    const float noiseScale = max(gDissolveNoiseScale, 0.001f);
+    const float2 noiseCoord =
+        worldPosition.xz * noiseScale + texcoord * (noiseScale * 3.71f);
+    const float noise = HashNoise(noiseCoord);
+    if (noise < amount)
+    {
+        discard;
+    }
+}
 
 float3 CalcHalfLambertDiffuse(
     float3 baseColor,
@@ -175,6 +200,7 @@ PixelShaderOutput main(VertexShaderOutput input)
     {
         discard;
     }
+    ApplyDissolve(transformedUV.xy, input.worldPosition);
 
     if (gEnableLighting != 0)
     {

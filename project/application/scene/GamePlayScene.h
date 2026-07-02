@@ -84,6 +84,7 @@ private:
 	void ClearSceneModelObjects();
 	void SyncSceneSpriteObjects();
 	void ClearSceneSpriteObjects();
+	void SyncEnvironmentComponent();
 	void RebuildStaticColliders();
 	void ApplyPlayerBehaviorComponent(const SceneDocument& document);
 	void ApplyPlayerPhysicsComponent(const SceneDocument& document);
@@ -96,7 +97,14 @@ private:
 	Camera* GetSceneViewCamera() const;
 	void InitializePauseDebugCamera();
 	bool TryStartCameraPath(SceneDocument& document);
-	void DrawCameraPathDebug(const SceneDocument& document);
+	void DrawCameraPathDebug(
+		const SceneDocument& document,
+		bool showPath,
+		bool showPointCameraDirection
+	);
+	void SyncPlayerCameraControllerFromCurrentCamera(
+		const SceneDocument& document
+	);
 	bool ApplyCameraComponentToCamera(
 		const SceneDocument& document,
 		const SceneEntity& cameraEntity,
@@ -105,6 +113,7 @@ private:
 		float aspectRatio
 	) const;
 	bool ApplyPlayerCameraMouseLook(SceneDocument& document);
+	void ApplyPlayerCameraDissolve(const SceneDocument& document);
 
 	SpriteCommon* spriteCommon_ = nullptr;
 	Camera* camera_ = nullptr;
@@ -114,7 +123,9 @@ private:
 	Object3d* plane_ = nullptr;
 	Object3d* axis = nullptr;
 	bool showSkeletonDebug_ = false;
-	bool showCameraDebug_ = true;
+	bool showCameraDebug_ = false;
+	bool showCameraPathDebug_ = true;
+	bool showCameraPathPointCameraDebug_ = true;
 	bool showJointNames_ = false;
 	bool showJointAxes_ = true;
 	float jointRadius_ = 0.018f;
@@ -145,6 +156,7 @@ private:
 	std::unique_ptr<LightningRenderer> lightningRenderer_;
 	Skybox* skybox_ = nullptr;
 	std::string environmentMapPath_;
+	float environmentReflectionIntensity_ = 0.3f;
 	StarFieldGenerator starFieldGenerator_;
 };
 

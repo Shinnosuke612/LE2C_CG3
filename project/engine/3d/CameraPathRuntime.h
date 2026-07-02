@@ -28,6 +28,11 @@ public:
 	);
 	void Stop();
 	bool IsPlaying() const { return phase_ != Phase::Finished; }
+	bool ConsumeFinishedThisFrame() {
+		const bool finished = finishedThisFrame_;
+		finishedThisFrame_ = false;
+		return finished;
+	}
 
 	void Update(float deltaTime, Camera& camera);
 
@@ -61,4 +66,5 @@ private:
 	bool returnToPreviousCamera_ = true;
 	std::string interpolation_ = "Linear";
 	std::vector<PointSample> points_;
+	bool finishedThisFrame_ = false;
 };

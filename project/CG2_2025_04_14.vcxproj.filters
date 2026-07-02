@@ -199,6 +199,7 @@
     <None Include="resources\shaders\BloomExtract.PS.hlsl" />
     <None Include="resources\shaders\CopyImage.PS.hlsl" />
     <None Include="resources\shaders\Dissolve.PS.hlsl" />
+    <None Include="resources\shaders\DepthOfField.PS.hlsl" />
     <None Include="resources\shaders\Fullscreen.hlsli" />
     <None Include="resources\shaders\Fullscreen.VS.hlsl" />
     <None Include="resources\shaders\GaussianBlur.PS.hlsl" />

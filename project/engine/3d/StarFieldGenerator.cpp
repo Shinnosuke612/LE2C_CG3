@@ -382,9 +382,9 @@ void StarFieldGenerator::RefreshSkyboxFiles() {
 	skyboxFiles_.clear();
 	selectedSkyboxIndex_ = -1;
 	const std::filesystem::path directory =
-		EditableResourcePath::Resolve("resources/skyboxes");
+		EditableResourcePath::Resolve("resources");
 	std::error_code error;
-	for (const auto& entry : std::filesystem::directory_iterator(directory, error)) {
+	for (const auto& entry : std::filesystem::recursive_directory_iterator(directory, error)) {
 		if (error || !entry.is_regular_file()) continue;
 		std::string extension = entry.path().extension().string();
 		std::transform(extension.begin(), extension.end(), extension.begin(),
@@ -466,7 +466,7 @@ std::optional<std::string> StarFieldGenerator::DrawImGui(const char* windowTitle
 			const char* selectedName = selectedSkyboxIndex_ >= 0
 				? skyboxFiles_[selectedSkyboxIndex_].c_str()
 				: "No DDS files";
-			if (ImGui::BeginCombo("Saved Skybox", selectedName)) {
+			if (ImGui::BeginCombo("Skybox DDS", selectedName)) {
 				for (int index = 0; index < static_cast<int>(skyboxFiles_.size()); ++index) {
 					const bool selected = index == selectedSkyboxIndex_;
 					if (ImGui::Selectable(skyboxFiles_[index].c_str(), selected)) {
@@ -476,7 +476,7 @@ std::optional<std::string> StarFieldGenerator::DrawImGui(const char* windowTitle
 				}
 				ImGui::EndCombo();
 			}
-			if (ImGui::Button("Apply Selected") && selectedSkyboxIndex_ >= 0) {
+			if (ImGui::Button("Apply Skybox") && selectedSkyboxIndex_ >= 0) {
 				const std::string selectedPath = skyboxFiles_[selectedSkyboxIndex_];
 				appliedPath = EditableResourcePath::Resolve(selectedPath).generic_string();
 				status_ = "Applied: " + selectedPath;

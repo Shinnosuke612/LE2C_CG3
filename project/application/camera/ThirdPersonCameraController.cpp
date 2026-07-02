@@ -26,6 +26,35 @@ void ThirdPersonCameraController::SetYawPitch(float yaw, float pitch) {
 	pitch_ = std::clamp(pitch, minPitch_, maxPitch_);
 }
 
+void ThirdPersonCameraController::SyncFromCameraPose(
+	const Vector3& cameraPosition,
+	const Vector3& focusPosition
+) {
+	currentFocus_ = focusPosition;
+	focusInitialized_ = true;
+
+	const Vector3 toFocus = Math::Subtract(focusPosition, cameraPosition);
+	const float distance = Math::Length(toFocus);
+	if (distance <= 0.0001f) {
+		distance_ = minDistance_;
+		targetDistance_ = distance_;
+		normalDistance_ = distance_;
+		return;
+	}
+
+	const Vector3 forward = Math::Multiply(toFocus, 1.0f / distance);
+	yaw_ = std::atan2(forward.x, forward.z);
+	pitch_ = std::clamp(
+		std::asin(std::clamp(-forward.y, -1.0f, 1.0f)),
+		minPitch_,
+		maxPitch_
+	);
+
+	distance_ = std::clamp(distance, minDistance_, maxDistance_);
+	targetDistance_ = distance_;
+	normalDistance_ = distance_;
+}
+
 Vector3 ThirdPersonCameraController::GetForwardDirection() const {
 	Vector3 forward = {
 		std::sin(yaw_) * std::cos(pitch_),

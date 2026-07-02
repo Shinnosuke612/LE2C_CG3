@@ -17,7 +17,8 @@ public:
 		kRadialBlur,
 		kNoise,
 		kDissolve,
-		kOutline
+		kOutline,
+		kDepthOfField
 	};
 
 	struct Parameters {
@@ -48,6 +49,12 @@ public:
 		float noiseAmount = 0.25f;
 		float noiseScale = 1.0f;
 		float noiseSeed = 0.0f;
+		float dofFocusDistance = 10.0f;
+		float dofFocusRange = 2.0f;
+		float dofNearStrength = 0.0f;
+		float dofFarStrength = 1.0f;
+		float dofMaxRadius = 4.0f;
+		float dofPadding[3]{};
 	};
 
 	void Initialize(DirectXCommon* dxCommon);
@@ -75,6 +82,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> noisePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> dissolvePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> outlinePipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> depthOfFieldPipelineState_;
 	static constexpr uint32_t kMaxDrawsPerFrame = 16;
 	Microsoft::WRL::ComPtr<ID3D12Resource>
 		parameterResources_[kMaxDrawsPerFrame];

@@ -162,6 +162,12 @@ LightManager::ShadowSettings LightManager::MakeDefaultShadowSettings(bool enable
 	settings.bias = 0.0025f;
 	settings.normalBias = 0.02f;
 	settings.strength = 0.55f;
+	settings.target = { 0.0f, 0.0f, 0.0f };
+	settings.distance = 45.0f;
+	settings.orthographicSize = 40.0f;
+	settings.nearClip = 0.1f;
+	settings.farClip = 120.0f;
+	settings.texelSnap = true;
 	return settings;
 }
 
@@ -244,6 +250,12 @@ bool LightManager::LoadFromJson(const std::string& jsonPath) {
 			directionalShadowSettings_.bias = shadow.value("bias", directionalShadowSettings_.bias);
 			directionalShadowSettings_.normalBias = shadow.value("normalBias", directionalShadowSettings_.normalBias);
 			directionalShadowSettings_.strength = shadow.value("strength", directionalShadowSettings_.strength);
+			directionalShadowSettings_.target = ToVector3(shadow.value("target", json::array()), directionalShadowSettings_.target);
+			directionalShadowSettings_.distance = shadow.value("distance", directionalShadowSettings_.distance);
+			directionalShadowSettings_.orthographicSize = shadow.value("orthographicSize", directionalShadowSettings_.orthographicSize);
+			directionalShadowSettings_.nearClip = shadow.value("nearClip", directionalShadowSettings_.nearClip);
+			directionalShadowSettings_.farClip = shadow.value("farClip", directionalShadowSettings_.farClip);
+			directionalShadowSettings_.texelSnap = shadow.value("texelSnap", directionalShadowSettings_.texelSnap);
 		}
 	}
 
@@ -324,11 +336,17 @@ bool LightManager::SaveToJson(const std::string& jsonPath) const {
 		{ "direction", ToJson(directionalLight_.direction) },
 		{ "intensity", directionalLight_.intensity },
 		{ "enable", directionalLight_.enable },
-		{ "shadow", {
+			{ "shadow", {
 			{ "enable", directionalShadowSettings_.enable },
 			{ "bias", directionalShadowSettings_.bias },
 			{ "normalBias", directionalShadowSettings_.normalBias },
-			{ "strength", directionalShadowSettings_.strength }
+			{ "strength", directionalShadowSettings_.strength },
+			{ "target", ToJson(directionalShadowSettings_.target) },
+			{ "distance", directionalShadowSettings_.distance },
+			{ "orthographicSize", directionalShadowSettings_.orthographicSize },
+			{ "nearClip", directionalShadowSettings_.nearClip },
+			{ "farClip", directionalShadowSettings_.farClip },
+			{ "texelSnap", directionalShadowSettings_.texelSnap }
 		} }
 	};
 
@@ -386,7 +404,12 @@ bool LightManager::SaveToJson(const std::string& jsonPath) const {
 	return true;
 }
 
-void LightManager::DrawShadowSettingsImGui(const char* label, ShadowSettings& settings, bool canRender) {
+void LightManager::DrawShadowSettingsImGui(
+	const char* label,
+	ShadowSettings& settings,
+	bool canRender,
+	bool showDirectionalCameraSettings
+) {
 	if (ImGui::TreeNode(label)) {
 		bool enable = settings.enable != 0;
 		if (ImGui::Checkbox("Shadow Enable", &enable)) {
@@ -400,6 +423,19 @@ void LightManager::DrawShadowSettingsImGui(const char* label, ShadowSettings& se
 		ImGui::DragFloat("Shadow Bias", &settings.bias, 0.0001f, 0.0f, 0.05f, "%.5f");
 		ImGui::DragFloat("Normal Bias", &settings.normalBias, 0.001f, 0.0f, 0.2f, "%.4f");
 		ImGui::DragFloat("Shadow Strength", &settings.strength, 0.01f, 0.0f, 1.0f);
+		if (showDirectionalCameraSettings) {
+			ImGui::SeparatorText("Directional Shadow Camera");
+			ImGui::DragFloat3("Target Center", &settings.target.x, 0.1f);
+			ImGui::DragFloat("Light Distance", &settings.distance, 0.5f, 1.0f, 1000.0f);
+			ImGui::DragFloat("Orthographic Size", &settings.orthographicSize, 0.5f, 1.0f, 1000.0f);
+			ImGui::DragFloat("Near Clip", &settings.nearClip, 0.01f, 0.001f, 1000.0f);
+			ImGui::DragFloat("Far Clip", &settings.farClip, 0.5f, 1.0f, 5000.0f);
+			ImGui::Checkbox("Texel Snap", &settings.texelSnap);
+			settings.distance = (std::max)(settings.distance, 1.0f);
+			settings.orthographicSize = (std::max)(settings.orthographicSize, 1.0f);
+			settings.nearClip = (std::max)(settings.nearClip, 0.001f);
+			settings.farClip = (std::max)(settings.farClip, settings.nearClip + 0.001f);
+		}
 
 		ImGui::TreePop();
 	}
@@ -458,7 +494,12 @@ void LightManager::DrawImGui() {
 
 		ImGui::Text("Directional Direction Length: %.3f", Math::Length(directionalLight_.direction));
 		changed |= ImGui::DragFloat("Directional Intensity", &directionalLight_.intensity, 0.05f, 0.0f, 20.0f);
-		DrawShadowSettingsImGui("Directional Shadow", directionalShadowSettings_, true);
+		DrawShadowSettingsImGui(
+			"Directional Shadow",
+			directionalShadowSettings_,
+			true,
+			true
+		);
 	}
 
 	if (ImGui::CollapsingHeader("Point Lights", ImGuiTreeNodeFlags_DefaultOpen)) {

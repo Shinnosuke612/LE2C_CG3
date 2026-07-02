@@ -3,9 +3,7 @@
 #include "Camera.h"
 #include "../base/DirectXCommon.h"
 #include "../2d/TextureManager.h"
-#include <array>
 #include <cassert>
-#include <cstring>
 
 void Skybox::Initialize(Object3dCommon* object3dCommon, const std::string& textureFilePath) {
 	assert(object3dCommon);
@@ -14,47 +12,33 @@ void Skybox::Initialize(Object3dCommon* object3dCommon, const std::string& textu
 	camera_ = object3dCommon_->GetDefaultCamera();
 	textureFilePath_ = textureFilePath;
 
-	transform_.scale = { 50.0f, 50.0f, 50.0f };
-	transform_.rotate = { 0.0f, 0.0f, 0.0f };
-	transform_.translate = { 0.0f, 0.0f, 0.0f };
-
 	TextureManager::GetInstance()->LoadTexture(textureFilePath_);
 
-	CreateVertexResource();
 	CreateTransformationMatrixResource();
 	CreateMaterialResource();
 }
 
 void Skybox::Update() {
 	if (camera_) {
-		transform_.translate = camera_->GetTranslate();
+		transformationMatrixData_->inverseViewProjection =
+			Inverse(camera_->GetViewProjectionMatrix());
+		const Vector3& cameraPosition = camera_->GetTranslate();
+		transformationMatrixData_->cameraPosition = {
+			cameraPosition.x,
+			cameraPosition.y,
+			cameraPosition.z,
+			1.0f
+		};
+	} else {
+		transformationMatrixData_->inverseViewProjection = MakeIdentity4x4();
+		transformationMatrixData_->cameraPosition = { 0.0f, 0.0f, 0.0f, 1.0f };
 	}
-
-	Matrix4x4 worldMatrix = MakeAffineMatrix(
-		transform_.scale,
-		transform_.rotate,
-		transform_.translate
-	);
-
-	Matrix4x4 worldViewProjectionMatrix = worldMatrix;
-
-	if (camera_) {
-		worldViewProjectionMatrix = Multiply(
-			worldMatrix,
-			camera_->GetViewProjectionMatrix()
-		);
-	}
-
-	transformationMatrixData_->WVP = worldViewProjectionMatrix;
-	transformationMatrixData_->World = worldMatrix;
 }
 
 void Skybox::Draw() {
 	auto* commandList = object3dCommon_->GetDxCommon()->GetCommandList();
 
 	object3dCommon_->SetSkyboxRenderState();
-
-	commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
 
 	commandList->SetGraphicsRootConstantBufferView(
 		0,
@@ -75,74 +59,7 @@ void Skybox::Draw() {
 		TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_)
 	);
 
-	commandList->DrawInstanced(vertexCount_, 1, 0, 0);
-}
-
-void Skybox::CreateVertexResource() {
-	constexpr float kSize = 1.0f;
-
-	std::array<VertexData, 36> vertices = {
-		// +X
-		VertexData{ Vector4(kSize,  kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(kSize,  kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(kSize, -kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(kSize, -kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(kSize,  kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(kSize, -kSize,  kSize, 1.0f) },
-
-		// -X
-		VertexData{ Vector4(-kSize,  kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(-kSize,  kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(-kSize, -kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(-kSize, -kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(-kSize,  kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(-kSize, -kSize, -kSize, 1.0f) },
-
-		// +Z
-		VertexData{ Vector4(kSize,  kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(-kSize,  kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(kSize, -kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(kSize, -kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(-kSize,  kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(-kSize, -kSize,  kSize, 1.0f) },
-
-		// -Z
-		VertexData{ Vector4(-kSize,  kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(kSize,  kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(-kSize, -kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(-kSize, -kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(kSize,  kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(kSize, -kSize, -kSize, 1.0f) },
-
-		// +Y
-		VertexData{ Vector4(-kSize,  kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(kSize,  kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(-kSize,  kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(-kSize,  kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(kSize,  kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(kSize,  kSize, -kSize, 1.0f) },
-
-		// -Y
-		VertexData{ Vector4(-kSize, -kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(kSize, -kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(-kSize, -kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(-kSize, -kSize,  kSize, 1.0f) },
-		VertexData{ Vector4(kSize, -kSize, -kSize, 1.0f) },
-		VertexData{ Vector4(kSize, -kSize,  kSize, 1.0f) },
-	};
-
-	vertexCount_ = static_cast<uint32_t>(vertices.size());
-
-	vertexResource_ = object3dCommon_->GetDxCommon()->CreateBufferResource(
-		sizeof(VertexData) * vertices.size()
-	);
-
-	vertexBufferView_.BufferLocation = vertexResource_->GetGPUVirtualAddress();
-	vertexBufferView_.SizeInBytes = UINT(sizeof(VertexData) * vertices.size());
-	vertexBufferView_.StrideInBytes = sizeof(VertexData);
-
-	vertexResource_->Map(0, nullptr, reinterpret_cast<void**>(&vertexData_));
-	std::memcpy(vertexData_, vertices.data(), sizeof(VertexData) * vertices.size());
+	commandList->DrawInstanced(3, 1, 0, 0);
 }
 
 void Skybox::CreateTransformationMatrixResource() {
@@ -156,8 +73,8 @@ void Skybox::CreateTransformationMatrixResource() {
 		reinterpret_cast<void**>(&transformationMatrixData_)
 	);
 
-	transformationMatrixData_->WVP = MakeIdentity4x4();
-	transformationMatrixData_->World = MakeIdentity4x4();
+	transformationMatrixData_->inverseViewProjection = MakeIdentity4x4();
+	transformationMatrixData_->cameraPosition = { 0.0f, 0.0f, 0.0f, 1.0f };
 }
 
 void Skybox::CreateMaterialResource() {

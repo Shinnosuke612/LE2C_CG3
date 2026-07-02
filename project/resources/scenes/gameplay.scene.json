@@ -7,6 +7,8 @@
           "enabled": true,
           "farClip": 1000.0,
           "fovY": 0.44999998807907104,
+          "invertPitch": false,
+          "invertYaw": false,
           "isMain": false,
           "nearClip": 0.10000000149011612,
           "type": "Camera"
@@ -59,6 +61,10 @@
       "components": [
         {
           "enabled": true,
+          "reflectionIntensity": 0.0,
+          "skyboxEnabled": true,
+          "skyboxIntensity": 0.009999999776482582,
+          "skyboxPath": "resources/rostock_laage_airport_4k.dds",
           "type": "Environment"
         }
       ],
@@ -110,6 +116,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
           "modelPath": "terrain.obj",
           "type": "MeshRenderer"
         }
@@ -162,6 +170,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
           "modelPath": "AnimatedCube/AnimatedCube.gltf",
           "type": "MeshRenderer"
         },
@@ -218,6 +228,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
           "modelPath": "human/walk.gltf",
           "type": "MeshRenderer"
         },
@@ -274,6 +286,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -294,6 +308,8 @@
           "enabled": true,
           "farClip": 1000.0,
           "fovY": 0.44999998807907104,
+          "invertPitch": false,
+          "invertYaw": false,
           "isMain": true,
           "nearClip": 0.10000000149011612,
           "type": "Camera"
@@ -307,7 +323,7 @@
           ],
           "distance": 8.0,
           "enabled": true,
-          "invertPitch": false,
+          "invertPitch": true,
           "invertYaw": false,
           "maxPitch": 1.350000023841858,
           "minPitch": -1.4500000476837158,
@@ -368,7 +384,7 @@
       "transform": {
         "rotate": [
           0.0,
-          0.0,
+          -0.0,
           0.0
         ],
         "scale": [
@@ -378,8 +394,8 @@
         ],
         "translate": [
           0.0,
-          1.0,
-          -4.0
+          0.8146223425865173,
+          -192.34378051757813
         ]
       }
     },
@@ -389,6 +405,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -438,8 +456,771 @@
           0.0
         ]
       }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 8,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower1",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          0.0002732314169406891,
+          9.448873519897461,
+          9.5367431640625e-07
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 9,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower2",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          -143.05674743652344,
+          9.448873519897461,
+          123.62348937988281
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 10,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower3",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          44.91868209838867,
+          9.448873519897461,
+          119.67476654052734
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 11,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower4",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          134.12847900390625,
+          9.448873519897461,
+          -130.0277862548828
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 12,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower5",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          -114.15815734863281,
+          9.448873519897461,
+          -51.12267303466797
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 13,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower6",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          -114.15815734863281,
+          9.448873519897461,
+          -152.96974182128906
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 14,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower7",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          124.80972290039063,
+          9.448873519897461,
+          62.82164001464844
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 15,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower8",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          191.94525146484375,
+          9.448873519897461,
+          -184.85015869140625
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 16,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower8 Copy",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          -65.59443664550781,
+          9.448873519897461,
+          92.47825622558594
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 17,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower8 Copy Copy",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          160.84584045410156,
+          9.448873519897461,
+          144.39613342285156
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 18,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower8 Copy Copy Copy",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          -33.55231857299805,
+          9.448873519897461,
+          -121.0711441040039
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "type": "OBBCollider"
+        }
+      ],
+      "id": 19,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "tower8 Copy Copy Copy Copy",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          2.0,
+          10.0,
+          2.0
+        ],
+        "translate": [
+          69.74636840820313,
+          9.448873519897461,
+          -74.19290924072266
+        ]
+      }
     }
   ],
+  "postProcess": {
+    "baseExposure": 1.0,
+    "bloomBlurIterations": 3,
+    "bloomBlurRadius": 1.0,
+    "bloomDownsampleScale": 2,
+    "bloomEnabled": true,
+    "bloomIntensity": 0.7279999852180481,
+    "bloomSoftKnee": 0.5,
+    "bloomThreshold": 1.0,
+    "boxBlurEnabled": false,
+    "boxBlurKernelSize": 3,
+    "boxBlurStrength": 1.0,
+    "depthOfFieldBlurStrength": 0.3449999988079071,
+    "depthOfFieldEnabled": true,
+    "depthOfFieldFarStrength": 1.9670000076293945,
+    "depthOfFieldFocusDistance": 64.28900146484375,
+    "depthOfFieldFocusRange": 53.638999938964844,
+    "depthOfFieldMaxRadius": 4.0,
+    "depthOfFieldNearStrength": 0.0,
+    "dissolveEdgeColor": [
+      1.0,
+      0.4000000059604645,
+      0.30000001192092896,
+      1.0
+    ],
+    "dissolveEdgeWidth": 0.029999999329447746,
+    "dissolveEnabled": false,
+    "dissolveMaskIndex": 0,
+    "dissolveThreshold": 0.0,
+    "gaussianBlurEnabled": false,
+    "gaussianBlurKernelSize": 3,
+    "gaussianBlurSigma": 1.0,
+    "gaussianBlurStrength": 1.0,
+    "grayscaleEnabled": false,
+    "noiseAmount": 0.25,
+    "noiseAnimate": true,
+    "noiseEnabled": false,
+    "noiseScale": 1.0,
+    "noiseSeed": 0.0,
+    "noiseSpeed": 1.0,
+    "outlineColor": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "outlineDepthEnabled": true,
+    "outlineDepthWeight": 1.0,
+    "outlineEnabled": false,
+    "outlineLuminanceEnabled": false,
+    "outlineLuminanceWeight": 1.0,
+    "outlineSoftness": 0.05000000074505806,
+    "outlineThickness": 1.0,
+    "outlineThreshold": 0.10000000149011612,
+    "radialBlurCenter": [
+      0.5,
+      0.5
+    ],
+    "radialBlurEnabled": false,
+    "radialBlurSamples": 10,
+    "radialBlurWidth": 0.009999999776482582,
+    "toneMapMode": 0,
+    "vignetteEnabled": false,
+    "vignetteIntensity": 1.0,
+    "vignettePower": 0.800000011920929,
+    "vignetteScale": 16.0
+  },
   "sceneName": "GAMEPLAY",
-  "version": 9
+  "version": 10
 }

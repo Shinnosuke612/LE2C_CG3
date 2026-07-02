@@ -6,6 +6,7 @@
 #include "../../engine/scene/SceneDocument.h"
 
 #include "../../engine/base/DirectXCommon.h"
+#include "../../engine/base/RenderFormats.h"
 #include "../../engine/base/SceneRenderTarget.h"
 #include "../../engine/3d/SrvManager.h"
 #include "../../engine/base/ImGuiManager.h"
@@ -35,6 +36,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <functional>
 #include <unordered_set>
 
@@ -62,6 +64,20 @@ namespace {
 		const SceneEntity& entity,
 		const char* componentName
 	);
+
+	SceneComponent* FindComponent(
+		SceneEntity& entity,
+		const char* componentName
+	) {
+		const auto found = std::find_if(
+			entity.components.begin(),
+			entity.components.end(),
+			[componentName](const SceneComponent& component) {
+				return component.type == componentName;
+			}
+		);
+		return found == entity.components.end() ? nullptr : &(*found);
+	}
 
 	bool HasComponent(const SceneEntity& entity, const char* componentName) {
 		return std::find_if(
@@ -91,6 +107,23 @@ namespace {
 			return PhysicsBodyType::Kinematic;
 		}
 		return PhysicsBodyType::Static;
+	}
+
+	float ResolveEnvironmentReflectionIntensity(
+		const SceneComponent* meshRenderer,
+		float environmentDefault
+	) {
+		if (
+			meshRenderer &&
+			meshRenderer->meshEnvironmentReflectionOverride
+		) {
+			return std::clamp(
+				meshRenderer->meshEnvironmentReflectionIntensity,
+				0.0f,
+				1.0f
+			);
+		}
+		return std::clamp(environmentDefault, 0.0f, 1.0f);
 	}
 
 	const SceneComponent* FindEnabledComponent(
@@ -501,7 +534,13 @@ void GamePlayScene::SyncSceneModelObjects() {
 				sceneObject.object->SetAnimationSpeed(1.0f);
 			}
 			if (!environmentMapPath_.empty()) {
-				sceneObject.object->SetEnvironmentMap(environmentMapPath_, 0.01f);
+				sceneObject.object->SetEnvironmentMap(
+					environmentMapPath_,
+					ResolveEnvironmentReflectionIntensity(
+						meshRenderer,
+						environmentReflectionIntensity_
+					)
+				);
 			}
 			sceneObject.modelPath = modelPath;
 			sceneObject.hasRenderer = hasRenderer;
@@ -516,6 +555,9 @@ void GamePlayScene::SyncSceneModelObjects() {
 			? ToObjectCullMode(meshRenderer->meshCullMode)
 			: Object3dCommon::CullMode::kBack
 		);
+		if (HasComponent(entity, "PlayerBehavior")) {
+			found->second.object->SetDissolve(0.0f);
+		}
 		const bool hasObbCollider = HasComponent(entity, "OBBCollider");
 		found->second.hasCollider = hasObbCollider;
 		if (hasObbCollider) {
@@ -711,6 +753,101 @@ void GamePlayScene::ClearSceneSpriteObjects() {
 		sceneSprite.sprite = nullptr;
 	}
 	sceneSpriteObjects_.clear();
+}
+
+void GamePlayScene::SyncEnvironmentComponent() {
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+
+	const SceneComponent* environment = nullptr;
+	if (document) {
+		for (const SceneEntity& entity : document->GetEntities()) {
+			if (!IsEntityActiveInHierarchy(*document, entity)) {
+				continue;
+			}
+			environment = FindEnabledComponent(entity, "Environment");
+			if (environment) {
+				break;
+			}
+		}
+	}
+
+	bool skyboxEnabled = false;
+	std::string requestedPath;
+	float skyboxIntensity = 1.0f;
+	float reflectionIntensity = 0.3f;
+	if (environment) {
+		skyboxEnabled = environment->environmentSkyboxEnabled;
+		requestedPath = environment->environmentSkyboxPath.empty()
+			? "resources/rostock_laage_airport_4k.dds"
+			: environment->environmentSkyboxPath;
+		skyboxIntensity =
+			(std::max)(0.0f, environment->environmentSkyboxIntensity);
+		reflectionIntensity = std::clamp(
+			environment->environmentReflectionIntensity,
+			0.0f,
+			1.0f
+		);
+	}
+
+	std::string texturePath;
+	if (skyboxEnabled && !requestedPath.empty()) {
+		std::filesystem::path requestedFilePath(requestedPath);
+		texturePath = requestedFilePath.is_absolute()
+			? EditableResourcePath::ToProjectRelative(requestedFilePath).generic_string()
+			: requestedPath;
+	}
+
+	if (!skyboxEnabled || texturePath.empty()) {
+		if (skybox_) {
+			delete skybox_;
+			skybox_ = nullptr;
+		}
+		environmentMapPath_.clear();
+		environmentReflectionIntensity_ = 0.0f;
+	} else if (texturePath != environmentMapPath_) {
+		if (TextureManager::GetInstance()->LoadTexture(texturePath)) {
+			if (skybox_) {
+				delete skybox_;
+			}
+			skybox_ = new Skybox();
+			skybox_->Initialize(Object3dCommon::GetInstance(), texturePath);
+			skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
+			environmentMapPath_ = texturePath;
+			environmentReflectionIntensity_ = reflectionIntensity;
+		}
+	} else {
+		environmentReflectionIntensity_ = reflectionIntensity;
+	}
+
+	if (skybox_) {
+		skybox_->SetColor({
+			skyboxIntensity,
+			skyboxIntensity,
+			skyboxIntensity,
+			1.0f
+		});
+	}
+
+	for (auto& [entityId, sceneObject] : sceneModelObjects_) {
+		if (!sceneObject.object) {
+			continue;
+		}
+		const SceneEntity* entity = document
+			? document->FindEntity(entityId)
+			: nullptr;
+		const SceneComponent* meshRenderer = entity
+			? FindEnabledComponent(*entity, "MeshRenderer")
+			: nullptr;
+		sceneObject.object->SetEnvironmentMap(
+			environmentMapPath_,
+			ResolveEnvironmentReflectionIntensity(
+				meshRenderer,
+				environmentReflectionIntensity_
+			)
+		);
+	}
 }
 
 void GamePlayScene::ClearSceneModelObjects() {
@@ -1048,7 +1185,45 @@ bool GamePlayScene::ApplyPlayerCameraMouseLook(SceneDocument& document) {
 		cameraObstacles,
 		!altHeld
 	);
+	ApplyPlayerCameraDissolve(document);
 	return true;
+}
+
+void GamePlayScene::ApplyPlayerCameraDissolve(
+	const SceneDocument& document
+) {
+	EditorSession* editorSession = sceneManager_
+		? sceneManager_->GetEditorSession()
+		: nullptr;
+	if (!editorSession || !editorSession->IsPlaying()) {
+		return;
+	}
+
+	constexpr float kStartPitch = -0.35f;
+	constexpr float kFullPitch = -0.85f;
+	const float rawAmount = std::clamp(
+		(kStartPitch - playerCameraController_.GetPitch()) /
+			(kStartPitch - kFullPitch),
+		0.0f,
+		1.0f
+	);
+	const float dissolveAmount =
+		rawAmount * rawAmount * (3.0f - 2.0f * rawAmount);
+
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!HasComponent(entity, "PlayerBehavior")) {
+			continue;
+		}
+		const auto found = sceneModelObjects_.find(entity.id);
+		if (found == sceneModelObjects_.end() || !found->second.object) {
+			continue;
+		}
+		found->second.object->SetDissolve(
+			dissolveAmount,
+			0.08f,
+			6.0f
+		);
+	}
 }
 
 void GamePlayScene::ClearMonitorRenderers() {
@@ -1108,6 +1283,7 @@ void GamePlayScene::SyncMonitorRenderers() {
 			SceneRenderTarget::Desc desc{};
 			desc.width = width;
 			desc.height = height;
+			desc.format = RenderFormats::kSceneHdrFormat;
 			desc.clearColor[0] = 0.02f;
 			desc.clearColor[1] = 0.02f;
 			desc.clearColor[2] = 0.025f;
@@ -1291,20 +1467,19 @@ bool GamePlayScene::TryStartCameraPath(SceneDocument& document) {
 		if (!targetCameraEntity || !targetCameraComponent) {
 			continue;
 		}
-		const Vector3 startTranslate = camera_->GetTranslate();
-		const Vector3 startRotate = camera_->GetRotate();
-		if (!ApplyCameraComponentToCamera(
-			document,
-			*targetCameraEntity,
-			*targetCameraComponent,
-			camera_,
-			camera_->GetAspectRatio()
-		)) {
-			continue;
-		}
-		camera_->SetTranslate(startTranslate);
-		camera_->SetRotate(startRotate);
-		camera_->SetOrbitMode(false);
+		camera_->SetFovY(std::clamp(
+			targetCameraComponent->cameraFovY,
+			0.0174532925f,
+			3.12413936f
+		));
+		camera_->SetNearClip((std::max)(
+			targetCameraComponent->cameraNearClip,
+			0.001f
+		));
+		camera_->SetFarClip((std::max)(
+			targetCameraComponent->cameraFarClip,
+			targetCameraComponent->cameraNearClip + 0.001f
+		));
 		camera_->Update();
 		cameraPathRuntime_.Play(document, entity, *cameraPath, *camera_);
 		return cameraPathRuntime_.IsPlaying();
@@ -1312,9 +1487,74 @@ bool GamePlayScene::TryStartCameraPath(SceneDocument& document) {
 	return false;
 }
 
-void GamePlayScene::DrawCameraPathDebug(const SceneDocument& document) {
+void GamePlayScene::SyncPlayerCameraControllerFromCurrentCamera(
+	const SceneDocument& document
+) {
+	if (!camera_ || !player_) {
+		return;
+	}
+
+	const SceneComponent* targetThirdPersonCamera = nullptr;
+	const SceneComponent* fallbackThirdPersonCamera = nullptr;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			continue;
+		}
+		const SceneComponent* cameraComponent =
+			FindEnabledComponent(entity, "Camera");
+		const SceneComponent* thirdPersonCamera =
+			FindEnabledComponent(entity, "ThirdPersonCamera");
+		if (!cameraComponent || !thirdPersonCamera) {
+			continue;
+		}
+		if (!fallbackThirdPersonCamera) {
+			fallbackThirdPersonCamera = thirdPersonCamera;
+		}
+		if (cameraComponent->cameraIsMain) {
+			targetThirdPersonCamera = thirdPersonCamera;
+			break;
+		}
+	}
+
+	const SceneComponent* thirdPersonCamera =
+		targetThirdPersonCamera
+			? targetThirdPersonCamera
+			: fallbackThirdPersonCamera;
+	if (!thirdPersonCamera) {
+		return;
+	}
+
+	const Vector3 focus = Math::Add(
+		player_->GetPosition(),
+		playerCameraController_.IsAimMode()
+			? thirdPersonCamera->thirdPersonAimTargetOffset
+			: thirdPersonCamera->thirdPersonTargetOffset
+	);
+	playerCameraController_.SyncFromCameraPose(
+		camera_->GetTranslate(),
+		focus
+	);
+	playerCameraInitialized_ = true;
+}
+
+void GamePlayScene::DrawCameraPathDebug(
+	const SceneDocument& document,
+	bool showPath,
+	bool showPointCameraDirection
+) {
 #if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (!showPath && !showPointCameraDirection) {
+		return;
+	}
 	DebugRenderer* debugRenderer = DebugRenderer::GetInstance();
+	const float aspectRatio = camera_ ? camera_->GetAspectRatio() : 1.0f;
+	SceneComponent pointDebugCamera{};
+	pointDebugCamera.type = "Camera";
+	pointDebugCamera.enabled = true;
+	pointDebugCamera.cameraFovY = 0.45f;
+	pointDebugCamera.cameraNearClip = 0.1f;
+	pointDebugCamera.cameraFarClip = 8.0f;
+	pointDebugCamera.cameraIsMain = false;
 	for (const SceneEntity& pathEntity : document.GetEntities()) {
 		if (
 			!IsEntityActiveInHierarchy(document, pathEntity) ||
@@ -1324,6 +1564,7 @@ void GamePlayScene::DrawCameraPathDebug(const SceneDocument& document) {
 		}
 
 		std::vector<Transform> points;
+		std::vector<const SceneEntity*> pointEntities;
 		for (const SceneEntity& pointEntity : document.GetEntities()) {
 			if (
 				pointEntity.parentId != pathEntity.id ||
@@ -1333,42 +1574,40 @@ void GamePlayScene::DrawCameraPathDebug(const SceneDocument& document) {
 				continue;
 			}
 			points.push_back(ResolveScene3DTransform(document, pointEntity));
+			pointEntities.push_back(&pointEntity);
 		}
 
 		for (size_t index = 0; index < points.size(); ++index) {
 			const Transform& point = points[index];
-			debugRenderer->AddSphere(
-				point.translate,
-				0.14f,
-				{ 1.0f, 0.45f, 0.2f, 1.0f },
-				8
-			);
-			const Matrix4x4 pointWorld = MakeAffineMatrix(
-				{ 1.0f, 1.0f, 1.0f },
-				point.rotate,
-				point.translate
-			);
-			const Vector3 forward = Math::Normalize({
-				pointWorld.m[2][0],
-				pointWorld.m[2][1],
-				pointWorld.m[2][2]
-			});
-			debugRenderer->AddLine(
-				point.translate,
-				Math::Add(point.translate, Math::Multiply(forward, 0.8f)),
-				{ 0.25f, 0.55f, 1.0f, 1.0f }
-			);
-			if (index + 1 < points.size()) {
-				debugRenderer->AddLine(
+			if (showPath) {
+				debugRenderer->AddSphere(
 					point.translate,
-					points[index + 1].translate,
-					{ 1.0f, 0.45f, 0.2f, 1.0f }
+					0.14f,
+					{ 1.0f, 0.45f, 0.2f, 1.0f },
+					8
+				);
+				if (index + 1 < points.size()) {
+					debugRenderer->AddLine(
+						point.translate,
+						points[index + 1].translate,
+						{ 1.0f, 0.45f, 0.2f, 1.0f }
+					);
+				}
+			}
+			if (showPointCameraDirection && index < pointEntities.size()) {
+				AddCameraDebugDraw(
+					document,
+					*pointEntities[index],
+					pointDebugCamera,
+					aspectRatio,
+					&point
 				);
 			}
 		}
 	}
 
-	if (cameraPathRuntime_.IsPlaying() &&
+	if (showPath &&
+		cameraPathRuntime_.IsPlaying() &&
 		cameraPathRuntime_.HasCurrentTransform()) {
 		const Transform& current = cameraPathRuntime_.GetCurrentTransform();
 		debugRenderer->AddSphere(
@@ -1380,10 +1619,16 @@ void GamePlayScene::DrawCameraPathDebug(const SceneDocument& document) {
 	}
 #else
 	(void)document;
+	(void)showPath;
+	(void)showPointCameraDirection;
 #endif
 }
 
 void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
+	if (skybox_) {
+		skybox_->Draw();
+	}
+
 	Object3dCommon::GetInstance()->SetCommonRenderState();
 
 	if (lightManager_) {
@@ -1429,10 +1674,6 @@ void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 
 	if (lightningRenderer_) {
 		lightningRenderer_->Draw(viewCamera);
-	}
-
-	if (skybox_) {
-		skybox_->Draw();
 	}
 
 	ParticleManager::GetInstance()->Draw();
@@ -1611,31 +1852,7 @@ void GamePlayScene::Initialize()
 	//addStageObject("Cube.obj", { -5.0f, 2.0f, 0.0f }, { 0.2f, 2.0f, 5.0f }, { 0.2f, 2.0f, 5.0f }, true);
 	//addStageObject("Cube.obj", { 3.0f, 0.5f, -2.0f }, { 1.0f, 0.5f, 1.0f }, { 1.0f, 0.5f, 1.0f }, true);
 
-	std::string skyboxPath = EditableResourcePath::Resolve(
-		"resources/skyboxes/generated_space.dds"
-	).generic_string();
-	bool skyboxLoaded = TextureManager::GetInstance()->LoadTexture(skyboxPath);
-	if (!skyboxLoaded) {
-		skyboxPath = EditableResourcePath::Resolve(
-			"resources/rostock_laage_airport_4k.dds"
-		).generic_string();
-		skyboxLoaded = TextureManager::GetInstance()->LoadTexture(skyboxPath);
-	}
-	if (skyboxLoaded) {
-		environmentMapPath_ = skyboxPath;
-		skybox_ = new Skybox();
-		skybox_->Initialize(Object3dCommon::GetInstance(), skyboxPath);
-		skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
-		for (auto& [entityId, sceneObject] : sceneModelObjects_) {
-			(void)entityId;
-			if (sceneObject.object) {
-				sceneObject.object->SetEnvironmentMap(skyboxPath, 0.01f);
-			}
-		}
-		if (player_ && player_->GetObject()) {
-			player_->GetObject()->SetEnvironmentMap(skyboxPath, 0.01f);
-		}
-	}
+	SyncEnvironmentComponent();
 
 	lightManager_ = std::make_unique<LightManager>();
 	lightManager_->Initialize(
@@ -1761,8 +1978,14 @@ void GamePlayScene::Update()
 			: 0.0f;
 		ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
 	}
-	ImGui::SeparatorText("Skeleton");
+	ImGui::SeparatorText("Debug Draw");
 	ImGui::Checkbox("Show Camera Direction", &showCameraDebug_);
+	ImGui::Checkbox("Show CameraPath", &showCameraPathDebug_);
+	ImGui::Checkbox(
+		"Show CameraPath Point Camera Direction",
+		&showCameraPathPointCameraDebug_
+	);
+	ImGui::SeparatorText("Skeleton");
 	ImGui::Checkbox("Show Skeleton", &showSkeletonDebug_);
 	if (showSkeletonDebug_) {
 		ImGui::Checkbox("Show Joint Names", &showJointNames_);
@@ -1828,20 +2051,36 @@ void GamePlayScene::Update()
 
 	if (const auto generatedSkybox = starFieldGenerator_.DrawImGui("Environment")) {
 		if (TextureManager::GetInstance()->ReloadTexture(*generatedSkybox)) {
-			delete skybox_;
-			environmentMapPath_ = *generatedSkybox;
-			skybox_ = new Skybox();
-			skybox_->Initialize(Object3dCommon::GetInstance(), *generatedSkybox);
-			skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
-			for (auto& [entityId, sceneObject] : sceneModelObjects_) {
-				(void)entityId;
-				if (sceneObject.object) {
-					sceneObject.object->SetEnvironmentMap(*generatedSkybox, 0.01f);
+			if (SceneDocument* document = sceneManager_
+				? sceneManager_->GetActiveSceneDocument()
+				: nullptr) {
+				SceneComponent* targetEnvironment = nullptr;
+				for (SceneEntity& entity : document->GetEntities()) {
+					SceneComponent* environment =
+						FindComponent(entity, "Environment");
+					if (!environment) {
+						continue;
+					}
+					targetEnvironment = environment;
+					break;
 				}
+				if (!targetEnvironment) {
+					SceneEntity& environmentEntity =
+						document->CreateEntity("Environment");
+					environmentEntity.components.push_back(SceneComponent{
+						"Environment",
+						true
+					});
+					targetEnvironment = &environmentEntity.components.back();
+				}
+				targetEnvironment->environmentSkyboxEnabled = true;
+				targetEnvironment->environmentSkyboxPath =
+					EditableResourcePath::ToProjectRelative(
+						std::filesystem::path(*generatedSkybox)
+					).generic_string();
+				document->MarkDirty();
 			}
-			if (player_ && player_->GetObject()) {
-				player_->GetObject()->SetEnvironmentMap(*generatedSkybox, 0.01f);
-			}
+			SyncEnvironmentComponent();
 		}
 	}
 
@@ -1882,6 +2121,7 @@ void GamePlayScene::Update()
 		axis->Update();
 	}
 	SyncSceneModelObjects();
+	SyncEnvironmentComponent();
 	RebuildStaticColliders();
 	SceneDocument* activeDocument = sceneManager_
 		? sceneManager_->GetActiveSceneDocument()
@@ -1899,12 +2139,20 @@ void GamePlayScene::Update()
 		if (activeDocument) {
 			if (cameraPathRuntime_.IsPlaying()) {
 				cameraPathRuntime_.Update(1.0f / 60.0f, *camera_);
+				if (cameraPathRuntime_.ConsumeFinishedThisFrame()) {
+					SyncPlayerCameraControllerFromCurrentCamera(*activeDocument);
+				}
 			} else {
 				ApplyMainCameraComponent(*activeDocument, camera_);
 				ApplyPlayerCameraMouseLook(*activeDocument);
 				TryStartCameraPath(*activeDocument);
 				if (cameraPathRuntime_.IsPlaying()) {
 					cameraPathRuntime_.Update(1.0f / 60.0f, *camera_);
+					if (cameraPathRuntime_.ConsumeFinishedThisFrame()) {
+						SyncPlayerCameraControllerFromCurrentCamera(
+							*activeDocument
+						);
+					}
 				}
 			}
 			camera_->Update();
@@ -1994,7 +2242,17 @@ void GamePlayScene::Update()
 					}
 				}
 			}
-			DrawCameraPathDebug(*document);
+		}
+	}
+	if (showCameraPathDebug_ || showCameraPathPointCameraDebug_) {
+		if (SceneDocument* document = sceneManager_
+			? sceneManager_->GetActiveSceneDocument()
+			: nullptr) {
+			DrawCameraPathDebug(
+				*document,
+				showCameraPathDebug_,
+				showCameraPathPointCameraDebug_
+			);
 		}
 	}
 #endif
@@ -2004,6 +2262,7 @@ void GamePlayScene::Update()
 			stageObject.object->Update();
 		}
 	}
+	SyncEnvironmentComponent();
 	if (skybox_) {
 		skybox_->Update();
 	}
@@ -2029,6 +2288,11 @@ void GamePlayScene::UpdatePaused()
 	ImGui::Begin("Scene Controls");
 	ImGui::TextDisabled("Paused Debug View");
 	ImGui::Checkbox("Show Camera Direction", &showCameraDebug_);
+	ImGui::Checkbox("Show CameraPath", &showCameraPathDebug_);
+	ImGui::Checkbox(
+		"Show CameraPath Point Camera Direction",
+		&showCameraPathPointCameraDebug_
+	);
 	ImGui::End();
 #endif
 
@@ -2078,7 +2342,17 @@ void GamePlayScene::UpdatePaused()
 					}
 				}
 			}
-			DrawCameraPathDebug(*document);
+		}
+	}
+	if (showCameraPathDebug_ || showCameraPathPointCameraDebug_) {
+		if (SceneDocument* document = sceneManager_
+			? sceneManager_->GetActiveSceneDocument()
+			: nullptr) {
+			DrawCameraPathDebug(
+				*document,
+				showCameraPathDebug_,
+				showCameraPathPointCameraDebug_
+			);
 		}
 	}
 #endif

@@ -57,6 +57,155 @@ namespace {
 		};
 	}
 
+	json PostProcessToJson(const ScenePostProcessSettings& settings) {
+		return {
+			{ "bloomEnabled", settings.bloomEnabled },
+			{ "baseExposure", settings.baseExposure },
+			{ "toneMapMode", settings.toneMapMode },
+			{ "bloomThreshold", settings.bloomThreshold },
+			{ "bloomSoftKnee", settings.bloomSoftKnee },
+			{ "bloomIntensity", settings.bloomIntensity },
+			{ "bloomBlurIterations", settings.bloomBlurIterations },
+			{ "bloomDownsampleScale", settings.bloomDownsampleScale },
+			{ "bloomBlurRadius", settings.bloomBlurRadius },
+			{ "grayscaleEnabled", settings.grayscaleEnabled },
+			{ "vignetteEnabled", settings.vignetteEnabled },
+			{ "boxBlurEnabled", settings.boxBlurEnabled },
+			{ "gaussianBlurEnabled", settings.gaussianBlurEnabled },
+			{ "depthOfFieldEnabled", settings.depthOfFieldEnabled },
+			{ "radialBlurEnabled", settings.radialBlurEnabled },
+			{ "noiseEnabled", settings.noiseEnabled },
+			{ "dissolveEnabled", settings.dissolveEnabled },
+			{ "outlineEnabled", settings.outlineEnabled },
+			{ "vignetteScale", settings.vignetteScale },
+			{ "vignettePower", settings.vignettePower },
+			{ "vignetteIntensity", settings.vignetteIntensity },
+			{ "boxBlurKernelSize", settings.boxBlurKernelSize },
+			{ "boxBlurStrength", settings.boxBlurStrength },
+			{ "gaussianBlurKernelSize", settings.gaussianBlurKernelSize },
+			{ "gaussianBlurSigma", settings.gaussianBlurSigma },
+			{ "gaussianBlurStrength", settings.gaussianBlurStrength },
+			{ "depthOfFieldFocusDistance", settings.depthOfFieldFocusDistance },
+			{ "depthOfFieldFocusRange", settings.depthOfFieldFocusRange },
+			{ "depthOfFieldBlurStrength", settings.depthOfFieldBlurStrength },
+			{ "depthOfFieldNearStrength", settings.depthOfFieldNearStrength },
+			{ "depthOfFieldFarStrength", settings.depthOfFieldFarStrength },
+			{ "depthOfFieldMaxRadius", settings.depthOfFieldMaxRadius },
+			{ "radialBlurCenter", VectorToJson(settings.radialBlurCenter) },
+			{ "radialBlurWidth", settings.radialBlurWidth },
+			{ "radialBlurSamples", settings.radialBlurSamples },
+			{ "noiseAnimate", settings.noiseAnimate },
+			{ "noiseAmount", settings.noiseAmount },
+			{ "noiseScale", settings.noiseScale },
+			{ "noiseSpeed", settings.noiseSpeed },
+			{ "noiseSeed", settings.noiseSeed },
+			{ "dissolveMaskIndex", settings.dissolveMaskIndex },
+			{ "dissolveThreshold", settings.dissolveThreshold },
+			{ "dissolveEdgeWidth", settings.dissolveEdgeWidth },
+			{ "dissolveEdgeColor", VectorToJson(settings.dissolveEdgeColor) },
+			{ "outlineLuminanceEnabled", settings.outlineLuminanceEnabled },
+			{ "outlineDepthEnabled", settings.outlineDepthEnabled },
+			{ "outlineLuminanceWeight", settings.outlineLuminanceWeight },
+			{ "outlineDepthWeight", settings.outlineDepthWeight },
+			{ "outlineThreshold", settings.outlineThreshold },
+			{ "outlineSoftness", settings.outlineSoftness },
+			{ "outlineThickness", settings.outlineThickness },
+			{ "outlineColor", VectorToJson(settings.outlineColor) }
+		};
+	}
+
+	ScenePostProcessSettings PostProcessFromJson(
+		const json& source,
+		const ScenePostProcessSettings& fallback
+	) {
+		if (!source.is_object()) {
+			return fallback;
+		}
+
+		ScenePostProcessSettings settings = fallback;
+		settings.bloomEnabled = source.value("bloomEnabled", settings.bloomEnabled);
+		settings.baseExposure = source.value("baseExposure", settings.baseExposure);
+		settings.toneMapMode = source.value("toneMapMode", settings.toneMapMode);
+		settings.bloomThreshold = source.value("bloomThreshold", settings.bloomThreshold);
+		settings.bloomSoftKnee = source.value("bloomSoftKnee", settings.bloomSoftKnee);
+		settings.bloomIntensity = source.value("bloomIntensity", settings.bloomIntensity);
+		settings.bloomBlurIterations = source.value("bloomBlurIterations", settings.bloomBlurIterations);
+		settings.bloomDownsampleScale = source.value("bloomDownsampleScale", settings.bloomDownsampleScale);
+		settings.bloomBlurRadius = source.value("bloomBlurRadius", settings.bloomBlurRadius);
+		settings.grayscaleEnabled = source.value("grayscaleEnabled", settings.grayscaleEnabled);
+		settings.vignetteEnabled = source.value("vignetteEnabled", settings.vignetteEnabled);
+		settings.boxBlurEnabled = source.value("boxBlurEnabled", settings.boxBlurEnabled);
+		settings.gaussianBlurEnabled = source.value("gaussianBlurEnabled", settings.gaussianBlurEnabled);
+		settings.depthOfFieldEnabled = source.value("depthOfFieldEnabled", settings.depthOfFieldEnabled);
+		settings.radialBlurEnabled = source.value("radialBlurEnabled", settings.radialBlurEnabled);
+		settings.noiseEnabled = source.value("noiseEnabled", settings.noiseEnabled);
+		settings.dissolveEnabled = source.value("dissolveEnabled", settings.dissolveEnabled);
+		settings.outlineEnabled = source.value("outlineEnabled", settings.outlineEnabled);
+		settings.vignetteScale = source.value("vignetteScale", settings.vignetteScale);
+		settings.vignettePower = source.value("vignettePower", settings.vignettePower);
+		settings.vignetteIntensity = source.value("vignetteIntensity", settings.vignetteIntensity);
+		settings.boxBlurKernelSize = source.value("boxBlurKernelSize", settings.boxBlurKernelSize);
+		settings.boxBlurStrength = source.value("boxBlurStrength", settings.boxBlurStrength);
+		settings.gaussianBlurKernelSize = source.value("gaussianBlurKernelSize", settings.gaussianBlurKernelSize);
+		settings.gaussianBlurSigma = source.value("gaussianBlurSigma", settings.gaussianBlurSigma);
+		settings.gaussianBlurStrength = source.value("gaussianBlurStrength", settings.gaussianBlurStrength);
+		settings.depthOfFieldFocusDistance = source.value("depthOfFieldFocusDistance", settings.depthOfFieldFocusDistance);
+		settings.depthOfFieldFocusRange = source.value("depthOfFieldFocusRange", settings.depthOfFieldFocusRange);
+		settings.depthOfFieldBlurStrength = source.value("depthOfFieldBlurStrength", settings.depthOfFieldBlurStrength);
+		settings.depthOfFieldNearStrength = source.value("depthOfFieldNearStrength", settings.depthOfFieldNearStrength);
+		settings.depthOfFieldFarStrength = source.value("depthOfFieldFarStrength", settings.depthOfFieldFarStrength);
+		settings.depthOfFieldMaxRadius = source.value("depthOfFieldMaxRadius", settings.depthOfFieldMaxRadius);
+		if (source.contains("radialBlurCenter")) {
+			settings.radialBlurCenter = JsonToVector(
+				source.at("radialBlurCenter"),
+				settings.radialBlurCenter
+			);
+		}
+		settings.radialBlurWidth = source.value("radialBlurWidth", settings.radialBlurWidth);
+		settings.radialBlurSamples = source.value("radialBlurSamples", settings.radialBlurSamples);
+		settings.noiseAnimate = source.value("noiseAnimate", settings.noiseAnimate);
+		settings.noiseAmount = source.value("noiseAmount", settings.noiseAmount);
+		settings.noiseScale = source.value("noiseScale", settings.noiseScale);
+		settings.noiseSpeed = source.value("noiseSpeed", settings.noiseSpeed);
+		settings.noiseSeed = source.value("noiseSeed", settings.noiseSeed);
+		settings.dissolveMaskIndex = source.value("dissolveMaskIndex", settings.dissolveMaskIndex);
+		settings.dissolveThreshold = source.value("dissolveThreshold", settings.dissolveThreshold);
+		settings.dissolveEdgeWidth = source.value("dissolveEdgeWidth", settings.dissolveEdgeWidth);
+		if (source.contains("dissolveEdgeColor")) {
+			settings.dissolveEdgeColor = JsonToVector(
+				source.at("dissolveEdgeColor"),
+				settings.dissolveEdgeColor
+			);
+		}
+		settings.outlineLuminanceEnabled = source.value("outlineLuminanceEnabled", settings.outlineLuminanceEnabled);
+		settings.outlineDepthEnabled = source.value("outlineDepthEnabled", settings.outlineDepthEnabled);
+		settings.outlineLuminanceWeight = source.value("outlineLuminanceWeight", settings.outlineLuminanceWeight);
+		settings.outlineDepthWeight = source.value("outlineDepthWeight", settings.outlineDepthWeight);
+		settings.outlineThreshold = source.value("outlineThreshold", settings.outlineThreshold);
+		settings.outlineSoftness = source.value("outlineSoftness", settings.outlineSoftness);
+		settings.outlineThickness = source.value("outlineThickness", settings.outlineThickness);
+		if (source.contains("outlineColor")) {
+			settings.outlineColor = JsonToVector(
+				source.at("outlineColor"),
+				settings.outlineColor
+			);
+		}
+
+		settings.baseExposure = (std::max)(0.01f, settings.baseExposure);
+		settings.toneMapMode = std::clamp(settings.toneMapMode, 0, 1);
+		settings.bloomThreshold = (std::max)(0.0f, settings.bloomThreshold);
+		settings.bloomSoftKnee = std::clamp(settings.bloomSoftKnee, 0.0f, 1.0f);
+		settings.bloomIntensity = (std::max)(0.0f, settings.bloomIntensity);
+		settings.bloomBlurIterations = std::clamp(settings.bloomBlurIterations, 0, 12);
+		settings.bloomDownsampleScale = std::clamp(settings.bloomDownsampleScale, 1, 8);
+		settings.bloomBlurRadius = (std::max)(0.0f, settings.bloomBlurRadius);
+		settings.boxBlurKernelSize = settings.boxBlurKernelSize == 5 ? 5 : 3;
+		settings.gaussianBlurKernelSize = settings.gaussianBlurKernelSize == 5 ? 5 : 3;
+		settings.radialBlurSamples = std::clamp(settings.radialBlurSamples, 2, 32);
+		settings.dissolveMaskIndex = std::clamp(settings.dissolveMaskIndex, 0, 1);
+		return settings;
+	}
+
 	json ComponentToJson(const SceneComponent& component) {
 		json result = {
 			{ "type", component.type },
@@ -65,6 +214,16 @@ namespace {
 		if (component.type == "MeshRenderer") {
 			result["modelPath"] = component.modelPath;
 			result["cullMode"] = component.meshCullMode;
+			result["environmentReflectionOverride"] =
+				component.meshEnvironmentReflectionOverride;
+			result["environmentReflectionIntensity"] =
+				component.meshEnvironmentReflectionIntensity;
+		} else if (component.type == "Environment") {
+			result["skyboxEnabled"] = component.environmentSkyboxEnabled;
+			result["skyboxPath"] = component.environmentSkyboxPath;
+			result["skyboxIntensity"] = component.environmentSkyboxIntensity;
+			result["reflectionIntensity"] =
+				component.environmentReflectionIntensity;
 		} else if (component.type == "SpriteRenderer") {
 			result["texturePath"] = component.texturePath;
 			result["size"] = VectorToJson(component.spriteSize);
@@ -154,6 +313,30 @@ namespace {
 				component.meshCullMode = value.value(
 					"cullMode",
 					component.meshCullMode
+				);
+				component.meshEnvironmentReflectionOverride = value.value(
+					"environmentReflectionOverride",
+					component.meshEnvironmentReflectionOverride
+				);
+				component.meshEnvironmentReflectionIntensity = value.value(
+					"environmentReflectionIntensity",
+					component.meshEnvironmentReflectionIntensity
+				);
+				component.environmentSkyboxEnabled = value.value(
+					"skyboxEnabled",
+					component.environmentSkyboxEnabled
+				);
+				component.environmentSkyboxPath = value.value(
+					"skyboxPath",
+					component.environmentSkyboxPath
+				);
+				component.environmentSkyboxIntensity = value.value(
+					"skyboxIntensity",
+					component.environmentSkyboxIntensity
+				);
+				component.environmentReflectionIntensity = value.value(
+					"reflectionIntensity",
+					component.environmentReflectionIntensity
 				);
 				component.texturePath = value.value("texturePath", std::string{});
 				if (value.contains("size")) {
@@ -374,6 +557,19 @@ namespace {
 				);
 			}
 			if (!component.type.empty()) {
+				if (component.type == "Environment") {
+					if (component.environmentSkyboxPath.empty()) {
+						component.environmentSkyboxPath =
+							"resources/rostock_laage_airport_4k.dds";
+					}
+					component.environmentSkyboxIntensity =
+						(std::max)(0.0f, component.environmentSkyboxIntensity);
+					component.environmentReflectionIntensity = std::clamp(
+						component.environmentReflectionIntensity,
+						0.0f,
+						1.0f
+					);
+				}
 				const auto duplicate = std::find_if(
 					components.begin(),
 					components.end(),
@@ -477,6 +673,7 @@ namespace {
 void SceneDocument::Clear(const std::string& sceneName) {
 	sceneName_ = sceneName;
 	entities_.clear();
+	postProcessSettings_ = {};
 	nextId_ = 1;
 	dirty_ = false;
 	revision_ = 0;
@@ -498,8 +695,9 @@ bool SceneDocument::Load(const std::string& filePath) {
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 9;
+	root["version"] = 10;
 	root["sceneName"] = sceneName_;
+	root["postProcess"] = PostProcessToJson(postProcessSettings_);
 	root["entities"] = json::array();
 
 	for (const SceneEntity& entity : entities_) {
@@ -818,6 +1016,32 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		} else if (type == "MeshRenderer" && found->meshCullMode.empty()) {
 			found->meshCullMode = "Back";
 			changed = true;
+		} else if (type == "MeshRenderer") {
+			const float reflectionIntensity = std::clamp(
+				found->meshEnvironmentReflectionIntensity,
+				0.0f,
+				1.0f
+			);
+			if (
+				found->meshEnvironmentReflectionIntensity !=
+				reflectionIntensity
+			) {
+				found->meshEnvironmentReflectionIntensity = reflectionIntensity;
+				changed = true;
+			}
+		} else if (type == "Environment") {
+			if (found->environmentSkyboxPath.empty()) {
+				found->environmentSkyboxPath = "resources/rostock_laage_airport_4k.dds";
+				changed = true;
+			}
+			if (found->environmentSkyboxIntensity < 0.0f) {
+				found->environmentSkyboxIntensity = 1.0f;
+				changed = true;
+			}
+			if (found->environmentReflectionIntensity < 0.0f) {
+				found->environmentReflectionIntensity = 0.3f;
+				changed = true;
+			}
 		} else if (type == "SpriteRenderer" && found->texturePath.empty()) {
 			found->texturePath = entity->spriteTexturePath;
 			found->spriteSize = entity->spriteSize;
@@ -951,6 +1175,13 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 	if (type == "MeshRenderer") {
 		component.modelPath = entity->modelPath;
 		component.meshCullMode = "Back";
+		component.meshEnvironmentReflectionOverride = false;
+		component.meshEnvironmentReflectionIntensity = 0.3f;
+	} else if (type == "Environment") {
+		component.environmentSkyboxEnabled = true;
+		component.environmentSkyboxPath = "resources/rostock_laage_airport_4k.dds";
+		component.environmentSkyboxIntensity = 1.0f;
+		component.environmentReflectionIntensity = 0.3f;
 	} else if (type == "SpriteRenderer") {
 		component.texturePath = entity->spriteTexturePath;
 		component.spriteSize = entity->spriteSize;
@@ -1125,6 +1356,10 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 
 		sceneName_ = root.value("sceneName", std::string{});
 		entities_.clear();
+		postProcessSettings_ = PostProcessFromJson(
+			root.value("postProcess", json::object()),
+			ScenePostProcessSettings{}
+		);
 		for (const json& source : root.at("entities")) {
 			SceneEntity entity{};
 			entity.id = source.value("id", uint64_t{});

@@ -274,6 +274,8 @@
     </FxCompile>
     <FxCompile Include="resources\shaders\Skybox.VS.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
@@ -360,6 +362,7 @@
     <None Include="resources\shaders\BloomExtract.PS.hlsl" />
     <None Include="resources\shaders\CopyImage.PS.hlsl" />
     <None Include="resources\shaders\Dissolve.PS.hlsl" />
+    <None Include="resources\shaders\DepthOfField.PS.hlsl" />
     <None Include="resources\shaders\Fullscreen.hlsli" />
     <None Include="resources\shaders\Fullscreen.VS.hlsl" />
     <None Include="resources\shaders\GaussianBlur.PS.hlsl" />

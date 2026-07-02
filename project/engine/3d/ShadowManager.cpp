@@ -140,7 +140,10 @@ void ShadowManager::UpdateShadowData(const LightManager& lightManager) {
 	const auto& directionalShadow = lightManager.GetDirectionalShadowSettings();
 	if (directionalLight.enable != 0 && directionalShadow.enable != 0) {
 		const uint32_t mapIndex = 0;
-		lightViewProjections_[mapIndex] = MakeDirectionalLightViewProjection(directionalLight);
+		lightViewProjections_[mapIndex] = MakeDirectionalLightViewProjection(
+			directionalLight,
+			directionalShadow
+		);
 		activeMaps_[mapIndex] = true;
 		hasRenderableShadow_ = true;
 
@@ -278,14 +281,17 @@ Matrix4x4 ShadowManager::MakeLookAtMatrix(const Vector3& eye, const Vector3& tar
 	return Inverse(world);
 }
 
-Matrix4x4 ShadowManager::MakeDirectionalLightViewProjection(const LightManager::DirectionalLight& light) const {
+Matrix4x4 ShadowManager::MakeDirectionalLightViewProjection(
+	const LightManager::DirectionalLight& light,
+	const LightManager::ShadowSettings& shadowSettings
+) const {
 	Vector3 direction = Math::Normalize(light.direction);
 	if (Math::Length(direction) < 0.000001f) {
 		direction = { 0.0f, -1.0f, 0.0f };
 	}
 
-	const Vector3 target = { 0.0f, 0.0f, 0.0f };
-	const Vector3 eye = Math::Subtract(target, Math::Multiply(direction, 45.0f));
+	Vector3 target = shadowSettings.target;
+	const float lightDistance = (std::max)(shadowSettings.distance, 1.0f);
 	Vector3 up = { 0.0f, 1.0f, 0.0f };
 	if (std::abs(Math::Cross(up, direction).x) +
 		std::abs(Math::Cross(up, direction).y) +
@@ -293,8 +299,56 @@ Matrix4x4 ShadowManager::MakeDirectionalLightViewProjection(const LightManager::
 		up = { 0.0f, 0.0f, 1.0f };
 	}
 
+	Vector3 right = Math::Normalize(Math::Cross(up, direction));
+	if (Math::Length(right) < 0.000001f) {
+		right = { 1.0f, 0.0f, 0.0f };
+	}
+	Vector3 trueUp = Math::Normalize(Math::Cross(direction, right));
+	if (shadowSettings.texelSnap && shadowMapSize_ > 0) {
+		const float orthographicSize =
+			(std::max)(shadowSettings.orthographicSize, 1.0f);
+		const float worldUnitsPerTexel =
+			(orthographicSize * 2.0f) /
+			static_cast<float>(shadowMapSize_);
+		if (worldUnitsPerTexel > 0.0f) {
+			const float targetRight = Math::Dot(target, right);
+			const float targetUp = Math::Dot(target, trueUp);
+			const float snappedRight =
+				std::round(targetRight / worldUnitsPerTexel) *
+				worldUnitsPerTexel;
+			const float snappedUp =
+				std::round(targetUp / worldUnitsPerTexel) *
+				worldUnitsPerTexel;
+			target = Math::Add(
+				target,
+				Math::Add(
+					Math::Multiply(right, snappedRight - targetRight),
+					Math::Multiply(trueUp, snappedUp - targetUp)
+				)
+			);
+		}
+	}
+
+	const Vector3 eye = Math::Subtract(
+		target,
+		Math::Multiply(direction, lightDistance)
+	);
 	Matrix4x4 view = MakeLookAtMatrix(eye, target, up);
-	Matrix4x4 projection = MakeShadowOrthographicMatrix(-40.0f, 40.0f, 40.0f, -40.0f, 0.1f, 120.0f);
+	const float orthographicSize =
+		(std::max)(shadowSettings.orthographicSize, 1.0f);
+	const float nearClip = (std::max)(shadowSettings.nearClip, 0.001f);
+	const float farClip = (std::max)(
+		shadowSettings.farClip,
+		nearClip + 0.001f
+	);
+	Matrix4x4 projection = MakeShadowOrthographicMatrix(
+		-orthographicSize,
+		orthographicSize,
+		orthographicSize,
+		-orthographicSize,
+		nearClip,
+		farClip
+	);
 	return Multiply(view, projection);
 }
 

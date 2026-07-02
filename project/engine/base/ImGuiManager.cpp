@@ -1204,7 +1204,7 @@ void ImGuiManager::DrawPlaybackControls() {
 		}
 	}
 	ImGui::SameLine();
-	ImGui::TextDisabled("F1 Stop / F2 Pause");
+	ImGui::TextDisabled("F1 Play/Stop / F2 Pause");
 
 	ImGui::SameLine();
 	ImGui::BeginDisabled(!editorSession_->IsEditing());
@@ -2182,6 +2182,136 @@ void ImGuiManager::DrawInspectorWindow() {
 					}
 					ImGui::EndCombo();
 				}
+				bool reflectionChanged = false;
+				reflectionChanged |= ImGui::Checkbox(
+					"Override Environment Reflection",
+					&component.meshEnvironmentReflectionOverride
+				);
+				ImGui::BeginDisabled(
+					!component.meshEnvironmentReflectionOverride
+				);
+				reflectionChanged |= ImGui::DragFloat(
+					"Reflection Intensity",
+					&component.meshEnvironmentReflectionIntensity,
+					0.01f,
+					0.0f,
+					1.0f
+				);
+				ImGui::EndDisabled();
+				if (component.meshEnvironmentReflectionIntensity < 0.0f) {
+					component.meshEnvironmentReflectionIntensity = 0.0f;
+					reflectionChanged = true;
+				}
+				if (component.meshEnvironmentReflectionIntensity > 1.0f) {
+					component.meshEnvironmentReflectionIntensity = 1.0f;
+					reflectionChanged = true;
+				}
+				if (reflectionChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "Environment") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool environmentChanged = false;
+				environmentChanged |= ImGui::Checkbox(
+					"Skybox Enabled",
+					&component.environmentSkyboxEnabled
+				);
+
+				auto assignSkybox = [&](const std::string& texturePath) {
+					if (component.environmentSkyboxPath == texturePath) {
+						return;
+					}
+					component.environmentSkyboxPath = texturePath;
+					TextureManager::GetInstance()->LoadTexture(texturePath);
+					environmentChanged = true;
+					editorSession_->RequestSceneReload();
+				};
+
+				const char* currentSkybox =
+					component.environmentSkyboxPath.empty()
+					? "None"
+					: component.environmentSkyboxPath.c_str();
+				if (ImGui::BeginCombo("Skybox DDS", currentSkybox)) {
+					if (ImGui::Selectable(
+						"None",
+						component.environmentSkyboxPath.empty()
+					)) {
+						assignSkybox({});
+					}
+					for (const std::string& texturePath : GetCachedTextureAssetPaths()) {
+						std::filesystem::path path(texturePath);
+						std::string extension = path.extension().string();
+						std::transform(
+							extension.begin(),
+							extension.end(),
+							extension.begin(),
+							::tolower
+						);
+						if (extension != ".dds") {
+							continue;
+						}
+						if (ImGui::Selectable(
+							texturePath.c_str(),
+							component.environmentSkyboxPath == texturePath
+						)) {
+							assignSkybox(texturePath);
+						}
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::Button("Drop DDS Skybox Here", ImVec2(-1.0f, 38.0f));
+				if (ImGui::BeginDragDropTarget()) {
+					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+						"PROJECT_TEXTURE_PATH"
+					)) {
+						const char* droppedPath =
+							static_cast<const char*>(payload->Data);
+						if (droppedPath && droppedPath[0] != '\0') {
+							std::filesystem::path path(droppedPath);
+							std::string extension = path.extension().string();
+							std::transform(
+								extension.begin(),
+								extension.end(),
+								extension.begin(),
+								::tolower
+							);
+							if (extension == ".dds") {
+								assignSkybox(droppedPath);
+							}
+						}
+					}
+					ImGui::EndDragDropTarget();
+				}
+				environmentChanged |= ImGui::DragFloat(
+					"Skybox Intensity",
+					&component.environmentSkyboxIntensity,
+					0.01f,
+					0.0f,
+					10.0f
+				);
+				environmentChanged |= ImGui::DragFloat(
+					"Reflection Intensity",
+					&component.environmentReflectionIntensity,
+					0.01f,
+					0.0f,
+					1.0f
+				);
+				if (component.environmentSkyboxIntensity < 0.0f) {
+					component.environmentSkyboxIntensity = 0.0f;
+					environmentChanged = true;
+				}
+				if (component.environmentReflectionIntensity < 0.0f) {
+					component.environmentReflectionIntensity = 0.0f;
+					environmentChanged = true;
+				}
+				if (component.environmentReflectionIntensity > 1.0f) {
+					component.environmentReflectionIntensity = 1.0f;
+					environmentChanged = true;
+				}
+				if (environmentChanged) {
+					document.MarkDirty();
+				}
 				ImGui::EndDisabled();
 			} else if (component.type == "SpriteRenderer") {
 				const char* currentTexture = component.texturePath.empty()
@@ -2828,6 +2958,7 @@ void ImGuiManager::DrawInspectorWindow() {
 		if (ImGui::BeginCombo("Component", "Select...")) {
 			const char* availableComponents[] = {
 				"MeshRenderer",
+				"Environment",
 				"SpriteRenderer",
 				"Camera",
 				"MonitorRenderer",

@@ -73,6 +73,9 @@ void FullscreenCopy::Draw(
 	else if (effect == Effect::kOutline) {
 		pipelineState = outlinePipelineState_.Get();
 	}
+	else if (effect == Effect::kDepthOfField) {
+		pipelineState = depthOfFieldPipelineState_.Get();
+	}
 	commandList->SetPipelineState(pipelineState);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootDescriptorTable(0, textureHandle);
@@ -209,6 +212,10 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/Outline.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto depthOfFieldPixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/DepthOfField.PS.hlsl",
+		L"ps_6_0"
+	);
 	assert(vertexShader);
 	assert(copyPixelShader);
 	assert(grayscalePixelShader);
@@ -219,6 +226,7 @@ void FullscreenCopy::CreatePipelineState() {
 	assert(noisePixelShader);
 	assert(dissolvePixelShader);
 	assert(outlinePixelShader);
+	assert(depthOfFieldPixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -338,6 +346,16 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&outlinePipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		depthOfFieldPixelShader->GetBufferPointer(),
+		depthOfFieldPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&depthOfFieldPipelineState_)
 	);
 	assert(SUCCEEDED(result));
 }

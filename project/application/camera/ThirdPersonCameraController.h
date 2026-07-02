@@ -17,6 +17,10 @@ public:
 	);
 
 	void SetYawPitch(float yaw, float pitch);
+	void SyncFromCameraPose(
+		const Vector3& cameraPosition,
+		const Vector3& focusPosition
+	);
 	float GetYaw() const { return yaw_; }
 	float GetPitch() const { return pitch_; }
 	Vector3 GetForwardDirection() const;

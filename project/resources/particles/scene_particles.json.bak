@@ -98,16 +98,16 @@
     ],
     "rainAsset": [
       {
-        "count": 500,
+        "count": 1000,
         "effectFilePath": "resources/particles/rainParticle.json",
         "emitterActive": true,
         "enabled": true,
         "frequency": 0.10000000149011612,
         "label": "Particle 0",
         "spawnSize": [
-          200.0,
+          400.0,
           1.0,
-          200.0
+          400.0
         ],
         "translate": [
           0.0,
@@ -139,7 +139,7 @@
     "GAMEPLAY": [
       {
         "assetName": "rainAsset",
-        "enabled": false,
+        "enabled": true,
         "label": "rainAsset 0",
         "translate": [
           0.0,
@@ -149,7 +149,7 @@
       },
       {
         "assetName": "SnoeAsset",
-        "enabled": true,
+        "enabled": false,
         "label": "SnoeAsset 1",
         "translate": [
           0.0,
