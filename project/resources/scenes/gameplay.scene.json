@@ -1167,7 +1167,7 @@
     "boxBlurKernelSize": 3,
     "boxBlurStrength": 1.0,
     "depthOfFieldBlurStrength": 0.3449999988079071,
-    "depthOfFieldEnabled": true,
+    "depthOfFieldEnabled": false,
     "depthOfFieldFarStrength": 1.9670000076293945,
     "depthOfFieldFocusDistance": 64.28900146484375,
     "depthOfFieldFocusRange": 53.638999938964844,

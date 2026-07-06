@@ -64,19 +64,51 @@ VertexShaderOutput main(
 )
 {
     GpuParticle particle = gParticles[instanceId];
+    const bool forceVisible = gPerView.renderFlags.y > 0.5f;
+    if (particle.color.a <= 0.0f || particle.lifeTime <= 0.0f)
+    {
+        if (forceVisible && instanceId == 0)
+        {
+            particle.translate = float32_t3(0.0f, 2.0f, 0.0f);
+            particle.scale = float32_t3(1.0f, 1.0f, 1.0f);
+            particle.rotate = float32_t3(0.0f, 0.0f, 0.0f);
+            particle.color = float32_t4(8.0f, 0.2f, 0.1f, 1.0f);
+        }
+        else
+        {
+            VertexShaderOutput emptyOutput;
+            emptyOutput.position = float32_t4(2.0f, 2.0f, 2.0f, 1.0f);
+            emptyOutput.texcoord = input.texcoord;
+            emptyOutput.normal = input.normal;
+            emptyOutput.color = float32_t4(0.0f, 0.0f, 0.0f, 0.0f);
+            return emptyOutput;
+        }
+    }
 
-    float32_t4x4 scaleMatrix = MakeScaleMatrix(particle.scale);
+    float32_t3 particleScale = particle.scale;
+    float32_t4 particleColor = particle.color;
+    if (forceVisible)
+    {
+        particleScale = max(abs(particleScale), float32_t3(0.45f, 0.45f, 0.45f));
+        particleColor = float32_t4(8.0f, 0.6f, 0.2f, 1.0f);
+    }
+
+    float32_t4x4 scaleMatrix = MakeScaleMatrix(particleScale);
     float32_t4x4 rotateMatrix = mul(
         mul(MakeRotateZMatrix(particle.rotate.z), MakeRotateYMatrix(particle.rotate.y)),
         MakeRotateXMatrix(particle.rotate.x)
     );
-    float32_t4x4 worldMatrix = mul(mul(scaleMatrix, rotateMatrix), gPerView.billboardMatrix);
+    float32_t4x4 worldMatrix = mul(scaleMatrix, rotateMatrix);
+    if (gPerView.renderFlags.x > 0.5f)
+    {
+        worldMatrix = mul(worldMatrix, gPerView.billboardMatrix);
+    }
     worldMatrix[3].xyz = particle.translate;
 
     VertexShaderOutput output;
     output.position = mul(input.position, mul(worldMatrix, gPerView.viewProjection));
     output.texcoord = input.texcoord;
     output.normal = normalize(mul(input.normal, (float32_t3x3)worldMatrix));
-    output.color = particle.color * input.color;
+    output.color = particleColor * input.color;
     return output;
 }

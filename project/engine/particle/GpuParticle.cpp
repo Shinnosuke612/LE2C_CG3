@@ -1,6 +1,7 @@
 #include "GpuParticle.h"
 #include "../base/RenderFormats.h"
 
+#include "ParticleEffectResource.h"
 #include "ParticleCommon.h"
 #include "../2d/TextureManager.h"
 #include "../utility/ResourceTextureCatalog.h"
@@ -14,6 +15,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -21,7 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 #include <imgui.h>
 #endif
 
@@ -30,9 +32,61 @@ using json = nlohmann::json;
 namespace {
 
 constexpr float kMinEmitterFrequency = 1.0f / 60.0f;
+constexpr uint32_t kEmitFlagEmitParticles = 1u << 0;
+constexpr uint32_t kEmitFlagSeedVisibleParticle = 1u << 1;
+constexpr uint32_t kGpuParticleThreadCount = 1024;
+
+uint32_t GpuParticleDispatchGroupCount() {
+	return (GpuParticle::kMaxParticles + kGpuParticleThreadCount - 1u) /
+		kGpuParticleThreadCount;
+}
 
 float NormalizeEmitterFrequency(float frequency) {
 	return frequency > 0.0f ? frequency : kMinEmitterFrequency;
+}
+
+float MaxComponent(const Vector3& value) {
+	return (std::max)((std::max)(value.x, value.y), value.z);
+}
+
+float LengthSquared(const Vector3& value) {
+	return value.x * value.x + value.y * value.y + value.z * value.z;
+}
+
+Vector3 NormalizeVectorOrZero(const Vector3& value) {
+	const float lengthSquared = LengthSquared(value);
+	if (lengthSquared <= 0.000001f) {
+		return { 0.0f, 0.0f, 0.0f };
+	}
+
+	const float invLength = 1.0f / std::sqrt(lengthSquared);
+	return {
+		value.x * invLength,
+		value.y * invLength,
+		value.z * invLength
+	};
+}
+
+float SanitizeScale(float value, float fallback) {
+	if (std::isfinite(value) && value > 0.0f) {
+		return value;
+	}
+	return fallback;
+}
+
+std::string FormatHRESULT(HRESULT hr) {
+	std::ostringstream stream;
+	stream << "0x" << std::uppercase << std::hex
+		   << static_cast<unsigned long>(hr);
+	return stream.str();
+}
+
+bool LogFailedHRESULT(const char* label, HRESULT hr) {
+	if (SUCCEEDED(hr)) {
+		return false;
+	}
+	Logger::Log(std::string(label) + " failed. hr=" + FormatHRESULT(hr) + "\n");
+	return true;
 }
 
 const char* ToString(ParticleCommon::BlendMode mode) {
@@ -466,8 +520,70 @@ void GpuParticle::ApplyConfigToGpu() {
 			behavior.velocityMax,
 			behavior.rotationSpeedMax
 		};
+		behaviorData_->startScaleMin = {
+			behavior.startScaleMin.x,
+			behavior.startScaleMin.y,
+			behavior.startScaleMin.z,
+			0.0f
+		};
+		behaviorData_->startScaleMax = {
+			behavior.startScaleMax.x,
+			behavior.startScaleMax.y,
+			behavior.startScaleMax.z,
+			0.0f
+		};
+		behaviorData_->endScaleMin = {
+			behavior.endScaleMin.x,
+			behavior.endScaleMin.y,
+			behavior.endScaleMin.z,
+			0.0f
+		};
+		behaviorData_->endScaleMax = {
+			behavior.endScaleMax.x,
+			behavior.endScaleMax.y,
+			behavior.endScaleMax.z,
+			0.0f
+		};
+		behaviorData_->velocityBase = {
+			behavior.velocityBase.x,
+			behavior.velocityBase.y,
+			behavior.velocityBase.z,
+			0.0f
+		};
+		behaviorData_->velocityRandomRange = {
+			behavior.velocityRandomRange.x,
+			behavior.velocityRandomRange.y,
+			behavior.velocityRandomRange.z,
+			0.0f
+		};
+		behaviorData_->accelerationBase = {
+			behavior.accelerationBase.x,
+			behavior.accelerationBase.y,
+			behavior.accelerationBase.z,
+			0.0f
+		};
+		behaviorData_->accelerationRandomRange = {
+			behavior.accelerationRandomRange.x,
+			behavior.accelerationRandomRange.y,
+			behavior.accelerationRandomRange.z,
+			0.0f
+		};
+		behaviorData_->flags = {
+			behavior.enableLifeFade ? 1.0f : 0.0f,
+			behavior.fadeOutStartRatio,
+			behavior.enableScaleOverLife ? 1.0f : 0.0f,
+			static_cast<float>(behavior.colorMode)
+		};
+		behaviorData_->rotationFlags = {
+			behavior.alignToVelocity ? 1.0f : 0.0f,
+			static_cast<float>(behavior.alignAxis),
+			0.0f,
+			0.0f
+		};
 		behaviorData_->colorMin = behavior.colorMin;
 		behaviorData_->colorMax = behavior.colorMax;
+		behaviorData_->endColorMin = behavior.endColorMin;
+		behaviorData_->endColorMax = behavior.endColorMax;
 	}
 }
 
@@ -484,6 +600,106 @@ bool GpuParticle::ApplyTexture(const std::string& textureFilePath) {
 	config_.textureFilePath = textureFilePath;
 	textureSrvIndex_ = TextureManager::GetInstance()->GetSrvIndex(textureFilePath_);
 	return true;
+}
+
+void GpuParticle::ApplyEffectDesc(const ParticleEffectDesc& effect) {
+	config_.textureFilePath = effect.textureFilePath;
+	ApplyTexture(effect.textureFilePath);
+	config_.blendMode = effect.blendMode;
+	config_.autoEmit = effect.emitter.isActive;
+	config_.useBillboard =
+		effect.behavior.render.billboardMode == ParticleManager::BillboardMode::kBillboard;
+	config_.forceVisible = false;
+
+	if (materialData_) {
+		materialData_->alphaCutoff =
+			std::clamp(effect.behavior.render.alphaCutoff, 0.0f, 1.0f);
+		materialData_->flipU = effect.behavior.render.flipU ? 1 : 0;
+		materialData_->flipV = effect.behavior.render.flipV ? 1 : 0;
+		materialData_->emissiveIntensity =
+			(std::max)(0.0f, effect.behavior.render.emissiveIntensity);
+	}
+
+	config_.emitter.translate = effect.emitter.translate;
+	config_.emitter.radius =
+		(std::max)(0.0f, MaxComponent(effect.emitter.spawnSize) * 0.5f);
+	config_.emitter.spawnSize = effect.emitter.spawnSize;
+	config_.emitter.shape = 1;
+	config_.emitter.count =
+		std::clamp(effect.emitter.count, 0u, kMaxParticles);
+	config_.emitter.frequency =
+		NormalizeEmitterFrequency(effect.emitter.frequency);
+
+	BehaviorSettings& behavior = config_.behavior;
+	behavior.lifeTimeMin =
+		(std::max)(0.01f, effect.behavior.life.lifeTimeMin);
+	behavior.lifeTimeMax =
+		(std::max)(behavior.lifeTimeMin, effect.behavior.life.lifeTimeMax);
+
+	behavior.startScaleMin = effect.behavior.scale.startScaleMin;
+	behavior.startScaleMax = effect.behavior.scale.startScaleMax;
+	behavior.enableScaleOverLife = effect.behavior.scale.enableScaleOverLife;
+	behavior.endScaleMin = effect.behavior.scale.endScaleMin;
+	behavior.endScaleMax = effect.behavior.scale.endScaleMax;
+	behavior.scaleMin =
+		SanitizeScale(MaxComponent(behavior.startScaleMin), behavior.scaleMin);
+	behavior.scaleMax =
+		(std::max)(behavior.scaleMin, SanitizeScale(MaxComponent(behavior.startScaleMax), behavior.scaleMax));
+
+	behavior.velocityBase = effect.behavior.motion.linear.baseVelocity;
+	behavior.velocityRandomRange = effect.behavior.motion.linear.velocityRandomRange;
+	behavior.accelerationBase = effect.behavior.motion.linear.enableAcceleration
+		? effect.behavior.motion.linear.baseAcceleration
+		: Vector3{ 0.0f, 0.0f, 0.0f };
+	behavior.accelerationRandomRange = effect.behavior.motion.linear.enableAcceleration
+		? effect.behavior.motion.linear.accelerationRandomRange
+		: Vector3{ 0.0f, 0.0f, 0.0f };
+	if (effect.behavior.motion.wind.enabled) {
+		const Vector3 windDirection =
+			NormalizeVectorOrZero(effect.behavior.motion.wind.direction);
+		if (effect.behavior.motion.wind.smoothVelocity) {
+			const float windAcceleration =
+				(std::max)(0.0f, effect.behavior.motion.wind.acceleration);
+			behavior.accelerationBase.x += windDirection.x * windAcceleration;
+			behavior.accelerationBase.y += windDirection.y * windAcceleration;
+			behavior.accelerationBase.z += windDirection.z * windAcceleration;
+		}
+		else {
+			const float windStrength =
+				(std::max)(0.0f, effect.behavior.motion.wind.strength);
+			behavior.velocityBase.x += windDirection.x * windStrength;
+			behavior.velocityBase.y += windDirection.y * windStrength;
+			behavior.velocityBase.z += windDirection.z * windStrength;
+		}
+	}
+	const bool hasConfiguredVelocity =
+		LengthSquared(behavior.velocityBase) > 0.000001f ||
+		LengthSquared(behavior.velocityRandomRange) > 0.000001f;
+	if (hasConfiguredVelocity) {
+		behavior.velocityMin = 1.0f;
+		behavior.velocityMax = 1.0f;
+	}
+
+	behavior.rotationSpeedMin = effect.behavior.rotation.rotationSpeed.z;
+	behavior.rotationSpeedMax = effect.behavior.rotation.rotationSpeed.z;
+	behavior.alignToVelocity = effect.behavior.rotation.alignToVelocity;
+	behavior.alignAxis =
+		static_cast<uint32_t>(effect.behavior.rotation.alignAxis);
+	behavior.enableLifeFade = effect.behavior.life.enableLifeFade;
+	behavior.fadeOutStartRatio = effect.behavior.life.fadeOutStartRatio;
+	behavior.colorMode =
+		effect.behavior.color.mode == ParticleManager::ColorChangeMode::kOverLife ? 1u : 0u;
+	behavior.colorMin = effect.behavior.color.startColorMin;
+	behavior.colorMax = effect.behavior.color.startColorMax;
+	behavior.endColorMin = effect.behavior.color.endColorMin;
+	behavior.endColorMax = effect.behavior.color.endColorMax;
+
+	ApplyConfigToGpu();
+	CopyStringsToBuffers();
+	ClearParticles();
+	if (emitterData_ && config_.autoEmit && config_.emitter.count > 0) {
+		emitterData_->emit |= kEmitFlagEmitParticles;
+	}
 }
 
 void GpuParticle::CopyStringsToBuffers() {
@@ -518,26 +734,64 @@ bool GpuParticle::SaveConfig(const std::string& filePath) const {
 		output << "texture," << config_.textureFilePath << "\n";
 		output << "blendMode," << ToString(config_.blendMode) << "\n";
 		output << "autoEmit," << (config_.autoEmit ? 1 : 0) << "\n";
+		output << "useBillboard," << (config_.useBillboard ? 1 : 0) << "\n";
+		output << "forceVisible," << (config_.forceVisible ? 1 : 0) << "\n";
 		output << "emitter.translate,"
 			 << config_.emitter.translate.x << "," << config_.emitter.translate.y
 			 << "," << config_.emitter.translate.z << "\n";
 		output << "emitter.radius," << config_.emitter.radius << "\n";
+		output << "emitter.spawnSize," << config_.emitter.spawnSize.x << ","
+			 << config_.emitter.spawnSize.y << "," << config_.emitter.spawnSize.z << "\n";
+		output << "emitter.shape," << config_.emitter.shape << "\n";
 		output << "emitter.count," << config_.emitter.count << "\n";
 		output << "emitter.frequency," << config_.emitter.frequency << "\n";
 		output << "behavior.lifeTime," << behavior.lifeTimeMin << ","
 			 << behavior.lifeTimeMax << "\n";
 		output << "behavior.scale," << behavior.scaleMin << ","
 			 << behavior.scaleMax << "\n";
+		output << "behavior.startScaleMin," << behavior.startScaleMin.x << ","
+			 << behavior.startScaleMin.y << "," << behavior.startScaleMin.z << "\n";
+		output << "behavior.startScaleMax," << behavior.startScaleMax.x << ","
+			 << behavior.startScaleMax.y << "," << behavior.startScaleMax.z << "\n";
+		output << "behavior.enableScaleOverLife,"
+			 << (behavior.enableScaleOverLife ? 1 : 0) << "\n";
+		output << "behavior.endScaleMin," << behavior.endScaleMin.x << ","
+			 << behavior.endScaleMin.y << "," << behavior.endScaleMin.z << "\n";
+		output << "behavior.endScaleMax," << behavior.endScaleMax.x << ","
+			 << behavior.endScaleMax.y << "," << behavior.endScaleMax.z << "\n";
 		output << "behavior.velocity," << behavior.velocityMin << ","
 			 << behavior.velocityMax << "\n";
+		output << "behavior.velocityBase," << behavior.velocityBase.x << ","
+			 << behavior.velocityBase.y << "," << behavior.velocityBase.z << "\n";
+		output << "behavior.velocityRandomRange,"
+			 << behavior.velocityRandomRange.x << ","
+			 << behavior.velocityRandomRange.y << ","
+			 << behavior.velocityRandomRange.z << "\n";
+		output << "behavior.accelerationBase," << behavior.accelerationBase.x << ","
+			 << behavior.accelerationBase.y << "," << behavior.accelerationBase.z << "\n";
+		output << "behavior.accelerationRandomRange,"
+			 << behavior.accelerationRandomRange.x << ","
+			 << behavior.accelerationRandomRange.y << ","
+			 << behavior.accelerationRandomRange.z << "\n";
 		output << "behavior.rotationSpeed," << behavior.rotationSpeedMin << ","
 			 << behavior.rotationSpeedMax << "\n";
+		output << "behavior.alignToVelocity," << (behavior.alignToVelocity ? 1 : 0) << "\n";
+		output << "behavior.alignAxis," << behavior.alignAxis << "\n";
+		output << "behavior.enableLifeFade," << (behavior.enableLifeFade ? 1 : 0) << "\n";
+		output << "behavior.fadeOutStartRatio," << behavior.fadeOutStartRatio << "\n";
+		output << "behavior.colorMode," << behavior.colorMode << "\n";
 		output << "behavior.colorMin," << behavior.colorMin.x << ","
 			 << behavior.colorMin.y << "," << behavior.colorMin.z << ","
 			 << behavior.colorMin.w << "\n";
 		output << "behavior.colorMax," << behavior.colorMax.x << ","
 			 << behavior.colorMax.y << "," << behavior.colorMax.z << ","
 			 << behavior.colorMax.w << "\n";
+		output << "behavior.endColorMin," << behavior.endColorMin.x << ","
+			 << behavior.endColorMin.y << "," << behavior.endColorMin.z << ","
+			 << behavior.endColorMin.w << "\n";
+		output << "behavior.endColorMax," << behavior.endColorMax.x << ","
+			 << behavior.endColorMax.y << "," << behavior.endColorMax.z << ","
+			 << behavior.endColorMax.w << "\n";
 		return EditableResourcePath::WriteTextAtomically(filePath, output.str());
 	}
 
@@ -545,9 +799,13 @@ bool GpuParticle::SaveConfig(const std::string& filePath) const {
 	root["texture"] = config_.textureFilePath;
 	root["blendMode"] = ToString(config_.blendMode);
 	root["autoEmit"] = config_.autoEmit;
+	root["useBillboard"] = config_.useBillboard;
+	root["forceVisible"] = config_.forceVisible;
 	root["emitter"] = {
 		{ "translate", ToJson(config_.emitter.translate) },
 		{ "radius", config_.emitter.radius },
+		{ "spawnSize", ToJson(config_.emitter.spawnSize) },
+		{ "shape", config_.emitter.shape },
 		{ "count", config_.emitter.count },
 		{ "frequency", config_.emitter.frequency }
 	};
@@ -556,13 +814,29 @@ bool GpuParticle::SaveConfig(const std::string& filePath) const {
 	root["behavior"] = {
 		{ "lifeTime", json::array({ behavior.lifeTimeMin, behavior.lifeTimeMax }) },
 		{ "scale", json::array({ behavior.scaleMin, behavior.scaleMax }) },
+		{ "startScaleMin", ToJson(behavior.startScaleMin) },
+		{ "startScaleMax", ToJson(behavior.startScaleMax) },
+		{ "enableScaleOverLife", behavior.enableScaleOverLife },
+		{ "endScaleMin", ToJson(behavior.endScaleMin) },
+		{ "endScaleMax", ToJson(behavior.endScaleMax) },
 		{ "velocity", json::array({ behavior.velocityMin, behavior.velocityMax }) },
+		{ "velocityBase", ToJson(behavior.velocityBase) },
+		{ "velocityRandomRange", ToJson(behavior.velocityRandomRange) },
+		{ "accelerationBase", ToJson(behavior.accelerationBase) },
+		{ "accelerationRandomRange", ToJson(behavior.accelerationRandomRange) },
 		{
 			"rotationSpeed",
 			json::array({ behavior.rotationSpeedMin, behavior.rotationSpeedMax })
 		},
+		{ "alignToVelocity", behavior.alignToVelocity },
+		{ "alignAxis", behavior.alignAxis },
+		{ "enableLifeFade", behavior.enableLifeFade },
+		{ "fadeOutStartRatio", behavior.fadeOutStartRatio },
+		{ "colorMode", behavior.colorMode },
 		{ "colorMin", ToJson(behavior.colorMin) },
-		{ "colorMax", ToJson(behavior.colorMax) }
+		{ "colorMax", ToJson(behavior.colorMax) },
+		{ "endColorMin", ToJson(behavior.endColorMin) },
+		{ "endColorMax", ToJson(behavior.endColorMax) }
 	};
 
 	output << std::setw(4) << root << '\n';
@@ -616,10 +890,18 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 				loaded.blendMode = ToBlendMode(it->second[1]);
 			}
 			loaded.autoEmit = ReadCsvUint(table, "autoEmit", loaded.autoEmit ? 1u : 0u) != 0;
+			loaded.useBillboard =
+				ReadCsvUint(table, "useBillboard", loaded.useBillboard ? 1u : 0u) != 0;
+			loaded.forceVisible =
+				ReadCsvUint(table, "forceVisible", loaded.forceVisible ? 1u : 0u) != 0;
 			loaded.emitter.translate =
 				ReadCsvVector3(table, "emitter.translate", loaded.emitter.translate);
 			loaded.emitter.radius =
 				ReadCsvFloat(table, "emitter.radius", 0, loaded.emitter.radius);
+			loaded.emitter.spawnSize =
+				ReadCsvVector3(table, "emitter.spawnSize", loaded.emitter.spawnSize);
+			loaded.emitter.shape =
+				ReadCsvUint(table, "emitter.shape", loaded.emitter.shape);
 			loaded.emitter.count =
 				ReadCsvUint(table, "emitter.count", loaded.emitter.count);
 			loaded.emitter.frequency =
@@ -632,10 +914,34 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 				ReadCsvFloat(table, "behavior.scale", 0, loaded.behavior.scaleMin);
 			loaded.behavior.scaleMax =
 				ReadCsvFloat(table, "behavior.scale", 1, loaded.behavior.scaleMax);
+			loaded.behavior.startScaleMin =
+				ReadCsvVector3(table, "behavior.startScaleMin", loaded.behavior.startScaleMin);
+			loaded.behavior.startScaleMax =
+				ReadCsvVector3(table, "behavior.startScaleMax", loaded.behavior.startScaleMax);
+			loaded.behavior.enableScaleOverLife =
+				ReadCsvUint(table, "behavior.enableScaleOverLife", loaded.behavior.enableScaleOverLife ? 1u : 0u) != 0;
+			loaded.behavior.endScaleMin =
+				ReadCsvVector3(table, "behavior.endScaleMin", loaded.behavior.endScaleMin);
+			loaded.behavior.endScaleMax =
+				ReadCsvVector3(table, "behavior.endScaleMax", loaded.behavior.endScaleMax);
 			loaded.behavior.velocityMin =
 				ReadCsvFloat(table, "behavior.velocity", 0, loaded.behavior.velocityMin);
 			loaded.behavior.velocityMax =
 				ReadCsvFloat(table, "behavior.velocity", 1, loaded.behavior.velocityMax);
+			loaded.behavior.velocityBase =
+				ReadCsvVector3(table, "behavior.velocityBase", loaded.behavior.velocityBase);
+			loaded.behavior.velocityRandomRange = ReadCsvVector3(
+				table,
+				"behavior.velocityRandomRange",
+				loaded.behavior.velocityRandomRange
+			);
+			loaded.behavior.accelerationBase =
+				ReadCsvVector3(table, "behavior.accelerationBase", loaded.behavior.accelerationBase);
+			loaded.behavior.accelerationRandomRange = ReadCsvVector3(
+				table,
+				"behavior.accelerationRandomRange",
+				loaded.behavior.accelerationRandomRange
+			);
 			loaded.behavior.rotationSpeedMin = ReadCsvFloat(
 				table,
 				"behavior.rotationSpeed",
@@ -648,10 +954,24 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 				1,
 				loaded.behavior.rotationSpeedMax
 			);
+			loaded.behavior.alignToVelocity =
+				ReadCsvUint(table, "behavior.alignToVelocity", loaded.behavior.alignToVelocity ? 1u : 0u) != 0;
+			loaded.behavior.alignAxis =
+				ReadCsvUint(table, "behavior.alignAxis", loaded.behavior.alignAxis);
+			loaded.behavior.enableLifeFade =
+				ReadCsvUint(table, "behavior.enableLifeFade", loaded.behavior.enableLifeFade ? 1u : 0u) != 0;
+			loaded.behavior.fadeOutStartRatio =
+				ReadCsvFloat(table, "behavior.fadeOutStartRatio", 0, loaded.behavior.fadeOutStartRatio);
+			loaded.behavior.colorMode =
+				ReadCsvUint(table, "behavior.colorMode", loaded.behavior.colorMode);
 			loaded.behavior.colorMin =
 				ReadCsvVector4(table, "behavior.colorMin", loaded.behavior.colorMin);
 			loaded.behavior.colorMax =
 				ReadCsvVector4(table, "behavior.colorMax", loaded.behavior.colorMax);
+			loaded.behavior.endColorMin =
+				ReadCsvVector4(table, "behavior.endColorMin", loaded.behavior.endColorMin);
+			loaded.behavior.endColorMax =
+				ReadCsvVector4(table, "behavior.endColorMax", loaded.behavior.endColorMax);
 		}
 		else {
 			json root;
@@ -661,6 +981,8 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 			loaded.blendMode =
 				ToBlendMode(root.value("blendMode", std::string(ToString(loaded.blendMode))));
 			loaded.autoEmit = root.value("autoEmit", loaded.autoEmit);
+			loaded.useBillboard = root.value("useBillboard", loaded.useBillboard);
+			loaded.forceVisible = root.value("forceVisible", loaded.forceVisible);
 
 			if (root.contains("emitter")) {
 				const json& emitter = root.at("emitter");
@@ -669,6 +991,11 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 						ReadVector3(emitter.at("translate"), loaded.emitter.translate);
 				}
 				loaded.emitter.radius = emitter.value("radius", loaded.emitter.radius);
+				if (emitter.contains("spawnSize")) {
+					loaded.emitter.spawnSize =
+						ReadVector3(emitter.at("spawnSize"), loaded.emitter.spawnSize);
+				}
+				loaded.emitter.shape = emitter.value("shape", loaded.emitter.shape);
 				loaded.emitter.count = emitter.value("count", loaded.emitter.count);
 				loaded.emitter.frequency =
 					emitter.value("frequency", loaded.emitter.frequency);
@@ -689,6 +1016,24 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 					loaded.behavior.scaleMin = behavior.at("scale").at(0).get<float>();
 					loaded.behavior.scaleMax = behavior.at("scale").at(1).get<float>();
 				}
+				if (behavior.contains("startScaleMin")) {
+					loaded.behavior.startScaleMin =
+						ReadVector3(behavior.at("startScaleMin"), loaded.behavior.startScaleMin);
+				}
+				if (behavior.contains("startScaleMax")) {
+					loaded.behavior.startScaleMax =
+						ReadVector3(behavior.at("startScaleMax"), loaded.behavior.startScaleMax);
+				}
+				loaded.behavior.enableScaleOverLife =
+					behavior.value("enableScaleOverLife", loaded.behavior.enableScaleOverLife);
+				if (behavior.contains("endScaleMin")) {
+					loaded.behavior.endScaleMin =
+						ReadVector3(behavior.at("endScaleMin"), loaded.behavior.endScaleMin);
+				}
+				if (behavior.contains("endScaleMax")) {
+					loaded.behavior.endScaleMax =
+						ReadVector3(behavior.at("endScaleMax"), loaded.behavior.endScaleMax);
+				}
 				if (behavior.contains("velocity") &&
 					behavior.at("velocity").is_array() &&
 					behavior.at("velocity").size() >= 2) {
@@ -696,6 +1041,30 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 						behavior.at("velocity").at(0).get<float>();
 					loaded.behavior.velocityMax =
 						behavior.at("velocity").at(1).get<float>();
+				}
+				if (behavior.contains("velocityBase")) {
+					loaded.behavior.velocityBase = ReadVector3(
+						behavior.at("velocityBase"),
+						loaded.behavior.velocityBase
+					);
+				}
+				if (behavior.contains("velocityRandomRange")) {
+					loaded.behavior.velocityRandomRange = ReadVector3(
+						behavior.at("velocityRandomRange"),
+						loaded.behavior.velocityRandomRange
+					);
+				}
+				if (behavior.contains("accelerationBase")) {
+					loaded.behavior.accelerationBase = ReadVector3(
+						behavior.at("accelerationBase"),
+						loaded.behavior.accelerationBase
+					);
+				}
+				if (behavior.contains("accelerationRandomRange")) {
+					loaded.behavior.accelerationRandomRange = ReadVector3(
+						behavior.at("accelerationRandomRange"),
+						loaded.behavior.accelerationRandomRange
+					);
 				}
 				if (behavior.contains("rotationSpeed") &&
 					behavior.at("rotationSpeed").is_array() &&
@@ -705,6 +1074,16 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 					loaded.behavior.rotationSpeedMax =
 						behavior.at("rotationSpeed").at(1).get<float>();
 				}
+				loaded.behavior.alignToVelocity =
+					behavior.value("alignToVelocity", loaded.behavior.alignToVelocity);
+				loaded.behavior.alignAxis =
+					behavior.value("alignAxis", loaded.behavior.alignAxis);
+				loaded.behavior.enableLifeFade =
+					behavior.value("enableLifeFade", loaded.behavior.enableLifeFade);
+				loaded.behavior.fadeOutStartRatio =
+					behavior.value("fadeOutStartRatio", loaded.behavior.fadeOutStartRatio);
+				loaded.behavior.colorMode =
+					behavior.value("colorMode", loaded.behavior.colorMode);
 				if (behavior.contains("colorMin")) {
 					loaded.behavior.colorMin =
 						ReadVector4(behavior.at("colorMin"), loaded.behavior.colorMin);
@@ -712,6 +1091,14 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 				if (behavior.contains("colorMax")) {
 					loaded.behavior.colorMax =
 						ReadVector4(behavior.at("colorMax"), loaded.behavior.colorMax);
+				}
+				if (behavior.contains("endColorMin")) {
+					loaded.behavior.endColorMin =
+						ReadVector4(behavior.at("endColorMin"), loaded.behavior.endColorMin);
+				}
+				if (behavior.contains("endColorMax")) {
+					loaded.behavior.endColorMax =
+						ReadVector4(behavior.at("endColorMax"), loaded.behavior.endColorMax);
 				}
 			}
 		}
@@ -722,6 +1109,7 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 
 	loaded.emitter.count = std::clamp(loaded.emitter.count, 0u, kMaxParticles);
 	loaded.emitter.radius = (std::max)(0.0f, loaded.emitter.radius);
+	loaded.emitter.shape = std::clamp(loaded.emitter.shape, 0u, 1u);
 	loaded.emitter.frequency = NormalizeEmitterFrequency(loaded.emitter.frequency);
 	loaded.behavior.lifeTimeMax =
 		(std::max)(loaded.behavior.lifeTimeMin, loaded.behavior.lifeTimeMax);
@@ -729,6 +1117,10 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 		(std::max)(loaded.behavior.scaleMin, loaded.behavior.scaleMax);
 	loaded.behavior.velocityMax =
 		(std::max)(loaded.behavior.velocityMin, loaded.behavior.velocityMax);
+	loaded.behavior.fadeOutStartRatio =
+		std::clamp(loaded.behavior.fadeOutStartRatio, 0.0f, 1.0f);
+	loaded.behavior.colorMode = std::clamp(loaded.behavior.colorMode, 0u, 1u);
+	loaded.behavior.alignAxis = std::clamp(loaded.behavior.alignAxis, 0u, 2u);
 	loaded.behavior.rotationSpeedMax = (std::max)(
 		loaded.behavior.rotationSpeedMin,
 		loaded.behavior.rotationSpeedMax
@@ -742,7 +1134,7 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 }
 
 void GpuParticle::DrawImGui(const char* windowTitle) {
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	if (!ImGui::Begin(windowTitle)) {
 		ImGui::End();
 		return;
@@ -792,6 +1184,70 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 	if (ImGui::Button("Refresh Textures")) RefreshTextureFiles();
 
 	dirty |= ImGui::Checkbox("Auto Emit", &config_.autoEmit);
+	ImGui::TextDisabled(
+		"GPU: %s / Count: %u / EmitFlags: 0x%X / FreqTime: %.3f",
+		IsInitialized() ? "Initialized" : "Not initialized",
+		config_.emitter.count,
+		emitterData_ ? emitterData_->emit : 0u,
+		emitterData_ ? emitterData_->frequencyTime : 0.0f
+	);
+	ImGui::Checkbox("Use Billboard", &config_.useBillboard);
+	ImGui::SameLine();
+	ImGui::Checkbox("Force Visible Debug", &config_.forceVisible);
+	if (ImGui::Button("Apply Rain Effect")) {
+		ParticleEffectDesc rainEffect{};
+		if (ParticleEffectResource::Load(
+			"resources/particles/rainParticle.json",
+			rainEffect
+		)) {
+			ApplyEffectDesc(rainEffect);
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Set Visible Test")) {
+		config_.autoEmit = false;
+		config_.useBillboard = true;
+		config_.forceVisible = false;
+		config_.textureFilePath = "resources/circle.png";
+		ApplyTexture(config_.textureFilePath);
+		config_.blendMode = ParticleCommon::BlendMode::kBlendModeAdd;
+		config_.emitter.translate = { 0.0f, 2.0f, 0.0f };
+		config_.emitter.radius = 0.0f;
+		config_.emitter.spawnSize = { 0.0f, 0.0f, 0.0f };
+		config_.emitter.shape = 0;
+		config_.emitter.count = 1;
+		config_.emitter.frequency = 0.05f;
+		config_.behavior.lifeTimeMin = 600.0f;
+		config_.behavior.lifeTimeMax = 600.0f;
+		config_.behavior.startScaleMin = { 1.0f, 1.0f, 1.0f };
+		config_.behavior.startScaleMax = { 1.0f, 1.0f, 1.0f };
+		config_.behavior.enableScaleOverLife = false;
+		config_.behavior.velocityMin = 0.0f;
+		config_.behavior.velocityMax = 0.0f;
+		config_.behavior.velocityBase = { 0.0f, 0.0f, 0.0f };
+		config_.behavior.velocityRandomRange = { 0.0f, 0.0f, 0.0f };
+		config_.behavior.accelerationBase = { 0.0f, 0.0f, 0.0f };
+		config_.behavior.accelerationRandomRange = { 0.0f, 0.0f, 0.0f };
+		config_.behavior.alignToVelocity = false;
+		config_.behavior.alignAxis = 1;
+		config_.behavior.enableLifeFade = false;
+		config_.behavior.fadeOutStartRatio = 1.0f;
+		config_.behavior.colorMode = 0;
+		config_.behavior.colorMin = { 4.0f, 0.2f, 0.2f, 1.0f };
+		config_.behavior.colorMax = { 8.0f, 0.6f, 0.2f, 1.0f };
+		ApplyConfigToGpu();
+		CopyStringsToBuffers();
+		ClearParticles();
+		if (emitterData_) {
+			emitterData_->emit = kEmitFlagSeedVisibleParticle;
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Emit Test Once")) {
+		if (emitterData_) {
+			emitterData_->emit |= kEmitFlagEmitParticles;
+		}
+	}
 	const char* blendModeItems[] = {
 		"None",
 		"Normal",
@@ -824,6 +1280,19 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 			0.0f,
 			100.0f
 		);
+		const char* shapeItems[] = { "Sphere", "Box" };
+		int shape = static_cast<int>(config_.emitter.shape);
+		if (ImGui::Combo("Shape", &shape, shapeItems, IM_ARRAYSIZE(shapeItems))) {
+			config_.emitter.shape = static_cast<uint32_t>(std::clamp(shape, 0, 1));
+			dirty = true;
+		}
+		dirty |= ImGui::DragFloat3(
+			"Spawn Size",
+			&config_.emitter.spawnSize.x,
+			0.01f,
+			0.0f,
+			1000.0f
+		);
 		int count = static_cast<int>(config_.emitter.count);
 		if (ImGui::DragInt(
 				"Count",
@@ -845,7 +1314,7 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 		);
 		if (ImGui::Button("Emit Once")) {
 			if (emitterData_) {
-				emitterData_->emit = 1;
+				emitterData_->emit |= kEmitFlagEmitParticles;
 			}
 		}
 	}
@@ -863,8 +1332,39 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 		if (ImGui::DragFloat2("Scale", scale, 0.001f, 0.0f, 100.0f)) {
 			behavior.scaleMin = scale[0];
 			behavior.scaleMax = (std::max)(scale[0], scale[1]);
+			behavior.startScaleMin = { behavior.scaleMin, behavior.scaleMin, 1.0f };
+			behavior.startScaleMax = { behavior.scaleMax, behavior.scaleMax, 1.0f };
 			dirty = true;
 		}
+		dirty |= ImGui::DragFloat3(
+			"Start Scale Min",
+			&behavior.startScaleMin.x,
+			0.001f,
+			0.0f,
+			100.0f
+		);
+		dirty |= ImGui::DragFloat3(
+			"Start Scale Max",
+			&behavior.startScaleMax.x,
+			0.001f,
+			0.0f,
+			100.0f
+		);
+		dirty |= ImGui::Checkbox("Scale Over Life", &behavior.enableScaleOverLife);
+		dirty |= ImGui::DragFloat3(
+			"End Scale Min",
+			&behavior.endScaleMin.x,
+			0.001f,
+			0.0f,
+			100.0f
+		);
+		dirty |= ImGui::DragFloat3(
+			"End Scale Max",
+			&behavior.endScaleMax.x,
+			0.001f,
+			0.0f,
+			100.0f
+		);
 
 		float velocity[2] = { behavior.velocityMin, behavior.velocityMax };
 		if (ImGui::DragFloat2("Velocity", velocity, 0.01f, -100.0f, 100.0f)) {
@@ -872,6 +1372,30 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 			behavior.velocityMax = (std::max)(velocity[0], velocity[1]);
 			dirty = true;
 		}
+		dirty |= ImGui::DragFloat3(
+			"Velocity Base",
+			&behavior.velocityBase.x,
+			0.01f
+		);
+		dirty |= ImGui::DragFloat3(
+			"Velocity Random Range",
+			&behavior.velocityRandomRange.x,
+			0.01f,
+			0.0f,
+			100.0f
+		);
+		dirty |= ImGui::DragFloat3(
+			"Acceleration Base",
+			&behavior.accelerationBase.x,
+			0.001f
+		);
+		dirty |= ImGui::DragFloat3(
+			"Acceleration Random Range",
+			&behavior.accelerationRandomRange.x,
+			0.001f,
+			0.0f,
+			100.0f
+		);
 
 		float rotationSpeed[2] = {
 			behavior.rotationSpeedMin,
@@ -888,15 +1412,47 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 			behavior.rotationSpeedMax = (std::max)(rotationSpeed[0], rotationSpeed[1]);
 			dirty = true;
 		}
+		dirty |= ImGui::Checkbox("Align To Velocity", &behavior.alignToVelocity);
+		const char* alignAxisItems[] = { "X", "Y", "Z" };
+		int alignAxis = static_cast<int>(behavior.alignAxis);
+		if (ImGui::Combo("Align Axis", &alignAxis, alignAxisItems, IM_ARRAYSIZE(alignAxisItems))) {
+			behavior.alignAxis = static_cast<uint32_t>(std::clamp(alignAxis, 0, 2));
+			dirty = true;
+		}
 
-		dirty |= ImGui::ColorEdit4("Color Min", &behavior.colorMin.x);
-		dirty |= ImGui::ColorEdit4("Color Max", &behavior.colorMax.x);
+		const char* colorModeItems[] = { "Constant", "Over Life" };
+		int colorMode = static_cast<int>(behavior.colorMode);
+		if (ImGui::Combo("Color Mode", &colorMode, colorModeItems, IM_ARRAYSIZE(colorModeItems))) {
+			behavior.colorMode = static_cast<uint32_t>(std::clamp(colorMode, 0, 1));
+			dirty = true;
+		}
+		dirty |= ImGui::ColorEdit4("Start Color Min", &behavior.colorMin.x);
+		dirty |= ImGui::ColorEdit4("Start Color Max", &behavior.colorMax.x);
+		dirty |= ImGui::ColorEdit4("End Color Min", &behavior.endColorMin.x);
+		dirty |= ImGui::ColorEdit4("End Color Max", &behavior.endColorMax.x);
+		dirty |= ImGui::Checkbox("Life Fade", &behavior.enableLifeFade);
+		dirty |= ImGui::DragFloat(
+			"Fade Out Start Ratio",
+			&behavior.fadeOutStartRatio,
+			0.01f,
+			0.0f,
+			1.0f
+		);
 	}
 
 	if (dirty) {
 		config_.emitter.radius = (std::max)(0.0f, config_.emitter.radius);
+		config_.emitter.shape = std::clamp(config_.emitter.shape, 0u, 1u);
 		config_.emitter.frequency = NormalizeEmitterFrequency(config_.emitter.frequency);
+		config_.behavior.fadeOutStartRatio =
+			std::clamp(config_.behavior.fadeOutStartRatio, 0.0f, 1.0f);
+		config_.behavior.colorMode = std::clamp(config_.behavior.colorMode, 0u, 1u);
+		config_.behavior.alignAxis = std::clamp(config_.behavior.alignAxis, 0u, 2u);
 		ApplyConfigToGpu();
+		ClearParticles();
+		if (emitterData_ && config_.autoEmit) {
+			emitterData_->emit |= kEmitFlagEmitParticles;
+		}
 	}
 
 	ImGui::End();
@@ -991,8 +1547,8 @@ void GpuParticle::CreateRootSignatures() {
 				D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		}
 
-		D3D12_ROOT_PARAMETER rootParameters[3]{};
-		for (uint32_t index = 0; index < _countof(rootParameters); ++index) {
+		D3D12_ROOT_PARAMETER rootParameters[6]{};
+		for (uint32_t index = 0; index < 3; ++index) {
 			rootParameters[index].ParameterType =
 				D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 			rootParameters[index].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -1000,6 +1556,18 @@ void GpuParticle::CreateRootSignatures() {
 				&uavRanges[index];
 			rootParameters[index].DescriptorTable.NumDescriptorRanges = 1;
 		}
+		rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+		rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		rootParameters[3].Descriptor.ShaderRegister = 0;
+
+		rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+		rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		rootParameters[4].Descriptor.ShaderRegister = 2;
+
+		rootParameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+		rootParameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		rootParameters[5].Constants.ShaderRegister = 3;
+		rootParameters[5].Constants.Num32BitValues = 4;
 
 		D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
 		rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -1040,7 +1608,7 @@ void GpuParticle::CreateRootSignatures() {
 				D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		}
 
-		D3D12_ROOT_PARAMETER rootParameters[6]{};
+		D3D12_ROOT_PARAMETER rootParameters[7]{};
 		rootParameters[0].ParameterType =
 			D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 		rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -1070,6 +1638,11 @@ void GpuParticle::CreateRootSignatures() {
 		rootParameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 		rootParameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 		rootParameters[5].Descriptor.ShaderRegister = 2;
+
+		rootParameters[6].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+		rootParameters[6].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		rootParameters[6].Constants.ShaderRegister = 3;
+		rootParameters[6].Constants.Num32BitValues = 4;
 
 		D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
 		rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -1178,7 +1751,10 @@ void GpuParticle::CreatePipelineStates() {
 			&graphicsPipelineDesc,
 			IID_PPV_ARGS(&graphicsPipelineStates_[blendIndex])
 		);
-		assert(SUCCEEDED(hr));
+		if (LogFailedHRESULT("GpuParticle graphics PSO", hr)) {
+			continue;
+		}
+		assert(graphicsPipelineStates_[blendIndex]);
 	}
 
 	const auto initializeShaderBlob = dxCommon_->CompileShader(
@@ -1198,7 +1774,9 @@ void GpuParticle::CreatePipelineStates() {
 		&computePipelineDesc,
 		IID_PPV_ARGS(&initializePipelineState_)
 	);
-	assert(SUCCEEDED(hr));
+	if (!LogFailedHRESULT("GpuParticle initialize PSO", hr)) {
+		assert(initializePipelineState_);
+	}
 
 	const auto emitShaderBlob = dxCommon_->CompileShader(
 		L"resources/shaders/EmitGpuParticle.CS.hlsl",
@@ -1217,7 +1795,9 @@ void GpuParticle::CreatePipelineStates() {
 		&emitPipelineDesc,
 		IID_PPV_ARGS(&emitPipelineState_)
 	);
-	assert(SUCCEEDED(hr));
+	if (!LogFailedHRESULT("GpuParticle emit PSO", hr)) {
+		assert(emitPipelineState_);
+	}
 
 	const auto updateShaderBlob = dxCommon_->CompileShader(
 		L"resources/shaders/UpdateGpuParticle.CS.hlsl",
@@ -1236,7 +1816,9 @@ void GpuParticle::CreatePipelineStates() {
 		&updatePipelineDesc,
 		IID_PPV_ARGS(&updatePipelineState_)
 	);
-	assert(SUCCEEDED(hr));
+	if (!LogFailedHRESULT("GpuParticle update PSO", hr)) {
+		assert(updatePipelineState_);
+	}
 }
 
 void GpuParticle::TransitionParticleResource(D3D12_RESOURCE_STATES stateAfter) {
@@ -1293,8 +1875,29 @@ void GpuParticle::InitializeParticlesOnGPU() {
 	if (!needsInitialize_) {
 		return;
 	}
+	if (
+		!dxCommon_ ||
+		!srvManager_ ||
+		!particleResource_ ||
+		!freeListIndexResource_ ||
+		!freeListResource_ ||
+		!emitterResource_ ||
+		!behaviorResource_ ||
+		!initializeRootSignature_ ||
+		!initializePipelineState_
+	) {
+		static bool loggedInitializeUnavailable = false;
+		if (!loggedInitializeUnavailable) {
+			Logger::Log(
+				"GpuParticle initialize skipped: required compute resources are not ready\n"
+			);
+			loggedInitializeUnavailable = true;
+		}
+		return;
+	}
 
 	auto* commandList = dxCommon_->GetCommandList();
+	srvManager_->PreDraw();
 	TransitionParticleResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	TransitionFreeListIndexResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	TransitionFreeListResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -1304,7 +1907,27 @@ void GpuParticle::InitializeParticlesOnGPU() {
 	srvManager_->SetComputeRootDescriptorTable(0, particleUavIndex_);
 	srvManager_->SetComputeRootDescriptorTable(1, freeListIndexUavIndex_);
 	srvManager_->SetComputeRootDescriptorTable(2, freeListUavIndex_);
-	commandList->Dispatch(1, 1, 1);
+	commandList->SetComputeRootConstantBufferView(
+		3,
+		emitterResource_->GetGPUVirtualAddress()
+	);
+	commandList->SetComputeRootConstantBufferView(
+		4,
+		behaviorResource_->GetGPUVirtualAddress()
+	);
+	const uint32_t dispatchConstants[4] = {
+		emitterData_ ? emitterData_->emit : 0u,
+		0u,
+		0u,
+		0u
+	};
+	commandList->SetComputeRoot32BitConstants(
+		5,
+		static_cast<UINT>(_countof(dispatchConstants)),
+		dispatchConstants,
+		0
+	);
+	commandList->Dispatch(GpuParticleDispatchGroupCount(), 1, 1);
 
 	D3D12_RESOURCE_BARRIER uavBarriers[3]{};
 	uavBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -1316,15 +1939,40 @@ void GpuParticle::InitializeParticlesOnGPU() {
 	commandList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
 
 	TransitionParticleResource(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	if (emitterData_) {
+		emitterData_->emit &= ~kEmitFlagSeedVisibleParticle;
+	}
 	needsInitialize_ = false;
 }
 
 void GpuParticle::EmitParticlesOnGPU() {
-	if (!emitterData_ || emitterData_->emit == 0) {
+	if (!emitterData_ || (emitterData_->emit & kEmitFlagEmitParticles) == 0) {
+		return;
+	}
+	if (
+		!dxCommon_ ||
+		!srvManager_ ||
+		!particleResource_ ||
+		!freeListIndexResource_ ||
+		!freeListResource_ ||
+		!emitterResource_ ||
+		!perFrameResource_ ||
+		!behaviorResource_ ||
+		!emitRootSignature_ ||
+		!emitPipelineState_
+	) {
+		static bool loggedEmitUnavailable = false;
+		if (!loggedEmitUnavailable) {
+			Logger::Log(
+				"GpuParticle emit skipped: required compute resources are not ready\n"
+			);
+			loggedEmitUnavailable = true;
+		}
 		return;
 	}
 
 	auto* commandList = dxCommon_->GetCommandList();
+	srvManager_->PreDraw();
 	TransitionParticleResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	TransitionFreeListIndexResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	TransitionFreeListResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -1346,6 +1994,18 @@ void GpuParticle::EmitParticlesOnGPU() {
 		5,
 		behaviorResource_->GetGPUVirtualAddress()
 	);
+	const uint32_t dispatchConstants[4] = {
+		emitterData_->emit,
+		0u,
+		0u,
+		0u
+	};
+	commandList->SetComputeRoot32BitConstants(
+		6,
+		static_cast<UINT>(_countof(dispatchConstants)),
+		dispatchConstants,
+		0
+	);
 	commandList->Dispatch(1, 1, 1);
 
 	D3D12_RESOURCE_BARRIER uavBarriers[3]{};
@@ -1357,11 +2017,33 @@ void GpuParticle::EmitParticlesOnGPU() {
 	uavBarriers[2].UAV.pResource = freeListResource_.Get();
 	commandList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
 
-	emitterData_->emit = 0;
+	emitterData_->emit &= ~kEmitFlagEmitParticles;
 }
 
 void GpuParticle::UpdateParticlesOnGPU() {
+	if (
+		!dxCommon_ ||
+		!srvManager_ ||
+		!particleResource_ ||
+		!freeListIndexResource_ ||
+		!freeListResource_ ||
+		!emitterResource_ ||
+		!perFrameResource_ ||
+		!behaviorResource_ ||
+		!emitRootSignature_ ||
+		!updatePipelineState_
+	) {
+		static bool loggedUpdateUnavailable = false;
+		if (!loggedUpdateUnavailable) {
+			Logger::Log(
+				"GpuParticle update skipped: required compute resources are not ready\n"
+			);
+			loggedUpdateUnavailable = true;
+		}
+		return;
+	}
 	auto* commandList = dxCommon_->GetCommandList();
+	srvManager_->PreDraw();
 	TransitionParticleResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	TransitionFreeListIndexResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	TransitionFreeListResource(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -1383,7 +2065,14 @@ void GpuParticle::UpdateParticlesOnGPU() {
 		5,
 		behaviorResource_->GetGPUVirtualAddress()
 	);
-	commandList->Dispatch(1, 1, 1);
+	const uint32_t dispatchConstants[4] = {};
+	commandList->SetComputeRoot32BitConstants(
+		6,
+		static_cast<UINT>(_countof(dispatchConstants)),
+		dispatchConstants,
+		0
+	);
+	commandList->Dispatch(GpuParticleDispatchGroupCount(), 1, 1);
 
 	D3D12_RESOURCE_BARRIER uavBarriers[3]{};
 	uavBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -1410,14 +2099,16 @@ void GpuParticle::Update() {
 		return;
 	}
 
+	const bool emitRequested =
+		(emitterData_->emit & kEmitFlagEmitParticles) != 0;
 	emitterData_->frequency = NormalizeEmitterFrequency(emitterData_->frequency);
 	emitterData_->frequencyTime += deltaTime_;
 	if (emitterData_->frequency <= emitterData_->frequencyTime) {
 		emitterData_->frequencyTime -= emitterData_->frequency;
-		emitterData_->emit = 1;
+		emitterData_->emit |= kEmitFlagEmitParticles;
 	}
-	else {
-		emitterData_->emit = 0;
+	else if (!emitRequested) {
+		emitterData_->emit &= ~kEmitFlagEmitParticles;
 	}
 }
 
@@ -1425,8 +2116,34 @@ void GpuParticle::Draw(Camera* camera) {
 	if (!camera || !particleResource_) {
 		return;
 	}
+	if (
+		!dxCommon_ ||
+		!srvManager_ ||
+		!particleCommon_ ||
+		!graphicsRootSignature_ ||
+		!materialResource_ ||
+		!directionalLightResource_ ||
+		!perViewResource_
+	) {
+		static bool loggedDrawUnavailable = false;
+		if (!loggedDrawUnavailable) {
+			Logger::Log(
+				"GpuParticle draw skipped: required graphics resources are not ready\n"
+			);
+			loggedDrawUnavailable = true;
+		}
+		return;
+	}
+	static bool loggedFirstDraw = false;
+	if (!loggedFirstDraw) {
+		Logger::Log("GpuParticle::Draw reached\n");
+		loggedFirstDraw = true;
+	}
 
 	InitializeParticlesOnGPU();
+	if (needsInitialize_) {
+		return;
+	}
 	EmitParticlesOnGPU();
 	UpdateParticlesOnGPU();
 	TransitionParticleResource(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -1436,6 +2153,12 @@ void GpuParticle::Draw(Camera* camera) {
 	perViewData_->billboardMatrix.m[3][0] = 0.0f;
 	perViewData_->billboardMatrix.m[3][1] = 0.0f;
 	perViewData_->billboardMatrix.m[3][2] = 0.0f;
+	perViewData_->renderFlags = {
+		config_.useBillboard ? 1.0f : 0.0f,
+		config_.forceVisible ? 1.0f : 0.0f,
+		0.0f,
+		0.0f
+	};
 
 	auto* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(graphicsRootSignature_.Get());
@@ -1444,6 +2167,15 @@ void GpuParticle::Draw(Camera* camera) {
 		0u,
 		static_cast<uint32_t>(ParticleCommon::BlendMode::kCountOfBlendMode) - 1u
 	);
+	if (!graphicsPipelineStates_[blendIndex]) {
+		static bool loggedGraphicsPsoUnavailable = false;
+		if (!loggedGraphicsPsoUnavailable) {
+			Logger::Log("GpuParticle draw skipped: graphics PSO is not ready\n");
+			loggedGraphicsPsoUnavailable = true;
+		}
+		return;
+	}
+	srvManager_->PreDraw();
 	commandList->SetPipelineState(graphicsPipelineStates_[blendIndex].Get());
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	const D3D12_VERTEX_BUFFER_VIEW& vbv =

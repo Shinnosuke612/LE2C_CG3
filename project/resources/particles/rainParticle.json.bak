@@ -76,6 +76,26 @@
         ]
       },
       "mode": "Linear",
+      "pointField": {
+        "attractionStrength": 0.0,
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "damping": 0.0,
+        "enabled": false,
+        "falloff": 1.0,
+        "orbitAxis": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "orbitStrength": 0.0,
+        "radius": 0.0,
+        "repulsionStrength": 0.0,
+        "useEmitterOffset": true
+      },
       "sway": {
         "amplitude": 0.0,
         "frequency": 0.0
@@ -96,29 +116,29 @@
         "verticalSpeedMin": -0.10000000149011612
       },
       "wind": {
+        "acceleration": 7.0,
+        "boundaryFalloff": 3.0,
         "center": [
           0.0,
-          -15.0,
+          -30.0,
           0.0
         ],
+        "deceleration": 3.5,
         "direction": [
           1.0,
           0.0,
-          0.25
+          0.0
         ],
-        "enabled": true,
-        "acceleration": 7.0,
-        "boundaryFalloff": 3.0,
-        "deceleration": 3.5,
         "enableBoundaryFalloff": true,
+        "enabled": true,
         "recoverOutsideField": true,
         "size": [
-          100.0,
-          32.0,
-          100.0
+          200.0,
+          70.0,
+          200.0
         ],
-        "strength": 3.0,
         "smoothVelocity": true,
+        "strength": 35.0,
         "turbulenceFrequency": 2.200000047683716,
         "turbulenceScale": 0.05999999865889549,
         "turbulenceStrength": 0.800000011920929,
@@ -152,6 +172,7 @@
       },
       "depthTest": true,
       "depthWrite": false,
+      "emissiveIntensity": 1.0,
       "flipU": false,
       "flipV": false,
       "primitiveType": "Plane",
@@ -226,13 +247,13 @@
   },
   "blendMode": "Add",
   "emitter": {
-    "count": 200,
+    "count": 500,
     "frequency": 0.10000000149011612,
     "isActive": true,
     "spawnSize": [
-      100.0,
+      200.0,
       1.0,
-      100.0
+      200.0
     ],
     "translate": [
       0.0,
@@ -240,6 +261,46 @@
       0.0
     ]
   },
+  "lightning": {
+    "branchColor": [
+      2.0,
+      4.0,
+      12.0,
+      1.0
+    ],
+    "branchLength": 0.800000011920929,
+    "branchProbability": 0.3499999940395355,
+    "coreColor": [
+      8.0,
+      10.0,
+      16.0,
+      1.0
+    ],
+    "duration": 0.11999999731779099,
+    "enabled": false,
+    "endOffset": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "flashExposure": true,
+    "flashExposureValue": 3.5,
+    "flashReturnSpeed": 6.0,
+    "jitter": 0.44999998807907104,
+    "randomRange": [
+      4.0,
+      0.0,
+      4.0
+    ],
+    "segmentCount": 16,
+    "startOffset": [
+      0.0,
+      6.0,
+      0.0
+    ],
+    "thickness": 0.03999999910593033
+  },
   "name": "rainParticle",
+  "simulationType": "GPU",
   "textureFilePath": "resources/circle.png"
 }

@@ -1,13 +1,12 @@
 #include "GpuParticle.hlsli"
 
-static const uint32_t kMaxParticles = 1024;
-
 RWStructuredBuffer<GpuParticle> gParticles : register(u0);
 RWStructuredBuffer<int32_t> gFreeListIndex : register(u1);
 RWStructuredBuffer<uint32_t> gFreeList : register(u2);
 ConstantBuffer<EmitterSphere> gEmitter : register(b0);
 ConstantBuffer<PerFrame> gPerFrame : register(b1);
 ConstantBuffer<GpuParticleBehavior> gBehavior : register(b2);
+ConstantBuffer<GpuParticleDispatch> gDispatch : register(b3);
 
 float32_t Rand1d(float32_t3 seed)
 {
@@ -33,7 +32,7 @@ float32_t3 RandomUnitVector(float32_t3 seed)
 [numthreads(1, 1, 1)]
 void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
 {
-    if (gEmitter.emit == 0)
+    if ((gDispatch.flags.x & kGpuParticleEmitFlagEmitParticles) == 0)
     {
         return;
     }
@@ -42,7 +41,7 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
     {
         int32_t freeListIndex = 0;
         InterlockedAdd(gFreeListIndex[0], -1, freeListIndex);
-        if (freeListIndex < 0 || int32_t(kMaxParticles) <= freeListIndex)
+        if (freeListIndex < 0 || int32_t(kGpuParticleMaxParticles) <= freeListIndex)
         {
             InterlockedAdd(gFreeListIndex[0], 1, freeListIndex);
             break;
@@ -53,15 +52,32 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
             float32_t3(float32_t(particleIndex), float32_t(countIndex), gPerFrame.time);
         float32_t3 direction = RandomUnitVector(seed);
         float32_t radius = Rand1d(seed + 3.17f) * gEmitter.radius;
-        float32_t scale = lerp(
-            gBehavior.lifeScaleVelocityMinRotationMin.y,
-            gBehavior.lifeScaleVelocityMaxRotationMax.y,
-            Rand1d(seed + 7.31f)
+        float32_t3 startScale = lerp(
+            gBehavior.startScaleMin.xyz,
+            gBehavior.startScaleMax.xyz,
+            Rand3d(seed + 7.31f)
+        );
+        float32_t3 endScale = lerp(
+            gBehavior.endScaleMin.xyz,
+            gBehavior.endScaleMax.xyz,
+            Rand3d(seed + 9.43f)
         );
 
         GpuParticle particle = (GpuParticle)0;
-        particle.translate = gEmitter.translate + direction * radius;
-        particle.scale = float32_t3(scale, scale, 1.0f);
+        if (gEmitter.shape == 1)
+        {
+            particle.translate =
+                gEmitter.translate +
+                (Rand3d(seed + 5.61f) * 2.0f - 1.0f) *
+                gEmitter.spawnSize * 0.5f;
+        }
+        else
+        {
+            particle.translate = gEmitter.translate + direction * radius;
+        }
+        particle.scale = startScale;
+        particle.startScale = startScale;
+        particle.endScale = endScale;
         particle.rotate = float32_t3(
             0.0f,
             0.0f,
@@ -78,12 +94,30 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
             Rand1d(seed + 13.79f)
         );
         particle.currentTime = 0.0f;
-        particle.velocity = direction * lerp(
+        float32_t speed = lerp(
             gBehavior.lifeScaleVelocityMinRotationMin.z,
             gBehavior.lifeScaleVelocityMaxRotationMax.z,
             Rand1d(seed + 23.11f)
         );
-        particle.color = lerp(
+        float32_t3 configuredVelocity =
+            gBehavior.velocityBase.xyz +
+            (Rand3d(seed + 37.19f) * 2.0f - 1.0f) *
+            gBehavior.velocityRandomRange.xyz;
+        if (length(configuredVelocity) <= 0.0001f)
+        {
+            configuredVelocity = direction;
+        }
+        particle.velocity = configuredVelocity * speed;
+        particle.acceleration =
+            gBehavior.accelerationBase.xyz +
+            (Rand3d(seed + 43.83f) * 2.0f - 1.0f) *
+            gBehavior.accelerationRandomRange.xyz;
+        if (gBehavior.rotationFlags.x > 0.5f)
+        {
+            uint32_t alignAxis = uint32_t(gBehavior.rotationFlags.y + 0.5f);
+            particle.rotate = CalculateVelocityAlignedRotation(particle.velocity, alignAxis);
+        }
+        particle.startColor = lerp(
             gBehavior.colorMin,
             gBehavior.colorMax,
             float32_t4(
@@ -93,6 +127,18 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
                 Rand1d(seed + 61.91f)
             )
         );
+        particle.endColor = lerp(
+            gBehavior.endColorMin,
+            gBehavior.endColorMax,
+            float32_t4(
+                Rand1d(seed + 67.13f),
+                Rand1d(seed + 71.31f),
+                Rand1d(seed + 79.07f),
+                Rand1d(seed + 83.53f)
+            )
+        );
+        particle.color = particle.startColor;
+        particle.initialAlpha = particle.color.a;
 
         gParticles[particleIndex] = particle;
     }

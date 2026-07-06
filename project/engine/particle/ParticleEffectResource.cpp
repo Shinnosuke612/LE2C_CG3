@@ -74,6 +74,22 @@ ParticleCommon::BlendMode ToBlendMode(const std::string& text) {
 	return ParticleCommon::BlendMode::kBlendModeAdd;
 }
 
+std::string ToString(ParticleSimulationType type) {
+	switch (type) {
+	case ParticleSimulationType::kGPU: return "GPU";
+	case ParticleSimulationType::kCPU:
+	default:
+		return "CPU";
+	}
+}
+
+ParticleSimulationType ToSimulationType(const std::string& text) {
+	if (text == "GPU" || text == "Gpu" || text == "gpu") {
+		return ParticleSimulationType::kGPU;
+	}
+	return ParticleSimulationType::kCPU;
+}
+
 std::string ToString(ParticleManager::ColorChangeMode mode) {
 	switch (mode) {
 	case ParticleManager::ColorChangeMode::kConstant: return "Constant";
@@ -578,6 +594,7 @@ bool Save(const std::string& filePath, const ParticleEffectDesc& effect) {
 
 	root["name"] = effect.name;
 	root["textureFilePath"] = effect.textureFilePath;
+	root["simulationType"] = ToString(effect.simulationType);
 	root["blendMode"] = ToString(effect.blendMode);
 
 	root["emitter"] = {
@@ -641,6 +658,9 @@ bool Load(const std::string& filePath, ParticleEffectDesc& outEffect) {
 	try {
 	outEffect.name = root.value("name", outEffect.name);
 	outEffect.textureFilePath = root.value("textureFilePath", outEffect.textureFilePath);
+	outEffect.simulationType = ToSimulationType(
+		root.value("simulationType", ToString(outEffect.simulationType))
+	);
 	outEffect.blendMode = ToBlendMode(root.value("blendMode", ToString(outEffect.blendMode)));
 
 	if (root.contains("emitter")) {
@@ -717,6 +737,14 @@ bool Load(const std::string& filePath, ParticleEffectDesc& outEffect) {
 }
 
 void PrepareParticleGroup(const ParticleEffectDesc& effect, bool clearParticles) {
+	if (effect.simulationType == ParticleSimulationType::kGPU) {
+		ParticleManager::GetInstance()->ApplyGpuParticleEffect(effect);
+		if (clearParticles) {
+			ParticleManager::GetInstance()->ClearGpuParticles();
+		}
+		return;
+	}
+
 	ParticleManager* particleManager = ParticleManager::GetInstance();
 
 	particleManager->CreateParticleGroupIfNeeded(
@@ -737,6 +765,11 @@ void PrepareParticleGroup(const ParticleEffectDesc& effect, bool clearParticles)
 }
 
 void ApplyToEmitter(ParticleEmitter& emitter, const ParticleEffectDesc& effect) {
+	if (effect.simulationType == ParticleSimulationType::kGPU) {
+		ParticleManager::GetInstance()->ApplyGpuParticleEffect(effect);
+		return;
+	}
+
 	emitter.SetTranslate(effect.emitter.translate);
 	emitter.SetSpawnSize(effect.emitter.spawnSize);
 	emitter.SetCount(effect.emitter.count);
@@ -747,6 +780,11 @@ void ApplyToEmitter(ParticleEmitter& emitter, const ParticleEffectDesc& effect) 
 }
 
 ParticleEmitter* CreateEmitter(const ParticleEffectDesc& effect) {
+	if (effect.simulationType == ParticleSimulationType::kGPU) {
+		ParticleManager::GetInstance()->ApplyGpuParticleEffect(effect);
+		return nullptr;
+	}
+
 	PrepareParticleGroup(effect, true);
 
 	ParticleEmitter* emitter = new ParticleEmitter();

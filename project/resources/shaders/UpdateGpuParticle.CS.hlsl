@@ -1,17 +1,16 @@
 #include "GpuParticle.hlsli"
 
-static const uint32_t kMaxParticles = 1024;
-
 RWStructuredBuffer<GpuParticle> gParticles : register(u0);
 RWStructuredBuffer<int32_t> gFreeListIndex : register(u1);
 RWStructuredBuffer<uint32_t> gFreeList : register(u2);
 ConstantBuffer<PerFrame> gPerFrame : register(b1);
+ConstantBuffer<GpuParticleBehavior> gBehavior : register(b2);
 
 void PushFreeList(uint32_t particleIndex)
 {
     int32_t freeListIndex = 0;
     InterlockedAdd(gFreeListIndex[0], 1, freeListIndex);
-    if ((freeListIndex + 1) < int32_t(kMaxParticles))
+    if ((freeListIndex + 1) < int32_t(kGpuParticleMaxParticles))
     {
         gFreeList[freeListIndex + 1] = particleIndex;
     }
@@ -25,7 +24,7 @@ void PushFreeList(uint32_t particleIndex)
 void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
 {
     uint32_t particleIndex = dispatchThreadId.x;
-    if (particleIndex >= kMaxParticles)
+    if (particleIndex >= kGpuParticleMaxParticles)
     {
         return;
     }
@@ -46,11 +45,42 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
+    particle.velocity += particle.acceleration * gPerFrame.deltaTime;
     particle.translate += particle.velocity * gPerFrame.deltaTime;
-    particle.rotate.z += gPerFrame.deltaTime * particle.rotationSpeed;
+    if (gBehavior.rotationFlags.x > 0.5f)
+    {
+        uint32_t alignAxis = uint32_t(gBehavior.rotationFlags.y + 0.5f);
+        particle.rotate = CalculateVelocityAlignedRotation(particle.velocity, alignAxis);
+    }
+    else
+    {
+        particle.rotate.z += gPerFrame.deltaTime * particle.rotationSpeed;
+    }
 
     float32_t lifeRatio = saturate(particle.currentTime / particle.lifeTime);
-    particle.color.a = saturate(1.0f - lifeRatio);
+    if (gBehavior.flags.z > 0.5f)
+    {
+        particle.scale = lerp(particle.startScale, particle.endScale, lifeRatio);
+    }
+    if (gBehavior.flags.w > 0.5f)
+    {
+        particle.color = lerp(particle.startColor, particle.endColor, lifeRatio);
+        particle.initialAlpha = particle.color.a;
+    }
+    else
+    {
+        particle.color = particle.startColor;
+    }
+    if (gBehavior.flags.x > 0.5f)
+    {
+        float32_t fadeStart = saturate(gBehavior.flags.y);
+        float32_t fadeRatio = saturate((lifeRatio - fadeStart) / max(1.0f - fadeStart, 0.0001f));
+        particle.color.a = particle.initialAlpha * saturate(1.0f - fadeRatio);
+    }
+    else
+    {
+        particle.color.a = particle.initialAlpha;
+    }
 
     gParticles[particleIndex] = particle;
 }

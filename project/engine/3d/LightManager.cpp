@@ -3,11 +3,13 @@
 #include "../base/DirectXCommon.h"
 #include "../externals/imgui/imgui.h"
 #include "../externals/nlohmann/json.hpp"
+#include "../utility/EditableResourcePath.h"
 
 #include "../math/math.h"
 #include <algorithm>
 #include <cassert>
-#include <fstream>
+#include <iomanip>
+#include <sstream>
 
 using json = nlohmann::json;
 
@@ -228,13 +230,30 @@ void LightManager::ClearSpotLights() {
 }
 
 bool LightManager::LoadFromJson(const std::string& jsonPath) {
-	std::ifstream file(jsonPath);
-	if (!file.is_open()) {
+	json root;
+	const std::filesystem::path resolvedPath =
+		EditableResourcePath::Resolve(jsonPath);
+	const std::filesystem::path candidates[] = {
+		resolvedPath,
+		EditableResourcePath::BackupPath(resolvedPath)
+	};
+	bool parsed = false;
+	for (const std::filesystem::path& candidate : candidates) {
+		std::string text;
+		if (!EditableResourcePath::ReadTextFile(candidate, text)) {
+			continue;
+		}
+		try {
+			root = json::parse(text);
+			parsed = true;
+			break;
+		}
+		catch (...) {
+		}
+	}
+	if (!parsed) {
 		return false;
 	}
-
-	json root;
-	file >> root;
 
 	if (root.contains("directionalLight")) {
 		const json& j = root["directionalLight"];
@@ -395,50 +414,55 @@ bool LightManager::SaveToJson(const std::string& jsonPath) const {
 			});
 	}
 
-	std::ofstream file(jsonPath);
-	if (!file.is_open()) {
-		return false;
-	}
-
-	file << root.dump(4);
-	return true;
+	std::ostringstream output;
+	output << std::setw(4) << root << '\n';
+	return EditableResourcePath::WriteTextAtomically(jsonPath, output.str());
 }
 
-void LightManager::DrawShadowSettingsImGui(
+bool LightManager::DrawShadowSettingsImGui(
 	const char* label,
 	ShadowSettings& settings,
 	bool canRender,
 	bool showDirectionalCameraSettings
 ) {
+	bool changed = false;
 	if (ImGui::TreeNode(label)) {
 		bool enable = settings.enable != 0;
 		if (ImGui::Checkbox("Shadow Enable", &enable)) {
 			settings.enable = enable;
+			changed = true;
 		}
 
 		if (!canRender) {
 			ImGui::Text("Point shadows are reserved. Use sparingly because they need 6 shadow renders per light.");
 		}
 
-		ImGui::DragFloat("Shadow Bias", &settings.bias, 0.0001f, 0.0f, 0.05f, "%.5f");
-		ImGui::DragFloat("Normal Bias", &settings.normalBias, 0.001f, 0.0f, 0.2f, "%.4f");
-		ImGui::DragFloat("Shadow Strength", &settings.strength, 0.01f, 0.0f, 1.0f);
+		changed |= ImGui::DragFloat("Shadow Bias", &settings.bias, 0.0001f, 0.0f, 0.05f, "%.5f");
+		changed |= ImGui::DragFloat("Normal Bias", &settings.normalBias, 0.001f, 0.0f, 0.2f, "%.4f");
+		changed |= ImGui::DragFloat("Shadow Strength", &settings.strength, 0.01f, 0.0f, 1.0f);
 		if (showDirectionalCameraSettings) {
 			ImGui::SeparatorText("Directional Shadow Camera");
-			ImGui::DragFloat3("Target Center", &settings.target.x, 0.1f);
-			ImGui::DragFloat("Light Distance", &settings.distance, 0.5f, 1.0f, 1000.0f);
-			ImGui::DragFloat("Orthographic Size", &settings.orthographicSize, 0.5f, 1.0f, 1000.0f);
-			ImGui::DragFloat("Near Clip", &settings.nearClip, 0.01f, 0.001f, 1000.0f);
-			ImGui::DragFloat("Far Clip", &settings.farClip, 0.5f, 1.0f, 5000.0f);
-			ImGui::Checkbox("Texel Snap", &settings.texelSnap);
+			changed |= ImGui::DragFloat3("Target Center", &settings.target.x, 0.1f);
+			changed |= ImGui::DragFloat("Light Distance", &settings.distance, 0.5f, 1.0f, 1000.0f);
+			changed |= ImGui::DragFloat("Orthographic Size", &settings.orthographicSize, 0.5f, 1.0f, 1000.0f);
+			changed |= ImGui::DragFloat("Near Clip", &settings.nearClip, 0.01f, 0.001f, 1000.0f);
+			changed |= ImGui::DragFloat("Far Clip", &settings.farClip, 0.5f, 1.0f, 5000.0f);
+			changed |= ImGui::Checkbox("Texel Snap", &settings.texelSnap);
+			const ShadowSettings beforeClamp = settings;
 			settings.distance = (std::max)(settings.distance, 1.0f);
 			settings.orthographicSize = (std::max)(settings.orthographicSize, 1.0f);
 			settings.nearClip = (std::max)(settings.nearClip, 0.001f);
 			settings.farClip = (std::max)(settings.farClip, settings.nearClip + 0.001f);
+			changed |=
+				beforeClamp.distance != settings.distance ||
+				beforeClamp.orthographicSize != settings.orthographicSize ||
+				beforeClamp.nearClip != settings.nearClip ||
+				beforeClamp.farClip != settings.farClip;
 		}
 
 		ImGui::TreePop();
 	}
+	return changed;
 }
 
 void LightManager::DrawImGui() {
@@ -494,7 +518,7 @@ void LightManager::DrawImGui() {
 
 		ImGui::Text("Directional Direction Length: %.3f", Math::Length(directionalLight_.direction));
 		changed |= ImGui::DragFloat("Directional Intensity", &directionalLight_.intensity, 0.05f, 0.0f, 20.0f);
-		DrawShadowSettingsImGui(
+		changed |= DrawShadowSettingsImGui(
 			"Directional Shadow",
 			directionalShadowSettings_,
 			true,
@@ -534,7 +558,7 @@ void LightManager::DrawImGui() {
 				changed |= ImGui::DragFloat("Radius", &light.radius, 0.1f, 0.1f, 100.0f);
 				changed |= ImGui::DragFloat("Decay", &light.decay, 0.05f, 0.0f, 10.0f);
 				if (i < pointShadowSettings_.size()) {
-					DrawShadowSettingsImGui("Point Shadow", pointShadowSettings_[i], false);
+					changed |= DrawShadowSettingsImGui("Point Shadow", pointShadowSettings_[i], false);
 				}
 
 				if (ImGui::Button("Remove")) {
@@ -598,7 +622,7 @@ void LightManager::DrawImGui() {
 				changed |= ImGui::DragFloat("CosAngle", &light.cosAngle, 0.01f, -1.0f, 1.0f);
 				changed |= ImGui::DragFloat("CosFalloffStart", &light.cosFalloffStart, 0.01f, -1.0f, 1.0f);
 				if (i < spotShadowSettings_.size()) {
-					DrawShadowSettingsImGui("Spot Shadow", spotShadowSettings_[i], true);
+					changed |= DrawShadowSettingsImGui("Spot Shadow", spotShadowSettings_[i], true);
 				}
 
 				if (light.cosFalloffStart < light.cosAngle) {

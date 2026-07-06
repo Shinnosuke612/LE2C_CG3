@@ -1743,6 +1743,13 @@ void GamePlayScene::Initialize()
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
 	ParticleManager::GetInstance()->SetCamera(camera_);
 	ParticleManager::GetInstance()->SetGpuParticleEnabled(true);
+	ParticleEffectDesc startupGpuRainEffect{};
+	if (ParticleEffectResource::Load(
+		"resources/particles/rainParticle.json",
+		startupGpuRainEffect
+	)) {
+		ParticleManager::GetInstance()->ApplyGpuParticleEffect(startupGpuRainEffect);
+	}
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
 	ModelManager::GetInstance()->LoadModel("terrain.obj");
@@ -2090,8 +2097,23 @@ void GamePlayScene::Update()
 		"Particle Effect Editor"
 	);
 
+	if (ImGui::Begin("GPU Particle Control")) {
+		bool gpuParticleEnabled =
+			ParticleManager::GetInstance()->IsGpuParticleEnabled();
+		if (ImGui::Checkbox("Enable GPU Particle", &gpuParticleEnabled)) {
+			ParticleManager::GetInstance()->SetGpuParticleEnabled(
+				gpuParticleEnabled
+			);
+		}
+		ImGui::TextDisabled(
+			"Select GPU Particle in the Particle Effect Editor, or enable it here."
+		);
+	}
+	ImGui::End();
 	if (ParticleManager::GetInstance()->IsGpuParticleEnabled()) {
-		ParticleManager::GetInstance()->DrawGpuParticleImGui("GPU Particle");
+		ParticleManager::GetInstance()->DrawGpuParticleImGui(
+			"GPU Particle Settings"
+		);
 	}
 	ParticleManager::GetInstance()->DrawSceneParticleImGui("GAMEPLAY", "Scene Particles");
 	if (lightningRenderer_) {

@@ -7,6 +7,11 @@
 #include "ParticleManager.h"
 #include "../math/Vector3.h"
 
+enum class ParticleSimulationType {
+	kCPU,
+	kGPU
+};
+
 // Particleそのものではなく、ParticleGroup + Emitter + Behavior の「レシピ」を保存するための構造体
 struct ParticleEmitterDesc {
 	Vector3 translate = { 0.0f, 0.0f, 0.0f };
@@ -19,6 +24,7 @@ struct ParticleEmitterDesc {
 struct ParticleEffectDesc {
 	std::string name = "newParticle";
 	std::string textureFilePath = "resources/circle.png";
+	ParticleSimulationType simulationType = ParticleSimulationType::kCPU;
 
 	ParticleCommon::BlendMode blendMode = ParticleCommon::BlendMode::kBlendModeAdd;
 

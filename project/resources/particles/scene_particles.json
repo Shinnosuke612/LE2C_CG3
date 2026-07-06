@@ -98,16 +98,16 @@
     ],
     "rainAsset": [
       {
-        "count": 1000,
+        "count": 500,
         "effectFilePath": "resources/particles/rainParticle.json",
         "emitterActive": true,
         "enabled": true,
         "frequency": 0.10000000149011612,
         "label": "Particle 0",
         "spawnSize": [
-          400.0,
+          200.0,
           1.0,
-          400.0
+          200.0
         ],
         "translate": [
           0.0,

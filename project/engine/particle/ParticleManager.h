@@ -456,8 +456,10 @@ public:
 
 	void SetGroupBlendMode(const std::string& name, ParticleCommon::BlendMode blendMode);
 	void SetGroupRenderDesc(const std::string& name, const ParticleRenderDesc& render);
-	void SetGpuParticleEnabled(bool enabled) { gpuParticleEnabled_ = enabled; }
+	void SetGpuParticleEnabled(bool enabled);
 	bool IsGpuParticleEnabled() const { return gpuParticleEnabled_; }
+	void ApplyGpuParticleEffect(const ParticleEffectDesc& effect);
+	void ClearGpuParticles();
 	void DrawGpuParticleImGui(const char* windowTitle = "GPU Particle");
 
 	bool LoadSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json");
@@ -515,6 +517,11 @@ private:
 	void RebuildParticleAssetInstance(SceneParticleAssetInstance& instance);
 	void RebuildInstancesUsingAsset(const std::string& assetName);
 	bool LoadPlacementEmitterSettings(SceneParticlePlacement& placement);
+	void SyncSceneGpuParticle(const std::string& sceneName);
+	void ApplySceneGpuPlacement(
+		SceneParticlePlacement& placement,
+		const std::string& syncKey
+	);
 
 	float RandomRange(float min, float max);
 	Vector3 RandomVector3Range(const Vector3& min, const Vector3& max);
@@ -551,6 +558,7 @@ private:
 	std::unordered_map<std::string, ParticlePlacementAsset> particlePlacementAssets_;
 	std::unordered_map<std::string, std::vector<SceneParticleAssetInstance>> sceneParticleAssetInstances_;
 	std::unordered_map<std::string, size_t> sceneParticleAssetCycleSteps_;
+	std::string activeSceneGpuParticleKey_;
 	bool sceneParticleLayoutLoaded_ = false;
 	mutable bool sceneParticleLayoutDirty_ = false;
 	mutable std::string sceneParticlePersistenceMessage_;

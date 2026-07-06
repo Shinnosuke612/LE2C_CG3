@@ -39,6 +39,18 @@ bool ComboBlendMode(const char* label, ParticleCommon::BlendMode& mode) {
 	return false;
 }
 
+bool ComboSimulationType(const char* label, ParticleSimulationType& type) {
+	const char* items[] = { "CPU Particle", "GPU Particle" };
+	int current = type == ParticleSimulationType::kGPU ? 1 : 0;
+	if (ImGui::Combo(label, &current, items, IM_ARRAYSIZE(items))) {
+		type = current == 1
+			? ParticleSimulationType::kGPU
+			: ParticleSimulationType::kCPU;
+		return true;
+	}
+	return false;
+}
+
 void ComboColorMode(const char* label, ParticleManager::ColorChangeMode& mode) {
 	const char* items[] = { "Constant", "OverLife", "RandomLoop" };
 	int current = static_cast<int>(mode);
@@ -194,6 +206,11 @@ bool ParticleEffectEditor::LoadEffectFile(
 
 	delete previewEmitter;
 	previewEmitter = ParticleEffectResource::CreateEmitter(effect);
+	if (effect.simulationType == ParticleSimulationType::kGPU) {
+		ParticleManager::GetInstance()->ApplyGpuParticleEffect(effect);
+	} else {
+		ParticleManager::GetInstance()->SetGpuParticleEnabled(false);
+	}
 	return true;
 }
 
@@ -262,6 +279,27 @@ bool ParticleEffectEditor::DrawImGui(
 	}
 
 	CopyStringsToEffect(effect);
+	if (resourceChanged) {
+		changed = true;
+	}
+
+	if (ComboSimulationType("Simulation", effect.simulationType)) {
+		changed = true;
+		delete previewEmitter;
+		previewEmitter = effect.simulationType == ParticleSimulationType::kCPU
+			? ParticleEffectResource::CreateEmitter(effect)
+			: nullptr;
+		if (effect.simulationType == ParticleSimulationType::kGPU) {
+			ParticleManager::GetInstance()->ApplyGpuParticleEffect(effect);
+		} else {
+			ParticleManager::GetInstance()->SetGpuParticleEnabled(false);
+		}
+	}
+	if (effect.simulationType == ParticleSimulationType::kGPU) {
+		ImGui::TextDisabled(
+			"GPU Particle uses the GPU Particle panel below for runtime settings."
+		);
+	}
 
 	changed |= ComboBlendMode("BlendMode", effect.blendMode);
 
@@ -719,9 +757,19 @@ bool ParticleEffectEditor::DrawImGui(
 	}
 
 	// 数値編集をリアルタイム反映
-	if (previewEmitter) {
-		ParticleEffectResource::PrepareParticleGroup(effect, false);
-		ParticleEffectResource::ApplyToEmitter(*previewEmitter, effect);
+	if (effect.simulationType == ParticleSimulationType::kGPU) {
+		delete previewEmitter;
+		previewEmitter = nullptr;
+		if (changed || applied) {
+			ParticleManager::GetInstance()->ApplyGpuParticleEffect(effect);
+		}
+	} else if (previewEmitter) {
+		if (changed || applied) {
+			ParticleEffectResource::PrepareParticleGroup(effect, false);
+			ParticleEffectResource::ApplyToEmitter(*previewEmitter, effect);
+		}
+	} else {
+		previewEmitter = ParticleEffectResource::CreateEmitter(effect);
 	}
 
 	if (ImGui::Button("Apply")) {

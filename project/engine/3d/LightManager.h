@@ -112,7 +112,7 @@ private:
 	PointLight MakeDefaultPointLight() const;
 	SpotLight MakeDefaultSpotLight() const;
 	ShadowSettings MakeDefaultShadowSettings(bool enable) const;
-	void DrawShadowSettingsImGui(
+	bool DrawShadowSettingsImGui(
 		const char* label,
 		ShadowSettings& settings,
 		bool canRender,

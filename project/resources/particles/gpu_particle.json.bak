@@ -1,0 +1,111 @@
+{
+    "autoEmit": true,
+    "behavior": {
+        "accelerationBase": [
+            7.0,
+            -0.0010000000474974513,
+            0.0
+        ],
+        "accelerationRandomRange": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "alignAxis": 1,
+        "alignToVelocity": true,
+        "colorMax": [
+            0.25999999046325684,
+            0.49000000953674316,
+            0.7099999785423279,
+            1.0
+        ],
+        "colorMin": [
+            0.30000001192092896,
+            0.07999999821186066,
+            0.699999988079071,
+            1.0
+        ],
+        "colorMode": 0,
+        "enableLifeFade": true,
+        "enableScaleOverLife": false,
+        "endColorMax": [
+            0.20999999344348907,
+            0.550000011920929,
+            0.6600000262260437,
+            1.0
+        ],
+        "endColorMin": [
+            0.23999999463558197,
+            0.44999998807907104,
+            0.8700000047683716,
+            1.0
+        ],
+        "endScaleMax": [
+            0.05000000074505806,
+            1.0,
+            0.05000000074505806
+        ],
+        "endScaleMin": [
+            0.05000000074505806,
+            1.0,
+            0.05000000074505806
+        ],
+        "fadeOutStartRatio": 0.699999988079071,
+        "lifeTime": [
+            2.0,
+            2.0
+        ],
+        "rotationSpeed": [
+            0.0,
+            0.0
+        ],
+        "scale": [
+            1.0,
+            1.0
+        ],
+        "startScaleMax": [
+            0.05000000074505806,
+            1.0,
+            0.05000000074505806
+        ],
+        "startScaleMin": [
+            0.05000000074505806,
+            1.0,
+            0.05000000074505806
+        ],
+        "velocity": [
+            1.0,
+            1.0
+        ],
+        "velocityBase": [
+            0.0,
+            -31.399999618530273,
+            0.0
+        ],
+        "velocityRandomRange": [
+            0.0,
+            0.0,
+            0.009999999776482582
+        ]
+    },
+    "blendMode": "Add",
+    "emitter": {
+        "count": 500,
+        "frequency": 0.10000000149011612,
+        "radius": 100.0,
+        "shape": 1,
+        "spawnSize": [
+            200.0,
+            1.0,
+            200.0
+        ],
+        "translate": [
+            0.0,
+            60.0,
+            0.0
+        ]
+    },
+    "forceVisible": false,
+    "texture": "resources/circle.png",
+    "useBillboard": false
+}

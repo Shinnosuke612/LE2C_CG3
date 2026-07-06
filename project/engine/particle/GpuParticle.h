@@ -14,11 +14,12 @@
 
 class Camera;
 class DirectXCommon;
+struct ParticleEffectDesc;
 class SrvManager;
 
 class GpuParticle {
 public:
-	static constexpr uint32_t kMaxParticles = 1024;
+	static constexpr uint32_t kMaxParticles = 20480;
 
 	struct ParticleData {
 		Vector3 translate;
@@ -28,8 +29,16 @@ public:
 		Vector3 rotate;
 		float rotationSpeed;
 		Vector3 velocity;
-		float padding0;
+		float initialAlpha;
 		Vector4 color;
+		Vector3 acceleration;
+		float padding0;
+		Vector3 startScale;
+		float padding1;
+		Vector3 endScale;
+		float padding2;
+		Vector4 startColor;
+		Vector4 endColor;
 	};
 
 	struct Material {
@@ -52,6 +61,8 @@ public:
 	struct EmitterSphere {
 		Vector3 translate;
 		float radius;
+		Vector3 spawnSize;
+		uint32_t shape;
 		uint32_t count;
 		float frequency;
 		float frequencyTime;
@@ -61,6 +72,7 @@ public:
 	struct PerView {
 		Matrix4x4 viewProjection;
 		Matrix4x4 billboardMatrix;
+		Vector4 renderFlags;
 	};
 
 	struct PerFrame {
@@ -74,12 +86,36 @@ public:
 		float lifeTimeMax = 1.2f;
 		float scaleMin = 0.08f;
 		float scaleMax = 0.22f;
+		Vector3 startScaleMin = { 0.08f, 0.08f, 1.0f };
+		float paddingScale0 = 0.0f;
+		Vector3 startScaleMax = { 0.22f, 0.22f, 1.0f };
+		float paddingScale1 = 0.0f;
+		bool enableScaleOverLife = false;
+		Vector3 endScaleMin = { 0.08f, 0.08f, 1.0f };
+		float paddingScale2 = 0.0f;
+		Vector3 endScaleMax = { 0.22f, 0.22f, 1.0f };
+		float paddingScale3 = 0.0f;
 		float velocityMin = 0.4f;
 		float velocityMax = 1.0f;
+		Vector3 velocityBase = { 0.0f, 0.0f, 0.0f };
+		float padding0 = 0.0f;
+		Vector3 velocityRandomRange = { 1.0f, 1.0f, 1.0f };
+		float padding1 = 0.0f;
+		Vector3 accelerationBase = { 0.0f, 0.0f, 0.0f };
+		float padding2 = 0.0f;
+		Vector3 accelerationRandomRange = { 0.0f, 0.0f, 0.0f };
+		float padding3 = 0.0f;
 		float rotationSpeedMin = -4.0f;
 		float rotationSpeedMax = 4.0f;
+		bool alignToVelocity = false;
+		uint32_t alignAxis = 1;
+		bool enableLifeFade = true;
+		float fadeOutStartRatio = 0.7f;
+		uint32_t colorMode = 0;
 		Vector4 colorMin = { 0.8f, 0.35f, 0.25f, 0.65f };
 		Vector4 colorMax = { 1.0f, 0.75f, 0.45f, 0.95f };
+		Vector4 endColorMin = { 0.8f, 0.35f, 0.25f, 0.0f };
+		Vector4 endColorMax = { 1.0f, 0.75f, 0.45f, 0.0f };
 	};
 
 	struct Config {
@@ -88,9 +124,13 @@ public:
 		ParticleCommon::BlendMode blendMode =
 			ParticleCommon::BlendMode::kBlendModeAdd;
 		bool autoEmit = true;
+		bool useBillboard = true;
+		bool forceVisible = false;
 		EmitterSphere emitter{
-			{ 0.0f, 1.7f, 0.0f },
+			{ -5.0f, 5.0f, 0.0f },
 			0.35f,
+			{ 1.0f, 1.0f, 1.0f },
+			0,
 			10,
 			0.5f,
 			0.0f,
@@ -102,8 +142,20 @@ public:
 	struct BehaviorForGPU {
 		Vector4 lifeScaleVelocityMinRotationMin;
 		Vector4 lifeScaleVelocityMaxRotationMax;
+		Vector4 startScaleMin;
+		Vector4 startScaleMax;
+		Vector4 endScaleMin;
+		Vector4 endScaleMax;
+		Vector4 velocityBase;
+		Vector4 velocityRandomRange;
+		Vector4 accelerationBase;
+		Vector4 accelerationRandomRange;
+		Vector4 flags;
+		Vector4 rotationFlags;
 		Vector4 colorMin;
 		Vector4 colorMax;
+		Vector4 endColorMin;
+		Vector4 endColorMax;
 	};
 
 	void Initialize(
@@ -116,8 +168,11 @@ public:
 	void Update();
 	void Draw(Camera* camera);
 	void DrawImGui(const char* windowTitle = "GPU Particle");
+	void ApplyEffectDesc(const ParticleEffectDesc& effect);
 	bool LoadConfig(const std::string& filePath);
 	bool SaveConfig(const std::string& filePath) const;
+	const Config& GetConfig() const { return config_; }
+	bool IsInitialized() const { return particleResource_ != nullptr; }
 
 private:
 	void CreateParticleResource();
