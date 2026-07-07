@@ -20,6 +20,19 @@ namespace {
 		strncpy_s(destination, destinationSize, source.c_str(), _TRUNCATE);
 	}
 
+void DisableGpuParticlePreview() {
+	ParticleManager* particleManager = ParticleManager::GetInstance();
+	particleManager->ClearGpuParticlePreview();
+}
+
+bool CollapseMaxToMin(float& minValue, float& maxValue) {
+	if (maxValue < minValue) {
+		maxValue = minValue;
+		return true;
+	}
+	return false;
+}
+
 void DragVector3(const char* label, Vector3& value, float speed = 0.01f) {
 	ImGui::DragFloat3(label, &value.x, speed);
 }
@@ -49,6 +62,43 @@ bool ComboSimulationType(const char* label, ParticleSimulationType& type) {
 		return true;
 	}
 	return false;
+}
+
+void DrawGpuWorkInProgressNotices(const ParticleEffectDesc& effect) {
+	bool hasNotice = false;
+	auto notice = [&hasNotice](const char* text) {
+		if (!hasNotice) {
+			ImGui::SeparatorText("GPU Work In Progress");
+			ImGui::TextColored(
+				ImVec4(1.0f, 0.75f, 0.25f, 1.0f),
+				"Some saved settings are not fully reproduced by GPU Particle yet."
+			);
+			hasNotice = true;
+		}
+		ImGui::BulletText("%s", text);
+	};
+
+	if (effect.behavior.motion.wind.enabled &&
+		(effect.behavior.motion.wind.turbulenceStrength != 0.0f ||
+		 effect.behavior.motion.wind.enableBoundaryFalloff ||
+		 effect.behavior.motion.wind.recoverOutsideField)) {
+		notice("Wind is approximated on GPU; boundary falloff/recovery/turbulence are not exact yet.");
+	}
+	if (effect.behavior.color.mode == ParticleManager::ColorChangeMode::kRandomLoop) {
+		notice("RandomLoop color is saved, but GPU preview does not apply it yet.");
+	}
+	if (effect.behavior.render.primitiveType != ParticleManager::PrimitiveType::kPlane) {
+		notice("Ring/Cylinder primitives are saved, but GPU currently renders plane particles.");
+	}
+	if (effect.behavior.render.cullMode != ParticleCommon::CullMode::kNone) {
+		notice("GPU Particle currently uses no culling.");
+	}
+	if (!effect.behavior.render.depthTest || effect.behavior.render.depthWrite) {
+		notice("GPU Particle currently uses depth test on and depth write off.");
+	}
+	if (effect.lightning.enabled) {
+		notice("Lightning is saved in the effect file, but it is not part of GPU Particle simulation.");
+	}
 }
 
 void ComboColorMode(const char* label, ParticleManager::ColorChangeMode& mode) {
@@ -209,7 +259,7 @@ bool ParticleEffectEditor::LoadEffectFile(
 	if (effect.simulationType == ParticleSimulationType::kGPU) {
 		ParticleManager::GetInstance()->ApplyGpuParticleEffect(effect);
 	} else {
-		ParticleManager::GetInstance()->SetGpuParticleEnabled(false);
+		DisableGpuParticlePreview();
 	}
 	return true;
 }
@@ -292,13 +342,30 @@ bool ParticleEffectEditor::DrawImGui(
 		if (effect.simulationType == ParticleSimulationType::kGPU) {
 			ParticleManager::GetInstance()->ApplyGpuParticleEffect(effect);
 		} else {
-			ParticleManager::GetInstance()->SetGpuParticleEnabled(false);
+			DisableGpuParticlePreview();
 		}
 	}
 	if (effect.simulationType == ParticleSimulationType::kGPU) {
-		ImGui::TextDisabled(
-			"GPU Particle uses the GPU Particle panel below for runtime settings."
-		);
+		if (ImGui::CollapsingHeader("GPU Runtime", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ParticleManager* particleManager = ParticleManager::GetInstance();
+			bool gpuParticleEnabled = particleManager->IsGpuParticleEnabled();
+			if (ImGui::Checkbox("GPU Particle Enabled", &gpuParticleEnabled)) {
+				particleManager->SetGpuParticleEnabled(gpuParticleEnabled);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Apply GPU Preview")) {
+				applied = true;
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Reset GPU Buffer")) {
+				particleManager->RequestGpuParticleReset();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Emit Once")) {
+				particleManager->EmitGpuParticleOnce();
+			}
+			DrawGpuWorkInProgressNotices(effect);
+		}
 	}
 
 	changed |= ComboBlendMode("BlendMode", effect.blendMode);
@@ -503,25 +570,79 @@ bool ParticleEffectEditor::DrawImGui(
 		}
 
 		if (ImGui::TreeNode("Vortex")) {
+			auto& vortex = effect.behavior.motion.vortex;
 			ImGui::Checkbox(
 				"UseEmitterOffset",
-				&effect.behavior.motion.vortex.useEmitterOffset
+				&vortex.useEmitterOffset
 			);
 			DragVector3(
-				effect.behavior.motion.vortex.useEmitterOffset ? "CenterOffset" : "WorldCenter",
-				effect.behavior.motion.vortex.center,
+				vortex.useEmitterOffset ? "CenterOffset" : "WorldCenter",
+				vortex.center,
 				0.05f
 			);
-			ComboVortexAxis("Axis", effect.behavior.motion.vortex.axis);
+			ComboVortexAxis("Axis", vortex.axis);
 
-			ImGui::DragFloat("AngularSpeedMin", &effect.behavior.motion.vortex.angularSpeedMin, 0.01f, -100.0f, 100.0f);
-			ImGui::DragFloat("AngularSpeedMax", &effect.behavior.motion.vortex.angularSpeedMax, 0.01f, -100.0f, 100.0f);
+			bool rangeCollapsed = false;
+			changed |= ImGui::DragFloat(
+				"AngularSpeedMin",
+				&vortex.angularSpeedMin,
+				0.01f,
+				-100.0f,
+				100.0f
+			);
+			changed |= ImGui::DragFloat(
+				"AngularSpeedMax",
+				&vortex.angularSpeedMax,
+				0.01f,
+				-100.0f,
+				100.0f
+			);
+			rangeCollapsed |= CollapseMaxToMin(
+				vortex.angularSpeedMin,
+				vortex.angularSpeedMax
+			);
 
-			ImGui::DragFloat("InwardSpeedMin", &effect.behavior.motion.vortex.inwardSpeedMin, 0.01f, -100.0f, 100.0f);
-			ImGui::DragFloat("InwardSpeedMax", &effect.behavior.motion.vortex.inwardSpeedMax, 0.01f, -100.0f, 100.0f);
+			changed |= ImGui::DragFloat(
+				"InwardSpeedMin",
+				&vortex.inwardSpeedMin,
+				0.01f,
+				-100.0f,
+				100.0f
+			);
+			changed |= ImGui::DragFloat(
+				"InwardSpeedMax",
+				&vortex.inwardSpeedMax,
+				0.01f,
+				-100.0f,
+				100.0f
+			);
+			rangeCollapsed |= CollapseMaxToMin(
+				vortex.inwardSpeedMin,
+				vortex.inwardSpeedMax
+			);
 
-			ImGui::DragFloat("VerticalSpeedMin", &effect.behavior.motion.vortex.verticalSpeedMin, 0.01f, -100.0f, 100.0f);
-			ImGui::DragFloat("VerticalSpeedMax", &effect.behavior.motion.vortex.verticalSpeedMax, 0.01f, -100.0f, 100.0f);
+			changed |= ImGui::DragFloat(
+				"VerticalSpeedMin",
+				&vortex.verticalSpeedMin,
+				0.01f,
+				-100.0f,
+				100.0f
+			);
+			changed |= ImGui::DragFloat(
+				"VerticalSpeedMax",
+				&vortex.verticalSpeedMax,
+				0.01f,
+				-100.0f,
+				100.0f
+			);
+			rangeCollapsed |= CollapseMaxToMin(
+				vortex.verticalSpeedMin,
+				vortex.verticalSpeedMax
+			);
+			if (rangeCollapsed) {
+				changed = true;
+				ImGui::TextDisabled("Max collapsed to Min for inverted vortex range.");
+			}
 			ImGui::TreePop();
 		}
 
@@ -773,6 +894,9 @@ bool ParticleEffectEditor::DrawImGui(
 	}
 
 	if (ImGui::Button("Apply")) {
+		if (effect.simulationType == ParticleSimulationType::kCPU) {
+			DisableGpuParticlePreview();
+		}
 		delete previewEmitter;
 		previewEmitter = ParticleEffectResource::CreateEmitter(effect);
 		applied = true;

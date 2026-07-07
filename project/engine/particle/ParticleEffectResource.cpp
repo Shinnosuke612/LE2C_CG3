@@ -139,6 +139,12 @@ ParticleManager::VortexAxis ToVortexAxis(const std::string& text) {
 	return ParticleManager::VortexAxis::kY;
 }
 
+void CollapseMaxToMin(float& minValue, float& maxValue) {
+	if (maxValue < minValue) {
+		maxValue = minValue;
+	}
+}
+
 std::string ToString(ParticleManager::ParticleAlignmentAxis axis) {
 	switch (axis) {
 	case ParticleManager::ParticleAlignmentAxis::kX: return "X";
@@ -517,6 +523,9 @@ void ReadBehavior(const json& j, ParticleManager::ParticleBehavior& b) {
 			b.motion.vortex.inwardSpeedMax = vortex.value("inwardSpeedMax", b.motion.vortex.inwardSpeedMax);
 			b.motion.vortex.verticalSpeedMin = vortex.value("verticalSpeedMin", b.motion.vortex.verticalSpeedMin);
 			b.motion.vortex.verticalSpeedMax = vortex.value("verticalSpeedMax", b.motion.vortex.verticalSpeedMax);
+			CollapseMaxToMin(b.motion.vortex.angularSpeedMin, b.motion.vortex.angularSpeedMax);
+			CollapseMaxToMin(b.motion.vortex.inwardSpeedMin, b.motion.vortex.inwardSpeedMax);
+			CollapseMaxToMin(b.motion.vortex.verticalSpeedMin, b.motion.vortex.verticalSpeedMax);
 		}
 
 		if (motion.contains("pointField")) {
@@ -654,94 +663,94 @@ bool Load(const std::string& filePath, ParticleEffectDesc& outEffect) {
 		return false;
 	}
 
-	const ParticleEffectDesc originalEffect = outEffect;
+	// Load into a fresh descriptor so missing optional fields do not inherit
+	// values from the previously selected effect.
+	ParticleEffectDesc loaded{};
 	try {
-	outEffect.name = root.value("name", outEffect.name);
-	outEffect.textureFilePath = root.value("textureFilePath", outEffect.textureFilePath);
-	outEffect.simulationType = ToSimulationType(
-		root.value("simulationType", ToString(outEffect.simulationType))
+	loaded.name = root.value("name", loaded.name);
+	loaded.textureFilePath = root.value("textureFilePath", loaded.textureFilePath);
+	loaded.simulationType = ToSimulationType(
+		root.value("simulationType", "CPU")
 	);
-	outEffect.blendMode = ToBlendMode(root.value("blendMode", ToString(outEffect.blendMode)));
+	loaded.blendMode = ToBlendMode(root.value("blendMode", ToString(loaded.blendMode)));
 
 	if (root.contains("emitter")) {
 		const json& emitter = root.at("emitter");
 
 		if (emitter.contains("translate")) {
-			outEffect.emitter.translate = ReadVector3(emitter.at("translate"), outEffect.emitter.translate);
+			loaded.emitter.translate = ReadVector3(emitter.at("translate"), loaded.emitter.translate);
 		}
 		if (emitter.contains("spawnSize")) {
-			outEffect.emitter.spawnSize = ReadVector3(emitter.at("spawnSize"), outEffect.emitter.spawnSize);
+			loaded.emitter.spawnSize = ReadVector3(emitter.at("spawnSize"), loaded.emitter.spawnSize);
 		}
 
-		outEffect.emitter.count = emitter.value("count", outEffect.emitter.count);
-		outEffect.emitter.frequency =
-			NormalizeEmitterFrequency(emitter.value("frequency", outEffect.emitter.frequency));
-		outEffect.emitter.isActive = emitter.value("isActive", outEffect.emitter.isActive);
+		loaded.emitter.count = emitter.value("count", loaded.emitter.count);
+		loaded.emitter.frequency =
+			NormalizeEmitterFrequency(emitter.value("frequency", loaded.emitter.frequency));
+		loaded.emitter.isActive = emitter.value("isActive", loaded.emitter.isActive);
 	}
 
 	if (root.contains("lightning")) {
 		const json& lightning = root.at("lightning");
 
-		outEffect.lightning.enabled =
-			lightning.value("enabled", outEffect.lightning.enabled);
+		loaded.lightning.enabled =
+			lightning.value("enabled", loaded.lightning.enabled);
 		if (lightning.contains("startOffset")) {
-			outEffect.lightning.startOffset =
-				ReadVector3(lightning.at("startOffset"), outEffect.lightning.startOffset);
+			loaded.lightning.startOffset =
+				ReadVector3(lightning.at("startOffset"), loaded.lightning.startOffset);
 		}
 		if (lightning.contains("endOffset")) {
-			outEffect.lightning.endOffset =
-				ReadVector3(lightning.at("endOffset"), outEffect.lightning.endOffset);
+			loaded.lightning.endOffset =
+				ReadVector3(lightning.at("endOffset"), loaded.lightning.endOffset);
 		}
 		if (lightning.contains("randomRange")) {
-			outEffect.lightning.randomRange =
-				ReadVector3(lightning.at("randomRange"), outEffect.lightning.randomRange);
+			loaded.lightning.randomRange =
+				ReadVector3(lightning.at("randomRange"), loaded.lightning.randomRange);
 		}
 		if (lightning.contains("coreColor")) {
-			outEffect.lightning.coreColor =
-				ReadVector4(lightning.at("coreColor"), outEffect.lightning.coreColor);
+			loaded.lightning.coreColor =
+				ReadVector4(lightning.at("coreColor"), loaded.lightning.coreColor);
 		}
 		if (lightning.contains("branchColor")) {
-			outEffect.lightning.branchColor =
-				ReadVector4(lightning.at("branchColor"), outEffect.lightning.branchColor);
+			loaded.lightning.branchColor =
+				ReadVector4(lightning.at("branchColor"), loaded.lightning.branchColor);
 		}
 
-		outEffect.lightning.jitter =
-			lightning.value("jitter", outEffect.lightning.jitter);
-		outEffect.lightning.branchLength =
-			lightning.value("branchLength", outEffect.lightning.branchLength);
-		outEffect.lightning.branchProbability =
-			lightning.value("branchProbability", outEffect.lightning.branchProbability);
-		outEffect.lightning.thickness =
-			lightning.value("thickness", outEffect.lightning.thickness);
-		outEffect.lightning.duration =
-			lightning.value("duration", outEffect.lightning.duration);
-		outEffect.lightning.segmentCount =
-			lightning.value("segmentCount", outEffect.lightning.segmentCount);
-		outEffect.lightning.flashExposure =
-			lightning.value("flashExposure", outEffect.lightning.flashExposure);
-		outEffect.lightning.flashExposureValue =
-			lightning.value("flashExposureValue", outEffect.lightning.flashExposureValue);
-		outEffect.lightning.flashReturnSpeed =
-			lightning.value("flashReturnSpeed", outEffect.lightning.flashReturnSpeed);
+		loaded.lightning.jitter =
+			lightning.value("jitter", loaded.lightning.jitter);
+		loaded.lightning.branchLength =
+			lightning.value("branchLength", loaded.lightning.branchLength);
+		loaded.lightning.branchProbability =
+			lightning.value("branchProbability", loaded.lightning.branchProbability);
+		loaded.lightning.thickness =
+			lightning.value("thickness", loaded.lightning.thickness);
+		loaded.lightning.duration =
+			lightning.value("duration", loaded.lightning.duration);
+		loaded.lightning.segmentCount =
+			lightning.value("segmentCount", loaded.lightning.segmentCount);
+		loaded.lightning.flashExposure =
+			lightning.value("flashExposure", loaded.lightning.flashExposure);
+		loaded.lightning.flashExposureValue =
+			lightning.value("flashExposureValue", loaded.lightning.flashExposureValue);
+		loaded.lightning.flashReturnSpeed =
+			lightning.value("flashReturnSpeed", loaded.lightning.flashReturnSpeed);
 	}
 
 	if (root.contains("behavior")) {
-		ReadBehavior(root.at("behavior"), outEffect.behavior);
+		ReadBehavior(root.at("behavior"), loaded.behavior);
 	}
 	} catch (...) {
-		outEffect = originalEffect;
 		return false;
 	}
 
+	outEffect = loaded;
 	return true;
 }
 
 void PrepareParticleGroup(const ParticleEffectDesc& effect, bool clearParticles) {
 	if (effect.simulationType == ParticleSimulationType::kGPU) {
+		(void)clearParticles;
 		ParticleManager::GetInstance()->ApplyGpuParticleEffect(effect);
-		if (clearParticles) {
-			ParticleManager::GetInstance()->ClearGpuParticles();
-		}
 		return;
 	}
 

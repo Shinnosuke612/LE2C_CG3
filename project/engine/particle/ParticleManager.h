@@ -1,7 +1,9 @@
 #pragma once
+#include <memory>
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <wrl.h>
 #include <d3d12.h>
 
@@ -452,6 +454,17 @@ public:
 		const ParticleBehavior& behavior
 	);
 
+	struct RuntimeStats {
+		float cpuParticleUpdateMs = 0.0f;
+		float gpuParticleCpuUpdateMs = 0.0f;
+		float totalParticleUpdateMs = 0.0f;
+		uint32_t cpuParticleActiveCount = 0;
+		uint32_t cpuParticleInstanceCount = 0;
+		uint32_t gpuParticleInstanceCount = 0;
+		bool gpuParticleEnabled = false;
+		GpuParticle::RuntimeInfo gpuParticle;
+	};
+
 	void SetCamera(Camera* camera) { camera_ = camera; }
 
 	void SetGroupBlendMode(const std::string& name, ParticleCommon::BlendMode blendMode);
@@ -460,9 +473,16 @@ public:
 	bool IsGpuParticleEnabled() const { return gpuParticleEnabled_; }
 	void ApplyGpuParticleEffect(const ParticleEffectDesc& effect);
 	void ClearGpuParticles();
+	void ClearGpuParticlePreview();
+	void RequestGpuParticleReset();
+	void EmitGpuParticleOnce();
+	const RuntimeStats& GetRuntimeStats() const { return runtimeStats_; }
 	void DrawGpuParticleImGui(const char* windowTitle = "GPU Particle");
 
-	bool LoadSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json");
+	bool LoadSceneParticleLayout(
+		const std::string& filePath = "resources/particles/scene_particles.json",
+		bool resumeGpuSync = false
+	);
 	bool SaveSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json") const;
 	void UpdateSceneParticles(const std::string& sceneName);
 	void EmitSceneParticles(const std::string& sceneName);
@@ -517,11 +537,39 @@ private:
 	void RebuildParticleAssetInstance(SceneParticleAssetInstance& instance);
 	void RebuildInstancesUsingAsset(const std::string& assetName);
 	bool LoadPlacementEmitterSettings(SceneParticlePlacement& placement);
+	GpuParticle* GetOrCreateGpuParticle(const std::string& key);
+	GpuParticle* FindGpuParticle(const std::string& key);
+	void ApplyGpuParticleEffectToKey(
+		const std::string& key,
+		const ParticleEffectDesc& effect
+	);
+	void EraseGpuParticle(const std::string& key);
+	std::string MakeSceneGpuParticleKey(
+		const std::string& sceneName,
+		size_t instanceIndex,
+		size_t placementIndex,
+		const SceneParticleAssetInstance& instance,
+		const SceneParticlePlacement& placement
+	) const;
+	bool SceneParticlePlacementUsesGpu(const SceneParticlePlacement& placement) const;
+	bool SceneParticleAssetContainsGpuPlacement(const std::string& assetName) const;
+	bool SceneParticleAssetHasEnabledInstance(const std::string& assetName) const;
+	bool SceneParticleInstanceContainsGpuPlacement(
+		const SceneParticleAssetInstance& instance
+	) const;
+	bool SceneParticleSceneContainsEnabledGpuPlacement(
+		const std::string& sceneName
+	) const;
+	void ApplySceneParticlePlacement(
+		SceneParticlePlacement& placement,
+		const std::string& syncKey = {}
+	);
 	void SyncSceneGpuParticle(const std::string& sceneName);
 	void ApplySceneGpuPlacement(
 		SceneParticlePlacement& placement,
 		const std::string& syncKey
 	);
+	void MarkSceneGpuParticleSyncDirty(bool resumeGpuSync);
 
 	float RandomRange(float min, float max);
 	Vector3 RandomVector3Range(const Vector3& min, const Vector3& max);
@@ -553,12 +601,12 @@ private:
 	Camera* camera_ = nullptr;
 
 	std::unordered_map<std::string, ParticleGroup> particleGroups_;
-	GpuParticle gpuParticle_;
+	std::unordered_map<std::string, std::unique_ptr<GpuParticle>> gpuParticles_;
+	std::unordered_set<std::string> sceneGpuParticleKeys_;
 	bool gpuParticleEnabled_ = false;
 	std::unordered_map<std::string, ParticlePlacementAsset> particlePlacementAssets_;
 	std::unordered_map<std::string, std::vector<SceneParticleAssetInstance>> sceneParticleAssetInstances_;
 	std::unordered_map<std::string, size_t> sceneParticleAssetCycleSteps_;
-	std::string activeSceneGpuParticleKey_;
 	bool sceneParticleLayoutLoaded_ = false;
 	mutable bool sceneParticleLayoutDirty_ = false;
 	mutable std::string sceneParticlePersistenceMessage_;
@@ -569,5 +617,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> directionalLightResource_;
 	DirectionalLight* directionalLightData_ = nullptr;
 
+	RuntimeStats runtimeStats_;
 	float deltaTime_ = 1.0f / 60.0f;
 };

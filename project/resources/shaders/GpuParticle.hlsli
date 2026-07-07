@@ -21,6 +21,17 @@ struct GpuParticle
     float32_t padding2;
     float32_t4 startColor;
     float32_t4 endColor;
+    float32_t3 swayAxis;
+    float32_t swayPhase;
+    float32_t3 vortexCenter;
+    float32_t vortexAngle;
+    float32_t vortexRadius;
+    float32_t vortexHeightOffset;
+    float32_t vortexAngularSpeed;
+    float32_t vortexInwardSpeed;
+    float32_t vortexVerticalSpeed;
+    uint32_t vortexAxis;
+    float32_t2 vortexPadding;
 };
 
 struct EmitterSphere
@@ -67,6 +78,15 @@ struct GpuParticleBehavior
     float32_t4 colorMax;
     float32_t4 endColorMin;
     float32_t4 endColorMax;
+    float32_t4 sway;
+    float32_t4 pointFieldFlags;
+    float32_t4 pointFieldCenter;
+    float32_t4 pointFieldStrengths;
+    float32_t4 pointFieldOrbitAxis;
+    float32_t4 motionFlags;
+    float32_t4 vortexCenter;
+    float32_t4 vortexAngularInwardSpeed;
+    float32_t4 vortexVerticalSpeed;
 };
 
 struct GpuParticleDispatch

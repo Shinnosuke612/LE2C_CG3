@@ -30,7 +30,7 @@
         1.0
       ],
       "startColorMax": [
-        0.05000000074505806,
+        0.0,
         0.0,
         0.0,
         1.0
@@ -109,8 +109,8 @@
           0.0,
           0.0
         ],
-        "inwardSpeedMax": -2.0,
-        "inwardSpeedMin": -3.0,
+        "inwardSpeedMax": -3.0,
+        "inwardSpeedMin": -2.0,
         "useEmitterOffset": true,
         "verticalSpeedMax": 0.0,
         "verticalSpeedMin": 0.0
@@ -226,22 +226,22 @@
       "endScaleMax": [
         0.0,
         0.0,
-        1.0
+        0.0
       ],
       "endScaleMin": [
         0.0,
         0.0,
-        1.0
+        0.0
       ],
       "startScaleMax": [
         5.0,
         5.0,
-        1.0
+        0.0
       ],
       "startScaleMin": [
         5.0,
         5.0,
-        1.0
+        0.0
       ]
     }
   },
@@ -253,11 +253,11 @@
     "spawnSize": [
       1.0,
       1.0,
-      1.0
+      0.0
     ],
     "translate": [
-      0.0,
-      0.0,
+      -10.050000190734863,
+      3.299999952316284,
       0.0
     ]
   },
@@ -300,7 +300,7 @@
     ],
     "thickness": 0.03999999910593033
   },
-  "name": "riftParticle",
-  "simulationType": "CPU",
+  "name": "GpuTestParticle",
+  "simulationType": "GPU",
   "textureFilePath": "resources/circleEntity.png"
 }

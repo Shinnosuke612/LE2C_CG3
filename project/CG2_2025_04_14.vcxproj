@@ -170,6 +170,7 @@
     <ClCompile Include="engine\math\Quaternion.cpp" />
     <ClCompile Include="engine\math\Matrix4x4.cpp" />
     <ClCompile Include="engine\utility\Logger.cpp" />
+    <ClCompile Include="engine\utility\SystemPerformanceMonitor.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
     <ClCompile Include="engine\base\Framework.cpp" />
     <ClCompile Include="application\Game.cpp" />
@@ -311,6 +312,7 @@
     <ClInclude Include="engine\math\Vector3.h" />
     <ClInclude Include="engine\math\Vector4.h" />
     <ClInclude Include="engine\utility\Logger.h" />
+    <ClInclude Include="engine\utility\SystemPerformanceMonitor.h" />
     <ClInclude Include="engine\math\Math.h" />
     <ClInclude Include="engine\3d\Model.h" />
     <ClInclude Include="engine\3d\Animation.h" />

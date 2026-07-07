@@ -76,6 +76,44 @@
         ]
       }
     ],
+    "RiftAsset": [
+      {
+        "count": 10,
+        "effectFilePath": "resources/particles/GpuTestParticle.json",
+        "emitterActive": true,
+        "enabled": true,
+        "frequency": 0.10000000149011612,
+        "label": "Particle 0",
+        "spawnSize": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -10.050000190734863,
+          3.299999952316284,
+          0.0
+        ]
+      },
+      {
+        "count": 10,
+        "effectFilePath": "resources/particles/riftParticle.json",
+        "emitterActive": true,
+        "enabled": true,
+        "frequency": 0.10000000149011612,
+        "label": "Particle 1",
+        "spawnSize": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -17.25,
+          3.299999952316284,
+          0.0
+        ]
+      }
+    ],
     "SnoeAsset": [
       {
         "count": 50,
@@ -139,7 +177,7 @@
     "GAMEPLAY": [
       {
         "assetName": "rainAsset",
-        "enabled": true,
+        "enabled": false,
         "label": "rainAsset 0",
         "translate": [
           0.0,
@@ -148,9 +186,9 @@
         ]
       },
       {
-        "assetName": "SnoeAsset",
-        "enabled": false,
-        "label": "SnoeAsset 1",
+        "assetName": "RiftAsset",
+        "enabled": true,
+        "label": "RiftAsset 1",
         "translate": [
           0.0,
           0.0,

@@ -112,6 +112,47 @@ void main(uint32_t3 dispatchThreadId : SV_DispatchThreadID)
             gBehavior.accelerationBase.xyz +
             (Rand3d(seed + 43.83f) * 2.0f - 1.0f) *
             gBehavior.accelerationRandomRange.xyz;
+        particle.swayAxis = Rand3d(seed + 89.37f) * 2.0f - 1.0f;
+        particle.swayPhase = Rand1d(seed + 97.11f) * 6.2831853f;
+        particle.vortexCenter = gBehavior.vortexCenter.xyz;
+        particle.vortexAxis = uint32_t(gBehavior.motionFlags.y + 0.5f);
+        float32_t3 vortexOffset = particle.translate - particle.vortexCenter;
+        if (particle.vortexAxis == 0)
+        {
+            particle.vortexRadius =
+                sqrt(vortexOffset.y * vortexOffset.y + vortexOffset.z * vortexOffset.z);
+            particle.vortexAngle = atan2(vortexOffset.z, vortexOffset.y);
+            particle.vortexHeightOffset = vortexOffset.x;
+        }
+        else if (particle.vortexAxis == 1)
+        {
+            particle.vortexRadius =
+                sqrt(vortexOffset.x * vortexOffset.x + vortexOffset.z * vortexOffset.z);
+            particle.vortexAngle = atan2(vortexOffset.z, vortexOffset.x);
+            particle.vortexHeightOffset = vortexOffset.y;
+        }
+        else
+        {
+            particle.vortexRadius =
+                sqrt(vortexOffset.x * vortexOffset.x + vortexOffset.y * vortexOffset.y);
+            particle.vortexAngle = atan2(vortexOffset.y, vortexOffset.x);
+            particle.vortexHeightOffset = vortexOffset.z;
+        }
+        particle.vortexAngularSpeed = lerp(
+            gBehavior.vortexAngularInwardSpeed.x,
+            gBehavior.vortexAngularInwardSpeed.y,
+            Rand1d(seed + 101.23f)
+        );
+        particle.vortexInwardSpeed = lerp(
+            gBehavior.vortexAngularInwardSpeed.z,
+            gBehavior.vortexAngularInwardSpeed.w,
+            Rand1d(seed + 109.57f)
+        );
+        particle.vortexVerticalSpeed = lerp(
+            gBehavior.vortexVerticalSpeed.x,
+            gBehavior.vortexVerticalSpeed.y,
+            Rand1d(seed + 113.91f)
+        );
         if (gBehavior.rotationFlags.x > 0.5f)
         {
             uint32_t alignAxis = uint32_t(gBehavior.rotationFlags.y + 0.5f);

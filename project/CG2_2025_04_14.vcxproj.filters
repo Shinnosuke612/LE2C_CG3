@@ -65,6 +65,7 @@
     <ClCompile Include="engine\math\Matrix4x4.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
+    <ClCompile Include="engine\utility\SystemPerformanceMonitor.cpp" />
     <ClCompile Include="application\Game.cpp">
       <Filter>Application</Filter>
     </ClCompile>
@@ -123,6 +124,7 @@
     <ClInclude Include="engine\base\SceneRenderTarget.h" />
     <ClInclude Include="engine\io\Input.h" />
     <ClInclude Include="engine\utility\Logger.h" />
+    <ClInclude Include="engine\utility\SystemPerformanceMonitor.h" />
     <ClInclude Include="engine\math\Math.h" />
     <ClInclude Include="engine\2d\Sprite.h" />
     <ClInclude Include="engine\2d\SpriteCommon.h" />

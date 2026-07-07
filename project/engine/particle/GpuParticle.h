@@ -39,6 +39,17 @@ public:
 		float padding2;
 		Vector4 startColor;
 		Vector4 endColor;
+		Vector3 swayAxis;
+		float swayPhase;
+		Vector3 vortexCenter;
+		float vortexAngle;
+		float vortexRadius;
+		float vortexHeightOffset;
+		float vortexAngularSpeed;
+		float vortexInwardSpeed;
+		float vortexVerticalSpeed;
+		uint32_t vortexAxis;
+		float vortexPadding[2];
 	};
 
 	struct Material {
@@ -116,6 +127,26 @@ public:
 		Vector4 colorMax = { 1.0f, 0.75f, 0.45f, 0.95f };
 		Vector4 endColorMin = { 0.8f, 0.35f, 0.25f, 0.0f };
 		Vector4 endColorMax = { 1.0f, 0.75f, 0.45f, 0.0f };
+		float swayAmplitude = 0.0f;
+		float swayFrequency = 0.0f;
+		bool pointFieldEnabled = false;
+		float pointFieldRadius = 0.0f;
+		Vector3 pointFieldCenter = { 0.0f, 0.0f, 0.0f };
+		float pointFieldAttraction = 0.0f;
+		float pointFieldRepulsion = 0.0f;
+		float pointFieldOrbit = 0.0f;
+		float pointFieldFalloff = 1.0f;
+		float pointFieldDamping = 0.0f;
+		Vector3 pointFieldOrbitAxis = { 0.0f, 1.0f, 0.0f };
+		uint32_t movementMode = 0;
+		Vector3 vortexCenter = { 0.0f, 0.0f, 0.0f };
+		uint32_t vortexAxis = 1;
+		float vortexAngularSpeedMin = 4.0f;
+		float vortexAngularSpeedMax = 8.0f;
+		float vortexInwardSpeedMin = 0.8f;
+		float vortexInwardSpeedMax = 1.8f;
+		float vortexVerticalSpeedMin = -0.1f;
+		float vortexVerticalSpeedMax = 0.1f;
 	};
 
 	struct Config {
@@ -156,6 +187,25 @@ public:
 		Vector4 colorMax;
 		Vector4 endColorMin;
 		Vector4 endColorMax;
+		Vector4 sway;
+		Vector4 pointFieldFlags;
+		Vector4 pointFieldCenter;
+		Vector4 pointFieldStrengths;
+		Vector4 pointFieldOrbitAxis;
+		Vector4 motionFlags;
+		Vector4 vortexCenter;
+		Vector4 vortexAngularInwardSpeed;
+		Vector4 vortexVerticalSpeed;
+	};
+
+	struct RuntimeInfo {
+		bool initialized = false;
+		bool autoEmit = false;
+		uint32_t maxParticles = kMaxParticles;
+		uint32_t emitCount = 0;
+		uint32_t emitFlags = 0;
+		float frequency = 0.0f;
+		float frequencyTime = 0.0f;
 	};
 
 	void Initialize(
@@ -169,6 +219,9 @@ public:
 	void Draw(Camera* camera);
 	void DrawImGui(const char* windowTitle = "GPU Particle");
 	void ApplyEffectDesc(const ParticleEffectDesc& effect);
+	void RequestResetBuffer();
+	void EmitOnce();
+	RuntimeInfo GetRuntimeInfo() const;
 	bool LoadConfig(const std::string& filePath);
 	bool SaveConfig(const std::string& filePath) const;
 	const Config& GetConfig() const { return config_; }

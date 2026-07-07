@@ -76,12 +76,12 @@ void WinApp::Finalize(){
 bool WinApp::ProcessMessage(){
 	MSG msg{};
 
-	if(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)){
+	while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)){
+		if(msg.message == WM_QUIT){
+			return true;
+		}
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
-	}
-	if(msg.message == WM_QUIT){
-		return true;
 	}
 	return false;
 }

@@ -584,6 +584,60 @@ void GpuParticle::ApplyConfigToGpu() {
 		behaviorData_->colorMax = behavior.colorMax;
 		behaviorData_->endColorMin = behavior.endColorMin;
 		behaviorData_->endColorMax = behavior.endColorMax;
+		behaviorData_->sway = {
+			behavior.swayAmplitude,
+			behavior.swayFrequency,
+			0.0f,
+			0.0f
+		};
+		behaviorData_->pointFieldFlags = {
+			behavior.pointFieldEnabled ? 1.0f : 0.0f,
+			behavior.pointFieldRadius,
+			behavior.pointFieldFalloff,
+			behavior.pointFieldDamping
+		};
+		behaviorData_->pointFieldCenter = {
+			behavior.pointFieldCenter.x,
+			behavior.pointFieldCenter.y,
+			behavior.pointFieldCenter.z,
+			0.0f
+		};
+		behaviorData_->pointFieldStrengths = {
+			behavior.pointFieldAttraction,
+			behavior.pointFieldRepulsion,
+			behavior.pointFieldOrbit,
+			0.0f
+		};
+		behaviorData_->pointFieldOrbitAxis = {
+			behavior.pointFieldOrbitAxis.x,
+			behavior.pointFieldOrbitAxis.y,
+			behavior.pointFieldOrbitAxis.z,
+			0.0f
+		};
+		behaviorData_->motionFlags = {
+			static_cast<float>(behavior.movementMode),
+			static_cast<float>(behavior.vortexAxis),
+			0.0f,
+			0.0f
+		};
+		behaviorData_->vortexCenter = {
+			behavior.vortexCenter.x,
+			behavior.vortexCenter.y,
+			behavior.vortexCenter.z,
+			0.0f
+		};
+		behaviorData_->vortexAngularInwardSpeed = {
+			behavior.vortexAngularSpeedMin,
+			behavior.vortexAngularSpeedMax,
+			behavior.vortexInwardSpeedMin,
+			behavior.vortexInwardSpeedMax
+		};
+		behaviorData_->vortexVerticalSpeed = {
+			behavior.vortexVerticalSpeedMin,
+			behavior.vortexVerticalSpeedMax,
+			0.0f,
+			0.0f
+		};
 	}
 }
 
@@ -603,6 +657,9 @@ bool GpuParticle::ApplyTexture(const std::string& textureFilePath) {
 }
 
 void GpuParticle::ApplyEffectDesc(const ParticleEffectDesc& effect) {
+	const std::string currentConfigPath = config_.filePath;
+	config_ = Config{};
+	config_.filePath = currentConfigPath;
 	config_.textureFilePath = effect.textureFilePath;
 	ApplyTexture(effect.textureFilePath);
 	config_.blendMode = effect.blendMode;
@@ -680,6 +737,53 @@ void GpuParticle::ApplyEffectDesc(const ParticleEffectDesc& effect) {
 		behavior.velocityMax = 1.0f;
 	}
 
+	behavior.swayAmplitude = effect.behavior.motion.sway.amplitude;
+	behavior.swayFrequency = effect.behavior.motion.sway.frequency;
+
+	const ParticleManager::ParticlePointFieldDesc& pointField =
+		effect.behavior.motion.pointField;
+	behavior.pointFieldEnabled = pointField.enabled;
+	behavior.pointFieldCenter = pointField.useEmitterOffset
+		? Vector3{
+			effect.emitter.translate.x + pointField.center.x,
+			effect.emitter.translate.y + pointField.center.y,
+			effect.emitter.translate.z + pointField.center.z
+		}
+		: pointField.center;
+	behavior.pointFieldRadius = (std::max)(0.0f, pointField.radius);
+	behavior.pointFieldAttraction = pointField.attractionStrength;
+	behavior.pointFieldRepulsion = pointField.repulsionStrength;
+	behavior.pointFieldOrbit = pointField.orbitStrength;
+	behavior.pointFieldFalloff = (std::max)(0.0f, pointField.falloff);
+	behavior.pointFieldDamping = (std::max)(0.0f, pointField.damping);
+	behavior.pointFieldOrbitAxis =
+		NormalizeVectorOrZero(pointField.orbitAxis);
+	if (LengthSquared(behavior.pointFieldOrbitAxis) <= 0.000001f) {
+		behavior.pointFieldOrbitAxis = { 0.0f, 1.0f, 0.0f };
+	}
+
+	behavior.movementMode =
+		static_cast<uint32_t>(effect.behavior.motion.mode);
+	const ParticleManager::ParticleVortexDesc& vortex =
+		effect.behavior.motion.vortex;
+	behavior.vortexCenter = vortex.useEmitterOffset
+		? Vector3{
+			effect.emitter.translate.x + vortex.center.x,
+			effect.emitter.translate.y + vortex.center.y,
+			effect.emitter.translate.z + vortex.center.z
+		}
+		: vortex.center;
+	behavior.vortexAxis = static_cast<uint32_t>(vortex.axis);
+	behavior.vortexAngularSpeedMin = vortex.angularSpeedMin;
+	behavior.vortexAngularSpeedMax =
+		(std::max)(vortex.angularSpeedMin, vortex.angularSpeedMax);
+	behavior.vortexInwardSpeedMin = vortex.inwardSpeedMin;
+	behavior.vortexInwardSpeedMax =
+		(std::max)(vortex.inwardSpeedMin, vortex.inwardSpeedMax);
+	behavior.vortexVerticalSpeedMin = vortex.verticalSpeedMin;
+	behavior.vortexVerticalSpeedMax =
+		(std::max)(vortex.verticalSpeedMin, vortex.verticalSpeedMax);
+
 	behavior.rotationSpeedMin = effect.behavior.rotation.rotationSpeed.z;
 	behavior.rotationSpeedMax = effect.behavior.rotation.rotationSpeed.z;
 	behavior.alignToVelocity = effect.behavior.rotation.alignToVelocity;
@@ -700,6 +804,33 @@ void GpuParticle::ApplyEffectDesc(const ParticleEffectDesc& effect) {
 	if (emitterData_ && config_.autoEmit && config_.emitter.count > 0) {
 		emitterData_->emit |= kEmitFlagEmitParticles;
 	}
+}
+
+void GpuParticle::RequestResetBuffer() {
+	needsInitialize_ = true;
+}
+
+void GpuParticle::EmitOnce() {
+	if (emitterData_) {
+		emitterData_->emit |= kEmitFlagEmitParticles;
+	}
+}
+
+GpuParticle::RuntimeInfo GpuParticle::GetRuntimeInfo() const {
+	RuntimeInfo info{};
+	info.initialized = IsInitialized();
+	info.autoEmit = config_.autoEmit;
+	info.maxParticles = kMaxParticles;
+	info.emitCount = config_.emitter.count;
+	if (emitterData_) {
+		info.emitFlags = emitterData_->emit;
+		info.frequency = emitterData_->frequency;
+		info.frequencyTime = emitterData_->frequencyTime;
+	}
+	else {
+		info.frequency = config_.emitter.frequency;
+	}
+	return info;
 }
 
 void GpuParticle::CopyStringsToBuffers() {
@@ -824,6 +955,41 @@ bool GpuParticle::SaveConfig(const std::string& filePath) const {
 		{ "velocityRandomRange", ToJson(behavior.velocityRandomRange) },
 		{ "accelerationBase", ToJson(behavior.accelerationBase) },
 		{ "accelerationRandomRange", ToJson(behavior.accelerationRandomRange) },
+		{ "swayAmplitude", behavior.swayAmplitude },
+		{ "swayFrequency", behavior.swayFrequency },
+		{ "pointFieldEnabled", behavior.pointFieldEnabled },
+		{ "pointFieldCenter", ToJson(behavior.pointFieldCenter) },
+		{ "pointFieldRadius", behavior.pointFieldRadius },
+		{ "pointFieldAttraction", behavior.pointFieldAttraction },
+		{ "pointFieldRepulsion", behavior.pointFieldRepulsion },
+		{ "pointFieldOrbit", behavior.pointFieldOrbit },
+		{ "pointFieldOrbitAxis", ToJson(behavior.pointFieldOrbitAxis) },
+		{ "pointFieldFalloff", behavior.pointFieldFalloff },
+		{ "pointFieldDamping", behavior.pointFieldDamping },
+		{ "movementMode", behavior.movementMode },
+		{ "vortexCenter", ToJson(behavior.vortexCenter) },
+		{ "vortexAxis", behavior.vortexAxis },
+		{
+			"vortexAngularSpeed",
+			json::array({
+				behavior.vortexAngularSpeedMin,
+				behavior.vortexAngularSpeedMax
+			})
+		},
+		{
+			"vortexInwardSpeed",
+			json::array({
+				behavior.vortexInwardSpeedMin,
+				behavior.vortexInwardSpeedMax
+			})
+		},
+		{
+			"vortexVerticalSpeed",
+			json::array({
+				behavior.vortexVerticalSpeedMin,
+				behavior.vortexVerticalSpeedMax
+			})
+		},
 		{
 			"rotationSpeed",
 			json::array({ behavior.rotationSpeedMin, behavior.rotationSpeedMax })
@@ -941,6 +1107,70 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 				table,
 				"behavior.accelerationRandomRange",
 				loaded.behavior.accelerationRandomRange
+			);
+			loaded.behavior.swayAmplitude =
+				ReadCsvFloat(table, "behavior.sway", 0, loaded.behavior.swayAmplitude);
+			loaded.behavior.swayFrequency =
+				ReadCsvFloat(table, "behavior.sway", 1, loaded.behavior.swayFrequency);
+			loaded.behavior.pointFieldEnabled =
+				ReadCsvUint(table, "behavior.pointFieldEnabled", loaded.behavior.pointFieldEnabled ? 1u : 0u) != 0;
+			loaded.behavior.pointFieldCenter =
+				ReadCsvVector3(table, "behavior.pointFieldCenter", loaded.behavior.pointFieldCenter);
+			loaded.behavior.pointFieldRadius =
+				ReadCsvFloat(table, "behavior.pointFieldRadius", 0, loaded.behavior.pointFieldRadius);
+			loaded.behavior.pointFieldAttraction =
+				ReadCsvFloat(table, "behavior.pointFieldAttraction", 0, loaded.behavior.pointFieldAttraction);
+			loaded.behavior.pointFieldRepulsion =
+				ReadCsvFloat(table, "behavior.pointFieldRepulsion", 0, loaded.behavior.pointFieldRepulsion);
+			loaded.behavior.pointFieldOrbit =
+				ReadCsvFloat(table, "behavior.pointFieldOrbit", 0, loaded.behavior.pointFieldOrbit);
+			loaded.behavior.pointFieldOrbitAxis =
+				ReadCsvVector3(table, "behavior.pointFieldOrbitAxis", loaded.behavior.pointFieldOrbitAxis);
+			loaded.behavior.pointFieldFalloff =
+				ReadCsvFloat(table, "behavior.pointFieldFalloff", 0, loaded.behavior.pointFieldFalloff);
+			loaded.behavior.pointFieldDamping =
+				ReadCsvFloat(table, "behavior.pointFieldDamping", 0, loaded.behavior.pointFieldDamping);
+			loaded.behavior.movementMode =
+				ReadCsvUint(table, "behavior.movementMode", loaded.behavior.movementMode);
+			loaded.behavior.vortexCenter =
+				ReadCsvVector3(table, "behavior.vortexCenter", loaded.behavior.vortexCenter);
+			loaded.behavior.vortexAxis =
+				ReadCsvUint(table, "behavior.vortexAxis", loaded.behavior.vortexAxis);
+			loaded.behavior.vortexAngularSpeedMin = ReadCsvFloat(
+				table,
+				"behavior.vortexAngularSpeed",
+				0,
+				loaded.behavior.vortexAngularSpeedMin
+			);
+			loaded.behavior.vortexAngularSpeedMax = ReadCsvFloat(
+				table,
+				"behavior.vortexAngularSpeed",
+				1,
+				loaded.behavior.vortexAngularSpeedMax
+			);
+			loaded.behavior.vortexInwardSpeedMin = ReadCsvFloat(
+				table,
+				"behavior.vortexInwardSpeed",
+				0,
+				loaded.behavior.vortexInwardSpeedMin
+			);
+			loaded.behavior.vortexInwardSpeedMax = ReadCsvFloat(
+				table,
+				"behavior.vortexInwardSpeed",
+				1,
+				loaded.behavior.vortexInwardSpeedMax
+			);
+			loaded.behavior.vortexVerticalSpeedMin = ReadCsvFloat(
+				table,
+				"behavior.vortexVerticalSpeed",
+				0,
+				loaded.behavior.vortexVerticalSpeedMin
+			);
+			loaded.behavior.vortexVerticalSpeedMax = ReadCsvFloat(
+				table,
+				"behavior.vortexVerticalSpeed",
+				1,
+				loaded.behavior.vortexVerticalSpeedMax
 			);
 			loaded.behavior.rotationSpeedMin = ReadCsvFloat(
 				table,
@@ -1066,6 +1296,70 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 						loaded.behavior.accelerationRandomRange
 					);
 				}
+				loaded.behavior.swayAmplitude =
+					behavior.value("swayAmplitude", loaded.behavior.swayAmplitude);
+				loaded.behavior.swayFrequency =
+					behavior.value("swayFrequency", loaded.behavior.swayFrequency);
+				loaded.behavior.pointFieldEnabled =
+					behavior.value("pointFieldEnabled", loaded.behavior.pointFieldEnabled);
+				if (behavior.contains("pointFieldCenter")) {
+					loaded.behavior.pointFieldCenter = ReadVector3(
+						behavior.at("pointFieldCenter"),
+						loaded.behavior.pointFieldCenter
+					);
+				}
+				loaded.behavior.pointFieldRadius =
+					behavior.value("pointFieldRadius", loaded.behavior.pointFieldRadius);
+				loaded.behavior.pointFieldAttraction =
+					behavior.value("pointFieldAttraction", loaded.behavior.pointFieldAttraction);
+				loaded.behavior.pointFieldRepulsion =
+					behavior.value("pointFieldRepulsion", loaded.behavior.pointFieldRepulsion);
+				loaded.behavior.pointFieldOrbit =
+					behavior.value("pointFieldOrbit", loaded.behavior.pointFieldOrbit);
+				if (behavior.contains("pointFieldOrbitAxis")) {
+					loaded.behavior.pointFieldOrbitAxis = ReadVector3(
+						behavior.at("pointFieldOrbitAxis"),
+						loaded.behavior.pointFieldOrbitAxis
+					);
+				}
+				loaded.behavior.pointFieldFalloff =
+					behavior.value("pointFieldFalloff", loaded.behavior.pointFieldFalloff);
+				loaded.behavior.pointFieldDamping =
+					behavior.value("pointFieldDamping", loaded.behavior.pointFieldDamping);
+				loaded.behavior.movementMode =
+					behavior.value("movementMode", loaded.behavior.movementMode);
+				if (behavior.contains("vortexCenter")) {
+					loaded.behavior.vortexCenter = ReadVector3(
+						behavior.at("vortexCenter"),
+						loaded.behavior.vortexCenter
+					);
+				}
+				loaded.behavior.vortexAxis =
+					behavior.value("vortexAxis", loaded.behavior.vortexAxis);
+				if (behavior.contains("vortexAngularSpeed") &&
+					behavior.at("vortexAngularSpeed").is_array() &&
+					behavior.at("vortexAngularSpeed").size() >= 2) {
+					loaded.behavior.vortexAngularSpeedMin =
+						behavior.at("vortexAngularSpeed").at(0).get<float>();
+					loaded.behavior.vortexAngularSpeedMax =
+						behavior.at("vortexAngularSpeed").at(1).get<float>();
+				}
+				if (behavior.contains("vortexInwardSpeed") &&
+					behavior.at("vortexInwardSpeed").is_array() &&
+					behavior.at("vortexInwardSpeed").size() >= 2) {
+					loaded.behavior.vortexInwardSpeedMin =
+						behavior.at("vortexInwardSpeed").at(0).get<float>();
+					loaded.behavior.vortexInwardSpeedMax =
+						behavior.at("vortexInwardSpeed").at(1).get<float>();
+				}
+				if (behavior.contains("vortexVerticalSpeed") &&
+					behavior.at("vortexVerticalSpeed").is_array() &&
+					behavior.at("vortexVerticalSpeed").size() >= 2) {
+					loaded.behavior.vortexVerticalSpeedMin =
+						behavior.at("vortexVerticalSpeed").at(0).get<float>();
+					loaded.behavior.vortexVerticalSpeedMax =
+						behavior.at("vortexVerticalSpeed").at(1).get<float>();
+				}
 				if (behavior.contains("rotationSpeed") &&
 					behavior.at("rotationSpeed").is_array() &&
 					behavior.at("rotationSpeed").size() >= 2) {
@@ -1124,6 +1418,37 @@ bool GpuParticle::LoadConfig(const std::string& filePath) {
 	loaded.behavior.rotationSpeedMax = (std::max)(
 		loaded.behavior.rotationSpeedMin,
 		loaded.behavior.rotationSpeedMax
+	);
+	loaded.behavior.swayAmplitude =
+		(std::max)(0.0f, loaded.behavior.swayAmplitude);
+	loaded.behavior.swayFrequency =
+		(std::max)(0.0f, loaded.behavior.swayFrequency);
+	loaded.behavior.pointFieldRadius =
+		(std::max)(0.0f, loaded.behavior.pointFieldRadius);
+	loaded.behavior.pointFieldFalloff =
+		(std::max)(0.0f, loaded.behavior.pointFieldFalloff);
+	loaded.behavior.pointFieldDamping =
+		(std::max)(0.0f, loaded.behavior.pointFieldDamping);
+	loaded.behavior.pointFieldOrbitAxis =
+		NormalizeVectorOrZero(loaded.behavior.pointFieldOrbitAxis);
+	if (LengthSquared(loaded.behavior.pointFieldOrbitAxis) <= 0.000001f) {
+		loaded.behavior.pointFieldOrbitAxis = { 0.0f, 1.0f, 0.0f };
+	}
+	loaded.behavior.movementMode =
+		std::clamp(loaded.behavior.movementMode, 0u, 1u);
+	loaded.behavior.vortexAxis =
+		std::clamp(loaded.behavior.vortexAxis, 0u, 2u);
+	loaded.behavior.vortexAngularSpeedMax = (std::max)(
+		loaded.behavior.vortexAngularSpeedMin,
+		loaded.behavior.vortexAngularSpeedMax
+	);
+	loaded.behavior.vortexInwardSpeedMax = (std::max)(
+		loaded.behavior.vortexInwardSpeedMin,
+		loaded.behavior.vortexInwardSpeedMax
+	);
+	loaded.behavior.vortexVerticalSpeedMax = (std::max)(
+		loaded.behavior.vortexVerticalSpeedMin,
+		loaded.behavior.vortexVerticalSpeedMax
 	);
 
 	config_ = loaded;
@@ -1228,6 +1553,26 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 		config_.behavior.velocityRandomRange = { 0.0f, 0.0f, 0.0f };
 		config_.behavior.accelerationBase = { 0.0f, 0.0f, 0.0f };
 		config_.behavior.accelerationRandomRange = { 0.0f, 0.0f, 0.0f };
+		config_.behavior.swayAmplitude = 0.0f;
+		config_.behavior.swayFrequency = 0.0f;
+		config_.behavior.pointFieldEnabled = false;
+		config_.behavior.pointFieldCenter = { 0.0f, 0.0f, 0.0f };
+		config_.behavior.pointFieldRadius = 0.0f;
+		config_.behavior.pointFieldAttraction = 0.0f;
+		config_.behavior.pointFieldRepulsion = 0.0f;
+		config_.behavior.pointFieldOrbit = 0.0f;
+		config_.behavior.pointFieldOrbitAxis = { 0.0f, 1.0f, 0.0f };
+		config_.behavior.pointFieldFalloff = 1.0f;
+		config_.behavior.pointFieldDamping = 0.0f;
+		config_.behavior.movementMode = 0;
+		config_.behavior.vortexCenter = { 0.0f, 0.0f, 0.0f };
+		config_.behavior.vortexAxis = 1;
+		config_.behavior.vortexAngularSpeedMin = 4.0f;
+		config_.behavior.vortexAngularSpeedMax = 8.0f;
+		config_.behavior.vortexInwardSpeedMin = 0.8f;
+		config_.behavior.vortexInwardSpeedMax = 1.8f;
+		config_.behavior.vortexVerticalSpeedMin = -0.1f;
+		config_.behavior.vortexVerticalSpeedMax = 0.1f;
 		config_.behavior.alignToVelocity = false;
 		config_.behavior.alignAxis = 1;
 		config_.behavior.enableLifeFade = false;
@@ -1366,6 +1711,19 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 			100.0f
 		);
 
+		const char* movementModeItems[] = { "Linear", "Vortex Inward" };
+		int movementMode = static_cast<int>(behavior.movementMode);
+		if (ImGui::Combo(
+				"Movement Mode",
+				&movementMode,
+				movementModeItems,
+				IM_ARRAYSIZE(movementModeItems)
+			)) {
+			behavior.movementMode =
+				static_cast<uint32_t>(std::clamp(movementMode, 0, 1));
+			dirty = true;
+		}
+
 		float velocity[2] = { behavior.velocityMin, behavior.velocityMax };
 		if (ImGui::DragFloat2("Velocity", velocity, 0.01f, -100.0f, 100.0f)) {
 			behavior.velocityMin = velocity[0];
@@ -1396,6 +1754,162 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 			0.0f,
 			100.0f
 		);
+		dirty |= ImGui::DragFloat(
+			"Sway Amplitude",
+			&behavior.swayAmplitude,
+			0.01f,
+			0.0f,
+			100.0f
+		);
+		dirty |= ImGui::DragFloat(
+			"Sway Frequency",
+			&behavior.swayFrequency,
+			0.01f,
+			0.0f,
+			100.0f
+		);
+
+		if (ImGui::TreeNode("Point Field")) {
+			dirty |= ImGui::Checkbox(
+				"Point Field Enabled",
+				&behavior.pointFieldEnabled
+			);
+			dirty |= ImGui::DragFloat3(
+				"Point Field Center",
+				&behavior.pointFieldCenter.x,
+				0.01f
+			);
+			dirty |= ImGui::DragFloat(
+				"Point Field Radius",
+				&behavior.pointFieldRadius,
+				0.01f,
+				0.0f,
+				1000.0f
+			);
+			dirty |= ImGui::DragFloat(
+				"Point Field Attraction",
+				&behavior.pointFieldAttraction,
+				0.01f,
+				-1000.0f,
+				1000.0f
+			);
+			dirty |= ImGui::DragFloat(
+				"Point Field Repulsion",
+				&behavior.pointFieldRepulsion,
+				0.01f,
+				-1000.0f,
+				1000.0f
+			);
+			dirty |= ImGui::DragFloat(
+				"Point Field Orbit",
+				&behavior.pointFieldOrbit,
+				0.01f,
+				-1000.0f,
+				1000.0f
+			);
+			dirty |= ImGui::DragFloat3(
+				"Point Field Orbit Axis",
+				&behavior.pointFieldOrbitAxis.x,
+				0.01f
+			);
+			dirty |= ImGui::DragFloat(
+				"Point Field Falloff",
+				&behavior.pointFieldFalloff,
+				0.01f,
+				0.0f,
+				100.0f
+			);
+			dirty |= ImGui::DragFloat(
+				"Point Field Damping",
+				&behavior.pointFieldDamping,
+				0.01f,
+				0.0f,
+				100.0f
+			);
+			ImGui::TreePop();
+		}
+
+		if (ImGui::TreeNode("Vortex")) {
+			bool rangeCollapsed = false;
+			dirty |= ImGui::DragFloat3(
+				"Vortex Center",
+				&behavior.vortexCenter.x,
+				0.01f
+			);
+			const char* vortexAxisItems[] = { "X", "Y", "Z" };
+			int vortexAxis = static_cast<int>(behavior.vortexAxis);
+			if (ImGui::Combo(
+					"Vortex Axis",
+					&vortexAxis,
+					vortexAxisItems,
+					IM_ARRAYSIZE(vortexAxisItems)
+				)) {
+				behavior.vortexAxis =
+					static_cast<uint32_t>(std::clamp(vortexAxis, 0, 2));
+				dirty = true;
+			}
+			float angularSpeed[2] = {
+				behavior.vortexAngularSpeedMin,
+				behavior.vortexAngularSpeedMax
+			};
+			if (ImGui::DragFloat2(
+					"Vortex Angular Speed",
+					angularSpeed,
+					0.01f,
+					-100.0f,
+					100.0f
+				)) {
+				behavior.vortexAngularSpeedMin = angularSpeed[0];
+				if (angularSpeed[1] < angularSpeed[0]) {
+					angularSpeed[1] = angularSpeed[0];
+					rangeCollapsed = true;
+				}
+				behavior.vortexAngularSpeedMax = angularSpeed[1];
+				dirty = true;
+			}
+			float inwardSpeed[2] = {
+				behavior.vortexInwardSpeedMin,
+				behavior.vortexInwardSpeedMax
+			};
+			if (ImGui::DragFloat2(
+					"Vortex Inward Speed",
+					inwardSpeed,
+					0.01f,
+					-100.0f,
+					100.0f
+				)) {
+				behavior.vortexInwardSpeedMin = inwardSpeed[0];
+				if (inwardSpeed[1] < inwardSpeed[0]) {
+					inwardSpeed[1] = inwardSpeed[0];
+					rangeCollapsed = true;
+				}
+				behavior.vortexInwardSpeedMax = inwardSpeed[1];
+				dirty = true;
+			}
+			float verticalSpeed[2] = {
+				behavior.vortexVerticalSpeedMin,
+				behavior.vortexVerticalSpeedMax
+			};
+			if (ImGui::DragFloat2(
+					"Vortex Vertical Speed",
+					verticalSpeed,
+					0.01f,
+					-100.0f,
+					100.0f
+				)) {
+				behavior.vortexVerticalSpeedMin = verticalSpeed[0];
+				if (verticalSpeed[1] < verticalSpeed[0]) {
+					verticalSpeed[1] = verticalSpeed[0];
+					rangeCollapsed = true;
+				}
+				behavior.vortexVerticalSpeedMax = verticalSpeed[1];
+				dirty = true;
+			}
+			if (rangeCollapsed) {
+				ImGui::TextDisabled("Max collapsed to Min for inverted vortex range.");
+			}
+			ImGui::TreePop();
+		}
 
 		float rotationSpeed[2] = {
 			behavior.rotationSpeedMin,
@@ -1448,6 +1962,37 @@ void GpuParticle::DrawImGui(const char* windowTitle) {
 			std::clamp(config_.behavior.fadeOutStartRatio, 0.0f, 1.0f);
 		config_.behavior.colorMode = std::clamp(config_.behavior.colorMode, 0u, 1u);
 		config_.behavior.alignAxis = std::clamp(config_.behavior.alignAxis, 0u, 2u);
+		config_.behavior.swayAmplitude =
+			(std::max)(0.0f, config_.behavior.swayAmplitude);
+		config_.behavior.swayFrequency =
+			(std::max)(0.0f, config_.behavior.swayFrequency);
+		config_.behavior.pointFieldRadius =
+			(std::max)(0.0f, config_.behavior.pointFieldRadius);
+		config_.behavior.pointFieldFalloff =
+			(std::max)(0.0f, config_.behavior.pointFieldFalloff);
+		config_.behavior.pointFieldDamping =
+			(std::max)(0.0f, config_.behavior.pointFieldDamping);
+		config_.behavior.pointFieldOrbitAxis =
+			NormalizeVectorOrZero(config_.behavior.pointFieldOrbitAxis);
+		if (LengthSquared(config_.behavior.pointFieldOrbitAxis) <= 0.000001f) {
+			config_.behavior.pointFieldOrbitAxis = { 0.0f, 1.0f, 0.0f };
+		}
+		config_.behavior.movementMode =
+			std::clamp(config_.behavior.movementMode, 0u, 1u);
+		config_.behavior.vortexAxis =
+			std::clamp(config_.behavior.vortexAxis, 0u, 2u);
+		config_.behavior.vortexAngularSpeedMax = (std::max)(
+			config_.behavior.vortexAngularSpeedMin,
+			config_.behavior.vortexAngularSpeedMax
+		);
+		config_.behavior.vortexInwardSpeedMax = (std::max)(
+			config_.behavior.vortexInwardSpeedMin,
+			config_.behavior.vortexInwardSpeedMax
+		);
+		config_.behavior.vortexVerticalSpeedMax = (std::max)(
+			config_.behavior.vortexVerticalSpeedMin,
+			config_.behavior.vortexVerticalSpeedMax
+		);
 		ApplyConfigToGpu();
 		ClearParticles();
 		if (emitterData_ && config_.autoEmit) {

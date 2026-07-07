@@ -32,6 +32,12 @@
 #include <utility>
 
 namespace {
+#if defined(NDEBUG) && !defined(DEVELOPMENT)
+	constexpr bool kStartInPlayMode = true;
+#else
+	constexpr bool kStartInPlayMode = false;
+#endif
+
 	std::string ResolveProjectResourcePath(const std::filesystem::path& relativePath) {
 		auto findFrom = [&](std::filesystem::path start) -> std::filesystem::path {
 			std::error_code error;
@@ -278,6 +284,9 @@ void Game::Initialize() {
 	sceneFactory_ = new SceneFactory();
 	sceneManager_->SetSceneFactory(sceneFactory_);
 	sceneManager_->ChangeScene("GAMEPLAY");
+	if (kStartInPlayMode) {
+		editorSession_->Play();
+	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->SetEditorSession(editorSession_);

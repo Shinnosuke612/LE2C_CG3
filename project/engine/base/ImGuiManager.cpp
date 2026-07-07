@@ -23,8 +23,10 @@
 #include "../math/Matrix4x4.h"
 #include "../math/Math.h"
 #include "../particle/ParticleEffectResource.h"
+#include "../particle/ParticleManager.h"
 #include "../scene/EditorSession.h"
 #include "../scene/SceneDocument.h"
+#include "../utility/SystemPerformanceMonitor.h"
 
 #include "../../externals/imgui/imgui.h"
 #include "../../externals/imgui/imgui_internal.h"
@@ -3317,15 +3319,111 @@ void ImGuiManager::DrawDirectoryTreeNode(const ProjectDirectoryNode& node) {
 }
 
 void ImGuiManager::DrawConsoleWindow() {
+	SystemPerformanceMonitor& performanceMonitor =
+		SystemPerformanceMonitor::GetInstance();
+	performanceMonitor.Update();
+	const SystemPerformanceMonitor::Snapshot& performance =
+		performanceMonitor.GetSnapshot();
+	const ParticleManager::RuntimeStats& particleStats =
+		ParticleManager::GetInstance()->GetRuntimeStats();
+	const GpuParticle::RuntimeInfo& gpuParticleInfo =
+		particleStats.gpuParticle;
+	const float fps = ImGui::GetIO().Framerate;
+	const float frameMs = fps > 0.0f ? 1000.0f / fps : 0.0f;
+
 	ImGui::Begin("Console", &showConsole_);
 	ImGui::TextColored(
 		ImVec4(0.45f, 0.8f, 0.55f, 1.0f),
 		"Ready"
 	);
 	ImGui::SameLine();
-	ImGui::TextDisabled(
-		"%.1f FPS",
-		ImGui::GetIO().Framerate
+	ImGui::TextDisabled("%.1f FPS / %.3f ms", fps, frameMs);
+
+	ImGui::SeparatorText("System Load");
+	if (performance.cpuSupported) {
+		ImGui::Text(
+			"CPU: %.1f%% system / %.1f%% process",
+			performance.systemCpuUsage,
+			performance.processCpuUsage
+		);
+		ImGui::TextDisabled(
+			"Process CPU: %.1f%% of one logical core / %u logical cores",
+			performance.processCpuOneCoreUsage,
+			performance.logicalProcessorCount
+		);
+	} else {
+		ImGui::TextDisabled("CPU counters are collecting...");
+	}
+
+	if (performance.gpuSupported) {
+		ImGui::Text(
+			"GPU Engine: %.1f%% system / %.1f%% process",
+			performance.gpuUsage,
+			performance.processGpuUsage
+		);
+		ImGui::Text(
+			"GPU 3D: %.1f%% system / %.1f%% process",
+			performance.gpu3DUsage,
+			performance.processGpu3DUsage
+		);
+		ImGui::Text(
+			"GPU Compute: %.1f%% system / %.1f%% process",
+			performance.gpuComputeUsage,
+			performance.processGpuComputeUsage
+		);
+		ImGui::Text(
+			"GPU Copy: %.1f%% system / %.1f%% process",
+			performance.gpuCopyUsage,
+			performance.processGpuCopyUsage
+		);
+		if (performance.gpuRawEngineUsage > 100.0f ||
+			performance.processGpuRawEngineUsage > 100.0f) {
+			ImGui::TextDisabled(
+				"Raw GPU engine sum: %.1f%% system / %.1f%% process",
+				performance.gpuRawEngineUsage,
+				performance.processGpuRawEngineUsage
+			);
+		}
+		ImGui::TextDisabled(
+			"GPU engines sampled: %u system / %u process",
+			performance.gpuEngineSampleCount,
+			performance.processGpuEngineSampleCount
+		);
+	} else {
+		ImGui::TextDisabled("%s", performance.gpuStatus.c_str());
+	}
+
+	ImGui::SeparatorText("Particles");
+	ImGui::Text(
+		"Particle CPU Update: %.3f ms / Total: %.3f ms",
+		particleStats.cpuParticleUpdateMs,
+		particleStats.totalParticleUpdateMs
+	);
+	ImGui::Text(
+		"CPU Particles: %u active / %u instanced",
+		particleStats.cpuParticleActiveCount,
+		particleStats.cpuParticleInstanceCount
+	);
+	ImGui::Text(
+		"GpuParticle CPU Update: %.3f ms",
+		particleStats.gpuParticleCpuUpdateMs
+	);
+	ImGui::Text(
+		"GpuParticle: %s / %s / %u instances",
+		particleStats.gpuParticleEnabled ? "enabled" : "disabled",
+		gpuParticleInfo.initialized ? "initialized" : "not initialized",
+		particleStats.gpuParticleInstanceCount
+	);
+	ImGui::Text(
+		"GpuParticle Emit: %u / Max: %u / Flags: 0x%X",
+		gpuParticleInfo.emitCount,
+		gpuParticleInfo.maxParticles,
+		gpuParticleInfo.emitFlags
+	);
+	ImGui::Text(
+		"GpuParticle Frequency: %.3f / Timer: %.3f",
+		gpuParticleInfo.frequency,
+		gpuParticleInfo.frequencyTime
 	);
 	ImGui::End();
 }

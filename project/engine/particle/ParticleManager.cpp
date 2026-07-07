@@ -9,6 +9,7 @@
 #include <cassert>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -57,7 +58,6 @@ void ParticleManager::Initialize(ParticleCommon* particleCommon, SrvManager* srv
 	camera_ = particleCommon_->GetDefaultCamera();
 
 	CreateDirectionalLightResource();
-	gpuParticle_.Initialize(particleCommon_, srvManager_, "resources/circle.png");
 }
 
 void ParticleManager::Reset() {
@@ -70,13 +70,13 @@ void ParticleManager::Reset() {
 	particlePlacementAssets_.clear();
 	sceneParticleAssetInstances_.clear();
 	sceneParticleAssetCycleSteps_.clear();
-	activeSceneGpuParticleKey_.clear();
+	sceneGpuParticleKeys_.clear();
 	sceneParticleLayoutLoaded_ = false;
 	sceneParticleLayoutDirty_ = false;
 	sceneParticlePersistenceMessage_.clear();
 
 	particleGroups_.clear();
-	gpuParticle_.Reset();
+	gpuParticles_.clear();
 	gpuParticleEnabled_ = false;
 	pendingLightningEvents_.clear();
 	pendingExposureFlashEvents_.clear();
@@ -208,15 +208,31 @@ void ParticleManager::SetGroupRenderDesc(
 }
 
 void ParticleManager::ApplyGpuParticleEffect(const ParticleEffectDesc& effect) {
-	activeSceneGpuParticleKey_.clear();
 	gpuParticleEnabled_ = true;
-	gpuParticle_.ApplyEffectDesc(effect);
+	ApplyGpuParticleEffectToKey("editor:preview", effect);
 	Logger::Log("GPU Particle enabled by effect: " + effect.name + "\n");
 }
 
 void ParticleManager::ClearGpuParticles() {
-	gpuParticle_.ClearParticles();
-	activeSceneGpuParticleKey_.clear();
+	gpuParticles_.clear();
+	sceneGpuParticleKeys_.clear();
+}
+
+void ParticleManager::ClearGpuParticlePreview() {
+	EraseGpuParticle("editor:preview");
+}
+
+void ParticleManager::RequestGpuParticleReset() {
+	if (GpuParticle* particle = FindGpuParticle("editor:preview")) {
+		particle->RequestResetBuffer();
+	}
+}
+
+void ParticleManager::EmitGpuParticleOnce() {
+	gpuParticleEnabled_ = true;
+	if (GpuParticle* particle = FindGpuParticle("editor:preview")) {
+		particle->EmitOnce();
+	}
 }
 
 void ParticleManager::SetGpuParticleEnabled(bool enabled) {
@@ -227,7 +243,10 @@ void ParticleManager::SetGpuParticleEnabled(bool enabled) {
 }
 
 void ParticleManager::DrawGpuParticleImGui(const char* windowTitle) {
-	gpuParticle_.DrawImGui(windowTitle);
+	GpuParticle* particle = GetOrCreateGpuParticle("editor:preview");
+	if (particle) {
+		particle->DrawImGui(windowTitle);
+	}
 }
 
 namespace {
@@ -381,28 +400,7 @@ void CollectEffectFiles(std::vector<std::string>& paths, std::vector<std::string
 } // namespace
 
 void ParticleManager::ApplySceneParticleEmitterSettings(SceneParticlePlacement& placement) {
-	if (placement.effect && placement.effect->simulationType == ParticleSimulationType::kGPU) {
-		ApplySceneGpuPlacement(placement, {});
-		return;
-	}
-
-	if (!placement.emitter) {
-		RebuildSceneParticleEmitter(placement, false);
-		return;
-	}
-	if (!placement.effect) {
-		RebuildSceneParticleEmitter(placement, false);
-		return;
-	}
-
-	placement.effect->emitter.translate = placement.translate;
-	placement.effect->emitter.spawnSize = placement.spawnSize;
-	placement.effect->emitter.count = placement.count;
-	placement.effect->emitter.frequency = NormalizeEmitterFrequency(placement.frequency);
-	placement.effect->emitter.isActive = placement.emitterActive;
-
-	ParticleEffectResource::PrepareParticleGroup(*placement.effect, false);
-	ParticleEffectResource::ApplyToEmitter(*placement.emitter, *placement.effect);
+	ApplySceneParticlePlacement(placement);
 }
 
 void ParticleManager::RebuildSceneParticleEmitter(
@@ -489,7 +487,10 @@ void ParticleManager::RebuildInstancesUsingAsset(const std::string& assetName) {
 			}
 		}
 	}
-	activeSceneGpuParticleKey_.clear();
+	MarkSceneGpuParticleSyncDirty(
+		SceneParticleAssetContainsGpuPlacement(assetName) &&
+		SceneParticleAssetHasEnabledInstance(assetName)
+	);
 }
 
 bool ParticleManager::LoadPlacementEmitterSettings(SceneParticlePlacement& placement) {
@@ -501,6 +502,174 @@ bool ParticleManager::LoadPlacementEmitterSettings(SceneParticlePlacement& place
 	placement.frequency = NormalizeEmitterFrequency(effect.emitter.frequency);
 	placement.emitterActive = effect.emitter.isActive;
 	return true;
+}
+
+GpuParticle* ParticleManager::GetOrCreateGpuParticle(const std::string& key) {
+	auto it = gpuParticles_.find(key);
+	if (it != gpuParticles_.end()) {
+		return it->second.get();
+	}
+	if (!particleCommon_ || !srvManager_) {
+		return nullptr;
+	}
+
+	auto particle = std::make_unique<GpuParticle>();
+	particle->Initialize(particleCommon_, srvManager_, "resources/circle.png");
+	GpuParticle* result = particle.get();
+	gpuParticles_.emplace(key, std::move(particle));
+	return result;
+}
+
+GpuParticle* ParticleManager::FindGpuParticle(const std::string& key) {
+	auto it = gpuParticles_.find(key);
+	return it != gpuParticles_.end() ? it->second.get() : nullptr;
+}
+
+void ParticleManager::ApplyGpuParticleEffectToKey(
+	const std::string& key,
+	const ParticleEffectDesc& effect
+) {
+	GpuParticle* particle = GetOrCreateGpuParticle(key);
+	if (!particle) {
+		return;
+	}
+
+	particle->ApplyEffectDesc(effect);
+}
+
+void ParticleManager::EraseGpuParticle(const std::string& key) {
+	gpuParticles_.erase(key);
+	sceneGpuParticleKeys_.erase(key);
+}
+
+std::string ParticleManager::MakeSceneGpuParticleKey(
+	const std::string& sceneName,
+	size_t instanceIndex,
+	size_t placementIndex,
+	const SceneParticleAssetInstance& instance,
+	const SceneParticlePlacement& placement
+) const {
+	std::ostringstream key;
+	key << "scene|" << sceneName << "|"
+		<< instanceIndex << "|"
+		<< placementIndex << "|"
+		<< instance.assetName << "|"
+		<< placement.effectFilePath << "|"
+		<< placement.translate.x << ","
+		<< placement.translate.y << ","
+		<< placement.translate.z << "|"
+		<< placement.spawnSize.x << ","
+		<< placement.spawnSize.y << ","
+		<< placement.spawnSize.z << "|"
+		<< placement.count << "|"
+		<< NormalizeEmitterFrequency(placement.frequency);
+	return key.str();
+}
+
+bool ParticleManager::SceneParticlePlacementUsesGpu(
+	const SceneParticlePlacement& placement
+) const {
+	if (placement.effect) {
+		return placement.effect->simulationType == ParticleSimulationType::kGPU;
+	}
+
+	ParticleEffectDesc effect{};
+	return ParticleEffectResource::Load(placement.effectFilePath, effect) &&
+		effect.simulationType == ParticleSimulationType::kGPU;
+}
+
+bool ParticleManager::SceneParticleAssetContainsGpuPlacement(
+	const std::string& assetName
+) const {
+	const auto asset = particlePlacementAssets_.find(assetName);
+	if (asset == particlePlacementAssets_.end()) {
+		return false;
+	}
+
+	for (const SceneParticlePlacement& placement : asset->second.placements) {
+		if (SceneParticlePlacementUsesGpu(placement)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool ParticleManager::SceneParticleAssetHasEnabledInstance(
+	const std::string& assetName
+) const {
+	for (const auto& [sceneName, instances] : sceneParticleAssetInstances_) {
+		(void)sceneName;
+		for (const SceneParticleAssetInstance& instance : instances) {
+			if (instance.enabled && instance.assetName == assetName) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool ParticleManager::SceneParticleInstanceContainsGpuPlacement(
+	const SceneParticleAssetInstance& instance
+) const {
+	for (const SceneParticlePlacement& placement : instance.runtimePlacements) {
+		if (placement.enabled && SceneParticlePlacementUsesGpu(placement)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool ParticleManager::SceneParticleSceneContainsEnabledGpuPlacement(
+	const std::string& sceneName
+) const {
+	const auto scene = sceneParticleAssetInstances_.find(sceneName);
+	if (scene == sceneParticleAssetInstances_.end()) {
+		return false;
+	}
+
+	for (const SceneParticleAssetInstance& instance : scene->second) {
+		if (!instance.enabled) {
+			continue;
+		}
+		if (SceneParticleInstanceContainsGpuPlacement(instance)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void ParticleManager::ApplySceneParticlePlacement(
+	SceneParticlePlacement& placement,
+	const std::string& syncKey
+) {
+	if (!placement.effect) {
+		RebuildSceneParticleEmitter(placement, false, false);
+	}
+	if (!placement.effect || !placement.enabled || !placement.emitterActive) {
+		return;
+	}
+
+	placement.effect->emitter.translate = placement.translate;
+	placement.effect->emitter.spawnSize = placement.spawnSize;
+	placement.effect->emitter.count = placement.count;
+	placement.effect->emitter.frequency =
+		NormalizeEmitterFrequency(placement.frequency);
+	placement.effect->emitter.isActive = placement.emitterActive;
+
+	if (placement.effect->simulationType == ParticleSimulationType::kGPU) {
+		ApplySceneGpuPlacement(placement, syncKey);
+		return;
+	}
+
+	if (!placement.emitter) {
+		RebuildSceneParticleEmitter(placement, false, false);
+		if (!placement.emitter || !placement.effect) {
+			return;
+		}
+	}
+
+	ParticleEffectResource::PrepareParticleGroup(*placement.effect, false);
+	ParticleEffectResource::ApplyToEmitter(*placement.emitter, *placement.effect);
 }
 
 void ParticleManager::ApplySceneGpuPlacement(
@@ -525,10 +694,11 @@ void ParticleManager::ApplySceneGpuPlacement(
 	delete placement.emitter;
 	placement.emitter = nullptr;
 
-	ApplyGpuParticleEffect(*placement.effect);
-	if (!syncKey.empty()) {
-		activeSceneGpuParticleKey_ = syncKey;
-	}
+	const std::string key = syncKey.empty()
+		? std::string("scene:manual:") + placement.effectFilePath
+		: syncKey;
+	ApplyGpuParticleEffectToKey(key, *placement.effect);
+	sceneGpuParticleKeys_.insert(key);
 }
 
 void ParticleManager::SyncSceneGpuParticle(const std::string& sceneName) {
@@ -537,7 +707,7 @@ void ParticleManager::SyncSceneGpuParticle(const std::string& sceneName) {
 		return;
 	}
 
-	const std::string sceneKeyPrefix = sceneName + "|";
+	std::unordered_set<std::string> desiredSceneKeys;
 	for (size_t instanceIndex = 0; instanceIndex < scene->second.size(); ++instanceIndex) {
 		SceneParticleAssetInstance& instance = scene->second[instanceIndex];
 		if (!instance.enabled) {
@@ -560,32 +730,42 @@ void ParticleManager::SyncSceneGpuParticle(const std::string& sceneName) {
 				continue;
 			}
 
-			std::ostringstream key;
-			key << sceneName << "|"
-				<< instanceIndex << "|"
-				<< placementIndex << "|"
-				<< instance.assetName << "|"
-				<< placement.effectFilePath << "|"
-				<< placement.translate.x << ","
-				<< placement.translate.y << ","
-				<< placement.translate.z << "|"
-				<< placement.spawnSize.x << ","
-				<< placement.spawnSize.y << ","
-				<< placement.spawnSize.z << "|"
-				<< placement.count << "|"
-				<< NormalizeEmitterFrequency(placement.frequency);
-			const std::string syncKey = key.str();
-			if (activeSceneGpuParticleKey_ != syncKey || !gpuParticleEnabled_) {
-				ApplySceneGpuPlacement(placement, syncKey);
+			const std::string syncKey = MakeSceneGpuParticleKey(
+				sceneName,
+				instanceIndex,
+				placementIndex,
+				instance,
+				placement
+			);
+			desiredSceneKeys.insert(syncKey);
+			if (!sceneGpuParticleKeys_.contains(syncKey) ||
+				!FindGpuParticle(syncKey)) {
+				ApplySceneParticlePlacement(placement, syncKey);
 			}
-			return;
 		}
 	}
 
-	if (activeSceneGpuParticleKey_.rfind(sceneKeyPrefix, 0) == 0) {
-		ClearGpuParticles();
-		activeSceneGpuParticleKey_.clear();
+	for (auto it = sceneGpuParticleKeys_.begin();
+		it != sceneGpuParticleKeys_.end();) {
+		const std::string key = *it;
+		if (!desiredSceneKeys.contains(key)) {
+			gpuParticles_.erase(key);
+			it = sceneGpuParticleKeys_.erase(it);
+		}
+		else {
+			++it;
+		}
 	}
+}
+
+void ParticleManager::MarkSceneGpuParticleSyncDirty(bool resumeGpuSync) {
+	if (!resumeGpuSync) {
+		return;
+	}
+	for (const std::string& key : sceneGpuParticleKeys_) {
+		gpuParticles_.erase(key);
+	}
+	sceneGpuParticleKeys_.clear();
 }
 
 void ParticleManager::RefreshPlacementAssetsForEffect(const std::string& effectFilePath) {
@@ -607,7 +787,10 @@ void ParticleManager::RefreshPlacementAssetsForEffect(const std::string& effectF
 	if (refreshed) sceneParticleLayoutDirty_ = true;
 }
 
-bool ParticleManager::LoadSceneParticleLayout(const std::string& filePath) {
+bool ParticleManager::LoadSceneParticleLayout(
+	const std::string& filePath,
+	bool resumeGpuSync
+) {
 	json root;
 	const std::filesystem::path resolvedPath = EditableResourcePath::Resolve(filePath);
 	const std::filesystem::path candidates[] = {
@@ -723,7 +906,7 @@ bool ParticleManager::LoadSceneParticleLayout(const std::string& filePath) {
 			RebuildParticleAssetInstance(instance);
 		}
 	}
-	activeSceneGpuParticleKey_.clear();
+	MarkSceneGpuParticleSyncDirty(resumeGpuSync);
 	sceneParticleLayoutLoaded_ = true;
 	sceneParticleLayoutDirty_ = false;
 	sceneParticlePersistenceMessage_ = "Layout loaded from project resources.";
@@ -810,7 +993,15 @@ void ParticleManager::EmitSceneParticles(const std::string& sceneName) {
 	for (SceneParticleAssetInstance& instance : it->second) {
 		if (!instance.enabled) continue;
 		for (SceneParticlePlacement& placement : instance.runtimePlacements) {
-			if (placement.enabled && placement.emitter) placement.emitter->Emit();
+			if (!placement.enabled) continue;
+			if (placement.effect &&
+				placement.effect->simulationType == ParticleSimulationType::kGPU) {
+				MarkSceneGpuParticleSyncDirty(true);
+				ApplySceneParticlePlacement(placement);
+			}
+			else if (placement.emitter) {
+				placement.emitter->Emit();
+			}
 		}
 	}
 }
@@ -835,7 +1026,9 @@ void ParticleManager::CycleSceneParticleAssets(const std::string& sceneName) {
 			}
 		}
 	}
-	activeSceneGpuParticleKey_.clear();
+	MarkSceneGpuParticleSyncDirty(
+		SceneParticleSceneContainsEnabledGpuPlacement(sceneName)
+	);
 	step = (step + 1u) % (instances.size() + 1u);
 }
 
@@ -858,7 +1051,7 @@ void ParticleManager::DrawSceneParticleImGui(
 
 	ImGui::Begin(windowTitle);
 	ImGui::InputText("Layout", layoutPath, sizeof(layoutPath));
-	if (ImGui::Button("Load Layout")) LoadSceneParticleLayout(layoutPath);
+	if (ImGui::Button("Load Layout")) LoadSceneParticleLayout(layoutPath, true);
 	ImGui::SameLine();
 	if (ImGui::Button("Save Layout")) SaveSceneParticleLayout(layoutPath);
 	if (!sceneParticlePersistenceMessage_.empty()) {
@@ -996,7 +1189,10 @@ void ParticleManager::DrawSceneParticleImGui(
 						instance.assetName = assetNames[assetToAddIndex];
 						instance.label = instance.assetName + " " + std::to_string(instances.size());
 						RebuildParticleAssetInstance(instance);
+						const bool containsGpu =
+							SceneParticleInstanceContainsGpuPlacement(instance);
 						instances.push_back(std::move(instance));
+						MarkSceneGpuParticleSyncDirty(containsGpu);
 						sceneParticleLayoutDirty_ = true;
 					}
 
@@ -1008,18 +1204,23 @@ void ParticleManager::DrawSceneParticleImGui(
 							char label[128]{};
 							CopyText(label, sizeof(label), instance.label);
 							if (ImGui::Checkbox("Enabled", &instance.enabled)) {
-								activeSceneGpuParticleKey_.clear();
+								MarkSceneGpuParticleSyncDirty(
+									SceneParticleInstanceContainsGpuPlacement(instance)
+								);
 								sceneParticleLayoutDirty_ = true;
 							}
 							ImGui::SameLine();
 							if (ImGui::Button("Emit Now")) {
+								MarkSceneGpuParticleSyncDirty(
+									SceneParticleInstanceContainsGpuPlacement(instance)
+								);
 								for (SceneParticlePlacement& placement : instance.runtimePlacements) {
 									if (!placement.enabled) {
 										continue;
 									}
 									if (placement.effect &&
 										placement.effect->simulationType == ParticleSimulationType::kGPU) {
-										ApplySceneGpuPlacement(placement, {});
+										ApplySceneParticlePlacement(placement);
 									}
 									else if (placement.emitter) {
 										placement.emitter->Emit();
@@ -1038,7 +1239,9 @@ void ParticleManager::DrawSceneParticleImGui(
 									if (ImGui::Selectable(assetName.c_str(), selected)) {
 										instance.assetName = assetName;
 										RebuildParticleAssetInstance(instance);
-										activeSceneGpuParticleKey_.clear();
+										MarkSceneGpuParticleSyncDirty(
+											SceneParticleInstanceContainsGpuPlacement(instance)
+										);
 										sceneParticleLayoutDirty_ = true;
 									}
 								}
@@ -1046,16 +1249,22 @@ void ParticleManager::DrawSceneParticleImGui(
 							}
 							if (ImGui::DragFloat3("Offset", &instance.translate.x, 0.05f)) {
 								RebuildParticleAssetInstance(instance);
-								activeSceneGpuParticleKey_.clear();
+								MarkSceneGpuParticleSyncDirty(
+									SceneParticleInstanceContainsGpuPlacement(instance)
+								);
 								sceneParticleLayoutDirty_ = true;
 							}
 						}
 						ImGui::PopID();
 					}
 					if (removeInstance >= 0) {
+						const bool removedGpu =
+							SceneParticleInstanceContainsGpuPlacement(
+								instances[removeInstance]
+							);
 						ReleasePlacements(instances[removeInstance].runtimePlacements);
 						instances.erase(instances.begin() + removeInstance);
-						activeSceneGpuParticleKey_.clear();
+						MarkSceneGpuParticleSyncDirty(removedGpu);
 						sceneParticleLayoutDirty_ = true;
 					}
 					ImGui::EndTabItem();
@@ -1536,8 +1745,10 @@ void ParticleManager::ClearActiveParticles() {
 		group.instanceCount = 0;
 	}
 
-	gpuParticle_.ClearParticles();
-	activeSceneGpuParticleKey_.clear();
+	for (auto& [key, particle] : gpuParticles_) {
+		(void)key;
+		particle->ClearParticles();
+	}
 	pendingLightningEvents_.clear();
 	pendingExposureFlashEvents_.clear();
 
@@ -2221,14 +2432,53 @@ void ParticleManager::UpdateParticleRotation(Particle& particle) {
 }
 
 void ParticleManager::Update() {
+	using Clock = std::chrono::steady_clock;
+	const auto updateStart = Clock::now();
+	auto elapsedMs = [](Clock::time_point start, Clock::time_point end) {
+		return std::chrono::duration<float, std::milli>(end - start).count();
+	};
+
+	runtimeStats_.cpuParticleUpdateMs = 0.0f;
+	runtimeStats_.gpuParticleCpuUpdateMs = 0.0f;
+	runtimeStats_.totalParticleUpdateMs = 0.0f;
+	runtimeStats_.cpuParticleActiveCount = 0;
+	runtimeStats_.cpuParticleInstanceCount = 0;
+	runtimeStats_.gpuParticleInstanceCount =
+		static_cast<uint32_t>(gpuParticles_.size());
+	runtimeStats_.gpuParticleEnabled = gpuParticleEnabled_;
+	runtimeStats_.gpuParticle = {};
+	runtimeStats_.gpuParticle.maxParticles = 0;
+	for (const auto& [key, particle] : gpuParticles_) {
+		(void)key;
+		const GpuParticle::RuntimeInfo info = particle->GetRuntimeInfo();
+		runtimeStats_.gpuParticle.initialized |= info.initialized;
+		runtimeStats_.gpuParticle.autoEmit |= info.autoEmit;
+		runtimeStats_.gpuParticle.maxParticles += info.maxParticles;
+		runtimeStats_.gpuParticle.emitCount += info.emitCount;
+		runtimeStats_.gpuParticle.emitFlags |= info.emitFlags;
+		if (runtimeStats_.gpuParticle.frequency == 0.0f) {
+			runtimeStats_.gpuParticle.frequency = info.frequency;
+			runtimeStats_.gpuParticle.frequencyTime = info.frequencyTime;
+		}
+	}
+
 	if (!camera_) {
 		return;
 	}
 
 	if (gpuParticleEnabled_) {
-		gpuParticle_.Update();
+		const auto gpuUpdateStart = Clock::now();
+		for (auto& [key, particle] : gpuParticles_) {
+			(void)key;
+			particle->Update();
+		}
+		runtimeStats_.gpuParticleCpuUpdateMs =
+			elapsedMs(gpuUpdateStart, Clock::now());
 	}
 
+	const auto cpuUpdateStart = Clock::now();
+	uint32_t cpuParticleActiveCount = 0;
+	uint32_t cpuParticleInstanceCount = 0;
 	for (auto& [name, group] : particleGroups_) {
 		group.uvOffset.x += group.render.uvScrollSpeed.x * deltaTime_;
 		group.uvOffset.y += group.render.uvScrollSpeed.y * deltaTime_;
@@ -2257,6 +2507,9 @@ void ParticleManager::Update() {
 		);
 
 		group.instanceCount = 0;
+		cpuParticleActiveCount += static_cast<uint32_t>(
+			(std::min)(group.particles.size(), static_cast<size_t>(kMaxInstanceCount))
+		);
 
 		for (const auto& particle : group.particles) {
 			if (group.instanceCount >= kMaxInstanceCount) {
@@ -2288,7 +2541,28 @@ void ParticleManager::Update() {
 
 			++group.instanceCount;
 		}
+		cpuParticleInstanceCount += group.instanceCount;
 	}
+	runtimeStats_.cpuParticleUpdateMs =
+		elapsedMs(cpuUpdateStart, Clock::now());
+	runtimeStats_.cpuParticleActiveCount = cpuParticleActiveCount;
+	runtimeStats_.cpuParticleInstanceCount = cpuParticleInstanceCount;
+	runtimeStats_.gpuParticle = {};
+	runtimeStats_.gpuParticle.maxParticles = 0;
+	for (const auto& [key, particle] : gpuParticles_) {
+		(void)key;
+		const GpuParticle::RuntimeInfo info = particle->GetRuntimeInfo();
+		runtimeStats_.gpuParticle.initialized |= info.initialized;
+		runtimeStats_.gpuParticle.autoEmit |= info.autoEmit;
+		runtimeStats_.gpuParticle.maxParticles += info.maxParticles;
+		runtimeStats_.gpuParticle.emitCount += info.emitCount;
+		runtimeStats_.gpuParticle.emitFlags |= info.emitFlags;
+		if (runtimeStats_.gpuParticle.frequency == 0.0f) {
+			runtimeStats_.gpuParticle.frequency = info.frequency;
+			runtimeStats_.gpuParticle.frequencyTime = info.frequencyTime;
+		}
+	}
+	runtimeStats_.totalParticleUpdateMs = elapsedMs(updateStart, Clock::now());
 }
 
 void ParticleManager::Draw() {
@@ -2331,6 +2605,9 @@ void ParticleManager::Draw() {
 	}
 
 	if (gpuParticleEnabled_) {
-		gpuParticle_.Draw(camera_);
+		for (auto& [key, particle] : gpuParticles_) {
+			(void)key;
+			particle->Draw(camera_);
+		}
 	}
 }
