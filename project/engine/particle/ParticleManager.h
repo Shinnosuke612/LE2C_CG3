@@ -427,11 +427,28 @@ public:
 	static const uint32_t kMaxInstanceCount = 20480;
 
 public:
+	enum class WaterDrawMode {
+		kAll,
+		kRefracted,
+		kForeground,
+	};
+
+	struct WaterDrawFilter {
+		WaterDrawMode mode = WaterDrawMode::kAll;
+		Vector3 cameraPosition{};
+		Vector3 waterCenter{};
+		Vector3 waterHalfSize{};
+	};
+
 	void Initialize(ParticleCommon* particleCommon, SrvManager* srvManager);
 	void Reset();
 	void Update();
 	void RefreshCpuParticleInstancesForCamera(Camera* camera);
-	void Draw();
+	void RefreshCpuParticleInstancesForCamera(
+		Camera* camera,
+		const WaterDrawFilter& filter
+	);
+	void Draw(bool drawGpuParticles = true);
 
 	void CreateParticleGroup(const std::string& name, const std::string& textureFilePath);
 
@@ -595,7 +612,10 @@ private:
 
 	Vector3 LerpVector3(const Vector3& start, const Vector3& end, float t);
 	void UpdateParticleScale(Particle& particle);
-	uint32_t RebuildCpuParticleInstances(Camera* camera);
+	uint32_t RebuildCpuParticleInstances(
+		Camera* camera,
+		const WaterDrawFilter& filter
+	);
 
 private:
 	ParticleCommon* particleCommon_ = nullptr;

@@ -23,6 +23,11 @@ public:
 		kWaterRefraction
 	};
 
+	enum class OutputFormat {
+		kDisplay,
+		kSceneHdr
+	};
+
 	struct Parameters {
 		float vignetteScale = 16.0f;
 		float vignettePower = 0.8f;
@@ -76,7 +81,8 @@ public:
 		D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
 		D3D12_GPU_DESCRIPTOR_HANDLE depthTextureHandle,
 		D3D12_GPU_DESCRIPTOR_HANDLE maskTextureHandle,
-		Effect effect = Effect::kCopy
+		Effect effect = Effect::kCopy,
+		OutputFormat outputFormat = OutputFormat::kDisplay
 	);
 
 private:
@@ -86,6 +92,7 @@ private:
 	DirectXCommon* dxCommon_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> copyPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> copySceneHdrPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> grayscalePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> vignettePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> boxBlurPipelineState_;
@@ -97,6 +104,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> depthOfFieldPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> underwaterPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> waterRefractionPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState>
+		waterRefractionSceneHdrPipelineState_;
 	static constexpr uint32_t kMaxDrawsPerFrame = 16;
 	Microsoft::WRL::ComPtr<ID3D12Resource>
 		parameterResources_[kMaxDrawsPerFrame];

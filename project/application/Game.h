@@ -58,6 +58,7 @@ private:
 	EditorSession* editorSession_ = nullptr;
 	SceneRenderTarget* sceneRenderTarget_ = nullptr;
 	SceneRenderTarget* postProcessRenderTargets_[2]{};
+	SceneRenderTarget* foregroundComposeRenderTarget_ = nullptr;
 	FullscreenCopy* fullscreenCopy_ = nullptr;
 	BloomRenderer* bloomRenderer_ = nullptr;
 	SceneRenderTarget* modelPreviewRenderTarget_ = nullptr;

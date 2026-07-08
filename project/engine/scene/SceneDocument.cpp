@@ -315,9 +315,54 @@ namespace {
 			result["turnResponsiveness"] = component.playerTurnResponsiveness;
 			result["cameraRelativeMove"] = component.playerCameraRelativeMove;
 			result["allowJump"] = component.playerAllowJump;
+		} else if (component.type == "AgentBehavior") {
+			result["behaviorName"] = component.agentBehaviorName;
+			result["profileName"] = component.agentProfileName;
+			result["groupName"] = component.agentGroupName;
+			result["boundsEntityId"] = component.agentBoundsEntityId;
+			result["boundsName"] = component.agentBoundsName;
+			result["attractorEntityId"] = component.agentAttractorEntityId;
+			result["attractorTag"] = component.agentAttractorTag;
+			result["useWaterBounds"] = component.agentUseWaterBounds;
+			result["minSpeed"] = component.agentMinSpeed;
+			result["maxSpeed"] = component.agentMaxSpeed;
+			result["turnSpeed"] = component.agentTurnSpeed;
+			result["wanderStrength"] = component.agentWanderStrength;
+			result["boundsWeight"] = component.agentBoundsWeight;
+			result["schooling"] = component.agentSchooling;
+			result["separationRadius"] = component.agentSeparationRadius;
+			result["alignmentRadius"] = component.agentAlignmentRadius;
+			result["cohesionRadius"] = component.agentCohesionRadius;
+			result["separationWeight"] = component.agentSeparationWeight;
+			result["alignmentWeight"] = component.agentAlignmentWeight;
+			result["cohesionWeight"] = component.agentCohesionWeight;
+			result["attractorWeight"] = component.agentAttractorWeight;
+			result["visualColor"] = VectorToJson(component.agentVisualColor);
+			result["enableLighting"] = component.agentEnableLighting;
+		} else if (component.type == "AgentAttractor") {
+			result["tag"] = component.attractorTag;
+			result["targetBehaviorName"] =
+				component.attractorTargetBehaviorName;
+			result["targetProfileName"] =
+				component.attractorTargetProfileName;
+			result["radius"] = component.attractorRadius;
+			result["strength"] = component.attractorStrength;
+			result["visualColor"] =
+				VectorToJson(component.attractorVisualColor);
 		} else if (component.type == "WaterVolume") {
 			result["halfSize"] = VectorToJson(component.waterHalfSize);
 			result["offset"] = VectorToJson(component.waterOffset);
+			result["surfaceEnabled"] = component.waterSurfaceEnabled;
+			result["surfaceBaseColor"] =
+				VectorToJson(component.waterSurfaceBaseColor);
+			result["surfaceHighlightColor"] =
+				VectorToJson(component.waterSurfaceHighlightColor);
+			result["surfaceAlpha"] = component.waterSurfaceAlpha;
+			result["surfaceWaveScale"] = component.waterSurfaceWaveScale;
+			result["surfaceNormalStrength"] =
+				component.waterSurfaceNormalStrength;
+			result["surfaceFresnelPower"] =
+				component.waterSurfaceFresnelPower;
 			result["moveSpeedMultiplier"] =
 				component.waterMoveSpeedMultiplier;
 			result["gravityScale"] = component.waterGravityScale;
@@ -565,6 +610,124 @@ namespace {
 					"allowJump",
 					component.playerAllowJump
 				);
+				component.agentBehaviorName = value.value(
+					"behaviorName",
+					component.agentBehaviorName
+				);
+				component.agentProfileName = value.value(
+					"profileName",
+					component.agentProfileName
+				);
+				component.agentGroupName = value.value(
+					"groupName",
+					component.agentGroupName
+				);
+				component.agentBoundsEntityId = value.value(
+					"boundsEntityId",
+					component.agentBoundsEntityId
+				);
+				component.agentBoundsName = value.value(
+					"boundsName",
+					component.agentBoundsName
+				);
+				component.agentAttractorEntityId = value.value(
+					"attractorEntityId",
+					component.agentAttractorEntityId
+				);
+				component.agentAttractorTag = value.value(
+					"attractorTag",
+					component.agentAttractorTag
+				);
+				component.agentUseWaterBounds = value.value(
+					"useWaterBounds",
+					component.agentUseWaterBounds
+				);
+				component.agentMinSpeed = value.value(
+					"minSpeed",
+					component.agentMinSpeed
+				);
+				component.agentMaxSpeed = value.value(
+					"maxSpeed",
+					component.agentMaxSpeed
+				);
+				component.agentTurnSpeed = value.value(
+					"turnSpeed",
+					component.agentTurnSpeed
+				);
+				component.agentWanderStrength = value.value(
+					"wanderStrength",
+					component.agentWanderStrength
+				);
+				component.agentBoundsWeight = value.value(
+					"boundsWeight",
+					component.agentBoundsWeight
+				);
+				component.agentSchooling = value.value(
+					"schooling",
+					component.agentSchooling
+				);
+				component.agentSeparationRadius = value.value(
+					"separationRadius",
+					component.agentSeparationRadius
+				);
+				component.agentAlignmentRadius = value.value(
+					"alignmentRadius",
+					component.agentAlignmentRadius
+				);
+				component.agentCohesionRadius = value.value(
+					"cohesionRadius",
+					component.agentCohesionRadius
+				);
+				component.agentSeparationWeight = value.value(
+					"separationWeight",
+					component.agentSeparationWeight
+				);
+				component.agentAlignmentWeight = value.value(
+					"alignmentWeight",
+					component.agentAlignmentWeight
+				);
+				component.agentCohesionWeight = value.value(
+					"cohesionWeight",
+					component.agentCohesionWeight
+				);
+				component.agentAttractorWeight = value.value(
+					"attractorWeight",
+					component.agentAttractorWeight
+				);
+				if (value.contains("visualColor")) {
+					component.agentVisualColor = JsonToVector(
+						value.at("visualColor"),
+						component.agentVisualColor
+					);
+					component.attractorVisualColor = JsonToVector(
+						value.at("visualColor"),
+						component.attractorVisualColor
+					);
+				}
+				component.agentEnableLighting = value.value(
+					"enableLighting",
+					component.agentEnableLighting
+				);
+				component.attractorTag = value.value(
+					"tag",
+					component.attractorTag
+				);
+				component.attractorTargetBehaviorName = value.value(
+					"targetBehaviorName",
+					component.attractorTargetBehaviorName
+				);
+				component.attractorTargetProfileName = value.value(
+					"targetProfileName",
+					component.attractorTargetProfileName
+				);
+				component.attractorRadius = value.value(
+					"radius",
+					component.attractorRadius
+				);
+				component.attractorStrength = value.value(
+					"strength",
+					component.attractorStrength
+				);
 				if (value.contains("halfSize")) {
 					component.waterHalfSize = JsonToVector(
 						value.at("halfSize"),
@@ -577,6 +740,38 @@ namespace {
 						component.waterOffset
 					);
 				}
+				component.waterSurfaceEnabled = value.value(
+					"surfaceEnabled",
+					component.waterSurfaceEnabled
+				);
+				if (value.contains("surfaceBaseColor")) {
+					component.waterSurfaceBaseColor = JsonToVector(
+						value.at("surfaceBaseColor"),
+						component.waterSurfaceBaseColor
+					);
+				}
+				if (value.contains("surfaceHighlightColor")) {
+					component.waterSurfaceHighlightColor = JsonToVector(
+						value.at("surfaceHighlightColor"),
+						component.waterSurfaceHighlightColor
+					);
+				}
+				component.waterSurfaceAlpha = value.value(
+					"surfaceAlpha",
+					component.waterSurfaceAlpha
+				);
+				component.waterSurfaceWaveScale = value.value(
+					"surfaceWaveScale",
+					component.waterSurfaceWaveScale
+				);
+				component.waterSurfaceNormalStrength = value.value(
+					"surfaceNormalStrength",
+					component.waterSurfaceNormalStrength
+				);
+				component.waterSurfaceFresnelPower = value.value(
+					"surfaceFresnelPower",
+					component.waterSurfaceFresnelPower
+				);
 				component.waterMoveSpeedMultiplier = value.value(
 					"moveSpeedMultiplier",
 					component.waterMoveSpeedMultiplier
@@ -659,6 +854,45 @@ namespace {
 						0.0f,
 						1.0f
 					);
+				} else if (component.type == "AgentBehavior") {
+					if (component.agentBehaviorName.empty()) {
+						component.agentBehaviorName = "Agent";
+					}
+					if (component.agentProfileName.empty()) {
+						component.agentProfileName = "Default";
+					}
+					component.agentMinSpeed =
+						(std::max)(component.agentMinSpeed, 0.0f);
+					component.agentMaxSpeed =
+						(std::max)(component.agentMaxSpeed, component.agentMinSpeed);
+					component.agentTurnSpeed =
+						(std::max)(component.agentTurnSpeed, 0.0f);
+					component.agentWanderStrength =
+						(std::max)(component.agentWanderStrength, 0.0f);
+					component.agentBoundsWeight =
+						(std::max)(component.agentBoundsWeight, 0.0f);
+					component.agentSeparationRadius =
+						(std::max)(component.agentSeparationRadius, 0.0f);
+					component.agentAlignmentRadius =
+						(std::max)(component.agentAlignmentRadius, 0.0f);
+					component.agentCohesionRadius =
+						(std::max)(component.agentCohesionRadius, 0.0f);
+					component.agentSeparationWeight =
+						(std::max)(component.agentSeparationWeight, 0.0f);
+					component.agentAlignmentWeight =
+						(std::max)(component.agentAlignmentWeight, 0.0f);
+					component.agentCohesionWeight =
+						(std::max)(component.agentCohesionWeight, 0.0f);
+					component.agentAttractorWeight =
+						(std::max)(component.agentAttractorWeight, 0.0f);
+				} else if (component.type == "AgentAttractor") {
+					if (component.attractorTag.empty()) {
+						component.attractorTag = "Default";
+					}
+					component.attractorRadius =
+						(std::max)(component.attractorRadius, 0.0f);
+					component.attractorStrength =
+						(std::max)(component.attractorStrength, 0.0f);
 				}
 				const auto duplicate = std::find_if(
 					components.begin(),
@@ -1221,6 +1455,79 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->playerTurnResponsiveness = turnResponsiveness;
 				changed = true;
 			}
+		} else if (type == "AgentBehavior") {
+			if (found->agentBehaviorName.empty()) {
+				found->agentBehaviorName = "Agent";
+				changed = true;
+			}
+			if (found->agentProfileName.empty()) {
+				found->agentProfileName = "Default";
+				changed = true;
+			}
+			const float minSpeed = (std::max)(found->agentMinSpeed, 0.0f);
+			const float maxSpeed =
+				(std::max)(found->agentMaxSpeed, minSpeed);
+			if (found->agentMinSpeed != minSpeed) {
+				found->agentMinSpeed = minSpeed;
+				changed = true;
+			}
+			if (found->agentMaxSpeed != maxSpeed) {
+				found->agentMaxSpeed = maxSpeed;
+				changed = true;
+			}
+			if (found->agentTurnSpeed < 0.0f) {
+				found->agentTurnSpeed = 0.0f;
+				changed = true;
+			}
+			if (found->agentWanderStrength < 0.0f) {
+				found->agentWanderStrength = 0.0f;
+				changed = true;
+			}
+			if (found->agentBoundsWeight < 0.0f) {
+				found->agentBoundsWeight = 0.0f;
+				changed = true;
+			}
+			if (found->agentSeparationRadius < 0.0f) {
+				found->agentSeparationRadius = 0.0f;
+				changed = true;
+			}
+			if (found->agentAlignmentRadius < 0.0f) {
+				found->agentAlignmentRadius = 0.0f;
+				changed = true;
+			}
+			if (found->agentCohesionRadius < 0.0f) {
+				found->agentCohesionRadius = 0.0f;
+				changed = true;
+			}
+			if (found->agentSeparationWeight < 0.0f) {
+				found->agentSeparationWeight = 0.0f;
+				changed = true;
+			}
+			if (found->agentAlignmentWeight < 0.0f) {
+				found->agentAlignmentWeight = 0.0f;
+				changed = true;
+			}
+			if (found->agentCohesionWeight < 0.0f) {
+				found->agentCohesionWeight = 0.0f;
+				changed = true;
+			}
+			if (found->agentAttractorWeight < 0.0f) {
+				found->agentAttractorWeight = 0.0f;
+				changed = true;
+			}
+		} else if (type == "AgentAttractor") {
+			if (found->attractorTag.empty()) {
+				found->attractorTag = "Default";
+				changed = true;
+			}
+			if (found->attractorRadius < 0.0f) {
+				found->attractorRadius = 0.0f;
+				changed = true;
+			}
+			if (found->attractorStrength < 0.0f) {
+				found->attractorStrength = 0.0f;
+				changed = true;
+			}
 		} else if (type == "WaterVolume") {
 			const Vector3 halfSize = {
 				(std::max)(found->waterHalfSize.x, 0.1f),
@@ -1254,6 +1561,42 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 			}
 			if (found->waterSwimUpSpeed < 0.0f) {
 				found->waterSwimUpSpeed = 0.0f;
+				changed = true;
+			}
+			const float surfaceAlpha = std::clamp(
+				found->waterSurfaceAlpha,
+				0.0f,
+				1.0f
+			);
+			if (found->waterSurfaceAlpha != surfaceAlpha) {
+				found->waterSurfaceAlpha = surfaceAlpha;
+				changed = true;
+			}
+			const float surfaceWaveScale = std::clamp(
+				found->waterSurfaceWaveScale,
+				0.0f,
+				3.0f
+			);
+			if (found->waterSurfaceWaveScale != surfaceWaveScale) {
+				found->waterSurfaceWaveScale = surfaceWaveScale;
+				changed = true;
+			}
+			const float surfaceNormalStrength = std::clamp(
+				found->waterSurfaceNormalStrength,
+				0.0f,
+				2.0f
+			);
+			if (found->waterSurfaceNormalStrength != surfaceNormalStrength) {
+				found->waterSurfaceNormalStrength = surfaceNormalStrength;
+				changed = true;
+			}
+			const float surfaceFresnelPower = std::clamp(
+				found->waterSurfaceFresnelPower,
+				0.2f,
+				8.0f
+			);
+			if (found->waterSurfaceFresnelPower != surfaceFresnelPower) {
+				found->waterSurfaceFresnelPower = surfaceFresnelPower;
 				changed = true;
 			}
 		} else if (type == "CameraPath") {
@@ -1359,9 +1702,47 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.playerTurnResponsiveness = 0.018f;
 		component.playerCameraRelativeMove = true;
 		component.playerAllowJump = true;
+	} else if (type == "AgentBehavior") {
+		component.agentBehaviorName = "Agent";
+		component.agentProfileName = "Default";
+		component.agentGroupName = "";
+		component.agentBoundsEntityId = 0;
+		component.agentBoundsName = "";
+		component.agentAttractorEntityId = 0;
+		component.agentAttractorTag = "";
+		component.agentUseWaterBounds = true;
+		component.agentMinSpeed = 1.0f;
+		component.agentMaxSpeed = 3.0f;
+		component.agentTurnSpeed = 2.5f;
+		component.agentWanderStrength = 0.8f;
+		component.agentBoundsWeight = 3.0f;
+		component.agentSchooling = false;
+		component.agentSeparationRadius = 1.2f;
+		component.agentAlignmentRadius = 4.0f;
+		component.agentCohesionRadius = 5.0f;
+		component.agentSeparationWeight = 1.8f;
+		component.agentAlignmentWeight = 0.8f;
+		component.agentCohesionWeight = 0.9f;
+		component.agentAttractorWeight = 0.0f;
+		component.agentVisualColor = { 0.25f, 0.75f, 1.0f, 1.0f };
+		component.agentEnableLighting = true;
+	} else if (type == "AgentAttractor") {
+		component.attractorTag = "Default";
+		component.attractorTargetBehaviorName = "";
+		component.attractorTargetProfileName = "";
+		component.attractorRadius = 6.0f;
+		component.attractorStrength = 1.0f;
+		component.attractorVisualColor = { 1.0f, 0.35f, 0.45f, 1.0f };
 	} else if (type == "WaterVolume") {
 		component.waterHalfSize = { 10.0f, 4.0f, 10.0f };
 		component.waterOffset = { 0.0f, 0.0f, 0.0f };
+		component.waterSurfaceEnabled = true;
+		component.waterSurfaceBaseColor = { 0.04f, 0.55f, 0.78f, 1.0f };
+		component.waterSurfaceHighlightColor = { 0.42f, 0.95f, 1.20f, 1.0f };
+		component.waterSurfaceAlpha = 0.36f;
+		component.waterSurfaceWaveScale = 1.0f;
+		component.waterSurfaceNormalStrength = 0.75f;
+		component.waterSurfaceFresnelPower = 3.0f;
 		component.waterMoveSpeedMultiplier = 0.45f;
 		component.waterGravityScale = 0.55f;
 		component.waterDrag = 4.0f;

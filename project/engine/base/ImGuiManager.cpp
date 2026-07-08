@@ -3095,10 +3095,315 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "AgentBehavior") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool agentChanged = false;
+				char behaviorBuffer[64]{};
+				strncpy_s(
+					behaviorBuffer,
+					component.agentBehaviorName.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Behavior",
+					behaviorBuffer,
+					sizeof(behaviorBuffer)
+				)) {
+					component.agentBehaviorName = behaviorBuffer;
+					agentChanged = true;
+				}
+				char profileBuffer[64]{};
+				strncpy_s(
+					profileBuffer,
+					component.agentProfileName.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Profile",
+					profileBuffer,
+					sizeof(profileBuffer)
+				)) {
+					component.agentProfileName = profileBuffer;
+					agentChanged = true;
+				}
+				char groupBuffer[64]{};
+				strncpy_s(
+					groupBuffer,
+					component.agentGroupName.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Group",
+					groupBuffer,
+					sizeof(groupBuffer)
+				)) {
+					component.agentGroupName = groupBuffer;
+					agentChanged = true;
+				}
+
+				ImGui::SeparatorText("Motion");
+				agentChanged |= ImGui::DragFloat(
+					"Min Speed",
+					&component.agentMinSpeed,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Max Speed",
+					&component.agentMaxSpeed,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Turn Speed",
+					&component.agentTurnSpeed,
+					0.05f,
+					0.0f,
+					20.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Wander Strength",
+					&component.agentWanderStrength,
+					0.05f,
+					0.0f,
+					20.0f
+				);
+
+				ImGui::SeparatorText("Bounds");
+				agentChanged |= ImGui::Checkbox(
+					"Use Water Bounds",
+					&component.agentUseWaterBounds
+				);
+				agentChanged |= ImGui::InputScalar(
+					"Bounds Entity Id",
+					ImGuiDataType_U64,
+					&component.agentBoundsEntityId
+				);
+				char boundsNameBuffer[128]{};
+				strncpy_s(
+					boundsNameBuffer,
+					component.agentBoundsName.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Bounds Name",
+					boundsNameBuffer,
+					sizeof(boundsNameBuffer)
+				)) {
+					component.agentBoundsName = boundsNameBuffer;
+					agentChanged = true;
+				}
+				agentChanged |= ImGui::DragFloat(
+					"Bounds Weight",
+					&component.agentBoundsWeight,
+					0.05f,
+					0.0f,
+					50.0f
+				);
+
+				ImGui::SeparatorText("Attractor");
+				agentChanged |= ImGui::InputScalar(
+					"Attractor Entity Id",
+					ImGuiDataType_U64,
+					&component.agentAttractorEntityId
+				);
+				char attractorTagBuffer[64]{};
+				strncpy_s(
+					attractorTagBuffer,
+					component.agentAttractorTag.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Attractor Tag",
+					attractorTagBuffer,
+					sizeof(attractorTagBuffer)
+				)) {
+					component.agentAttractorTag = attractorTagBuffer;
+					agentChanged = true;
+				}
+				agentChanged |= ImGui::DragFloat(
+					"Attractor Weight",
+					&component.agentAttractorWeight,
+					0.05f,
+					0.0f,
+					50.0f
+				);
+
+				ImGui::SeparatorText("Schooling");
+				agentChanged |= ImGui::Checkbox(
+					"Schooling",
+					&component.agentSchooling
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Separation Radius",
+					&component.agentSeparationRadius,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Alignment Radius",
+					&component.agentAlignmentRadius,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Cohesion Radius",
+					&component.agentCohesionRadius,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Separation Weight",
+					&component.agentSeparationWeight,
+					0.05f,
+					0.0f,
+					50.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Alignment Weight",
+					&component.agentAlignmentWeight,
+					0.05f,
+					0.0f,
+					50.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Cohesion Weight",
+					&component.agentCohesionWeight,
+					0.05f,
+					0.0f,
+					50.0f
+				);
+
+				ImGui::SeparatorText("Visual");
+				agentChanged |= ImGui::ColorEdit4(
+					"Visual Color",
+					&component.agentVisualColor.x,
+					ImGuiColorEditFlags_Float
+				);
+				agentChanged |= ImGui::Checkbox(
+					"Enable Lighting",
+					&component.agentEnableLighting
+				);
+
+				if (component.agentBehaviorName.empty()) {
+					component.agentBehaviorName = "Agent";
+					agentChanged = true;
+				}
+				if (component.agentProfileName.empty()) {
+					component.agentProfileName = "Default";
+					agentChanged = true;
+				}
+				component.agentMinSpeed =
+					(std::max)(component.agentMinSpeed, 0.0f);
+				component.agentMaxSpeed =
+					(std::max)(component.agentMaxSpeed, component.agentMinSpeed);
+				component.agentTurnSpeed =
+					(std::max)(component.agentTurnSpeed, 0.0f);
+				component.agentWanderStrength =
+					(std::max)(component.agentWanderStrength, 0.0f);
+				component.agentBoundsWeight =
+					(std::max)(component.agentBoundsWeight, 0.0f);
+				component.agentSeparationRadius =
+					(std::max)(component.agentSeparationRadius, 0.0f);
+				component.agentAlignmentRadius =
+					(std::max)(component.agentAlignmentRadius, 0.0f);
+				component.agentCohesionRadius =
+					(std::max)(component.agentCohesionRadius, 0.0f);
+				component.agentSeparationWeight =
+					(std::max)(component.agentSeparationWeight, 0.0f);
+				component.agentAlignmentWeight =
+					(std::max)(component.agentAlignmentWeight, 0.0f);
+				component.agentCohesionWeight =
+					(std::max)(component.agentCohesionWeight, 0.0f);
+				component.agentAttractorWeight =
+					(std::max)(component.agentAttractorWeight, 0.0f);
+				if (agentChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "AgentAttractor") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool attractorChanged = false;
+				char tagBuffer[64]{};
+				strncpy_s(
+					tagBuffer,
+					component.attractorTag.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText("Tag", tagBuffer, sizeof(tagBuffer))) {
+					component.attractorTag = tagBuffer;
+					attractorChanged = true;
+				}
+				char targetBehaviorBuffer[64]{};
+				strncpy_s(
+					targetBehaviorBuffer,
+					component.attractorTargetBehaviorName.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Target Behavior",
+					targetBehaviorBuffer,
+					sizeof(targetBehaviorBuffer)
+				)) {
+					component.attractorTargetBehaviorName =
+						targetBehaviorBuffer;
+					attractorChanged = true;
+				}
+				char targetProfileBuffer[64]{};
+				strncpy_s(
+					targetProfileBuffer,
+					component.attractorTargetProfileName.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Target Profile",
+					targetProfileBuffer,
+					sizeof(targetProfileBuffer)
+				)) {
+					component.attractorTargetProfileName =
+						targetProfileBuffer;
+					attractorChanged = true;
+				}
+				attractorChanged |= ImGui::DragFloat(
+					"Radius",
+					&component.attractorRadius,
+					0.1f,
+					0.0f,
+					500.0f
+				);
+				attractorChanged |= ImGui::DragFloat(
+					"Strength",
+					&component.attractorStrength,
+					0.05f,
+					0.0f,
+					50.0f
+				);
+				attractorChanged |= ImGui::ColorEdit4(
+					"Visual Color",
+					&component.attractorVisualColor.x,
+					ImGuiColorEditFlags_Float
+				);
+				if (component.attractorTag.empty()) {
+					component.attractorTag = "Default";
+					attractorChanged = true;
+				}
+				component.attractorRadius =
+					(std::max)(component.attractorRadius, 0.0f);
+				component.attractorStrength =
+					(std::max)(component.attractorStrength, 0.0f);
+				if (attractorChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			} else if (component.type == "WaterVolume") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool waterChanged = false;
-				ImGui::TextDisabled("AABB trigger for underwater behavior");
+				ImGui::SeparatorText("Volume");
 				waterChanged |= ImGui::DragFloat3(
 					"Half Size",
 					&component.waterHalfSize.x,
@@ -3111,6 +3416,46 @@ void ImGuiManager::DrawInspectorWindow() {
 					&component.waterOffset.x,
 					0.1f
 				);
+				ImGui::SeparatorText("Surface");
+				waterChanged |= ImGui::Checkbox(
+					"Surface Enabled",
+					&component.waterSurfaceEnabled
+				);
+				waterChanged |= ImGui::ColorEdit4(
+					"Base Color",
+					&component.waterSurfaceBaseColor.x,
+					ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
+				);
+				waterChanged |= ImGui::ColorEdit4(
+					"Highlight Color",
+					&component.waterSurfaceHighlightColor.x,
+					ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Surface Alpha",
+					&component.waterSurfaceAlpha,
+					0.0f,
+					1.0f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Wave Scale",
+					&component.waterSurfaceWaveScale,
+					0.0f,
+					3.0f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Normal Strength",
+					&component.waterSurfaceNormalStrength,
+					0.0f,
+					2.0f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Fresnel Power",
+					&component.waterSurfaceFresnelPower,
+					0.2f,
+					8.0f
+				);
+				ImGui::SeparatorText("Player Behavior");
 				waterChanged |= ImGui::SliderFloat(
 					"Move Speed Multiplier",
 					&component.waterMoveSpeedMultiplier,
@@ -3156,6 +3501,26 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.0f,
 					1.0f
 				);
+				component.waterSurfaceAlpha = std::clamp(
+					component.waterSurfaceAlpha,
+					0.0f,
+					1.0f
+				);
+				component.waterSurfaceWaveScale = std::clamp(
+					component.waterSurfaceWaveScale,
+					0.0f,
+					3.0f
+				);
+				component.waterSurfaceNormalStrength = std::clamp(
+					component.waterSurfaceNormalStrength,
+					0.0f,
+					2.0f
+				);
+				component.waterSurfaceFresnelPower = std::clamp(
+					component.waterSurfaceFresnelPower,
+					0.2f,
+					8.0f
+				);
 				component.waterDrag = (std::max)(component.waterDrag, 0.0f);
 				component.waterMaxFallSpeed =
 					(std::max)(component.waterMaxFallSpeed, 0.0f);
@@ -3187,6 +3552,8 @@ void ImGuiManager::DrawInspectorWindow() {
 				"CameraPathPoint",
 				"PhysicsBody",
 				"PlayerBehavior",
+				"AgentBehavior",
+				"AgentAttractor",
 				"WaterVolume",
 				"Animator",
 				"OBBCollider"

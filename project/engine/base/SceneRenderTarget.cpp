@@ -77,6 +77,10 @@ void SceneRenderTarget::Resize(uint32_t width, uint32_t height) {
 }
 
 void SceneRenderTarget::Begin() {
+	Begin(true, true);
+}
+
+void SceneRenderTarget::Begin(bool clearColor, bool clearDepth) {
 	if (!initialized_) {
 		return;
 	}
@@ -121,13 +125,15 @@ void SceneRenderTarget::Begin() {
 		dsvHandlePtr
 	);
 
-	dxCommon_->GetCommandList()->ClearRenderTargetView(
-		rtvHandle,
-		clearColor_,
-		0,
-		nullptr
-	);
-	if (createDepth_) {
+	if (clearColor) {
+		dxCommon_->GetCommandList()->ClearRenderTargetView(
+			rtvHandle,
+			clearColor_,
+			0,
+			nullptr
+		);
+	}
+	if (createDepth_ && clearDepth) {
 		dxCommon_->GetCommandList()->ClearDepthStencilView(
 			dsvHandle,
 			D3D12_CLEAR_FLAG_DEPTH,

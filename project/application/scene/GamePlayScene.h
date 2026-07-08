@@ -14,6 +14,7 @@
 #include "../../engine/physics/PhysicsBody.h"
 #include "../../engine/physics/PhysicsWorld.h"
 #include "../../engine/effect/LightningRenderer.h"
+#include "../../engine/effect/WaterSurfaceRenderer.h"
 #include "../../engine/math/Vector3.h"
 #include "../../engine/3d/StarFieldGenerator.h"
 #include "../../engine/3d/CameraPathRuntime.h"
@@ -75,6 +76,12 @@ private:
 		std::string debugStatus = "Waiting for offscreen pass";
 	};
 
+	struct AgentRuntime {
+		Vector3 velocity{};
+		float phase = 0.0f;
+		bool initialized = false;
+	};
+
 public: //メンバ関数
 
 	//初期化
@@ -89,8 +96,12 @@ public: //メンバ関数
 
 	//描画
 	void Draw() override;
+	void DrawForegroundEffects() override;
 	void DrawOffscreenViews() override;
 	void DrawShadow() override;
+	void SetDeferForegroundEffects(bool defer) override {
+		deferForegroundEffects_ = defer;
+	}
 
 private:
 	void SyncSceneModelObjects();
@@ -102,11 +113,25 @@ private:
 	void ApplyPlayerBehaviorComponent(const SceneDocument& document);
 	void ApplyPlayerPhysicsComponent(const SceneDocument& document);
 	void ApplyWaterVolumes(const SceneDocument& document);
+	void UpdateAgentBehaviors(SceneDocument& document, float deltaTime);
 	void StepPhysics(float deltaTime);
 	Object3d* FindSceneModelObjectByName(const char* name) const;
 	void SyncMonitorRenderers();
 	void ClearMonitorRenderers();
 	void DrawSceneView(Camera* viewCamera, uint64_t skipEntityId = 0);
+	void DrawWaterSurfaces(
+		const SceneDocument& document,
+		Camera* viewCamera,
+		uint64_t skipEntityId
+	);
+	void DrawForegroundEffectsForCamera(
+		Camera* viewCamera,
+		uint64_t skipEntityId = 0
+	);
+	void DrawRefractedEffectsForCamera(
+		Camera* viewCamera,
+		uint64_t skipEntityId = 0
+	);
 	void ApplyRenderCamera(Camera* viewCamera);
 	Camera* GetSceneViewCamera() const;
 	void InitializePauseDebugCamera();
@@ -143,6 +168,7 @@ private:
 	bool showCameraPathPointCameraDebug_ = true;
 	bool showJointNames_ = false;
 	bool showJointAxes_ = true;
+	bool deferForegroundEffects_ = false;
 	float jointRadius_ = 0.018f;
 	float jointAxisLength_ = 0.06f;
 	Player* player_ = nullptr;
@@ -153,6 +179,7 @@ private:
 	std::unordered_map<uint64_t, SceneModelObject> sceneModelObjects_;
 	std::unordered_map<uint64_t, SceneSpriteObject> sceneSpriteObjects_;
 	std::unordered_map<uint64_t, MonitorRuntime> monitorRuntimes_;
+	std::unordered_map<uint64_t, AgentRuntime> agentRuntimes_;
 	uint64_t monitorDebugFrame_ = 0;
 	bool monitorDebugForceProbeCamera_ = false;
 	std::vector<OBBCollider*> staticColliders_;
@@ -171,6 +198,7 @@ private:
 	std::unique_ptr<LightManager> lightManager_;
 	std::unique_ptr<ShadowManager> shadowManager_;
 	std::unique_ptr<LightningRenderer> lightningRenderer_;
+	std::unique_ptr<WaterSurfaceRenderer> waterSurfaceRenderer_;
 	Skybox* skybox_ = nullptr;
 	std::string environmentMapPath_;
 	float environmentReflectionIntensity_ = 0.3f;

@@ -411,6 +411,21 @@ void Game::Initialize() {
 		postTargetDesc.clearColor[3] = 1.0f;
 		renderTarget->Initialize(dxCommon_, srvManager_, postTargetDesc);
 	}
+	foregroundComposeRenderTarget_ = new SceneRenderTarget();
+	SceneRenderTarget::Desc foregroundComposeDesc{};
+	foregroundComposeDesc.width = dxCommon_->GetClientWidth();
+	foregroundComposeDesc.height = dxCommon_->GetClientHeight();
+	foregroundComposeDesc.format = RenderFormats::kSceneHdrFormat;
+	foregroundComposeDesc.createDepth = false;
+	foregroundComposeDesc.clearColor[0] = 0.0f;
+	foregroundComposeDesc.clearColor[1] = 0.0f;
+	foregroundComposeDesc.clearColor[2] = 0.0f;
+	foregroundComposeDesc.clearColor[3] = 1.0f;
+	foregroundComposeRenderTarget_->Initialize(
+		dxCommon_,
+		srvManager_,
+		foregroundComposeDesc
+	);
 	fullscreenCopy_ = new FullscreenCopy();
 	fullscreenCopy_->Initialize(dxCommon_);
 	bloomRenderer_ = new BloomRenderer();
@@ -1012,6 +1027,10 @@ void Game::Draw() {
 			imguiManager_->GetSceneViewHeight()
 		);
 	}
+	foregroundComposeRenderTarget_->Resize(
+		imguiManager_->GetSceneViewWidth(),
+		imguiManager_->GetSceneViewHeight()
+	);
 #else
 	sceneRenderTarget_->Resize(
 		dxCommon_->GetClientWidth(),
@@ -1023,8 +1042,14 @@ void Game::Draw() {
 			dxCommon_->GetClientHeight()
 		);
 	}
+	foregroundComposeRenderTarget_->Resize(
+		dxCommon_->GetClientWidth(),
+		dxCommon_->GetClientHeight()
+	);
 #endif
 
+	const bool deferForegroundEffects = waterRefractionEnabled_;
+	sceneManager_->SetDeferForegroundEffects(deferForegroundEffects);
 	sceneRenderTarget_->Begin();
 	srvManager_->PreDraw();
 	Object3dCommon::GetInstance()->SetCommonRenderState();
@@ -1041,14 +1066,6 @@ void Game::Draw() {
 #endif
 
 	fullscreenCopy_->BeginFrame();
-	bloomRenderer_->BeginFrame();
-	bloomRenderer_->SetParameters(bloomParameters_);
-	bloomRenderer_->Apply(
-		sceneRenderTarget_->GetSrvGpuHandle(),
-		postProcessRenderTargets_[0]
-	);
-	D3D12_GPU_DESCRIPTOR_HANDLE sourceHandle =
-		postProcessRenderTargets_[0]->GetSrvGpuHandle();
 	const D3D12_GPU_DESCRIPTOR_HANDLE depthHandle =
 		sceneRenderTarget_->GetDepthSrvGpuHandle();
 	const char* dissolveMaskPath =
@@ -1061,26 +1078,6 @@ void Game::Draw() {
 		Object3dCommon::GetInstance()->GetDefaultCamera();
 	const WaterPostEffectState waterState =
 		ResolveWaterPostEffectState(renderCamera);
-	int passIndex = 1;
-	auto applyEffect = [&](
-		FullscreenCopy::Effect effect,
-		const FullscreenCopy::Parameters& parameters
-	) {
-		SceneRenderTarget* destination =
-			postProcessRenderTargets_[passIndex % 2];
-		destination->Begin();
-		srvManager_->PreDraw();
-		fullscreenCopy_->SetParameters(parameters);
-		fullscreenCopy_->Draw(
-			sourceHandle,
-			depthHandle,
-			maskHandle,
-			effect
-		);
-		destination->End();
-		sourceHandle = destination->GetSrvGpuHandle();
-		++passIndex;
-	};
 	auto fillWaterParameters = [&](
 		FullscreenCopy::Parameters& parameters
 	) {
@@ -1134,6 +1131,80 @@ void Game::Draw() {
 			waterRefractionStrength_;
 		parameters.waterRefractionParams[1] =
 			waterRefractionTintStrength_;
+	};
+
+	bool waterRefractionAppliedBeforeForeground = false;
+	if (deferForegroundEffects) {
+		if (
+			waterRefractionEnabled_ &&
+			waterState.hasVolume &&
+			!waterState.cameraInside &&
+			renderCamera
+		) {
+			FullscreenCopy::Parameters parameters{};
+			fillWaterParameters(parameters);
+			SceneRenderTarget* destination = foregroundComposeRenderTarget_;
+			destination->Begin();
+			srvManager_->PreDraw();
+			fullscreenCopy_->SetParameters(parameters);
+			fullscreenCopy_->Draw(
+				sceneRenderTarget_->GetSrvGpuHandle(),
+				depthHandle,
+				maskHandle,
+				FullscreenCopy::Effect::kWaterRefraction,
+				FullscreenCopy::OutputFormat::kSceneHdr
+			);
+			destination->End();
+
+			sceneRenderTarget_->Begin(false, false);
+			srvManager_->PreDraw();
+			fullscreenCopy_->SetParameters(FullscreenCopy::Parameters{});
+			fullscreenCopy_->Draw(
+				destination->GetSrvGpuHandle(),
+				maskHandle,
+				maskHandle,
+				FullscreenCopy::Effect::kCopy,
+				FullscreenCopy::OutputFormat::kSceneHdr
+			);
+			sceneManager_->DrawForegroundEffects();
+			sceneRenderTarget_->End();
+			waterRefractionAppliedBeforeForeground = true;
+		} else {
+			sceneRenderTarget_->Begin(false, false);
+			srvManager_->PreDraw();
+			sceneManager_->DrawForegroundEffects();
+			sceneRenderTarget_->End();
+		}
+	}
+	sceneManager_->SetDeferForegroundEffects(false);
+
+	bloomRenderer_->BeginFrame();
+	bloomRenderer_->SetParameters(bloomParameters_);
+	bloomRenderer_->Apply(
+		sceneRenderTarget_->GetSrvGpuHandle(),
+		postProcessRenderTargets_[0]
+	);
+	D3D12_GPU_DESCRIPTOR_HANDLE sourceHandle =
+		postProcessRenderTargets_[0]->GetSrvGpuHandle();
+	int passIndex = 1;
+	auto applyEffect = [&](
+		FullscreenCopy::Effect effect,
+		const FullscreenCopy::Parameters& parameters
+	) {
+		SceneRenderTarget* destination =
+			postProcessRenderTargets_[passIndex % 2];
+		destination->Begin();
+		srvManager_->PreDraw();
+		fullscreenCopy_->SetParameters(parameters);
+		fullscreenCopy_->Draw(
+			sourceHandle,
+			depthHandle,
+			maskHandle,
+			effect
+		);
+		destination->End();
+		sourceHandle = destination->GetSrvGpuHandle();
+		++passIndex;
 	};
 
 	if (grayscaleEnabled_) {
@@ -1229,6 +1300,7 @@ void Game::Draw() {
 	}
 	if (
 		waterRefractionEnabled_ &&
+		!waterRefractionAppliedBeforeForeground &&
 		waterState.hasVolume &&
 		!waterState.cameraInside &&
 		renderCamera
@@ -1683,6 +1755,8 @@ void Game::Finalize() {
 		delete renderTarget;
 		renderTarget = nullptr;
 	}
+	delete foregroundComposeRenderTarget_;
+	foregroundComposeRenderTarget_ = nullptr;
 
 	if (sceneManager_) {
 		delete sceneManager_;

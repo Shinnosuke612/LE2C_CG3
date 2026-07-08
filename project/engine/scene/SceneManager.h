@@ -16,8 +16,10 @@ public:
 	void UpdatePaused();
 
 	void Draw();
+	void DrawForegroundEffects();
 	void DrawShadow();
 	void DrawOffscreenViews();
+	void SetDeferForegroundEffects(bool defer);
 
 	void ChangeScene(const std::string& sceneName);
 	void ReloadCurrentScene();

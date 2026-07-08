@@ -3,6 +3,7 @@
 #include <cassert>
 
 #include "DirectXCommon.h"
+#include "RenderFormats.h"
 #include "../utility/Logger.h"
 
 void FullscreenCopy::Initialize(DirectXCommon* dxCommon) {
@@ -38,7 +39,8 @@ void FullscreenCopy::Draw(
 	D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
 	D3D12_GPU_DESCRIPTOR_HANDLE depthTextureHandle,
 	D3D12_GPU_DESCRIPTOR_HANDLE maskTextureHandle,
-	Effect effect
+	Effect effect,
+	OutputFormat outputFormat
 ) {
 	assert(dxCommon_);
 	assert(drawIndex_ < kMaxDrawsPerFrame);
@@ -49,7 +51,12 @@ void FullscreenCopy::Draw(
 	ID3D12GraphicsCommandList* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
 	ID3D12PipelineState* pipelineState = copyPipelineState_.Get();
-	if (effect == Effect::kGrayscale) {
+	if (outputFormat == OutputFormat::kSceneHdr) {
+		pipelineState = effect == Effect::kWaterRefraction
+			? waterRefractionSceneHdrPipelineState_.Get()
+			: copySceneHdrPipelineState_.Get();
+	}
+	else if (effect == Effect::kGrayscale) {
 		pipelineState = grayscalePipelineState_.Get();
 	}
 	else if (effect == Effect::kVignette) {
@@ -392,6 +399,27 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&waterRefractionPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.RTVFormats[0] = RenderFormats::kSceneHdrFormat;
+	pipelineDesc.PS = {
+		copyPixelShader->GetBufferPointer(),
+		copyPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&copySceneHdrPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		waterRefractionPixelShader->GetBufferPointer(),
+		waterRefractionPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&waterRefractionSceneHdrPipelineState_)
 	);
 	assert(SUCCEEDED(result));
 }

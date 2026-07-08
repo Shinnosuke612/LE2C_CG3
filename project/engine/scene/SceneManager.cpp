@@ -83,10 +83,24 @@ void SceneManager::Draw()
 	}
 }
 
+void SceneManager::DrawForegroundEffects()
+{
+	if (scene_) {
+		scene_->DrawForegroundEffects();
+	}
+}
+
 void SceneManager::DrawShadow()
 {
 	if (scene_) {
 		scene_->DrawShadow();
+	}
+}
+
+void SceneManager::SetDeferForegroundEffects(bool defer)
+{
+	if (scene_) {
+		scene_->SetDeferForegroundEffects(defer);
 	}
 }
 

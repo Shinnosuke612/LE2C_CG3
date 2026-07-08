@@ -28,6 +28,87 @@ using json = nlohmann::json;
 
 ParticleManager* ParticleManager::instance_ = nullptr;
 
+namespace {
+	bool IntersectsSegmentAabb(
+		const Vector3& start,
+		const Vector3& end,
+		const Vector3& center,
+		const Vector3& halfSize
+	) {
+		const Vector3 direction{
+			end.x - start.x,
+			end.y - start.y,
+			end.z - start.z
+		};
+		float tMin = 0.0f;
+		float tMax = 1.0f;
+
+		auto testAxis = [&](
+			float origin,
+			float delta,
+			float minimum,
+			float maximum
+		) {
+			if (std::abs(delta) < 0.000001f) {
+				return origin >= minimum && origin <= maximum;
+			}
+
+			const float invDelta = 1.0f / delta;
+			float nearT = (minimum - origin) * invDelta;
+			float farT = (maximum - origin) * invDelta;
+			if (nearT > farT) {
+				std::swap(nearT, farT);
+			}
+			tMin = (std::max)(tMin, nearT);
+			tMax = (std::min)(tMax, farT);
+			return tMin <= tMax;
+		};
+
+		const Vector3 safeHalfSize{
+			(std::max)(halfSize.x, 0.001f),
+			(std::max)(halfSize.y, 0.001f),
+			(std::max)(halfSize.z, 0.001f)
+		};
+		const Vector3 boxMin{
+			center.x - safeHalfSize.x,
+			center.y - safeHalfSize.y,
+			center.z - safeHalfSize.z
+		};
+		const Vector3 boxMax{
+			center.x + safeHalfSize.x,
+			center.y + safeHalfSize.y,
+			center.z + safeHalfSize.z
+		};
+
+		return
+			testAxis(start.x, direction.x, boxMin.x, boxMax.x) &&
+			testAxis(start.y, direction.y, boxMin.y, boxMax.y) &&
+			testAxis(start.z, direction.z, boxMin.z, boxMax.z) &&
+			tMax >= 0.0f &&
+			tMin <= 1.0f;
+	}
+
+	bool ShouldIncludeParticleInWaterPass(
+		const ParticleManager::Particle& particle,
+		const ParticleManager::WaterDrawFilter& filter
+	) {
+		if (filter.mode == ParticleManager::WaterDrawMode::kAll) {
+			return true;
+		}
+
+		const bool refracted =
+			IntersectsSegmentAabb(
+				filter.cameraPosition,
+				particle.transform.translate,
+				filter.waterCenter,
+				filter.waterHalfSize
+			);
+		return filter.mode == ParticleManager::WaterDrawMode::kRefracted
+			? refracted
+			: !refracted;
+	}
+}
+
 ParticleManager* ParticleManager::GetInstance() {
 	if (instance_ == nullptr) {
 		instance_ = new ParticleManager();
@@ -2511,7 +2592,7 @@ void ParticleManager::Update() {
 		);
 	}
 	const uint32_t cpuParticleInstanceCount =
-		RebuildCpuParticleInstances(camera_);
+		RebuildCpuParticleInstances(camera_, WaterDrawFilter{});
 	runtimeStats_.cpuParticleUpdateMs =
 		elapsedMs(cpuUpdateStart, Clock::now());
 	runtimeStats_.cpuParticleActiveCount = cpuParticleActiveCount;
@@ -2535,15 +2616,25 @@ void ParticleManager::Update() {
 }
 
 void ParticleManager::RefreshCpuParticleInstancesForCamera(Camera* camera) {
+	RefreshCpuParticleInstancesForCamera(camera, WaterDrawFilter{});
+}
+
+void ParticleManager::RefreshCpuParticleInstancesForCamera(
+	Camera* camera,
+	const WaterDrawFilter& filter
+) {
 	if (!camera) {
 		return;
 	}
 	camera_ = camera;
 	runtimeStats_.cpuParticleInstanceCount =
-		RebuildCpuParticleInstances(camera);
+		RebuildCpuParticleInstances(camera, filter);
 }
 
-uint32_t ParticleManager::RebuildCpuParticleInstances(Camera* camera) {
+uint32_t ParticleManager::RebuildCpuParticleInstances(
+	Camera* camera,
+	const WaterDrawFilter& filter
+) {
 	if (!camera) {
 		return 0;
 	}
@@ -2555,6 +2646,9 @@ uint32_t ParticleManager::RebuildCpuParticleInstances(Camera* camera) {
 		for (const auto& particle : group.particles) {
 			if (group.instanceCount >= kMaxInstanceCount) {
 				break;
+			}
+			if (!ShouldIncludeParticleInWaterPass(particle, filter)) {
+				continue;
 			}
 
 			Matrix4x4 worldMatrix{};
@@ -2588,7 +2682,7 @@ uint32_t ParticleManager::RebuildCpuParticleInstances(Camera* camera) {
 	return cpuParticleInstanceCount;
 }
 
-void ParticleManager::Draw() {
+void ParticleManager::Draw(bool drawGpuParticles) {
 	auto* commandList = particleCommon_->GetDxCommon()->GetCommandList();
 
 	for (auto& [name, group] : particleGroups_) {
@@ -2627,7 +2721,7 @@ void ParticleManager::Draw() {
 		commandList->DrawInstanced(group.vertexCount, group.instanceCount, 0, 0);
 	}
 
-	if (gpuParticleEnabled_) {
+	if (gpuParticleEnabled_ && drawGpuParticles) {
 		for (auto& [key, particle] : gpuParticles_) {
 			(void)key;
 			particle->Draw(camera_);

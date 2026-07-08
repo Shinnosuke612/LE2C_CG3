@@ -26,6 +26,7 @@
 #include "../../engine/3d/ShadowManager.h"
 #include "../../engine/3d/Skybox.h"
 #include "../../engine/effect/LightningRenderer.h"
+#include "../../engine/effect/WaterSurfaceRenderer.h"
 #include "../player/Player.h"
 #include "../../engine/utility/EditableResourcePath.h"
 #include "../../engine/math/Math.h"
@@ -396,6 +397,325 @@ namespace {
 			std::abs(point.z - center.z) <= halfSize.z;
 	}
 
+	bool TryBuildWaterParticleDrawFilter(
+		const SceneDocument& document,
+		Camera* camera,
+		ParticleManager::WaterDrawFilter& filter
+	) {
+		if (
+			!camera ||
+			!document.GetPostProcessSettings().waterRefractionEnabled
+		) {
+			return false;
+		}
+
+		const Vector3 cameraPosition = camera->GetTranslate();
+		for (const SceneEntity& entity : document.GetEntities()) {
+			if (!IsEntityActiveInHierarchy(document, entity)) {
+				continue;
+			}
+
+			const SceneComponent* waterVolume =
+				FindEnabledComponent(entity, "WaterVolume");
+			if (!waterVolume) {
+				continue;
+			}
+
+			const Transform transform = ResolveScene3DTransform(document, entity);
+			const Vector3 center{
+				transform.translate.x + waterVolume->waterOffset.x,
+				transform.translate.y + waterVolume->waterOffset.y,
+				transform.translate.z + waterVolume->waterOffset.z
+			};
+			const Vector3 halfSize{
+				(std::max)(waterVolume->waterHalfSize.x, 0.001f),
+				(std::max)(waterVolume->waterHalfSize.y, 0.001f),
+				(std::max)(waterVolume->waterHalfSize.z, 0.001f)
+			};
+			if (
+				std::abs(cameraPosition.x - center.x) <= halfSize.x &&
+				std::abs(cameraPosition.y - center.y) <= halfSize.y &&
+				std::abs(cameraPosition.z - center.z) <= halfSize.z
+			) {
+				return false;
+			}
+
+			filter.cameraPosition = cameraPosition;
+			filter.waterCenter = center;
+			filter.waterHalfSize = halfSize;
+			return true;
+		}
+
+		return false;
+	}
+
+	struct AgentBounds {
+		bool valid = false;
+		Vector3 center{};
+		Vector3 halfSize{};
+	};
+
+	struct AgentAttractorTarget {
+		bool valid = false;
+		Vector3 position{};
+		float radius = 0.0f;
+		float strength = 0.0f;
+	};
+
+	float Hash01(uint64_t id, uint32_t salt) {
+		uint64_t value = id + 0x9E3779B97F4A7C15ull + salt;
+		value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ull;
+		value = (value ^ (value >> 27)) * 0x94D049BB133111EBull;
+		value = value ^ (value >> 31);
+		return static_cast<float>(value & 0x00FFFFFFu) /
+			static_cast<float>(0x00FFFFFFu);
+	}
+
+	Vector3 AddScaled(Vector3 base, const Vector3& value, float scale) {
+		base.x += value.x * scale;
+		base.y += value.y * scale;
+		base.z += value.z * scale;
+		return base;
+	}
+
+	Vector3 LerpVector(const Vector3& a, const Vector3& b, float t) {
+		return {
+			a.x + (b.x - a.x) * t,
+			a.y + (b.y - a.y) * t,
+			a.z + (b.z - a.z) * t
+		};
+	}
+
+	Vector3 SafeNormalize(const Vector3& value, const Vector3& fallback) {
+		return Math::Length(value) > 0.000001f
+			? Math::Normalize(value)
+			: fallback;
+	}
+
+	bool TryResolveWaterBounds(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& waterVolume,
+		AgentBounds& bounds
+	) {
+		const Transform transform = ResolveScene3DTransform(document, entity);
+		bounds.center = {
+			transform.translate.x + waterVolume.waterOffset.x,
+			transform.translate.y + waterVolume.waterOffset.y,
+			transform.translate.z + waterVolume.waterOffset.z
+		};
+		bounds.halfSize = {
+			(std::max)(waterVolume.waterHalfSize.x, 0.1f),
+			(std::max)(waterVolume.waterHalfSize.y, 0.1f),
+			(std::max)(waterVolume.waterHalfSize.z, 0.1f)
+		};
+		bounds.valid = true;
+		return true;
+	}
+
+	bool TryResolveAgentBounds(
+		const SceneDocument& document,
+		const SceneComponent& behavior,
+		const Vector3& position,
+		AgentBounds& bounds
+	) {
+		const SceneEntity* boundsEntity = nullptr;
+		if (behavior.agentBoundsEntityId != 0) {
+			boundsEntity = document.FindEntity(behavior.agentBoundsEntityId);
+		}
+		if (!boundsEntity && !behavior.agentBoundsName.empty()) {
+			boundsEntity = document.FindEntityByName(behavior.agentBoundsName);
+		}
+		if (boundsEntity && IsEntityActiveInHierarchy(document, *boundsEntity)) {
+			if (const SceneComponent* waterVolume =
+				FindEnabledComponent(*boundsEntity, "WaterVolume")) {
+				return TryResolveWaterBounds(
+					document,
+					*boundsEntity,
+					*waterVolume,
+					bounds
+				);
+			}
+			const Transform transform =
+				ResolveScene3DTransform(document, *boundsEntity);
+			bounds.center = transform.translate;
+			bounds.halfSize = {
+				(std::max)(std::abs(transform.scale.x), 0.1f),
+				(std::max)(std::abs(transform.scale.y), 0.1f),
+				(std::max)(std::abs(transform.scale.z), 0.1f)
+			};
+			bounds.valid = true;
+			return true;
+		}
+		if (!behavior.agentUseWaterBounds) {
+			return false;
+		}
+
+		const SceneEntity* fallback = nullptr;
+		const SceneComponent* fallbackWater = nullptr;
+		for (const SceneEntity& entity : document.GetEntities()) {
+			if (!IsEntityActiveInHierarchy(document, entity)) {
+				continue;
+			}
+			const SceneComponent* waterVolume =
+				FindEnabledComponent(entity, "WaterVolume");
+			if (!waterVolume) {
+				continue;
+			}
+			if (IsPointInsideWaterVolume(
+				document,
+				entity,
+				*waterVolume,
+				position
+			)) {
+				return TryResolveWaterBounds(
+					document,
+					entity,
+					*waterVolume,
+					bounds
+				);
+			}
+			if (!fallback) {
+				fallback = &entity;
+				fallbackWater = waterVolume;
+			}
+		}
+		return fallback && fallbackWater
+			? TryResolveWaterBounds(document, *fallback, *fallbackWater, bounds)
+			: false;
+	}
+
+	bool AttractorMatchesAgent(
+		const SceneComponent& attractor,
+		const SceneComponent& behavior
+	) {
+		if (
+			!attractor.attractorTargetBehaviorName.empty() &&
+			attractor.attractorTargetBehaviorName != behavior.agentBehaviorName
+		) {
+			return false;
+		}
+		if (
+			!attractor.attractorTargetProfileName.empty() &&
+			attractor.attractorTargetProfileName != behavior.agentProfileName
+		) {
+			return false;
+		}
+		return true;
+	}
+
+	bool TryResolveAgentAttractor(
+		const SceneDocument& document,
+		const SceneComponent& behavior,
+		AgentAttractorTarget& target
+	) {
+		const SceneEntity* attractorEntity = nullptr;
+		const SceneComponent* attractor = nullptr;
+		if (behavior.agentAttractorEntityId != 0) {
+			attractorEntity = document.FindEntity(behavior.agentAttractorEntityId);
+			attractor = attractorEntity
+				? FindEnabledComponent(*attractorEntity, "AgentAttractor")
+				: nullptr;
+		}
+		if (!attractorEntity && !behavior.agentAttractorTag.empty()) {
+			for (const SceneEntity& entity : document.GetEntities()) {
+				if (!IsEntityActiveInHierarchy(document, entity)) {
+					continue;
+				}
+				const SceneComponent* candidate =
+					FindEnabledComponent(entity, "AgentAttractor");
+				if (
+					!candidate ||
+					candidate->attractorTag != behavior.agentAttractorTag ||
+					!AttractorMatchesAgent(*candidate, behavior)
+				) {
+					continue;
+				}
+				attractorEntity = &entity;
+				attractor = candidate;
+				break;
+			}
+		}
+		if (
+			!attractorEntity ||
+			!attractor ||
+			!IsEntityActiveInHierarchy(document, *attractorEntity)
+		) {
+			return false;
+		}
+		const Transform transform =
+			ResolveScene3DTransform(document, *attractorEntity);
+		target.valid = true;
+		target.position = transform.translate;
+		target.radius = (std::max)(attractor->attractorRadius, 0.0f);
+		target.strength = (std::max)(attractor->attractorStrength, 0.0f);
+		return true;
+	}
+
+	Vector3 ComputeBoundsSteering(
+		const Vector3& position,
+		const AgentBounds& bounds
+	) {
+		if (!bounds.valid) {
+			return {};
+		}
+		Vector3 steer{};
+		const Vector3 min = {
+			bounds.center.x - bounds.halfSize.x,
+			bounds.center.y - bounds.halfSize.y,
+			bounds.center.z - bounds.halfSize.z
+		};
+		const Vector3 max = {
+			bounds.center.x + bounds.halfSize.x,
+			bounds.center.y + bounds.halfSize.y,
+			bounds.center.z + bounds.halfSize.z
+		};
+		const Vector3 margin = {
+			(std::max)(bounds.halfSize.x * 0.18f, 1.0f),
+			(std::max)(bounds.halfSize.y * 0.25f, 0.8f),
+			(std::max)(bounds.halfSize.z * 0.18f, 1.0f)
+		};
+		if (position.x < min.x + margin.x) {
+			steer.x += (min.x + margin.x - position.x) / margin.x;
+		} else if (position.x > max.x - margin.x) {
+			steer.x -= (position.x - (max.x - margin.x)) / margin.x;
+		}
+		if (position.y < min.y + margin.y) {
+			steer.y += (min.y + margin.y - position.y) / margin.y;
+		} else if (position.y > max.y - margin.y) {
+			steer.y -= (position.y - (max.y - margin.y)) / margin.y;
+		}
+		if (position.z < min.z + margin.z) {
+			steer.z += (min.z + margin.z - position.z) / margin.z;
+		} else if (position.z > max.z - margin.z) {
+			steer.z -= (position.z - (max.z - margin.z)) / margin.z;
+		}
+		return steer;
+	}
+
+	Vector3 ClampToBounds(const Vector3& position, const AgentBounds& bounds) {
+		if (!bounds.valid) {
+			return position;
+		}
+		return {
+			std::clamp(
+				position.x,
+				bounds.center.x - bounds.halfSize.x,
+				bounds.center.x + bounds.halfSize.x
+			),
+			std::clamp(
+				position.y,
+				bounds.center.y - bounds.halfSize.y,
+				bounds.center.y + bounds.halfSize.y
+			),
+			std::clamp(
+				position.z,
+				bounds.center.z - bounds.halfSize.z,
+				bounds.center.z + bounds.halfSize.z
+			)
+		};
+	}
+
 	Vector3 TransformCoord(const Vector3& value, const Matrix4x4& matrix) {
 		const float x =
 			value.x * matrix.m[0][0] +
@@ -665,6 +985,26 @@ void GamePlayScene::SyncSceneModelObjects() {
 			found->second.object->SetEmissive(
 				0.18f,
 				{ 0.30f, 0.78f, 1.0f, 1.0f }
+			);
+		} else if (const SceneComponent* agentBehavior =
+			FindEnabledComponent(entity, "AgentBehavior")) {
+			found->second.object->SetColor(agentBehavior->agentVisualColor);
+			found->second.object->SetEnableLighting(
+				agentBehavior->agentEnableLighting
+			);
+			found->second.object->SetEnvironmentCoefficient(0.05f);
+			found->second.object->SetEmissive(
+				agentBehavior->agentEnableLighting ? 0.0f : 0.12f,
+				agentBehavior->agentVisualColor
+			);
+		} else if (const SceneComponent* agentAttractor =
+			FindEnabledComponent(entity, "AgentAttractor")) {
+			found->second.object->SetColor(agentAttractor->attractorVisualColor);
+			found->second.object->SetEnableLighting(true);
+			found->second.object->SetEnvironmentCoefficient(0.08f);
+			found->second.object->SetEmissive(
+				0.05f,
+				agentAttractor->attractorVisualColor
 			);
 		} else if (HasComponent(entity, "MonitorRenderer")) {
 			found->second.object->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
@@ -1120,6 +1460,292 @@ void GamePlayScene::ApplyWaterVolumes(const SceneDocument& document) {
 		body.maxFallSpeed =
 			(std::max)(waterVolume->waterMaxFallSpeed, 0.0f);
 		return;
+	}
+}
+
+void GamePlayScene::UpdateAgentBehaviors(
+	SceneDocument& document,
+	float deltaTime
+) {
+	struct AgentUpdateEntry {
+		SceneEntity* entity = nullptr;
+		const SceneComponent* behavior = nullptr;
+		Object3d* object = nullptr;
+		AgentRuntime* runtime = nullptr;
+		Transform transform{};
+	};
+
+	const float dt = std::clamp(deltaTime, 0.0f, 0.1f);
+	if (dt <= 0.0f) {
+		return;
+	}
+
+	std::vector<AgentUpdateEntry> agents;
+	std::unordered_set<uint64_t> requiredIds;
+	for (SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			continue;
+		}
+		const SceneComponent* behavior =
+			FindEnabledComponent(entity, "AgentBehavior");
+		if (!behavior) {
+			continue;
+		}
+		const auto objectIt = sceneModelObjects_.find(entity.id);
+		if (
+			objectIt == sceneModelObjects_.end() ||
+			!objectIt->second.object
+		) {
+			continue;
+		}
+
+		AgentRuntime& runtime = agentRuntimes_[entity.id];
+		if (!runtime.initialized) {
+			const float yaw =
+				entity.transform.rotate.y +
+				Hash01(entity.id, 17u) * 6.28318530718f;
+			const float speed =
+				behavior->agentMinSpeed +
+				(behavior->agentMaxSpeed - behavior->agentMinSpeed) *
+				Hash01(entity.id, 29u);
+			runtime.velocity = {
+				std::sin(yaw) * speed,
+				(Hash01(entity.id, 43u) - 0.5f) * speed * 0.25f,
+				std::cos(yaw) * speed
+			};
+			runtime.phase = Hash01(entity.id, 59u) * 6.28318530718f;
+			runtime.initialized = true;
+		}
+
+		requiredIds.insert(entity.id);
+		agents.push_back({
+			&entity,
+			behavior,
+			objectIt->second.object,
+			&runtime,
+			objectIt->second.object->GetTransform()
+		});
+	}
+
+	for (auto iterator = agentRuntimes_.begin();
+		iterator != agentRuntimes_.end();) {
+		if (!requiredIds.contains(iterator->first)) {
+			iterator = agentRuntimes_.erase(iterator);
+		} else {
+			++iterator;
+		}
+	}
+
+	for (AgentUpdateEntry& agent : agents) {
+		const SceneComponent& behavior = *agent.behavior;
+		AgentRuntime& runtime = *agent.runtime;
+		Transform transform = agent.transform;
+		Vector3 position = transform.translate;
+
+		const Vector3 velocityDirection = SafeNormalize(
+			runtime.velocity,
+			{ 0.0f, 0.0f, 1.0f }
+		);
+		Vector3 desired = AddScaled({}, velocityDirection, 0.65f);
+
+		runtime.phase += dt * (
+			0.7f +
+			Hash01(agent.entity->id, 71u) * 0.8f
+		);
+		const Vector3 wander = SafeNormalize(
+			{
+				std::sin(runtime.phase * 1.37f + Hash01(agent.entity->id, 3u) * 8.0f),
+				std::sin(runtime.phase * 0.83f + Hash01(agent.entity->id, 5u) * 9.0f) * 0.45f,
+				std::cos(runtime.phase * 1.11f + Hash01(agent.entity->id, 7u) * 7.0f)
+			},
+			velocityDirection
+		);
+		desired = AddScaled(
+			desired,
+			wander,
+			behavior.agentWanderStrength
+		);
+
+		AgentBounds bounds{};
+		if (TryResolveAgentBounds(document, behavior, position, bounds)) {
+			desired = AddScaled(
+				desired,
+				ComputeBoundsSteering(position, bounds),
+				behavior.agentBoundsWeight
+			);
+		}
+
+		AgentAttractorTarget attractor{};
+		const bool hasAttractor =
+			behavior.agentAttractorWeight > 0.0f &&
+			TryResolveAgentAttractor(document, behavior, attractor);
+		float attractorSpeedScale = 1.0f;
+		if (hasAttractor) {
+			const Vector3 toAttractor =
+				Math::Subtract(attractor.position, position);
+			const float distance = Math::Length(toAttractor);
+			const Vector3 toAttractorDirection =
+				SafeNormalize(toAttractor, velocityDirection);
+			const float radius = (std::max)(attractor.radius, 0.001f);
+			const float strength =
+				behavior.agentAttractorWeight * attractor.strength;
+			if (distance > radius * 0.45f) {
+				const float ratio = std::clamp(distance / radius, 0.0f, 2.0f);
+				desired = AddScaled(
+					desired,
+					toAttractorDirection,
+					strength * ratio
+				);
+			} else {
+				const Vector3 tangent = SafeNormalize(
+					{
+						-toAttractorDirection.z,
+						std::sin(runtime.phase) * 0.18f,
+						toAttractorDirection.x
+					},
+					velocityDirection
+				);
+				desired = AddScaled(desired, tangent, strength);
+				desired = AddScaled(
+					desired,
+					toAttractorDirection,
+					strength * 0.25f
+				);
+			}
+			if (distance < radius) {
+				attractorSpeedScale = 0.7f;
+			}
+		}
+
+		if (behavior.agentSchooling) {
+			Vector3 separation{};
+			Vector3 alignment{};
+			Vector3 cohesion{};
+			uint32_t alignmentCount = 0;
+			uint32_t cohesionCount = 0;
+
+			for (const AgentUpdateEntry& other : agents) {
+				if (
+					other.entity == agent.entity ||
+					!other.behavior ||
+					other.behavior->agentGroupName != behavior.agentGroupName ||
+					other.behavior->agentBehaviorName != behavior.agentBehaviorName
+				) {
+					continue;
+				}
+
+				const Vector3 offset =
+					Math::Subtract(position, other.transform.translate);
+				const float distance = Math::Length(offset);
+				if (distance <= 0.0001f) {
+					continue;
+				}
+				if (distance < behavior.agentSeparationRadius) {
+					const float ratio = 1.0f -
+						distance / (std::max)(
+							behavior.agentSeparationRadius,
+							0.0001f
+						);
+					separation = AddScaled(
+						separation,
+						Math::Normalize(offset),
+						ratio
+					);
+				}
+				if (distance < behavior.agentAlignmentRadius) {
+					alignment = Math::Add(
+						alignment,
+						other.runtime->velocity
+					);
+					++alignmentCount;
+				}
+				if (distance < behavior.agentCohesionRadius) {
+					cohesion = Math::Add(
+						cohesion,
+						other.transform.translate
+					);
+					++cohesionCount;
+				}
+			}
+
+			if (Math::Length(separation) > 0.0001f) {
+				desired = AddScaled(
+					desired,
+					Math::Normalize(separation),
+					behavior.agentSeparationWeight
+				);
+			}
+			if (alignmentCount > 0) {
+				alignment = Math::Multiply(
+					alignment,
+					1.0f / static_cast<float>(alignmentCount)
+				);
+				desired = AddScaled(
+					desired,
+					SafeNormalize(alignment, velocityDirection),
+					behavior.agentAlignmentWeight
+				);
+			}
+			if (cohesionCount > 0) {
+				cohesion = Math::Multiply(
+					cohesion,
+					1.0f / static_cast<float>(cohesionCount)
+				);
+				desired = AddScaled(
+					desired,
+					SafeNormalize(
+						Math::Subtract(cohesion, position),
+						velocityDirection
+					),
+					behavior.agentCohesionWeight
+				);
+			}
+		}
+
+		const Vector3 desiredDirection =
+			SafeNormalize(desired, velocityDirection);
+		const float speed =
+			(
+				behavior.agentMinSpeed +
+				(behavior.agentMaxSpeed - behavior.agentMinSpeed) *
+				Hash01(agent.entity->id, 97u)
+			) *
+			attractorSpeedScale;
+		const Vector3 targetVelocity =
+			Math::Multiply(desiredDirection, speed);
+		const float turnLerp =
+			std::clamp(behavior.agentTurnSpeed * dt, 0.0f, 1.0f);
+		runtime.velocity = LerpVector(
+			runtime.velocity,
+			targetVelocity,
+			turnLerp
+		);
+
+		position = Math::Add(position, Math::Multiply(runtime.velocity, dt));
+		if (bounds.valid) {
+			position = ClampToBounds(position, bounds);
+		}
+		transform.translate = position;
+
+		const float horizontalLength = std::sqrt(
+			runtime.velocity.x * runtime.velocity.x +
+			runtime.velocity.z * runtime.velocity.z
+		);
+		if (horizontalLength > 0.0001f) {
+			transform.rotate.y = std::atan2(
+				runtime.velocity.x,
+				runtime.velocity.z
+			);
+			transform.rotate.x = -std::atan2(
+				runtime.velocity.y,
+				horizontalLength
+			);
+		}
+
+		agent.object->GetTransform() = transform;
+		agent.object->Update();
+		agent.entity->transform = transform;
+		agent.transform = transform;
 	}
 }
 
@@ -2117,13 +2743,11 @@ void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 		axis->Draw();
 	}
 	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
-		const bool hideWaterVolumeMeshes =
-			document->GetPostProcessSettings().waterRefractionEnabled;
 		for (const SceneEntity& entity : document->GetEntities()) {
 			if (
 				entity.id == skipEntityId ||
 				!IsEntityActiveInHierarchy(*document, entity) ||
-				(hideWaterVolumeMeshes && HasComponent(entity, "WaterVolume"))
+				HasComponent(entity, "WaterVolume")
 			) {
 				continue;
 			}
@@ -2138,14 +2762,59 @@ void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 			stageObject.object->Draw();
 		}
 	}
+	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument();
+		!deferForegroundEffects_ && document) {
+		DrawWaterSurfaces(*document, viewCamera, skipEntityId);
+	}
 
 	if (lightningRenderer_) {
 		lightningRenderer_->Draw(viewCamera);
 	}
 
+	if (deferForegroundEffects_) {
+		DrawRefractedEffectsForCamera(viewCamera, skipEntityId);
+	} else {
+		DrawForegroundEffectsForCamera(viewCamera, skipEntityId);
+	}
+}
+
+void GamePlayScene::DrawForegroundEffectsForCamera(
+	Camera* viewCamera,
+	uint64_t skipEntityId
+) {
+	if (!viewCamera) {
+		return;
+	}
+
+	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument();
+		deferForegroundEffects_ && document) {
+		DrawWaterSurfaces(*document, viewCamera, skipEntityId);
+	}
+
 	ParticleManager* particleManager = ParticleManager::GetInstance();
-	particleManager->RefreshCpuParticleInstancesForCamera(viewCamera);
-	particleManager->Draw();
+	ParticleManager::WaterDrawFilter filter{};
+	SceneDocument* particleDocument = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (
+		deferForegroundEffects_ &&
+		particleDocument &&
+		TryBuildWaterParticleDrawFilter(
+			*particleDocument,
+			viewCamera,
+			filter
+		)
+	) {
+		filter.mode = ParticleManager::WaterDrawMode::kForeground;
+		particleManager->RefreshCpuParticleInstancesForCamera(
+			viewCamera,
+			filter
+		);
+		particleManager->Draw(false);
+	} else {
+		particleManager->RefreshCpuParticleInstancesForCamera(viewCamera);
+		particleManager->Draw();
+	}
 
 	SceneDocument* spriteDocument = sceneManager_->GetActiveSceneDocument();
 	if (!sceneSpriteObjects_.empty() && spriteDocument) {
@@ -2161,6 +2830,94 @@ void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 				found->second.sprite->Draw();
 			}
 		}
+	}
+}
+
+void GamePlayScene::DrawRefractedEffectsForCamera(
+	Camera* viewCamera,
+	uint64_t skipEntityId
+) {
+	(void)skipEntityId;
+	if (!viewCamera) {
+		return;
+	}
+
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (!document) {
+		return;
+	}
+
+	ParticleManager::WaterDrawFilter filter{};
+	if (!TryBuildWaterParticleDrawFilter(*document, viewCamera, filter)) {
+		return;
+	}
+
+	filter.mode = ParticleManager::WaterDrawMode::kRefracted;
+	ParticleManager* particleManager = ParticleManager::GetInstance();
+	particleManager->RefreshCpuParticleInstancesForCamera(
+		viewCamera,
+		filter
+	);
+	particleManager->Draw(true);
+}
+
+void GamePlayScene::DrawWaterSurfaces(
+	const SceneDocument& document,
+	Camera* viewCamera,
+	uint64_t skipEntityId
+) {
+	if (
+		!waterSurfaceRenderer_ ||
+		!viewCamera
+	) {
+		return;
+	}
+
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (
+			entity.id == skipEntityId ||
+			!IsEntityActiveInHierarchy(document, entity)
+		) {
+			continue;
+		}
+
+		const SceneComponent* waterVolume =
+			FindEnabledComponent(entity, "WaterVolume");
+		if (!waterVolume) {
+			continue;
+		}
+
+		const Transform transform = ResolveScene3DTransform(document, entity);
+		const Vector3 center{
+			transform.translate.x + waterVolume->waterOffset.x,
+			transform.translate.y + waterVolume->waterOffset.y,
+			transform.translate.z + waterVolume->waterOffset.z
+		};
+		const Vector3 halfSize{
+			(std::max)(waterVolume->waterHalfSize.x, 0.05f),
+			(std::max)(waterVolume->waterHalfSize.y, 0.05f),
+			(std::max)(waterVolume->waterHalfSize.z, 0.05f)
+		};
+
+		WaterSurfaceRenderer::Settings surfaceSettings{};
+		surfaceSettings.enabled = waterVolume->waterSurfaceEnabled;
+		surfaceSettings.baseColor = waterVolume->waterSurfaceBaseColor;
+		surfaceSettings.highlightColor =
+			waterVolume->waterSurfaceHighlightColor;
+		surfaceSettings.alpha = waterVolume->waterSurfaceAlpha;
+		surfaceSettings.waveScale = waterVolume->waterSurfaceWaveScale;
+		surfaceSettings.normalStrength =
+			waterVolume->waterSurfaceNormalStrength;
+		surfaceSettings.fresnelPower = waterVolume->waterSurfaceFresnelPower;
+
+		waterSurfaceRenderer_->Draw(
+			viewCamera,
+			center,
+			halfSize,
+			surfaceSettings
+		);
 	}
 }
 
@@ -2340,6 +3097,11 @@ void GamePlayScene::Initialize()
 	lightningRenderer_ = std::make_unique<LightningRenderer>();
 	lightningRenderer_->Initialize(Object3dCommon::GetInstance()->GetDxCommon());
 
+	waterSurfaceRenderer_ = std::make_unique<WaterSurfaceRenderer>();
+	waterSurfaceRenderer_->Initialize(
+		Object3dCommon::GetInstance()->GetDxCommon()
+	);
+
 	//soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
 }
 
@@ -2412,6 +3174,9 @@ void GamePlayScene::Update()
 			lightningRenderer_->Trigger(settings);
 		}
 		lightningRenderer_->Update(1.0f / 60.0f);
+	}
+	if (waterSurfaceRenderer_) {
+		waterSurfaceRenderer_->Update(1.0f / 60.0f);
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
@@ -2600,6 +3365,9 @@ void GamePlayScene::Update()
 		ApplyPlayerBehaviorComponent(*activeDocument);
 		ApplyPlayerPhysicsComponent(*activeDocument);
 		ApplyWaterVolumes(*activeDocument);
+		if (!editorSession || !editorSession->IsEditing()) {
+			UpdateAgentBehaviors(*activeDocument, 1.0f / 60.0f);
+		}
 	}
 	if (
 		editorSession &&
@@ -2834,6 +3602,13 @@ void GamePlayScene::Draw()
 {
 	Camera* viewCamera = GetSceneViewCamera();
 	DrawSceneView(viewCamera);
+}
+
+void GamePlayScene::DrawForegroundEffects()
+{
+	Camera* viewCamera = GetSceneViewCamera();
+	ApplyRenderCamera(viewCamera);
+	DrawForegroundEffectsForCamera(viewCamera);
 }
 
 void GamePlayScene::DrawOffscreenViews()
@@ -3081,6 +3856,10 @@ void GamePlayScene::Finalize()
 	if (lightningRenderer_) {
 		lightningRenderer_->Finalize();
 		lightningRenderer_.reset();
+	}
+	if (waterSurfaceRenderer_) {
+		waterSurfaceRenderer_->Finalize();
+		waterSurfaceRenderer_.reset();
 	}
 
 	delete camera_;

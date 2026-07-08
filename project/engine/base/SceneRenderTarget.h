@@ -32,6 +32,7 @@ public:
 	);
 	void Resize(uint32_t width, uint32_t height);
 	void Begin();
+	void Begin(bool clearColor, bool clearDepth);
 	void End();
 
 	uint32_t GetWidth() const { return width_; }

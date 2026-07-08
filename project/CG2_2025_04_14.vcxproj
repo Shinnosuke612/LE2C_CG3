@@ -153,6 +153,7 @@
     <ClCompile Include="engine\physics\PhysicsWorld.cpp" />
     <ClCompile Include="engine\debug\DebugRenderer.cpp" />
     <ClCompile Include="engine\effect\LightningRenderer.cpp" />
+    <ClCompile Include="engine\effect\WaterSurfaceRenderer.cpp" />
     <ClCompile Include="application\camera\ThirdPersonCameraController.cpp" />
     <ClCompile Include="application\player\Player.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectEditor.cpp" />
@@ -289,6 +290,7 @@
     <ClInclude Include="engine\physics\PhysicsWorld.h" />
     <ClInclude Include="engine\debug\DebugRenderer.h" />
     <ClInclude Include="engine\effect\LightningRenderer.h" />
+    <ClInclude Include="engine\effect\WaterSurfaceRenderer.h" />
     <ClInclude Include="application\camera\ThirdPersonCameraController.h" />
     <ClInclude Include="application\player\Player.h" />
     <ClInclude Include="engine\particle\ParticleEffectEditor.h" />
@@ -380,6 +382,8 @@
     <None Include="resources\shaders\Skinning.CS.hlsl" />
     <None Include="resources\shaders\Underwater.PS.hlsl" />
     <None Include="resources\shaders\WaterRefraction.PS.hlsl" />
+    <None Include="resources\shaders\WaterSurface.PS.hlsl" />
+    <None Include="resources\shaders\WaterSurface.VS.hlsl" />
     <None Include="resources\shaders\Vignette.PS.hlsl" />
     <None Include="resources\shaders\Object3D.hlsli">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
