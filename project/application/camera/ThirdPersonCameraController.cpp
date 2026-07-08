@@ -13,7 +13,7 @@
 void ThirdPersonCameraController::Initialize(Camera* camera) {
 	camera_ = camera;
 	focusInitialized_ = false;
-	isAimMode_ = false;
+	isFirstPersonMode_ = false;
 	distance_ = normalDistance_;
 	targetDistance_ = normalDistance_;
 	if (camera_) {
@@ -93,7 +93,7 @@ void ThirdPersonCameraController::Update(
 	}
 
 	Input* input = Input::GetInstance();
-	isAimMode_ =
+	isFirstPersonMode_ =
 		acceptMouseInput &&
 		input &&
 		input->PushMouse(Input::MouseButton::Right);
@@ -107,7 +107,7 @@ void ThirdPersonCameraController::Update(
 				(invertPitch_ ? 1.0f : -1.0f);
 			pitch_ = std::clamp(pitch_, minPitch_, maxPitch_);
 
-			if (!isAimMode_) {
+			if (!isFirstPersonMode_) {
 				const float wheel = input->GetMouseWheel();
 				if (std::abs(wheel) > 0.000001f) {
 					targetDistance_ = std::clamp(
@@ -123,8 +123,20 @@ void ThirdPersonCameraController::Update(
 
 	const Vector3 desiredFocus = Math::Add(
 		targetPosition,
-		isAimMode_ ? aimTargetOffset_ : targetOffset_
+		isFirstPersonMode_ ? aimTargetOffset_ : targetOffset_
 	);
+	if (isFirstPersonMode_) {
+		currentFocus_ = desiredFocus;
+		focusInitialized_ = true;
+		const Vector3 forward = GetForwardDirection();
+		const Vector3 cameraPosition = currentFocus_;
+		camera_->SetLookAt(
+			cameraPosition,
+			Math::Add(cameraPosition, forward)
+		);
+		return;
+	}
+
 	if (!focusInitialized_) {
 		currentFocus_ = desiredFocus;
 		focusInitialized_ = true;
@@ -138,7 +150,7 @@ void ThirdPersonCameraController::Update(
 		);
 	}
 
-	const float desiredDistance = isAimMode_ ? aimDistance_ : targetDistance_;
+	const float desiredDistance = targetDistance_;
 	distance_ += (desiredDistance - distance_) *
 		std::clamp(distanceEase_, 0.0f, 1.0f);
 	distance_ = std::clamp(distance_, minDistance_, maxDistance_);

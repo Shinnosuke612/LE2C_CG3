@@ -6,23 +6,13 @@
 #include "../../engine/io/Input.h"
 #include "../../engine/math/Math.h"
 #include "../../engine/math/Matrix4x4.h"
+#include "../../engine/math/Quaternion.h"
 
 #include <algorithm>
 #include <cmath>
 
 namespace {
-	constexpr float kPi = 3.14159265358979323846f;
-	constexpr float kTwoPi = kPi * 2.0f;
-
-	float NormalizeAngle(float angle) {
-		while (angle > kPi) {
-			angle -= kTwoPi;
-		}
-		while (angle < -kPi) {
-			angle += kTwoPi;
-		}
-		return angle;
-	}
+	constexpr float kMaxWaterPitch = 1.15f;
 
 	Vector3 FlattenAndNormalize(Vector3 value) {
 		value.y = 0.0f;
@@ -30,6 +20,10 @@ namespace {
 			return { 0.0f, 0.0f, 0.0f };
 		}
 		return Math::Normalize(value);
+	}
+
+	float RotationFollowAmount(float responsiveness) {
+		return Math::EaseOutCubic(std::clamp(responsiveness, 0.0f, 1.0f));
 	}
 }
 
@@ -81,6 +75,9 @@ void Player::Update(
 	if (!object_) {
 		return;
 	}
+	if (!rotationInitialized_) {
+		SyncRotationStateFromObject();
+	}
 	Vector3 inputMove{};
 	Input* input = Input::GetInstance();
 
@@ -101,49 +98,99 @@ void Player::Update(
 	desiredVelocity.x = 0.0f;
 	desiredVelocity.z = 0.0f;
 
-	if (Math::Length(inputMove) > 0.000001f) {
-		Vector3 forward = { 0.0f, 0.0f, 1.0f };
-		Vector3 right = { 1.0f, 0.0f, 0.0f };
-		if (cameraRelativeMove_ && camera) {
-			const Matrix4x4& cameraWorld = camera->GetWorldMatrix();
-			right = FlattenAndNormalize({
-				cameraWorld.m[0][0],
-				cameraWorld.m[0][1],
-				cameraWorld.m[0][2]
-			});
-			forward = FlattenAndNormalize({
-				cameraWorld.m[2][0],
-				cameraWorld.m[2][1],
-				cameraWorld.m[2][2]
-			});
-			if (Math::Length(right) < 0.000001f) {
-				right = { 1.0f, 0.0f, 0.0f };
-			}
-			if (Math::Length(forward) < 0.000001f) {
-				forward = { 0.0f, 0.0f, 1.0f };
-			}
-		}
+	Vector3 cameraForward = { 0.0f, 0.0f, 1.0f };
+	Vector3 cameraRight = { 1.0f, 0.0f, 0.0f };
+	if (cameraRelativeMove_ && camera) {
+		const Matrix4x4& cameraWorld = camera->GetWorldMatrix();
+		cameraRight = {
+			cameraWorld.m[0][0],
+			cameraWorld.m[0][1],
+			cameraWorld.m[0][2]
+		};
+		cameraForward = {
+			cameraWorld.m[2][0],
+			cameraWorld.m[2][1],
+			cameraWorld.m[2][2]
+		};
+	}
 
+	Vector3 movementRight = cameraRight;
+	Vector3 movementForward = cameraForward;
+	if (!inWater_) {
+		movementRight = FlattenAndNormalize(movementRight);
+		movementForward = FlattenAndNormalize(movementForward);
+	} else {
+		movementRight.y = 0.0f;
+		movementRight = Math::Length(movementRight) > 0.000001f
+			? Math::Normalize(movementRight)
+			: Vector3{ 1.0f, 0.0f, 0.0f };
+		movementForward = Math::Length(movementForward) > 0.000001f
+			? Math::Normalize(movementForward)
+			: Vector3{ 0.0f, 0.0f, 1.0f };
+	}
+	if (Math::Length(movementRight) < 0.000001f) {
+		movementRight = { 1.0f, 0.0f, 0.0f };
+	}
+	if (Math::Length(movementForward) < 0.000001f) {
+		movementForward = { 0.0f, 0.0f, 1.0f };
+	}
+
+	const bool dash =
+		input->PushKey(DIK_LSHIFT) || input->PushKey(DIK_RSHIFT);
+	const float speedMultiplier = dash ? dashMultiplier_ : 1.0f;
+
+	if (Math::Length(inputMove) > 0.000001f) {
 		Vector3 move = Math::Add(
-			Math::Multiply(right, inputMove.x),
-			Math::Multiply(forward, inputMove.z)
+			Math::Multiply(movementRight, inputMove.x),
+			Math::Multiply(movementForward, inputMove.z)
 		);
 		const float activeMoveSpeed =
-			moveSpeed_ * (inWater_ ? waterMoveSpeedMultiplier_ : 1.0f);
+			moveSpeed_ *
+			speedMultiplier *
+			(inWater_ ? waterMoveSpeedMultiplier_ : 1.0f);
 		move = Math::Multiply(Math::Normalize(move), activeMoveSpeed);
 		desiredVelocity.x = move.x;
 		desiredVelocity.z = move.z;
+		if (inWater_) {
+			desiredVelocity.y = move.y;
+		}
+	}
 
-		// S入力を含む後退移動中は、向きを変えない
-		const bool isMovingBackward = inputMove.z < 0.0f;
-
-		if (!isMovingBackward && (move.x != 0.0f || move.z != 0.0f)) {
-			const float targetYaw = std::atan2(move.x, move.z);
-			const float currentYaw = object_->GetRotate().y;
-			const float yawDelta = NormalizeAngle(targetYaw - currentYaw);
-			const float nextYaw = currentYaw + yawDelta *
-				std::clamp(turnResponsiveness_, 0.0f, 1.0f);
-			object_->SetRotate({ 0.0f, nextYaw, 0.0f });
+	if (cameraRelativeMove_ && camera) {
+		Vector3 facing = cameraForward;
+		if (!inWater_) {
+			facing = FlattenAndNormalize(facing);
+		} else if (Math::Length(facing) > 0.000001f) {
+			facing = Math::Normalize(facing);
+		}
+		if (Math::Length(facing) > 0.000001f) {
+			const float horizontalLength = std::sqrt(
+				facing.x * facing.x + facing.z * facing.z
+			);
+			const float targetYaw = horizontalLength > 0.000001f
+				? std::atan2(facing.x, facing.z)
+				: currentYaw_;
+			const float targetPitch = inWater_
+				? std::clamp(
+					-std::atan2(
+						facing.y,
+						(std::max)(horizontalLength, 0.000001f)
+					),
+					-kMaxWaterPitch,
+					kMaxWaterPitch
+				)
+				: 0.0f;
+			const float yawT = RotationFollowAmount(turnResponsiveness_);
+			const float pitchT = inWater_
+				? yawT
+				: Math::SmoothStep(yawT);
+			const Quaternion targetRotation =
+				MakeLookRotationQuaternion(facing, { 0.0f, 1.0f, 0.0f });
+			currentYaw_ = Math::LerpAngle(currentYaw_, targetYaw, yawT);
+			currentPitch_ = Math::Lerp(currentPitch_, targetPitch, pitchT);
+			currentRotation_ = Slerp(currentRotation_, targetRotation, yawT);
+			object_->SetRotate({ currentPitch_, currentYaw_, 0.0f });
+			object_->SetRotateQuaternion(currentRotation_);
 		}
 	}
 
@@ -151,16 +198,16 @@ void Player::Update(
 		const bool swimUp = input->PushKey(DIK_SPACE);
 		const bool swimDown = input->PushKey(DIK_LCONTROL);
 		if (swimUp) {
-			desiredVelocity.y = waterSwimUpSpeed_;
+			desiredVelocity.y = waterSwimUpSpeed_ * speedMultiplier;
 			physicsBody_.isGrounded = false;
 		} else if (swimDown) {
-			desiredVelocity.y = -waterSwimUpSpeed_ * 0.6f;
+			desiredVelocity.y = -waterSwimUpSpeed_ * 0.6f * speedMultiplier;
 			physicsBody_.isGrounded = false;
 		} else {
 			desiredVelocity.y = std::clamp(
 				desiredVelocity.y,
-				-waterSwimUpSpeed_ * 0.35f,
-				waterSwimUpSpeed_ * 0.35f
+				-waterSwimUpSpeed_ * 0.35f * speedMultiplier,
+				waterSwimUpSpeed_ * 0.35f * speedMultiplier
 			);
 		}
 	} else if (allowJump_ && physicsBody_.isGrounded && input->TriggerKey(DIK_SPACE)) {
@@ -208,6 +255,7 @@ void Player::SetTransform(const Transform& transform) {
 	physicsBody_.velocity = {};
 	physicsBody_.isGrounded = false;
 	object_->GetTransform() = transform;
+	SyncRotationStateFromObject();
 	ApplyPosition();
 	object_->Update();
 }
@@ -216,12 +264,14 @@ void Player::SetBehaviorSettings(
 	float moveSpeed,
 	float jumpVelocity,
 	float turnResponsiveness,
+	float dashMultiplier,
 	bool cameraRelativeMove,
 	bool allowJump
 ) {
 	moveSpeed_ = (std::max)(moveSpeed, 0.0f);
 	jumpVelocity_ = (std::max)(jumpVelocity, 0.0f);
 	turnResponsiveness_ = std::clamp(turnResponsiveness, 0.0f, 1.0f);
+	dashMultiplier_ = (std::max)(dashMultiplier, 1.0f);
 	cameraRelativeMove_ = cameraRelativeMove;
 	allowJump_ = allowJump;
 }
@@ -240,4 +290,16 @@ void Player::ApplyPosition() {
 	if (object_) {
 		object_->SetTranslate(position_);
 	}
+}
+
+void Player::SyncRotationStateFromObject() {
+	if (!object_) {
+		return;
+	}
+	currentYaw_ = object_->GetRotate().y;
+	currentPitch_ = object_->GetRotate().x;
+	currentRotation_ = object_->UsesQuaternionRotation()
+		? object_->GetRotateQuaternion()
+		: MakeQuaternionFromEuler(object_->GetRotate());
+	rotationInitialized_ = true;
 }

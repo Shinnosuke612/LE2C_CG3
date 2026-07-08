@@ -4,12 +4,131 @@
 #include "../math/Math.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 
 namespace {
 	constexpr float kBounceVelocityThreshold = 0.01f;
 	constexpr float kGroundProbeDistance = 0.05f;
 	constexpr uint32_t kAxisSweepIterations = 10;
+	constexpr uint32_t kPenetrationResolveIterations = 4;
+	constexpr float kPenetrationEpsilon = 0.00001f;
+	constexpr float kPenetrationSlop = 0.001f;
+	constexpr float kPenetrationSkin = 0.002f;
+
+	float AbsDot(const Vector3& a, const Vector3& b) {
+		return std::fabs(Math::Dot(a, b));
+	}
+
+	float ProjectOBB(const OBBCollider::OBB& obb, const Vector3& axis) {
+		return
+			obb.halfSize.x * AbsDot(obb.axis[0], axis) +
+			obb.halfSize.y * AbsDot(obb.axis[1], axis) +
+			obb.halfSize.z * AbsDot(obb.axis[2], axis);
+	}
+
+	bool TestPenetrationAxis(
+		const OBBCollider::OBB& moving,
+		const OBBCollider::OBB& obstacle,
+		Vector3 axis,
+		float& bestOverlap,
+		Vector3& bestPushAxis
+	) {
+		if (Math::Length(axis) < kPenetrationEpsilon) {
+			return true;
+		}
+
+		axis = Math::Normalize(axis);
+		const Vector3 centerDelta =
+			Math::Subtract(obstacle.center, moving.center);
+		const float signedDistance = Math::Dot(centerDelta, axis);
+		const float distance = std::fabs(signedDistance);
+		const float overlap =
+			ProjectOBB(moving, axis) + ProjectOBB(obstacle, axis) - distance;
+		if (overlap <= 0.0f) {
+			return false;
+		}
+
+		if (overlap < bestOverlap) {
+			bestOverlap = overlap;
+			bestPushAxis = signedDistance < 0.0f
+				? axis
+				: Vector3{ -axis.x, -axis.y, -axis.z };
+		}
+		return true;
+	}
+
+	bool TryComputePushOut(
+		const OBBCollider::OBB& moving,
+		const OBBCollider::OBB& obstacle,
+		Vector3& pushOut
+	) {
+		float bestOverlap = FLT_MAX;
+		Vector3 bestPushAxis{};
+
+		for (uint32_t i = 0; i < 3; ++i) {
+			if (!TestPenetrationAxis(
+				moving,
+				obstacle,
+				moving.axis[i],
+				bestOverlap,
+				bestPushAxis
+			)) {
+				return false;
+			}
+			if (!TestPenetrationAxis(
+				moving,
+				obstacle,
+				obstacle.axis[i],
+				bestOverlap,
+				bestPushAxis
+			)) {
+				return false;
+			}
+		}
+
+		for (uint32_t movingAxis = 0; movingAxis < 3; ++movingAxis) {
+			for (uint32_t obstacleAxis = 0; obstacleAxis < 3; ++obstacleAxis) {
+				if (!TestPenetrationAxis(
+					moving,
+					obstacle,
+					Math::Cross(
+						moving.axis[movingAxis],
+						obstacle.axis[obstacleAxis]
+					),
+					bestOverlap,
+					bestPushAxis
+				)) {
+					return false;
+				}
+			}
+		}
+
+		if (
+			bestOverlap <= kPenetrationSlop ||
+			Math::Length(bestPushAxis) < kPenetrationEpsilon
+		) {
+			return false;
+		}
+
+		pushOut = Math::Multiply(
+			bestPushAxis,
+			bestOverlap + kPenetrationSkin
+		);
+		return true;
+	}
+
+	void ApplyFreezeAxes(const PhysicsBody& body, Vector3& pushOut) {
+		if (body.freezePositionX) {
+			pushOut.x = 0.0f;
+		}
+		if (body.freezePositionY) {
+			pushOut.y = 0.0f;
+		}
+		if (body.freezePositionZ) {
+			pushOut.z = 0.0f;
+		}
+	}
 }
 
 void PhysicsWorld::Clear() {
@@ -53,6 +172,7 @@ void PhysicsWorld::Step(float deltaTime) {
 			);
 		}
 		body->isGrounded = false;
+		ResolveStaticPenetration(*body);
 
 		const float dragFactor = std::clamp(
 			1.0f - body->drag * deltaTime,
@@ -102,6 +222,7 @@ void PhysicsWorld::Step(float deltaTime) {
 			body->isGrounded = true;
 			body->velocity.y = 0.0f;
 		}
+		ResolveStaticPenetration(*body);
 	}
 }
 
@@ -170,6 +291,85 @@ bool PhysicsWorld::SnapToGround(
 	}
 	body.transform->translate.y = startY + delta * safeRate;
 	return true;
+}
+
+bool PhysicsWorld::ResolveStaticPenetration(PhysicsBody& body) const {
+	if (!body.transform || !body.obbCollider) {
+		return false;
+	}
+
+	bool resolvedAny = false;
+	std::vector<const OBBCollider*> testedColliders;
+
+	auto resolveAgainst = [&](const OBBCollider* collider) {
+		if (
+			!collider ||
+			collider == body.obbCollider ||
+			!body.obbCollider->CanCollideWith(*collider) ||
+			std::find(
+				testedColliders.begin(),
+				testedColliders.end(),
+				collider
+			) != testedColliders.end()
+		) {
+			return;
+		}
+		testedColliders.push_back(collider);
+
+		for (uint32_t iteration = 0;
+			iteration < kPenetrationResolveIterations;
+			++iteration) {
+			Vector3 pushOut{};
+			if (!TryComputePushOut(
+				body.obbCollider->GetOBB(),
+				collider->GetOBB(),
+				pushOut
+			)) {
+				return;
+			}
+
+			ApplyFreezeAxes(body, pushOut);
+			if (Math::Length(pushOut) < kPenetrationEpsilon) {
+				return;
+			}
+
+			body.transform->translate = Math::Add(
+				body.transform->translate,
+				pushOut
+			);
+			if (std::abs(pushOut.x) > kPenetrationEpsilon) {
+				body.velocity.x = 0.0f;
+			}
+			if (std::abs(pushOut.y) > kPenetrationEpsilon) {
+				body.velocity.y = 0.0f;
+				if (pushOut.y > 0.0f) {
+					body.isGrounded = true;
+				}
+			}
+			if (std::abs(pushOut.z) > kPenetrationEpsilon) {
+				body.velocity.z = 0.0f;
+			}
+			resolvedAny = true;
+		}
+	};
+
+	for (const PhysicsBody* other : bodies_) {
+		if (
+			!other ||
+			other == &body ||
+			!other->obbCollider ||
+			other->type == PhysicsBodyType::Dynamic
+		) {
+			continue;
+		}
+		resolveAgainst(other->obbCollider);
+	}
+
+	for (const OBBCollider* collider : staticColliders_) {
+		resolveAgainst(collider);
+	}
+
+	return resolvedAny;
 }
 
 bool PhysicsWorld::IntegrateAxis(

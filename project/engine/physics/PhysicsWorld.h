@@ -20,6 +20,7 @@ public:
 private:
 	bool CollidesWithStatic(const PhysicsBody& body) const;
 	bool SnapToGround(PhysicsBody& body, float probeDistance) const;
+	bool ResolveStaticPenetration(PhysicsBody& body) const;
 	bool IntegrateAxis(
 		PhysicsBody& body,
 		float delta,

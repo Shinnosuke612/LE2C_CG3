@@ -1364,6 +1364,7 @@ void GamePlayScene::ApplyPlayerBehaviorComponent(
 		playerBehavior->playerMoveSpeed,
 		playerBehavior->playerJumpVelocity,
 		playerBehavior->playerTurnResponsiveness,
+		playerBehavior->playerDashMultiplier,
 		playerBehavior->playerCameraRelativeMove,
 		playerBehavior->playerAllowJump
 	);
@@ -2743,11 +2744,14 @@ void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 		axis->Draw();
 	}
 	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
+		const bool hidePlayerModel =
+			ShouldHidePlayerModelForCamera(viewCamera);
 		for (const SceneEntity& entity : document->GetEntities()) {
 			if (
 				entity.id == skipEntityId ||
 				!IsEntityActiveInHierarchy(*document, entity) ||
-				HasComponent(entity, "WaterVolume")
+				HasComponent(entity, "WaterVolume") ||
+				(hidePlayerModel && HasComponent(entity, "PlayerBehavior"))
 			) {
 				continue;
 			}
@@ -2861,6 +2865,12 @@ void GamePlayScene::DrawRefractedEffectsForCamera(
 		filter
 	);
 	particleManager->Draw(true);
+}
+
+bool GamePlayScene::ShouldHidePlayerModelForCamera(Camera* viewCamera) const {
+	return
+		viewCamera == camera_ &&
+		playerCameraController_.IsFirstPersonMode();
 }
 
 void GamePlayScene::DrawWaterSurfaces(
@@ -3784,6 +3794,7 @@ void GamePlayScene::DrawShadow()
 	//if (player_) {
 	//	shadowCasters.push_back(player_->GetObject());
 	//}
+	const bool hidePlayerModel = ShouldHidePlayerModelForCamera(camera_);
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
 			shadowCasters.push_back(stageObject.object);
@@ -3793,7 +3804,8 @@ void GamePlayScene::DrawShadow()
 		for (const SceneEntity& entity : document->GetEntities()) {
 			if (
 				!IsEntityActiveInHierarchy(*document, entity) ||
-				HasComponent(entity, "WaterVolume")
+				HasComponent(entity, "WaterVolume") ||
+				(hidePlayerModel && HasComponent(entity, "PlayerBehavior"))
 			) {
 				continue;
 			}

@@ -133,6 +133,7 @@ struct SceneComponent {
 	float playerMoveSpeed = 10.8f;
 	float playerJumpVelocity = 37.2f;
 	float playerTurnResponsiveness = 0.018f;
+	float playerDashMultiplier = 1.65f;
 	bool playerCameraRelativeMove = true;
 	bool playerAllowJump = true;
 	std::string agentBehaviorName = "Fish";

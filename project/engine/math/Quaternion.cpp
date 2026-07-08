@@ -1,5 +1,7 @@
 #include "Quaternion.h"
 
+#include "Math.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -69,6 +71,120 @@ Quaternion Slerp(
 		normalizedStart.z * startWeight + normalizedEnd.z * endWeight,
 		normalizedStart.w * startWeight + normalizedEnd.w * endWeight
 	};
+}
+
+Quaternion MakeIdentityQuaternion() {
+	return { 0.0f, 0.0f, 0.0f, 1.0f };
+}
+
+Quaternion MakeQuaternionFromRotationMatrix(const Matrix4x4& matrix) {
+	const float trace =
+		matrix.m[0][0] + matrix.m[1][1] + matrix.m[2][2];
+	Quaternion result{};
+	if (trace > 0.0f) {
+		const float s = std::sqrt(trace + 1.0f) * 2.0f;
+		result.w = 0.25f * s;
+		result.x = (matrix.m[1][2] - matrix.m[2][1]) / s;
+		result.y = (matrix.m[2][0] - matrix.m[0][2]) / s;
+		result.z = (matrix.m[0][1] - matrix.m[1][0]) / s;
+	} else if (
+		matrix.m[0][0] > matrix.m[1][1] &&
+		matrix.m[0][0] > matrix.m[2][2]
+	) {
+		const float s = std::sqrt(
+			1.0f + matrix.m[0][0] - matrix.m[1][1] -
+			matrix.m[2][2]
+		) * 2.0f;
+		result.w = (matrix.m[1][2] - matrix.m[2][1]) / s;
+		result.x = 0.25f * s;
+		result.y = (matrix.m[0][1] + matrix.m[1][0]) / s;
+		result.z = (matrix.m[2][0] + matrix.m[0][2]) / s;
+	} else if (matrix.m[1][1] > matrix.m[2][2]) {
+		const float s = std::sqrt(
+			1.0f + matrix.m[1][1] - matrix.m[0][0] -
+			matrix.m[2][2]
+		) * 2.0f;
+		result.w = (matrix.m[2][0] - matrix.m[0][2]) / s;
+		result.x = (matrix.m[0][1] + matrix.m[1][0]) / s;
+		result.y = 0.25f * s;
+		result.z = (matrix.m[1][2] + matrix.m[2][1]) / s;
+	} else {
+		const float s = std::sqrt(
+			1.0f + matrix.m[2][2] - matrix.m[0][0] -
+			matrix.m[1][1]
+		) * 2.0f;
+		result.w = (matrix.m[0][1] - matrix.m[1][0]) / s;
+		result.x = (matrix.m[2][0] + matrix.m[0][2]) / s;
+		result.y = (matrix.m[1][2] + matrix.m[2][1]) / s;
+		result.z = 0.25f * s;
+	}
+	return Normalize(result);
+}
+
+Quaternion MakeQuaternionFromEuler(const Vector3& rotate) {
+	const Matrix4x4 matrix = MakeAffineMatrix(
+		{ 1.0f, 1.0f, 1.0f },
+		rotate,
+		{ 0.0f, 0.0f, 0.0f }
+	);
+	return MakeQuaternionFromRotationMatrix(matrix);
+}
+
+Quaternion MakeLookRotationQuaternion(
+	const Vector3& forward,
+	const Vector3& up
+) {
+	Vector3 normalizedForward = Math::Normalize(forward);
+	if (Math::Length(normalizedForward) < 0.000001f) {
+		return MakeIdentityQuaternion();
+	}
+
+	Vector3 projectedUp = up;
+	if (Math::Length(projectedUp) < 0.000001f) {
+		projectedUp = { 0.0f, 1.0f, 0.0f };
+	}
+	projectedUp = Math::Subtract(
+		projectedUp,
+		Math::Multiply(
+			normalizedForward,
+			Math::Dot(projectedUp, normalizedForward)
+		)
+	);
+	if (Math::Length(projectedUp) < 0.000001f) {
+		projectedUp = std::abs(normalizedForward.y) < 0.95f
+			? Vector3{ 0.0f, 1.0f, 0.0f }
+			: Vector3{ 1.0f, 0.0f, 0.0f };
+		projectedUp = Math::Subtract(
+			projectedUp,
+			Math::Multiply(
+				normalizedForward,
+				Math::Dot(projectedUp, normalizedForward)
+			)
+		);
+	}
+	projectedUp = Math::Normalize(projectedUp);
+
+	Vector3 right = Math::Normalize(
+		Math::Cross(projectedUp, normalizedForward)
+	);
+	if (Math::Length(right) < 0.000001f) {
+		right = { 1.0f, 0.0f, 0.0f };
+	}
+	const Vector3 correctedUp = Math::Normalize(
+		Math::Cross(normalizedForward, right)
+	);
+
+	Matrix4x4 matrix = MakeIdentity4x4();
+	matrix.m[0][0] = right.x;
+	matrix.m[0][1] = right.y;
+	matrix.m[0][2] = right.z;
+	matrix.m[1][0] = correctedUp.x;
+	matrix.m[1][1] = correctedUp.y;
+	matrix.m[1][2] = correctedUp.z;
+	matrix.m[2][0] = normalizedForward.x;
+	matrix.m[2][1] = normalizedForward.y;
+	matrix.m[2][2] = normalizedForward.z;
+	return MakeQuaternionFromRotationMatrix(matrix);
 }
 
 Matrix4x4 MakeRotateMatrix(const Quaternion& quaternion) {

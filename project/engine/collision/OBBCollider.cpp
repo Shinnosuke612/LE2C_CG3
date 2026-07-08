@@ -53,10 +53,14 @@ OBBCollider::OBB OBBCollider::GetOBB() const {
 
 	Matrix4x4 rotateMatrix = MakeIdentity4x4();
 	if (worldTransform_) {
-		Matrix4x4 rotateX = MakeRotateXMatrix(worldTransform_->rotate.x);
-		Matrix4x4 rotateY = MakeRotateYMatrix(worldTransform_->rotate.y);
-		Matrix4x4 rotateZ = MakeRotateZMatrix(worldTransform_->rotate.z);
-		rotateMatrix = Multiply(Multiply(rotateZ, rotateY), rotateX);
+		if (worldTransform_->useQuaternionRotation) {
+			rotateMatrix = MakeRotateMatrix(worldTransform_->quaternionRotate);
+		} else {
+			Matrix4x4 rotateX = MakeRotateXMatrix(worldTransform_->rotate.x);
+			Matrix4x4 rotateY = MakeRotateYMatrix(worldTransform_->rotate.y);
+			Matrix4x4 rotateZ = MakeRotateZMatrix(worldTransform_->rotate.z);
+			rotateMatrix = Multiply(Multiply(rotateZ, rotateY), rotateX);
+		}
 	}
 
 	obb.axis[0] = GetMatrixAxis(rotateMatrix, 0);

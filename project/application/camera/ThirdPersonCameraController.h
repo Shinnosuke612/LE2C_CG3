@@ -24,7 +24,8 @@ public:
 	float GetYaw() const { return yaw_; }
 	float GetPitch() const { return pitch_; }
 	Vector3 GetForwardDirection() const;
-	bool IsAimMode() const { return isAimMode_; }
+	bool IsAimMode() const { return isFirstPersonMode_; }
+	bool IsFirstPersonMode() const { return isFirstPersonMode_; }
 
 	void SetDistance(float distance);
 	void SetAimDistance(float distance);
@@ -73,7 +74,7 @@ private:
 	float focusEase_ = 0.35f;
 	float occlusionMargin_ = 0.45f;
 	float cameraBodyRadius_ = 0.12f;
-	bool isAimMode_ = false;
+	bool isFirstPersonMode_ = false;
 	bool focusInitialized_ = false;
 	bool invertYaw_ = false;
 	bool invertPitch_ = false;

@@ -313,6 +313,7 @@ namespace {
 			result["moveSpeed"] = component.playerMoveSpeed;
 			result["jumpVelocity"] = component.playerJumpVelocity;
 			result["turnResponsiveness"] = component.playerTurnResponsiveness;
+			result["dashMultiplier"] = component.playerDashMultiplier;
 			result["cameraRelativeMove"] = component.playerCameraRelativeMove;
 			result["allowJump"] = component.playerAllowJump;
 		} else if (component.type == "AgentBehavior") {
@@ -601,6 +602,10 @@ namespace {
 				component.playerTurnResponsiveness = value.value(
 					"turnResponsiveness",
 					component.playerTurnResponsiveness
+				);
+				component.playerDashMultiplier = value.value(
+					"dashMultiplier",
+					component.playerDashMultiplier
 				);
 				component.playerCameraRelativeMove = value.value(
 					"cameraRelativeMove",
@@ -1455,6 +1460,10 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->playerTurnResponsiveness = turnResponsiveness;
 				changed = true;
 			}
+			if (found->playerDashMultiplier < 1.0f) {
+				found->playerDashMultiplier = 1.0f;
+				changed = true;
+			}
 		} else if (type == "AgentBehavior") {
 			if (found->agentBehaviorName.empty()) {
 				found->agentBehaviorName = "Agent";
@@ -1700,6 +1709,7 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.playerMoveSpeed = 10.8f;
 		component.playerJumpVelocity = 37.2f;
 		component.playerTurnResponsiveness = 0.018f;
+		component.playerDashMultiplier = 1.65f;
 		component.playerCameraRelativeMove = true;
 		component.playerAllowJump = true;
 	} else if (type == "AgentBehavior") {

@@ -69,7 +69,12 @@ public: //公開メンバ関数
 	void SetModel(Model* model);
 	// setter
 	void SetScale(const Vector3& scale){ transform.scale = scale; }
-	void SetRotate(const Vector3& rotate){ transform.rotate = rotate; }
+	void SetRotate(const Vector3& rotate){
+		transform.rotate = rotate;
+		transform.useQuaternionRotation = false;
+	}
+	void SetRotateQuaternion(const Quaternion& rotate);
+	void ClearRotateQuaternion() { transform.useQuaternionRotation = false; }
 	void SetTranslate(const Vector3& translate){transform.translate = translate;}
 	void SetModel(const std::string& filePath);
 	void SetCamera(Camera* camera){ this->camera = camera; }
@@ -103,6 +108,12 @@ public: //公開メンバ関数
 	const Vector3& GetScale() const{return transform.scale;}
 	const Vector3& GetRotate() const{return transform.rotate;}
 	const Vector3& GetTranslate() const{return transform.translate;}
+	const Quaternion& GetRotateQuaternion() const {
+		return transform.quaternionRotate;
+	}
+	bool UsesQuaternionRotation() const {
+		return transform.useQuaternionRotation;
+	}
 	const Transform& GetTransform() const { return transform; }
 	Transform& GetTransform() { return transform; }
 	bool HasAnimation() const;

@@ -132,6 +132,7 @@ private:
 		Camera* viewCamera,
 		uint64_t skipEntityId = 0
 	);
+	bool ShouldHidePlayerModelForCamera(Camera* viewCamera) const;
 	void ApplyRenderCamera(Camera* viewCamera);
 	Camera* GetSceneViewCamera() const;
 	void InitializePauseDebugCamera();

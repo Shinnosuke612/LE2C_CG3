@@ -294,6 +294,7 @@
         {
           "allowJump": true,
           "cameraRelativeMove": true,
+          "dashMultiplier": 1.649999976158142,
           "enabled": true,
           "jumpVelocity": 37.20000076293945,
           "moveSpeed": 10.800000190734863,

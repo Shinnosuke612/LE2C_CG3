@@ -15,5 +15,11 @@ Quaternion Slerp(
 	const Quaternion& end,
 	float t
 );
+Quaternion MakeIdentityQuaternion();
+Quaternion MakeQuaternionFromRotationMatrix(const Matrix4x4& matrix);
+Quaternion MakeQuaternionFromEuler(const Vector3& rotate);
+Quaternion MakeLookRotationQuaternion(
+	const Vector3& forward,
+	const Vector3& up
+);
 Matrix4x4 MakeRotateMatrix(const Quaternion& quaternion);
-

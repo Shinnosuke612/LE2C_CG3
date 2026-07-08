@@ -3070,6 +3070,13 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.0f,
 					1.0f
 				);
+				playerChanged |= ImGui::DragFloat(
+					"Dash Multiplier",
+					&component.playerDashMultiplier,
+					0.05f,
+					1.0f,
+					5.0f
+				);
 				playerChanged |= ImGui::Checkbox(
 					"Camera Relative Move",
 					&component.playerCameraRelativeMove
@@ -3091,6 +3098,10 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.0f,
 					1.0f
 				);
+				if (component.playerDashMultiplier < 1.0f) {
+					component.playerDashMultiplier = 1.0f;
+					playerChanged = true;
+				}
 				if (playerChanged) {
 					document.MarkDirty();
 				}
