@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <unordered_set>
 #include <utility>
 
 namespace {
@@ -118,6 +119,90 @@ namespace {
 			NearlyEqual(a.w, b.w);
 	}
 
+	const SceneComponent* FindEnabledSceneComponent(
+		const SceneEntity& entity,
+		const char* componentType
+	) {
+		const auto found = std::find_if(
+			entity.components.begin(),
+			entity.components.end(),
+			[componentType](const SceneComponent& component) {
+				return component.enabled && component.type == componentType;
+			}
+		);
+		return found == entity.components.end() ? nullptr : &(*found);
+	}
+
+	bool IsEntityActiveInHierarchy(
+		const SceneDocument& document,
+		const SceneEntity& entity
+	) {
+		if (!entity.active) {
+			return false;
+		}
+		const SceneEntity* parent = document.FindEntity(entity.parentId);
+		while (parent) {
+			if (!parent->active) {
+				return false;
+			}
+			parent = document.FindEntity(parent->parentId);
+		}
+		return true;
+	}
+
+	Matrix4x4 ResolveSceneWorldMatrix(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		std::unordered_set<uint64_t>& visited
+	) {
+		const Matrix4x4 local = MakeAffineMatrix(
+			entity.transform.scale,
+			entity.transform.rotate,
+			entity.transform.translate
+		);
+		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
+			return local;
+		}
+		const SceneEntity* parent = document.FindEntity(entity.parentId);
+		if (!parent) {
+			return local;
+		}
+		return Multiply(
+			local,
+			ResolveSceneWorldMatrix(document, *parent, visited)
+		);
+	}
+
+	Transform ResolveScene3DTransform(
+		const SceneDocument& document,
+		const SceneEntity& entity
+	) {
+		std::unordered_set<uint64_t> visited;
+		const Matrix4x4 world =
+			ResolveSceneWorldMatrix(document, entity, visited);
+		Transform result = entity.transform;
+		Vector3 scale{};
+		Vector3 rotate{};
+		Vector3 translate{};
+		if (DecomposeAffineMatrix(world, scale, rotate, translate)) {
+			result.scale = scale;
+			result.rotate = rotate;
+			result.translate = translate;
+		}
+		return result;
+	}
+
+	bool IsPointInsideAabb(
+		const Vector3& point,
+		const Vector3& center,
+		const Vector3& halfSize
+	) {
+		return
+			std::abs(point.x - center.x) <= halfSize.x &&
+			std::abs(point.y - center.y) <= halfSize.y &&
+			std::abs(point.z - center.z) <= halfSize.z;
+	}
+
 	bool EqualPostProcessSettings(
 		const ScenePostProcessSettings& a,
 		const ScenePostProcessSettings& b
@@ -141,6 +226,8 @@ namespace {
 			a.noiseEnabled == b.noiseEnabled &&
 			a.dissolveEnabled == b.dissolveEnabled &&
 			a.outlineEnabled == b.outlineEnabled &&
+			a.underwaterEnabled == b.underwaterEnabled &&
+			a.waterRefractionEnabled == b.waterRefractionEnabled &&
 			NearlyEqual(a.vignetteScale, b.vignetteScale) &&
 			NearlyEqual(a.vignettePower, b.vignettePower) &&
 			NearlyEqual(a.vignetteIntensity, b.vignetteIntensity) &&
@@ -174,7 +261,15 @@ namespace {
 			NearlyEqual(a.outlineThreshold, b.outlineThreshold) &&
 			NearlyEqual(a.outlineSoftness, b.outlineSoftness) &&
 			NearlyEqual(a.outlineThickness, b.outlineThickness) &&
-			EqualVector(a.outlineColor, b.outlineColor);
+			EqualVector(a.outlineColor, b.outlineColor) &&
+			EqualVector(a.underwaterTintColor, b.underwaterTintColor) &&
+			NearlyEqual(a.underwaterIntensity, b.underwaterIntensity) &&
+			NearlyEqual(a.underwaterFogDensity, b.underwaterFogDensity) &&
+			NearlyEqual(a.underwaterDistortion, b.underwaterDistortion) &&
+			EqualVector(a.waterRefractionTintColor, b.waterRefractionTintColor) &&
+			NearlyEqual(a.waterRefractionStrength, b.waterRefractionStrength) &&
+			NearlyEqual(a.waterRefractionEdgeSoftness, b.waterRefractionEdgeSoftness) &&
+			NearlyEqual(a.waterRefractionTintStrength, b.waterRefractionTintStrength);
 	}
 }
 
@@ -428,6 +523,8 @@ void Game::Update() {
 		noiseEnabled_ = false;
 		dissolveEnabled_ = false;
 		outlineEnabled_ = false;
+		underwaterEnabled_ = false;
+		waterRefractionEnabled_ = false;
 	}
 	ImGui::TextDisabled("Applied from top to bottom");
 	ImGui::Separator();
@@ -743,6 +840,73 @@ void Game::Update() {
 	}
 	ImGui::PopID();
 
+	ImGui::Separator();
+	ImGui::PushID("Underwater");
+	ImGui::Checkbox("##Enabled", &underwaterEnabled_);
+	ImGui::SameLine();
+	if (ImGui::TreeNodeEx(
+		"Underwater",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
+		ImGui::ColorEdit4("Tint", underwaterTintColor_);
+		ImGui::SliderFloat(
+			"Intensity",
+			&underwaterIntensity_,
+			0.0f,
+			1.0f
+		);
+		ImGui::SliderFloat(
+			"Fog Density",
+			&underwaterFogDensity_,
+			0.0f,
+			0.25f,
+			"%.4f"
+		);
+		ImGui::SliderFloat(
+			"Distortion",
+			&underwaterDistortion_,
+			0.0f,
+			0.08f,
+			"%.4f"
+		);
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
+
+	ImGui::Separator();
+	ImGui::PushID("WaterRefraction");
+	ImGui::Checkbox("##Enabled", &waterRefractionEnabled_);
+	ImGui::SameLine();
+	if (ImGui::TreeNodeEx(
+		"Water Refraction",
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	)) {
+		ImGui::ColorEdit4("Tint", waterRefractionTintColor_);
+		ImGui::SliderFloat(
+			"Strength",
+			&waterRefractionStrength_,
+			0.0f,
+			0.08f,
+			"%.4f"
+		);
+		ImGui::SliderFloat(
+			"Edge Softness",
+			&waterRefractionEdgeSoftness_,
+			0.0f,
+			1.0f,
+			"%.4f"
+		);
+		ImGui::SliderFloat(
+			"Tint Strength",
+			&waterRefractionTintStrength_,
+			0.0f,
+			1.0f,
+			"%.4f"
+		);
+		ImGui::TreePop();
+	}
+	ImGui::PopID();
+
 	ImGui::EndChild();
 	ImGui::End();
 
@@ -893,6 +1057,10 @@ void Game::Draw() {
 			: "resources/noise0.png";
 	const D3D12_GPU_DESCRIPTOR_HANDLE maskHandle =
 		TextureManager::GetInstance()->GetSrvHandleGPU(dissolveMaskPath);
+	Camera* renderCamera =
+		Object3dCommon::GetInstance()->GetDefaultCamera();
+	const WaterPostEffectState waterState =
+		ResolveWaterPostEffectState(renderCamera);
 	int passIndex = 1;
 	auto applyEffect = [&](
 		FullscreenCopy::Effect effect,
@@ -912,6 +1080,60 @@ void Game::Draw() {
 		destination->End();
 		sourceHandle = destination->GetSrvGpuHandle();
 		++passIndex;
+	};
+	auto fillWaterParameters = [&](
+		FullscreenCopy::Parameters& parameters
+	) {
+		if (renderCamera) {
+			parameters.cameraNear = renderCamera->GetNearClip();
+			parameters.cameraFar = renderCamera->GetFarClip();
+			const Matrix4x4& cameraWorld =
+				renderCamera->GetWorldMatrix();
+			parameters.cameraPositionFovY[0] = cameraWorld.m[3][0];
+			parameters.cameraPositionFovY[1] = cameraWorld.m[3][1];
+			parameters.cameraPositionFovY[2] = cameraWorld.m[3][2];
+			parameters.cameraPositionFovY[3] = renderCamera->GetFovY();
+			parameters.cameraRightAspect[0] = cameraWorld.m[0][0];
+			parameters.cameraRightAspect[1] = cameraWorld.m[0][1];
+			parameters.cameraRightAspect[2] = cameraWorld.m[0][2];
+			parameters.cameraRightAspect[3] =
+				renderCamera->GetAspectRatio();
+			parameters.cameraUpTime[0] = cameraWorld.m[1][0];
+			parameters.cameraUpTime[1] = cameraWorld.m[1][1];
+			parameters.cameraUpTime[2] = cameraWorld.m[1][2];
+			parameters.cameraForwardActive[0] = cameraWorld.m[2][0];
+			parameters.cameraForwardActive[1] = cameraWorld.m[2][1];
+			parameters.cameraForwardActive[2] = cameraWorld.m[2][2];
+		}
+		parameters.cameraUpTime[3] = noiseTime_;
+		parameters.cameraForwardActive[3] =
+			waterState.hasVolume ? 1.0f : 0.0f;
+		parameters.underwaterParams[0] =
+			waterState.cameraInside ? underwaterIntensity_ : 0.0f;
+		parameters.underwaterParams[1] = underwaterFogDensity_;
+		parameters.underwaterParams[2] = underwaterDistortion_;
+		for (uint32_t index = 0; index < 4; ++index) {
+			parameters.underwaterTintColor[index] =
+				underwaterTintColor_[index];
+		}
+		parameters.waterVolumeCenterActive[0] = waterState.center.x;
+		parameters.waterVolumeCenterActive[1] = waterState.center.y;
+		parameters.waterVolumeCenterActive[2] = waterState.center.z;
+		parameters.waterVolumeCenterActive[3] =
+			waterState.hasVolume ? 1.0f : 0.0f;
+		parameters.waterVolumeHalfSizeEdge[0] = waterState.halfSize.x;
+		parameters.waterVolumeHalfSizeEdge[1] = waterState.halfSize.y;
+		parameters.waterVolumeHalfSizeEdge[2] = waterState.halfSize.z;
+		parameters.waterVolumeHalfSizeEdge[3] =
+			waterRefractionEdgeSoftness_;
+		for (uint32_t index = 0; index < 4; ++index) {
+			parameters.waterRefractionTintColor[index] =
+				waterRefractionTintColor_[index];
+		}
+		parameters.waterRefractionParams[0] =
+			waterRefractionStrength_;
+		parameters.waterRefractionParams[1] =
+			waterRefractionTintStrength_;
 	};
 
 	if (grayscaleEnabled_) {
@@ -1005,6 +1227,21 @@ void Game::Draw() {
 		}
 		applyEffect(FullscreenCopy::Effect::kOutline, parameters);
 	}
+	if (
+		waterRefractionEnabled_ &&
+		waterState.hasVolume &&
+		!waterState.cameraInside &&
+		renderCamera
+	) {
+		FullscreenCopy::Parameters parameters{};
+		fillWaterParameters(parameters);
+		applyEffect(FullscreenCopy::Effect::kWaterRefraction, parameters);
+	}
+	if (underwaterEnabled_ && waterState.cameraInside && renderCamera) {
+		FullscreenCopy::Parameters parameters{};
+		fillWaterParameters(parameters);
+		applyEffect(FullscreenCopy::Effect::kUnderwater, parameters);
+	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	imguiManager_->DrawEditorWorkspace(
@@ -1083,6 +1320,63 @@ void Game::EndPauseDebugCamera() {
 	pauseMainCameraSnapshot_ = {};
 }
 
+Game::WaterPostEffectState Game::ResolveWaterPostEffectState(
+	const Camera* camera
+) const {
+	WaterPostEffectState state{};
+	if (!camera || !sceneManager_) {
+		return state;
+	}
+
+	const SceneDocument* document =
+		sceneManager_->GetActiveSceneDocument();
+	if (!document) {
+		return state;
+	}
+
+	const Vector3 cameraPosition = camera->GetTranslate();
+	WaterPostEffectState firstVolume{};
+	for (const SceneEntity& entity : document->GetEntities()) {
+		if (!IsEntityActiveInHierarchy(*document, entity)) {
+			continue;
+		}
+		const SceneComponent* waterVolume =
+			FindEnabledSceneComponent(entity, "WaterVolume");
+		if (!waterVolume) {
+			continue;
+		}
+
+		const Transform transform =
+			ResolveScene3DTransform(*document, entity);
+		WaterPostEffectState candidate{};
+		candidate.hasVolume = true;
+		candidate.center = {
+			transform.translate.x + waterVolume->waterOffset.x,
+			transform.translate.y + waterVolume->waterOffset.y,
+			transform.translate.z + waterVolume->waterOffset.z
+		};
+		candidate.halfSize = {
+			(std::max)(waterVolume->waterHalfSize.x, 0.001f),
+			(std::max)(waterVolume->waterHalfSize.y, 0.001f),
+			(std::max)(waterVolume->waterHalfSize.z, 0.001f)
+		};
+		candidate.cameraInside = IsPointInsideAabb(
+			cameraPosition,
+			candidate.center,
+			candidate.halfSize
+		);
+
+		if (!firstVolume.hasVolume) {
+			firstVolume = candidate;
+		}
+		if (candidate.cameraInside) {
+			return candidate;
+		}
+	}
+
+	return firstVolume;
+}
+
 ScenePostProcessSettings Game::CapturePostProcessSettings() const {
 	ScenePostProcessSettings settings{};
 	settings.bloomEnabled = bloomParameters_.enabled != 0;
@@ -1103,6 +1397,8 @@ ScenePostProcessSettings Game::CapturePostProcessSettings() const {
 	settings.noiseEnabled = noiseEnabled_;
 	settings.dissolveEnabled = dissolveEnabled_;
 	settings.outlineEnabled = outlineEnabled_;
+	settings.underwaterEnabled = underwaterEnabled_;
+	settings.waterRefractionEnabled = waterRefractionEnabled_;
 	settings.vignetteScale = vignetteScale_;
 	settings.vignettePower = vignettePower_;
 	settings.vignetteIntensity = vignetteIntensity_;
@@ -1150,6 +1446,24 @@ ScenePostProcessSettings Game::CapturePostProcessSettings() const {
 		outlineColor_[2],
 		outlineColor_[3]
 	};
+	settings.underwaterTintColor = {
+		underwaterTintColor_[0],
+		underwaterTintColor_[1],
+		underwaterTintColor_[2],
+		underwaterTintColor_[3]
+	};
+	settings.underwaterIntensity = underwaterIntensity_;
+	settings.underwaterFogDensity = underwaterFogDensity_;
+	settings.underwaterDistortion = underwaterDistortion_;
+	settings.waterRefractionTintColor = {
+		waterRefractionTintColor_[0],
+		waterRefractionTintColor_[1],
+		waterRefractionTintColor_[2],
+		waterRefractionTintColor_[3]
+	};
+	settings.waterRefractionStrength = waterRefractionStrength_;
+	settings.waterRefractionEdgeSoftness = waterRefractionEdgeSoftness_;
+	settings.waterRefractionTintStrength = waterRefractionTintStrength_;
 	return settings;
 }
 
@@ -1176,6 +1490,8 @@ void Game::ApplyPostProcessSettings(
 	noiseEnabled_ = settings.noiseEnabled;
 	dissolveEnabled_ = settings.dissolveEnabled;
 	outlineEnabled_ = settings.outlineEnabled;
+	underwaterEnabled_ = settings.underwaterEnabled;
+	waterRefractionEnabled_ = settings.waterRefractionEnabled;
 	vignetteScale_ = settings.vignetteScale;
 	vignettePower_ = settings.vignettePower;
 	vignetteIntensity_ = settings.vignetteIntensity;
@@ -1217,6 +1533,20 @@ void Game::ApplyPostProcessSettings(
 	outlineColor_[1] = settings.outlineColor.y;
 	outlineColor_[2] = settings.outlineColor.z;
 	outlineColor_[3] = settings.outlineColor.w;
+	underwaterTintColor_[0] = settings.underwaterTintColor.x;
+	underwaterTintColor_[1] = settings.underwaterTintColor.y;
+	underwaterTintColor_[2] = settings.underwaterTintColor.z;
+	underwaterTintColor_[3] = settings.underwaterTintColor.w;
+	underwaterIntensity_ = settings.underwaterIntensity;
+	underwaterFogDensity_ = settings.underwaterFogDensity;
+	underwaterDistortion_ = settings.underwaterDistortion;
+	waterRefractionTintColor_[0] = settings.waterRefractionTintColor.x;
+	waterRefractionTintColor_[1] = settings.waterRefractionTintColor.y;
+	waterRefractionTintColor_[2] = settings.waterRefractionTintColor.z;
+	waterRefractionTintColor_[3] = settings.waterRefractionTintColor.w;
+	waterRefractionStrength_ = settings.waterRefractionStrength;
+	waterRefractionEdgeSoftness_ = settings.waterRefractionEdgeSoftness;
+	waterRefractionTintStrength_ = settings.waterRefractionTintStrength;
 }
 
 void Game::StorePostProcessSettingsToDocument() {
@@ -1376,7 +1706,9 @@ int Game::GetEnabledPostEffectCount() const {
 		static_cast<int>(radialBlurEnabled_) +
 		static_cast<int>(noiseEnabled_) +
 		static_cast<int>(dissolveEnabled_) +
-		static_cast<int>(outlineEnabled_);
+		static_cast<int>(outlineEnabled_) +
+		static_cast<int>(underwaterEnabled_) +
+		static_cast<int>(waterRefractionEnabled_);
 }
 
 SceneRenderTarget* Game::GetPostProcessOutputTarget() const {

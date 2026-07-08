@@ -76,6 +76,12 @@ void FullscreenCopy::Draw(
 	else if (effect == Effect::kDepthOfField) {
 		pipelineState = depthOfFieldPipelineState_.Get();
 	}
+	else if (effect == Effect::kUnderwater) {
+		pipelineState = underwaterPipelineState_.Get();
+	}
+	else if (effect == Effect::kWaterRefraction) {
+		pipelineState = waterRefractionPipelineState_.Get();
+	}
 	commandList->SetPipelineState(pipelineState);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootDescriptorTable(0, textureHandle);
@@ -216,6 +222,14 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/DepthOfField.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto underwaterPixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/Underwater.PS.hlsl",
+		L"ps_6_0"
+	);
+	const auto waterRefractionPixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/WaterRefraction.PS.hlsl",
+		L"ps_6_0"
+	);
 	assert(vertexShader);
 	assert(copyPixelShader);
 	assert(grayscalePixelShader);
@@ -227,6 +241,8 @@ void FullscreenCopy::CreatePipelineState() {
 	assert(dissolvePixelShader);
 	assert(outlinePixelShader);
 	assert(depthOfFieldPixelShader);
+	assert(underwaterPixelShader);
+	assert(waterRefractionPixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -356,6 +372,26 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&depthOfFieldPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		underwaterPixelShader->GetBufferPointer(),
+		underwaterPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&underwaterPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		waterRefractionPixelShader->GetBufferPointer(),
+		waterRefractionPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&waterRefractionPipelineState_)
 	);
 	assert(SUCCEEDED(result));
 }

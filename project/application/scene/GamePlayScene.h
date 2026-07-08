@@ -101,6 +101,7 @@ private:
 	void RebuildStaticColliders();
 	void ApplyPlayerBehaviorComponent(const SceneDocument& document);
 	void ApplyPlayerPhysicsComponent(const SceneDocument& document);
+	void ApplyWaterVolumes(const SceneDocument& document);
 	void StepPhysics(float deltaTime);
 	Object3d* FindSceneModelObjectByName(const char* name) const;
 	void SyncMonitorRenderers();

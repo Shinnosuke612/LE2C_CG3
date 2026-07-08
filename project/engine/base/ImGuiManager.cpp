@@ -3095,6 +3095,76 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "WaterVolume") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool waterChanged = false;
+				ImGui::TextDisabled("AABB trigger for underwater behavior");
+				waterChanged |= ImGui::DragFloat3(
+					"Half Size",
+					&component.waterHalfSize.x,
+					0.1f,
+					0.1f,
+					500.0f
+				);
+				waterChanged |= ImGui::DragFloat3(
+					"Offset",
+					&component.waterOffset.x,
+					0.1f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Move Speed Multiplier",
+					&component.waterMoveSpeedMultiplier,
+					0.0f,
+					1.0f
+				);
+				waterChanged |= ImGui::DragFloat(
+					"Gravity Scale",
+					&component.waterGravityScale,
+					0.02f,
+					-5.0f,
+					5.0f
+				);
+				waterChanged |= ImGui::DragFloat(
+					"Drag",
+					&component.waterDrag,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				waterChanged |= ImGui::DragFloat(
+					"Max Fall Speed",
+					&component.waterMaxFallSpeed,
+					0.1f,
+					0.0f,
+					100.0f
+				);
+				waterChanged |= ImGui::DragFloat(
+					"Swim Up Speed",
+					&component.waterSwimUpSpeed,
+					0.1f,
+					0.0f,
+					100.0f
+				);
+				component.waterHalfSize.x =
+					(std::max)(component.waterHalfSize.x, 0.1f);
+				component.waterHalfSize.y =
+					(std::max)(component.waterHalfSize.y, 0.1f);
+				component.waterHalfSize.z =
+					(std::max)(component.waterHalfSize.z, 0.1f);
+				component.waterMoveSpeedMultiplier = std::clamp(
+					component.waterMoveSpeedMultiplier,
+					0.0f,
+					1.0f
+				);
+				component.waterDrag = (std::max)(component.waterDrag, 0.0f);
+				component.waterMaxFallSpeed =
+					(std::max)(component.waterMaxFallSpeed, 0.0f);
+				component.waterSwimUpSpeed =
+					(std::max)(component.waterSwimUpSpeed, 0.0f);
+				if (waterChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			}
 			ImGui::PopID();
 		}
@@ -3117,6 +3187,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				"CameraPathPoint",
 				"PhysicsBody",
 				"PlayerBehavior",
+				"WaterVolume",
 				"Animator",
 				"OBBCollider"
 			};

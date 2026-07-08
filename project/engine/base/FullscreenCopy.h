@@ -18,7 +18,9 @@ public:
 		kNoise,
 		kDissolve,
 		kOutline,
-		kDepthOfField
+		kDepthOfField,
+		kUnderwater,
+		kWaterRefraction
 	};
 
 	struct Parameters {
@@ -55,6 +57,16 @@ public:
 		float dofFarStrength = 1.0f;
 		float dofMaxRadius = 4.0f;
 		float dofPadding[3]{};
+		float underwaterTintColor[4]{ 0.02f, 0.45f, 0.68f, 1.0f };
+		float underwaterParams[4]{ 0.0f, 0.035f, 0.012f, 0.0f };
+		float cameraUpTime[4]{ 0.0f, 1.0f, 0.0f, 0.0f };
+		float cameraPositionFovY[4]{ 0.0f, 0.0f, 0.0f, 0.45f };
+		float cameraRightAspect[4]{ 1.0f, 0.0f, 0.0f, 1.0f };
+		float cameraForwardActive[4]{ 0.0f, 0.0f, 1.0f, 0.0f };
+		float waterVolumeCenterActive[4]{ 0.0f, 0.0f, 0.0f, 0.0f };
+		float waterVolumeHalfSizeEdge[4]{ 0.0f, 0.0f, 0.0f, 0.08f };
+		float waterRefractionTintColor[4]{ 0.02f, 0.55f, 0.82f, 1.0f };
+		float waterRefractionParams[4]{ 0.018f, 0.12f, 0.0f, 0.0f };
 	};
 
 	void Initialize(DirectXCommon* dxCommon);
@@ -83,6 +95,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> dissolvePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> outlinePipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> depthOfFieldPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> underwaterPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> waterRefractionPipelineState_;
 	static constexpr uint32_t kMaxDrawsPerFrame = 16;
 	Microsoft::WRL::ComPtr<ID3D12Resource>
 		parameterResources_[kMaxDrawsPerFrame];

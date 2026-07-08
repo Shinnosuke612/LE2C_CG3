@@ -35,11 +35,19 @@ private:
 		float farClip = 1000.0f;
 	};
 
+	struct WaterPostEffectState {
+		bool hasVolume = false;
+		bool cameraInside = false;
+		Vector3 center{};
+		Vector3 halfSize{};
+	};
+
 	int GetEnabledPostEffectCount() const;
 	SceneRenderTarget* GetPostProcessOutputTarget() const;
 	ScenePostProcessSettings CapturePostProcessSettings() const;
 	void ApplyPostProcessSettings(const ScenePostProcessSettings& settings);
 	void StorePostProcessSettingsToDocument();
+	WaterPostEffectState ResolveWaterPostEffectState(const Camera* camera) const;
 	void DrawModelPreview();
 	CameraSnapshot CaptureCameraSnapshot() const;
 	void RestoreCameraSnapshot(const CameraSnapshot& snapshot) const;
@@ -74,6 +82,8 @@ private:
 	bool noiseEnabled_ = false;
 	bool dissolveEnabled_ = false;
 	bool outlineEnabled_ = false;
+	bool underwaterEnabled_ = false;
+	bool waterRefractionEnabled_ = false;
 	bool depthOfFieldEnabled_ = false;
 	bool outlineLuminanceEnabled_ = false;
 	bool outlineDepthEnabled_ = true;
@@ -110,4 +120,12 @@ private:
 	float dofNearStrength_ = 0.0f;
 	float dofFarStrength_ = 1.0f;
 	float dofMaxRadius_ = 4.0f;
+	float underwaterTintColor_[4]{ 0.02f, 0.45f, 0.68f, 1.0f };
+	float underwaterIntensity_ = 0.65f;
+	float underwaterFogDensity_ = 0.035f;
+	float underwaterDistortion_ = 0.012f;
+	float waterRefractionTintColor_[4]{ 0.02f, 0.55f, 0.82f, 1.0f };
+	float waterRefractionStrength_ = 0.018f;
+	float waterRefractionEdgeSoftness_ = 0.08f;
+	float waterRefractionTintStrength_ = 0.12f;
 };

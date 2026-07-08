@@ -28,6 +28,8 @@ struct ScenePostProcessSettings {
 	bool noiseEnabled = false;
 	bool dissolveEnabled = false;
 	bool outlineEnabled = false;
+	bool underwaterEnabled = false;
+	bool waterRefractionEnabled = false;
 	float vignetteScale = 16.0f;
 	float vignettePower = 0.8f;
 	float vignetteIntensity = 1.0f;
@@ -62,6 +64,14 @@ struct ScenePostProcessSettings {
 	float outlineSoftness = 0.05f;
 	float outlineThickness = 1.0f;
 	Vector4 outlineColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+	Vector4 underwaterTintColor = { 0.02f, 0.45f, 0.68f, 1.0f };
+	float underwaterIntensity = 0.65f;
+	float underwaterFogDensity = 0.035f;
+	float underwaterDistortion = 0.012f;
+	Vector4 waterRefractionTintColor = { 0.02f, 0.55f, 0.82f, 1.0f };
+	float waterRefractionStrength = 0.018f;
+	float waterRefractionEdgeSoftness = 0.08f;
+	float waterRefractionTintStrength = 0.12f;
 };
 
 struct SceneComponent {
@@ -125,6 +135,13 @@ struct SceneComponent {
 	float playerTurnResponsiveness = 0.018f;
 	bool playerCameraRelativeMove = true;
 	bool playerAllowJump = true;
+	Vector3 waterHalfSize = { 10.0f, 4.0f, 10.0f };
+	Vector3 waterOffset = { 0.0f, 0.0f, 0.0f };
+	float waterMoveSpeedMultiplier = 0.45f;
+	float waterGravityScale = 0.55f;
+	float waterDrag = 4.0f;
+	float waterMaxFallSpeed = 5.0f;
+	float waterSwimUpSpeed = 12.0f;
 	std::string cameraPathTargetCameraName;
 	std::string cameraPathTriggerType = "Key";
 	std::string cameraPathTriggerKey = "C";

@@ -34,6 +34,11 @@ public:
 		bool cameraRelativeMove,
 		bool allowJump
 	);
+	void SetWaterState(
+		bool inWater,
+		float moveSpeedMultiplier,
+		float swimUpSpeed
+	);
 
 private:
 	void ApplyPosition();
@@ -49,4 +54,7 @@ private:
 	float jumpVelocity_ = 37.2f;
 	bool cameraRelativeMove_ = true;
 	bool allowJump_ = true;
+	bool inWater_ = false;
+	float waterMoveSpeedMultiplier_ = 0.45f;
+	float waterSwimUpSpeed_ = 12.0f;
 };

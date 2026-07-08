@@ -128,7 +128,9 @@ void Player::Update(
 			Math::Multiply(right, inputMove.x),
 			Math::Multiply(forward, inputMove.z)
 		);
-		move = Math::Multiply(Math::Normalize(move), moveSpeed_);
+		const float activeMoveSpeed =
+			moveSpeed_ * (inWater_ ? waterMoveSpeedMultiplier_ : 1.0f);
+		move = Math::Multiply(Math::Normalize(move), activeMoveSpeed);
 		desiredVelocity.x = move.x;
 		desiredVelocity.z = move.z;
 
@@ -145,7 +147,23 @@ void Player::Update(
 		}
 	}
 
-	if (allowJump_ && physicsBody_.isGrounded && input->TriggerKey(DIK_SPACE)) {
+	if (inWater_) {
+		const bool swimUp = input->PushKey(DIK_SPACE);
+		const bool swimDown = input->PushKey(DIK_LCONTROL);
+		if (swimUp) {
+			desiredVelocity.y = waterSwimUpSpeed_;
+			physicsBody_.isGrounded = false;
+		} else if (swimDown) {
+			desiredVelocity.y = -waterSwimUpSpeed_ * 0.6f;
+			physicsBody_.isGrounded = false;
+		} else {
+			desiredVelocity.y = std::clamp(
+				desiredVelocity.y,
+				-waterSwimUpSpeed_ * 0.35f,
+				waterSwimUpSpeed_ * 0.35f
+			);
+		}
+	} else if (allowJump_ && physicsBody_.isGrounded && input->TriggerKey(DIK_SPACE)) {
 		desiredVelocity.y = jumpVelocity_;
 		physicsBody_.isGrounded = false;
 	}
@@ -206,6 +224,16 @@ void Player::SetBehaviorSettings(
 	turnResponsiveness_ = std::clamp(turnResponsiveness, 0.0f, 1.0f);
 	cameraRelativeMove_ = cameraRelativeMove;
 	allowJump_ = allowJump;
+}
+
+void Player::SetWaterState(
+	bool inWater,
+	float moveSpeedMultiplier,
+	float swimUpSpeed
+) {
+	inWater_ = inWater;
+	waterMoveSpeedMultiplier_ = std::clamp(moveSpeedMultiplier, 0.0f, 1.0f);
+	waterSwimUpSpeed_ = (std::max)(swimUpSpeed, 0.0f);
 }
 
 void Player::ApplyPosition() {

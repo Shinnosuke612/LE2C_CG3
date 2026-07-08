@@ -77,6 +77,8 @@ namespace {
 			{ "noiseEnabled", settings.noiseEnabled },
 			{ "dissolveEnabled", settings.dissolveEnabled },
 			{ "outlineEnabled", settings.outlineEnabled },
+			{ "underwaterEnabled", settings.underwaterEnabled },
+			{ "waterRefractionEnabled", settings.waterRefractionEnabled },
 			{ "vignetteScale", settings.vignetteScale },
 			{ "vignettePower", settings.vignettePower },
 			{ "vignetteIntensity", settings.vignetteIntensity },
@@ -110,7 +112,15 @@ namespace {
 			{ "outlineThreshold", settings.outlineThreshold },
 			{ "outlineSoftness", settings.outlineSoftness },
 			{ "outlineThickness", settings.outlineThickness },
-			{ "outlineColor", VectorToJson(settings.outlineColor) }
+			{ "outlineColor", VectorToJson(settings.outlineColor) },
+			{ "underwaterTintColor", VectorToJson(settings.underwaterTintColor) },
+			{ "underwaterIntensity", settings.underwaterIntensity },
+			{ "underwaterFogDensity", settings.underwaterFogDensity },
+			{ "underwaterDistortion", settings.underwaterDistortion },
+			{ "waterRefractionTintColor", VectorToJson(settings.waterRefractionTintColor) },
+			{ "waterRefractionStrength", settings.waterRefractionStrength },
+			{ "waterRefractionEdgeSoftness", settings.waterRefractionEdgeSoftness },
+			{ "waterRefractionTintStrength", settings.waterRefractionTintStrength }
 		};
 	}
 
@@ -141,6 +151,8 @@ namespace {
 		settings.noiseEnabled = source.value("noiseEnabled", settings.noiseEnabled);
 		settings.dissolveEnabled = source.value("dissolveEnabled", settings.dissolveEnabled);
 		settings.outlineEnabled = source.value("outlineEnabled", settings.outlineEnabled);
+		settings.underwaterEnabled = source.value("underwaterEnabled", settings.underwaterEnabled);
+		settings.waterRefractionEnabled = source.value("waterRefractionEnabled", settings.waterRefractionEnabled);
 		settings.vignetteScale = source.value("vignetteScale", settings.vignetteScale);
 		settings.vignettePower = source.value("vignettePower", settings.vignettePower);
 		settings.vignetteIntensity = source.value("vignetteIntensity", settings.vignetteIntensity);
@@ -190,6 +202,24 @@ namespace {
 				settings.outlineColor
 			);
 		}
+		if (source.contains("underwaterTintColor")) {
+			settings.underwaterTintColor = JsonToVector(
+				source.at("underwaterTintColor"),
+				settings.underwaterTintColor
+			);
+		}
+		settings.underwaterIntensity = source.value("underwaterIntensity", settings.underwaterIntensity);
+		settings.underwaterFogDensity = source.value("underwaterFogDensity", settings.underwaterFogDensity);
+		settings.underwaterDistortion = source.value("underwaterDistortion", settings.underwaterDistortion);
+		if (source.contains("waterRefractionTintColor")) {
+			settings.waterRefractionTintColor = JsonToVector(
+				source.at("waterRefractionTintColor"),
+				settings.waterRefractionTintColor
+			);
+		}
+		settings.waterRefractionStrength = source.value("waterRefractionStrength", settings.waterRefractionStrength);
+		settings.waterRefractionEdgeSoftness = source.value("waterRefractionEdgeSoftness", settings.waterRefractionEdgeSoftness);
+		settings.waterRefractionTintStrength = source.value("waterRefractionTintStrength", settings.waterRefractionTintStrength);
 
 		settings.baseExposure = (std::max)(0.01f, settings.baseExposure);
 		settings.toneMapMode = std::clamp(settings.toneMapMode, 0, 1);
@@ -203,6 +233,15 @@ namespace {
 		settings.gaussianBlurKernelSize = settings.gaussianBlurKernelSize == 5 ? 5 : 3;
 		settings.radialBlurSamples = std::clamp(settings.radialBlurSamples, 2, 32);
 		settings.dissolveMaskIndex = std::clamp(settings.dissolveMaskIndex, 0, 1);
+		settings.underwaterIntensity = std::clamp(settings.underwaterIntensity, 0.0f, 1.0f);
+		settings.underwaterFogDensity = (std::max)(0.0f, settings.underwaterFogDensity);
+		settings.underwaterDistortion = (std::max)(0.0f, settings.underwaterDistortion);
+		settings.waterRefractionStrength =
+			std::clamp(settings.waterRefractionStrength, 0.0f, 0.12f);
+		settings.waterRefractionEdgeSoftness =
+			std::clamp(settings.waterRefractionEdgeSoftness, 0.0f, 2.0f);
+		settings.waterRefractionTintStrength =
+			std::clamp(settings.waterRefractionTintStrength, 0.0f, 1.0f);
 		return settings;
 	}
 
@@ -276,6 +315,15 @@ namespace {
 			result["turnResponsiveness"] = component.playerTurnResponsiveness;
 			result["cameraRelativeMove"] = component.playerCameraRelativeMove;
 			result["allowJump"] = component.playerAllowJump;
+		} else if (component.type == "WaterVolume") {
+			result["halfSize"] = VectorToJson(component.waterHalfSize);
+			result["offset"] = VectorToJson(component.waterOffset);
+			result["moveSpeedMultiplier"] =
+				component.waterMoveSpeedMultiplier;
+			result["gravityScale"] = component.waterGravityScale;
+			result["drag"] = component.waterDrag;
+			result["maxFallSpeed"] = component.waterMaxFallSpeed;
+			result["swimUpSpeed"] = component.waterSwimUpSpeed;
 		} else if (component.type == "CameraPath") {
 			result["targetCameraName"] = component.cameraPathTargetCameraName;
 			result["triggerType"] = component.cameraPathTriggerType;
@@ -516,6 +564,38 @@ namespace {
 				component.playerAllowJump = value.value(
 					"allowJump",
 					component.playerAllowJump
+				);
+				if (value.contains("halfSize")) {
+					component.waterHalfSize = JsonToVector(
+						value.at("halfSize"),
+						component.waterHalfSize
+					);
+				}
+				if (value.contains("offset")) {
+					component.waterOffset = JsonToVector(
+						value.at("offset"),
+						component.waterOffset
+					);
+				}
+				component.waterMoveSpeedMultiplier = value.value(
+					"moveSpeedMultiplier",
+					component.waterMoveSpeedMultiplier
+				);
+				component.waterGravityScale = value.value(
+					"gravityScale",
+					component.waterGravityScale
+				);
+				component.waterDrag = value.value(
+					"drag",
+					component.waterDrag
+				);
+				component.waterMaxFallSpeed = value.value(
+					"maxFallSpeed",
+					component.waterMaxFallSpeed
+				);
+				component.waterSwimUpSpeed = value.value(
+					"swimUpSpeed",
+					component.waterSwimUpSpeed
 				);
 				component.cameraPathTargetCameraName = value.value(
 					"targetCameraName",
@@ -1141,6 +1221,41 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->playerTurnResponsiveness = turnResponsiveness;
 				changed = true;
 			}
+		} else if (type == "WaterVolume") {
+			const Vector3 halfSize = {
+				(std::max)(found->waterHalfSize.x, 0.1f),
+				(std::max)(found->waterHalfSize.y, 0.1f),
+				(std::max)(found->waterHalfSize.z, 0.1f)
+			};
+			if (
+				found->waterHalfSize.x != halfSize.x ||
+				found->waterHalfSize.y != halfSize.y ||
+				found->waterHalfSize.z != halfSize.z
+			) {
+				found->waterHalfSize = halfSize;
+				changed = true;
+			}
+			const float moveMultiplier = std::clamp(
+				found->waterMoveSpeedMultiplier,
+				0.0f,
+				1.0f
+			);
+			if (found->waterMoveSpeedMultiplier != moveMultiplier) {
+				found->waterMoveSpeedMultiplier = moveMultiplier;
+				changed = true;
+			}
+			if (found->waterDrag < 0.0f) {
+				found->waterDrag = 0.0f;
+				changed = true;
+			}
+			if (found->waterMaxFallSpeed < 0.0f) {
+				found->waterMaxFallSpeed = 0.0f;
+				changed = true;
+			}
+			if (found->waterSwimUpSpeed < 0.0f) {
+				found->waterSwimUpSpeed = 0.0f;
+				changed = true;
+			}
 		} else if (type == "CameraPath") {
 			if (found->cameraPathTriggerType.empty()) {
 				found->cameraPathTriggerType = "Key";
@@ -1244,6 +1359,14 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.playerTurnResponsiveness = 0.018f;
 		component.playerCameraRelativeMove = true;
 		component.playerAllowJump = true;
+	} else if (type == "WaterVolume") {
+		component.waterHalfSize = { 10.0f, 4.0f, 10.0f };
+		component.waterOffset = { 0.0f, 0.0f, 0.0f };
+		component.waterMoveSpeedMultiplier = 0.45f;
+		component.waterGravityScale = 0.55f;
+		component.waterDrag = 4.0f;
+		component.waterMaxFallSpeed = 5.0f;
+		component.waterSwimUpSpeed = 12.0f;
 	} else if (type == "CameraPath") {
 		component.cameraPathTargetCameraName = "";
 		component.cameraPathTriggerType = "Key";

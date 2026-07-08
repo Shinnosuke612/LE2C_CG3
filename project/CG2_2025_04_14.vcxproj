@@ -378,6 +378,8 @@
     <None Include="resources\shaders\Noise.PS.hlsl" />
     <None Include="resources\shaders\Outline.PS.hlsl" />
     <None Include="resources\shaders\Skinning.CS.hlsl" />
+    <None Include="resources\shaders\Underwater.PS.hlsl" />
+    <None Include="resources\shaders\WaterRefraction.PS.hlsl" />
     <None Include="resources\shaders\Vignette.PS.hlsl" />
     <None Include="resources\shaders\Object3D.hlsli">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>

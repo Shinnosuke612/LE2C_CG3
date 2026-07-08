@@ -372,6 +372,30 @@ namespace {
 		return result;
 	}
 
+	bool IsPointInsideWaterVolume(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& waterVolume,
+		const Vector3& point
+	) {
+		const Transform transform = ResolveScene3DTransform(document, entity);
+		const Vector3 center = {
+			transform.translate.x + waterVolume.waterOffset.x,
+			transform.translate.y + waterVolume.waterOffset.y,
+			transform.translate.z + waterVolume.waterOffset.z
+		};
+		const Vector3 halfSize = {
+			(std::max)(waterVolume.waterHalfSize.x, 0.001f),
+			(std::max)(waterVolume.waterHalfSize.y, 0.001f),
+			(std::max)(waterVolume.waterHalfSize.z, 0.001f)
+		};
+
+		return
+			std::abs(point.x - center.x) <= halfSize.x &&
+			std::abs(point.y - center.y) <= halfSize.y &&
+			std::abs(point.z - center.z) <= halfSize.z;
+	}
+
 	Vector3 TransformCoord(const Vector3& value, const Matrix4x4& matrix) {
 		const float x =
 			value.x * matrix.m[0][0] +
@@ -624,17 +648,33 @@ void GamePlayScene::SyncSceneModelObjects() {
 		}
 
 		found->second.object->GetTransform() = entity.transform;
-		found->second.object->SetCullMode(meshRenderer
-			? ToObjectCullMode(meshRenderer->meshCullMode)
-			: Object3dCommon::CullMode::kBack
+		const bool isWaterVolume = HasComponent(entity, "WaterVolume");
+		found->second.object->SetCullMode(
+			isWaterVolume
+				? Object3dCommon::CullMode::kNone
+				: (
+					meshRenderer
+						? ToObjectCullMode(meshRenderer->meshCullMode)
+						: Object3dCommon::CullMode::kBack
+				)
 		);
-		if (HasComponent(entity, "MonitorRenderer")) {
+		if (isWaterVolume) {
+			found->second.object->SetColor({ 0.08f, 0.48f, 0.95f, 0.34f });
+			found->second.object->SetEnableLighting(false);
+			found->second.object->SetEnvironmentCoefficient(0.0f);
+			found->second.object->SetEmissive(
+				0.18f,
+				{ 0.30f, 0.78f, 1.0f, 1.0f }
+			);
+		} else if (HasComponent(entity, "MonitorRenderer")) {
 			found->second.object->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 			found->second.object->SetEnableLighting(false);
 			found->second.object->SetEnvironmentCoefficient(0.0f);
 			found->second.object->SetEmissive(0.0f);
 		} else {
+			found->second.object->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 			found->second.object->SetEnableLighting(true);
+			found->second.object->SetEmissive(0.0f);
 		}
 		if (HasComponent(entity, "PlayerBehavior")) {
 			found->second.object->SetDissolve(0.0f);
@@ -1039,6 +1079,48 @@ void GamePlayScene::ApplyPlayerPhysicsComponent(
 	body.velocity = (editorSession && editorSession->IsEditing())
 		? physicsBody->physicsVelocity
 		: runtimeVelocity;
+}
+
+void GamePlayScene::ApplyWaterVolumes(const SceneDocument& document) {
+	if (!player_ || !player_->GetObject()) {
+		return;
+	}
+
+	player_->SetWaterState(false, 1.0f, 0.0f);
+
+	const Vector3 playerPosition =
+		player_->GetObject()->GetTransform().translate;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			continue;
+		}
+		const SceneComponent* waterVolume =
+			FindEnabledComponent(entity, "WaterVolume");
+		if (!waterVolume) {
+			continue;
+		}
+		if (!IsPointInsideWaterVolume(
+			document,
+			entity,
+			*waterVolume,
+			playerPosition
+		)) {
+			continue;
+		}
+
+		player_->SetWaterState(
+			true,
+			waterVolume->waterMoveSpeedMultiplier,
+			waterVolume->waterSwimUpSpeed
+		);
+
+		PhysicsBody& body = player_->GetPhysicsBody();
+		body.gravityScale = waterVolume->waterGravityScale;
+		body.drag = (std::max)(body.drag, waterVolume->waterDrag);
+		body.maxFallSpeed =
+			(std::max)(waterVolume->waterMaxFallSpeed, 0.0f);
+		return;
+	}
 }
 
 void GamePlayScene::StepPhysics(float deltaTime) {
@@ -2035,10 +2117,13 @@ void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 		axis->Draw();
 	}
 	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
+		const bool hideWaterVolumeMeshes =
+			document->GetPostProcessSettings().waterRefractionEnabled;
 		for (const SceneEntity& entity : document->GetEntities()) {
 			if (
 				entity.id == skipEntityId ||
-				!IsEntityActiveInHierarchy(*document, entity)
+				!IsEntityActiveInHierarchy(*document, entity) ||
+				(hideWaterVolumeMeshes && HasComponent(entity, "WaterVolume"))
 			) {
 				continue;
 			}
@@ -2514,6 +2599,7 @@ void GamePlayScene::Update()
 	if (activeDocument) {
 		ApplyPlayerBehaviorComponent(*activeDocument);
 		ApplyPlayerPhysicsComponent(*activeDocument);
+		ApplyWaterVolumes(*activeDocument);
 	}
 	if (
 		editorSession &&
@@ -2930,7 +3016,10 @@ void GamePlayScene::DrawShadow()
 	}
 	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
 		for (const SceneEntity& entity : document->GetEntities()) {
-			if (!IsEntityActiveInHierarchy(*document, entity)) {
+			if (
+				!IsEntityActiveInHierarchy(*document, entity) ||
+				HasComponent(entity, "WaterVolume")
+			) {
 				continue;
 			}
 			const auto found = sceneModelObjects_.find(entity.id);
