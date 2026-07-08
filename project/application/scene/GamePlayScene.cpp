@@ -65,6 +65,11 @@ namespace {
 		const char* componentName
 	);
 
+	Transform ResolveScene3DTransform(
+		const SceneDocument& document,
+		const SceneEntity& entity
+	);
+
 	SceneComponent* FindComponent(
 		SceneEntity& entity,
 		const char* componentName
@@ -165,6 +170,72 @@ namespace {
 		return true;
 	}
 
+	bool ResolveMonitorTargetCamera(
+		const SceneDocument& document,
+		const SceneComponent& monitorRenderer,
+		const SceneEntity*& cameraEntity,
+		const SceneComponent*& cameraComponent
+	) {
+		cameraEntity = nullptr;
+		cameraComponent = nullptr;
+
+		auto tryResolveEntity = [&document](
+			const SceneEntity* entity,
+			const SceneEntity*& resolvedEntity,
+			const SceneComponent*& resolvedCamera
+		) {
+			if (!entity || !IsEntityActiveInHierarchy(document, *entity)) {
+				return false;
+			}
+			const SceneComponent* camera =
+				FindEnabledComponent(*entity, "Camera");
+			if (!camera) {
+				return false;
+			}
+			resolvedEntity = entity;
+			resolvedCamera = camera;
+			return true;
+		};
+
+		if (monitorRenderer.monitorCameraEntityId != 0) {
+			const SceneEntity* entity =
+				document.FindEntity(monitorRenderer.monitorCameraEntityId);
+			const bool idMatchesStoredName =
+				monitorRenderer.monitorCameraName.empty() ||
+				(entity && entity->name == monitorRenderer.monitorCameraName);
+			if (
+				idMatchesStoredName &&
+				tryResolveEntity(entity, cameraEntity, cameraComponent)
+			) {
+				return true;
+			}
+		}
+
+		if (!monitorRenderer.monitorCameraName.empty()) {
+			const SceneEntity* entity =
+				document.FindEntityByName(monitorRenderer.monitorCameraName);
+			if (tryResolveEntity(entity, cameraEntity, cameraComponent)) {
+				return true;
+			}
+		}
+
+		if (monitorRenderer.monitorCameraEntityId != 0) {
+			const SceneEntity* entity =
+				document.FindEntity(monitorRenderer.monitorCameraEntityId);
+			if (tryResolveEntity(entity, cameraEntity, cameraComponent)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool HasMonitorCameraBinding(const SceneComponent& monitorRenderer) {
+		return
+			monitorRenderer.monitorCameraEntityId != 0 ||
+			!monitorRenderer.monitorCameraName.empty();
+	}
+
 	void ApplyMainCameraComponent(
 		const SceneDocument& document,
 		Camera* camera
@@ -205,8 +276,10 @@ namespace {
 		}
 
 		camera->SetOrbitMode(false);
-		camera->SetTranslate(cameraEntity->transform.translate);
-		camera->SetRotate(cameraEntity->transform.rotate);
+		const Transform cameraTransform =
+			ResolveScene3DTransform(document, *cameraEntity);
+		camera->SetTranslate(cameraTransform.translate);
+		camera->SetRotate(cameraTransform.rotate);
 		camera->SetFovY(std::clamp(
 			cameraComponent->cameraFovY,
 			0.0174532925f,
@@ -555,6 +628,14 @@ void GamePlayScene::SyncSceneModelObjects() {
 			? ToObjectCullMode(meshRenderer->meshCullMode)
 			: Object3dCommon::CullMode::kBack
 		);
+		if (HasComponent(entity, "MonitorRenderer")) {
+			found->second.object->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+			found->second.object->SetEnableLighting(false);
+			found->second.object->SetEnvironmentCoefficient(0.0f);
+			found->second.object->SetEmissive(0.0f);
+		} else {
+			found->second.object->SetEnableLighting(true);
+		}
 		if (HasComponent(entity, "PlayerBehavior")) {
 			found->second.object->SetDissolve(0.0f);
 		}
@@ -840,13 +921,20 @@ void GamePlayScene::SyncEnvironmentComponent() {
 		const SceneComponent* meshRenderer = entity
 			? FindEnabledComponent(*entity, "MeshRenderer")
 			: nullptr;
+		const bool isMonitorSurface =
+			entity && HasComponent(*entity, "MonitorRenderer");
 		sceneObject.object->SetEnvironmentMap(
 			environmentMapPath_,
-			ResolveEnvironmentReflectionIntensity(
-				meshRenderer,
-				environmentReflectionIntensity_
-			)
+			isMonitorSurface
+				? 0.0f
+				: ResolveEnvironmentReflectionIntensity(
+					meshRenderer,
+					environmentReflectionIntensity_
+				)
 		);
+		if (isMonitorSurface) {
+			sceneObject.object->SetEnableLighting(false);
+		}
 	}
 }
 
@@ -1016,9 +1104,11 @@ bool GamePlayScene::ApplyCameraComponentToCamera(
 	if (!camera || !IsEntityActiveInHierarchy(document, cameraEntity)) {
 		return false;
 	}
+	const Transform cameraTransform =
+		ResolveScene3DTransform(document, cameraEntity);
 	camera->SetOrbitMode(false);
-	camera->SetTranslate(cameraEntity.transform.translate);
-	camera->SetRotate(cameraEntity.transform.rotate);
+	camera->SetTranslate(cameraTransform.translate);
+	camera->SetRotate(cameraTransform.rotate);
 	camera->SetFovY(std::clamp(
 		cameraComponent.cameraFovY,
 		0.0174532925f,
@@ -1268,7 +1358,6 @@ void GamePlayScene::SyncMonitorRenderers() {
 			64,
 			2048
 		);
-		runtime.targetCameraName = monitorRenderer->monitorCameraName;
 		runtime.hideSelf = monitorRenderer->monitorHideSelf;
 		if (!runtime.camera) {
 			runtime.camera = new Camera();
@@ -1317,24 +1406,20 @@ void GamePlayScene::ApplyRenderCamera(Camera* viewCamera) {
 	Object3dCommon::GetInstance()->SetDefaultCamera(viewCamera);
 	for (StageObject& stageObject : stageObjects_) {
 		if (stageObject.object) {
-			stageObject.object->SetCamera(viewCamera);
-			stageObject.object->Update();
+			stageObject.object->UpdateForCamera(viewCamera);
 		}
 	}
 	for (auto& [entityId, sceneObject] : sceneModelObjects_) {
 		(void)entityId;
 		if (sceneObject.object) {
-			sceneObject.object->SetCamera(viewCamera);
-			sceneObject.object->Update();
+			sceneObject.object->UpdateForCamera(viewCamera);
 		}
 	}
 	if (plane_) {
-		plane_->SetCamera(viewCamera);
-		plane_->Update();
+		plane_->UpdateForCamera(viewCamera);
 	}
 	if (axis) {
-		axis->SetCamera(viewCamera);
-		axis->Update();
+		axis->UpdateForCamera(viewCamera);
 	}
 	if (skybox_) {
 		skybox_->SetCamera(viewCamera);
@@ -1389,6 +1474,301 @@ void GamePlayScene::InitializePauseDebugCamera() {
 	);
 	debugCamera_->UpdatePreviewMatrices();
 	debugCameraInitialized_ = true;
+}
+
+void GamePlayScene::DrawMonitorDebugWindow() {
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (!ImGui::Begin("Monitor Debug")) {
+		ImGui::End();
+		return;
+	}
+
+	auto drawVector3 = [](const char* label, const Vector3& value) {
+		ImGui::Text(
+			"%s: %.3f, %.3f, %.3f",
+			label,
+			value.x,
+			value.y,
+			value.z
+		);
+	};
+	auto yesNo = [](bool value) {
+		return value ? "yes" : "no";
+	};
+
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	ImGui::Text(
+		"Last offscreen pass frame: %llu",
+		static_cast<unsigned long long>(monitorDebugFrame_)
+	);
+	ImGui::Text(
+		"Monitor runtimes: %zu",
+		monitorRuntimes_.size()
+	);
+	ImGui::Checkbox(
+		"Force probe camera for monitor RT",
+		&monitorDebugForceProbeCamera_
+	);
+
+	if (Camera* sceneCamera = GetSceneViewCamera()) {
+		ImGui::SeparatorText("Scene View Camera");
+		drawVector3("Translate", sceneCamera->GetTranslate());
+		drawVector3("Rotate", sceneCamera->GetRotate());
+		ImGui::Text(
+			"FOV: %.3f / Near: %.3f / Far: %.3f",
+			sceneCamera->GetFovY(),
+			sceneCamera->GetNearClip(),
+			sceneCamera->GetFarClip()
+		);
+	}
+
+	if (!document) {
+		ImGui::TextColored(
+			ImVec4(0.95f, 0.45f, 0.35f, 1.0f),
+			"No active scene document"
+		);
+		ImGui::End();
+		return;
+	}
+
+	std::unordered_set<uint64_t> listedRuntimes;
+	uint32_t monitorComponentCount = 0;
+	for (const SceneEntity& entity : document->GetEntities()) {
+		const SceneComponent* monitorRenderer =
+			FindEnabledComponent(entity, "MonitorRenderer");
+		if (!monitorRenderer) {
+			continue;
+		}
+
+		++monitorComponentCount;
+		listedRuntimes.insert(entity.id);
+		const auto runtimeIterator = monitorRuntimes_.find(entity.id);
+		const MonitorRuntime* runtime = runtimeIterator != monitorRuntimes_.end()
+			? &runtimeIterator->second
+			: nullptr;
+
+		std::string header = entity.name.empty()
+			? std::string("Monitor")
+			: entity.name;
+		header += " ##MonitorDebug";
+		header += std::to_string(entity.id);
+		if (ImGui::TreeNode(header.c_str())) {
+			ImGui::Text(
+				"Monitor Entity: #%llu / active: %s",
+				static_cast<unsigned long long>(entity.id),
+				yesNo(IsEntityActiveInHierarchy(*document, entity))
+			);
+			drawVector3("Monitor Translate", entity.transform.translate);
+			drawVector3("Monitor Rotate", entity.transform.rotate);
+
+			ImGui::SeparatorText("Component Target");
+			ImGui::Text(
+				"Target id: %llu",
+				static_cast<unsigned long long>(
+					monitorRenderer->monitorCameraEntityId
+				)
+			);
+			ImGui::Text(
+				"Target name: %s",
+				monitorRenderer->monitorCameraName.empty()
+					? "(empty)"
+					: monitorRenderer->monitorCameraName.c_str()
+			);
+			ImGui::Text(
+				"Size: %u x %u / Hide self: %s",
+				monitorRenderer->monitorWidth,
+				monitorRenderer->monitorHeight,
+				yesNo(monitorRenderer->monitorHideSelf)
+			);
+			const SceneComponent* meshRenderer =
+				FindEnabledComponent(entity, "MeshRenderer");
+			const std::string monitorModelPath = meshRenderer
+				? meshRenderer->modelPath
+				: std::string{};
+			ImGui::Text(
+				"Surface mesh: %s",
+				monitorModelPath.empty()
+					? "(none)"
+					: monitorModelPath.c_str()
+			);
+			if (monitorModelPath == "Cube.obj") {
+				ImGui::TextColored(
+					ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+					"Cube.obj uses atlas UVs; RT will appear cropped."
+				);
+			} else if (monitorModelPath == "plane.obj") {
+				ImGui::TextColored(
+					ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+					"plane.obj faces +Z; use monitor_screen.obj for monitors."
+				);
+			} else if (monitorModelPath == "monitor_screen.obj") {
+				ImGui::TextColored(
+					ImVec4(0.45f, 0.95f, 0.55f, 1.0f),
+					"monitor_screen.obj faces -Z with full-screen UVs."
+				);
+			}
+
+			const SceneEntity* liveCameraEntity = nullptr;
+			const SceneComponent* liveCameraComponent = nullptr;
+			const bool liveResolved = ResolveMonitorTargetCamera(
+				*document,
+				*monitorRenderer,
+				liveCameraEntity,
+				liveCameraComponent
+			);
+			ImGui::SeparatorText("Live Resolve");
+			if (liveResolved && liveCameraEntity && liveCameraComponent) {
+				const Transform liveCameraTransform =
+					ResolveScene3DTransform(*document, *liveCameraEntity);
+				ImGui::TextColored(
+					ImVec4(0.45f, 0.95f, 0.55f, 1.0f),
+					"Resolved: #%llu %s",
+					static_cast<unsigned long long>(liveCameraEntity->id),
+					liveCameraEntity->name.c_str()
+				);
+				ImGui::Text(
+					"Main: %s / PlayerBehavior: %s",
+					yesNo(liveCameraComponent->cameraIsMain),
+					yesNo(HasComponent(*liveCameraEntity, "PlayerBehavior"))
+				);
+				drawVector3(
+					"Target Translate",
+					liveCameraTransform.translate
+				);
+				drawVector3(
+					"Target Rotate",
+					liveCameraTransform.rotate
+				);
+			} else {
+				ImGui::TextColored(
+					ImVec4(0.95f, 0.45f, 0.35f, 1.0f),
+					"Resolved: no"
+				);
+			}
+
+			ImGui::SeparatorText("Last Offscreen Pass");
+			if (!runtime) {
+				ImGui::TextColored(
+					ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+					"No runtime has been created yet"
+				);
+			} else {
+				ImGui::Text("Status: %s", runtime->debugStatus.c_str());
+				ImGui::Text(
+					"Pass frame: %llu",
+					static_cast<unsigned long long>(runtime->debugPassFrame)
+				);
+				ImGui::Text(
+					"Resolved: %s / Rendered: %s / Texture applied: %s",
+					yesNo(runtime->debugResolvedCamera),
+					yesNo(runtime->debugRendered),
+					yesNo(runtime->debugTextureApplied)
+				);
+				ImGui::Text(
+					"Last target: #%llu %s",
+					static_cast<unsigned long long>(
+						runtime->debugTargetCameraId
+					),
+					runtime->debugTargetCameraName.empty()
+						? "(none)"
+						: runtime->debugTargetCameraName.c_str()
+				);
+				ImGui::Text(
+					"Last target main: %s / player: %s",
+					yesNo(runtime->debugTargetIsMain),
+					yesNo(runtime->debugTargetHasPlayerBehavior)
+				);
+				drawVector3(
+					"Last target translate",
+					runtime->debugTargetTranslate
+				);
+				drawVector3(
+					"Last target rotate",
+					runtime->debugTargetRotate
+				);
+				if (runtime->camera) {
+					drawVector3(
+						"Runtime camera translate",
+						runtime->camera->GetTranslate()
+					);
+					drawVector3(
+						"Runtime camera rotate",
+						runtime->camera->GetRotate()
+					);
+				}
+				ImGui::Text(
+					"RT: %s / %u x %u / SRV: 0x%llX",
+					runtime->renderTarget ? "yes" : "no",
+					runtime->width,
+					runtime->height,
+					static_cast<unsigned long long>(runtime->debugSrvPtr)
+				);
+				ImGui::Text(
+					"Applied override SRV: 0x%llX / match: %s",
+					static_cast<unsigned long long>(
+						runtime->debugAppliedTextureOverridePtr
+					),
+					yesNo(
+						runtime->debugSrvPtr != 0 &&
+						runtime->debugSrvPtr ==
+							runtime->debugAppliedTextureOverridePtr
+					)
+				);
+
+				if (runtime->renderTarget && runtime->debugSrvPtr != 0) {
+					const float availableWidth =
+						ImGui::GetContentRegionAvail().x;
+					float previewWidth = std::clamp(
+						availableWidth,
+						160.0f,
+						360.0f
+					);
+					const float aspect =
+						runtime->height > 0
+							? static_cast<float>(runtime->width) /
+								static_cast<float>(runtime->height)
+							: 1.0f;
+					float previewHeight = previewWidth /
+						(aspect > 0.0f ? aspect : 1.0f);
+					if (previewHeight > 260.0f) {
+						previewHeight = 260.0f;
+						previewWidth = previewHeight *
+							(aspect > 0.0f ? aspect : 1.0f);
+					}
+					ImGui::TextDisabled("RT preview from previous pass");
+					ImGui::Image(
+						ImTextureRef(
+							static_cast<ImTextureID>(runtime->debugSrvPtr)
+						),
+						ImVec2(previewWidth, previewHeight)
+					);
+				}
+			}
+
+			ImGui::TreePop();
+		}
+	}
+
+	if (monitorComponentCount == 0) {
+		ImGui::TextDisabled("No enabled MonitorRenderer components");
+	}
+
+	for (const auto& [entityId, runtime] : monitorRuntimes_) {
+		if (listedRuntimes.contains(entityId)) {
+			continue;
+		}
+		ImGui::TextColored(
+			ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+			"Orphan runtime: #%llu / %s",
+			static_cast<unsigned long long>(entityId),
+			runtime.debugStatus.c_str()
+		);
+	}
+
+	ImGui::End();
+#endif
 }
 
 bool GamePlayScene::TryStartCameraPath(SceneDocument& document) {
@@ -1625,6 +2005,8 @@ void GamePlayScene::DrawCameraPathDebug(
 }
 
 void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
+	ApplyRenderCamera(viewCamera);
+
 	if (skybox_) {
 		skybox_->Draw();
 	}
@@ -1676,7 +2058,9 @@ void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 		lightningRenderer_->Draw(viewCamera);
 	}
 
-	ParticleManager::GetInstance()->Draw();
+	ParticleManager* particleManager = ParticleManager::GetInstance();
+	particleManager->RefreshCpuParticleInstancesForCamera(viewCamera);
+	particleManager->Draw();
 
 	SceneDocument* spriteDocument = sceneManager_->GetActiveSceneDocument();
 	if (!sceneSpriteObjects_.empty() && spriteDocument) {
@@ -2047,6 +2431,8 @@ void GamePlayScene::Update()
 	}
 	ImGui::End();
 
+	DrawMonitorDebugWindow();
+
 	if (lightManager_) {
 		lightManager_->DrawImGui();
 	}
@@ -2293,6 +2679,7 @@ void GamePlayScene::UpdatePaused()
 		&showCameraPathPointCameraDebug_
 	);
 	ImGui::End();
+	DrawMonitorDebugWindow();
 #endif
 
 	if (debugCamera_) {
@@ -2360,12 +2747,12 @@ void GamePlayScene::UpdatePaused()
 void GamePlayScene::Draw()
 {
 	Camera* viewCamera = GetSceneViewCamera();
-	ApplyRenderCamera(viewCamera);
 	DrawSceneView(viewCamera);
 }
 
 void GamePlayScene::DrawOffscreenViews()
 {
+	++monitorDebugFrame_;
 	SyncMonitorRenderers();
 
 	SceneDocument* document = sceneManager_
@@ -2378,33 +2765,92 @@ void GamePlayScene::DrawOffscreenViews()
 	for (auto& [monitorEntityId, runtime] : monitorRuntimes_) {
 		const SceneEntity* monitorEntity = document->FindEntity(monitorEntityId);
 		const auto monitorObject = sceneModelObjects_.find(monitorEntityId);
+		runtime.debugPassFrame = monitorDebugFrame_;
+		runtime.debugResolvedCamera = false;
+		runtime.debugRendered = false;
+		runtime.debugTextureApplied = false;
+		runtime.debugTargetCameraId = 0;
+		runtime.debugTargetCameraName.clear();
+		runtime.debugTargetTranslate = {};
+		runtime.debugTargetRotate = {};
+		runtime.debugTargetIsMain = false;
+		runtime.debugTargetHasPlayerBehavior = false;
+		runtime.debugSrvPtr = runtime.renderTarget
+			? runtime.renderTarget->GetSrvGpuHandle().ptr
+			: 0;
+		runtime.debugAppliedTextureOverridePtr = monitorObject !=
+			sceneModelObjects_.end() &&
+			monitorObject->second.object
+				? monitorObject->second.object->GetTextureOverridePtr()
+				: 0;
+		runtime.debugStatus = "Pending";
 		if (
 			!monitorEntity ||
 			!IsEntityActiveInHierarchy(*document, *monitorEntity) ||
-			runtime.targetCameraName.empty() ||
 			!runtime.camera ||
 			!runtime.renderTarget ||
 			monitorObject == sceneModelObjects_.end() ||
 			!monitorObject->second.object
 		) {
+			if (!monitorEntity) {
+				runtime.debugStatus = "Monitor entity missing";
+			} else if (!IsEntityActiveInHierarchy(*document, *monitorEntity)) {
+				runtime.debugStatus = "Monitor entity inactive";
+			} else if (!runtime.camera) {
+				runtime.debugStatus = "Runtime camera missing";
+			} else if (!runtime.renderTarget) {
+				runtime.debugStatus = "Render target missing";
+			} else {
+				runtime.debugStatus = "Monitor mesh object missing";
+			}
 			if (monitorObject != sceneModelObjects_.end() && monitorObject->second.object) {
 				monitorObject->second.object->ClearTextureOverride();
 			}
+			runtime.debugAppliedTextureOverridePtr = 0;
 			continue;
 		}
 
-		const SceneEntity* cameraEntity =
-			document->FindEntityByName(runtime.targetCameraName);
-		if (!cameraEntity) {
+		const SceneComponent* monitorRenderer =
+			FindEnabledComponent(*monitorEntity, "MonitorRenderer");
+		if (monitorRenderer) {
+			runtime.debugTargetCameraId =
+				monitorRenderer->monitorCameraEntityId;
+			runtime.debugTargetCameraName =
+				monitorRenderer->monitorCameraName;
+		}
+		const SceneEntity* cameraEntity = nullptr;
+		const SceneComponent* cameraComponent = nullptr;
+		if (
+			!monitorRenderer ||
+			!HasMonitorCameraBinding(*monitorRenderer) ||
+			!ResolveMonitorTargetCamera(
+				*document,
+				*monitorRenderer,
+				cameraEntity,
+				cameraComponent
+			)
+		) {
+			if (!monitorRenderer) {
+				runtime.debugStatus = "MonitorRenderer component missing";
+			} else if (!HasMonitorCameraBinding(*monitorRenderer)) {
+				runtime.debugStatus = "Target camera not assigned";
+			} else {
+				runtime.debugStatus = "Target camera unresolved";
+			}
 			monitorObject->second.object->ClearTextureOverride();
+			runtime.debugAppliedTextureOverridePtr = 0;
 			continue;
 		}
-		const SceneComponent* cameraComponent =
-			FindEnabledComponent(*cameraEntity, "Camera");
-		if (!cameraComponent) {
-			monitorObject->second.object->ClearTextureOverride();
-			continue;
-		}
+		runtime.debugResolvedCamera = true;
+		runtime.debugTargetCameraId = cameraEntity->id;
+		runtime.debugTargetCameraName = cameraEntity->name;
+		const Transform targetCameraTransform =
+			ResolveScene3DTransform(*document, *cameraEntity);
+		runtime.debugTargetTranslate = targetCameraTransform.translate;
+		runtime.debugTargetRotate = targetCameraTransform.rotate;
+		runtime.debugTargetIsMain = cameraComponent->cameraIsMain;
+		runtime.debugTargetHasPlayerBehavior =
+			HasComponent(*cameraEntity, "PlayerBehavior");
 
 		const float aspectRatio =
 			static_cast<float>(runtime.width) /
@@ -2416,11 +2862,18 @@ void GamePlayScene::DrawOffscreenViews()
 			runtime.camera,
 			aspectRatio
 		)) {
+			runtime.debugStatus = "Failed to apply camera component";
 			monitorObject->second.object->ClearTextureOverride();
+			runtime.debugAppliedTextureOverridePtr = 0;
 			continue;
 		}
+		if (monitorDebugForceProbeCamera_) {
+			runtime.camera->SetTranslate({ 0.0f, 80.0f, -80.0f });
+			runtime.camera->SetRotate({ 0.75f, 0.0f, 0.0f });
+			runtime.camera->SetFovY(0.12f);
+			runtime.camera->Update();
+		}
 
-		ApplyRenderCamera(runtime.camera);
 		runtime.renderTarget->Begin();
 		SrvManager::GetInstance()->PreDraw();
 		DrawSceneView(
@@ -2429,9 +2882,22 @@ void GamePlayScene::DrawOffscreenViews()
 		);
 		runtime.renderTarget->End();
 
+		runtime.debugSrvPtr = runtime.renderTarget->GetSrvGpuHandle().ptr;
+		runtime.debugRendered = true;
+		runtime.debugTextureApplied = runtime.debugSrvPtr != 0;
+		runtime.debugStatus =
+			"Rendered from #" +
+			std::to_string(cameraEntity->id) +
+			" " +
+			cameraEntity->name;
+		if (monitorDebugForceProbeCamera_) {
+			runtime.debugStatus += " (probe camera forced)";
+		}
 		monitorObject->second.object->SetTextureOverride(
 			runtime.renderTarget->GetSrvGpuHandle()
 		);
+		runtime.debugAppliedTextureOverridePtr =
+			monitorObject->second.object->GetTextureOverridePtr();
 	}
 
 	ApplyRenderCamera(GetSceneViewCamera());

@@ -430,6 +430,7 @@ public:
 	void Initialize(ParticleCommon* particleCommon, SrvManager* srvManager);
 	void Reset();
 	void Update();
+	void RefreshCpuParticleInstancesForCamera(Camera* camera);
 	void Draw();
 
 	void CreateParticleGroup(const std::string& name, const std::string& textureFilePath);
@@ -594,6 +595,7 @@ private:
 
 	Vector3 LerpVector3(const Vector3& start, const Vector3& end, float t);
 	void UpdateParticleScale(Particle& particle);
+	uint32_t RebuildCpuParticleInstances(Camera* camera);
 
 private:
 	ParticleCommon* particleCommon_ = nullptr;

@@ -1307,6 +1307,7 @@ void ImGuiManager::BuildDefaultLayout() {
 	ImGui::DockBuilderDockWindow("Post Process Stack", rightId);
 	ImGui::DockBuilderDockWindow("Lightning", rightId);
 	ImGui::DockBuilderDockWindow("Scene Particles", rightId);
+	ImGui::DockBuilderDockWindow("Monitor Debug", bottomId);
 	ImGui::DockBuilderDockWindow("Project", bottomId);
 	ImGui::DockBuilderDockWindow("Console", bottomId);
 	ImGui::DockBuilderFinish(dockSpaceId);
@@ -2428,6 +2429,41 @@ void ImGuiManager::DrawInspectorWindow() {
 			} else if (component.type == "MonitorRenderer") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool monitorChanged = false;
+				struct MonitorResolutionPreset {
+					const char* label;
+					uint32_t width;
+					uint32_t height;
+				};
+				constexpr MonitorResolutionPreset monitorPresets[] = {
+					{ "Square 512", 512, 512 },
+					{ "HD 16:9", 1280, 720 },
+					{ "Full HD 16:9", 1920, 1080 },
+					{ "Portrait 9:16", 720, 1280 },
+					{ "Wide 21:9", 1792, 768 },
+					{ "Low 16:9", 640, 360 },
+					{ "Custom", 0, 0 },
+				};
+				const SceneEntity* currentCameraEntity = nullptr;
+				if (component.monitorCameraEntityId != 0) {
+					const SceneEntity* idCameraEntity =
+						document.FindEntity(component.monitorCameraEntityId);
+					if (
+						component.monitorCameraName.empty() ||
+						(
+							idCameraEntity &&
+							idCameraEntity->name == component.monitorCameraName
+						)
+					) {
+						currentCameraEntity = idCameraEntity;
+					}
+				}
+				if (
+					!currentCameraEntity &&
+					!component.monitorCameraName.empty()
+				) {
+					currentCameraEntity =
+						document.FindEntityByName(component.monitorCameraName);
+				}
 				char cameraNameBuffer[128]{};
 				strncpy_s(
 					cameraNameBuffer,
@@ -2440,41 +2476,153 @@ void ImGuiManager::DrawInspectorWindow() {
 					sizeof(cameraNameBuffer)
 				)) {
 					component.monitorCameraName = cameraNameBuffer;
+					component.monitorCameraEntityId = 0;
 					monitorChanged = true;
 				}
 
-				const char* currentCameraName =
-					component.monitorCameraName.empty()
-					? "Select Camera..."
-					: component.monitorCameraName.c_str();
-				if (ImGui::BeginCombo("Camera Entity", currentCameraName)) {
+				const std::string currentCameraLabel = currentCameraEntity
+					? currentCameraEntity->name
+					: (
+						component.monitorCameraName.empty()
+						? std::string("Select Camera...")
+						: component.monitorCameraName
+					);
+				if (ImGui::BeginCombo("Camera Entity", currentCameraLabel.c_str())) {
 					for (const SceneEntity& candidate : document.GetEntities()) {
 						const SceneComponent* cameraComponent =
 							FindEnabledComponent(candidate, "Camera");
 						if (!cameraComponent) {
 							continue;
 						}
+						std::string cameraLabel = candidate.name;
+						if (cameraComponent->cameraIsMain) {
+							cameraLabel += " (Main)";
+						}
+						if (HasComponent(candidate, "PlayerBehavior")) {
+							cameraLabel += " (Gameplay)";
+						}
+						const bool selected =
+							component.monitorCameraEntityId == candidate.id ||
+							(
+								component.monitorCameraEntityId == 0 &&
+								component.monitorCameraName == candidate.name
+							);
 						if (ImGui::Selectable(
-							candidate.name.c_str(),
-							component.monitorCameraName == candidate.name
+							cameraLabel.c_str(),
+							selected
 						)) {
+							component.monitorCameraEntityId = candidate.id;
 							component.monitorCameraName = candidate.name;
 							monitorChanged = true;
 						}
 					}
 					ImGui::EndCombo();
 				}
+				if (currentCameraEntity) {
+					ImGui::TextDisabled(
+						"Bound Camera ID: %llu",
+						static_cast<unsigned long long>(currentCameraEntity->id)
+					);
+				}
+				if (
+					component.monitorCameraEntityId != 0 ||
+					!component.monitorCameraName.empty()
+				) {
+					const SceneEntity* selectedCamera = nullptr;
+					const SceneEntity* idCamera = nullptr;
+					if (component.monitorCameraEntityId != 0) {
+						idCamera =
+							document.FindEntity(component.monitorCameraEntityId);
+						selectedCamera = idCamera;
+					}
+					const SceneEntity* namedCamera = nullptr;
+					if (!component.monitorCameraName.empty()) {
+						namedCamera =
+							document.FindEntityByName(component.monitorCameraName);
+					}
+					if (
+						idCamera &&
+						namedCamera &&
+						idCamera->id != namedCamera->id
+					) {
+						selectedCamera = namedCamera;
+						ImGui::TextColored(
+							ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+							"Stored camera ID and name differ; name is used"
+						);
+						if (ImGui::Button("Repair Camera ID")) {
+							component.monitorCameraEntityId = namedCamera->id;
+							monitorChanged = true;
+						}
+					} else if (
+						namedCamera &&
+						component.monitorCameraEntityId != namedCamera->id
+					) {
+						selectedCamera = namedCamera;
+						ImGui::TextDisabled(
+							"Camera name resolves, but ID is not bound"
+						);
+						if (ImGui::Button("Repair Camera ID")) {
+							component.monitorCameraEntityId = namedCamera->id;
+							monitorChanged = true;
+						}
+					} else if (!selectedCamera) {
+						selectedCamera = namedCamera;
+					}
+					if (
+						!selectedCamera ||
+						!FindEnabledComponent(*selectedCamera, "Camera")
+					) {
+						ImGui::TextColored(
+							ImVec4(0.95f, 0.55f, 0.25f, 1.0f),
+							"Target camera is missing"
+						);
+					} else if (!selectedCamera->active) {
+						ImGui::TextColored(
+							ImVec4(0.95f, 0.55f, 0.25f, 1.0f),
+							"Target camera is inactive"
+						);
+					} else if (HasComponent(*selectedCamera, "PlayerBehavior")) {
+						ImGui::TextDisabled(
+							"Target is the gameplay/player camera"
+						);
+					}
+				}
 
+				const char* currentPreset = component.monitorResolutionPreset.empty()
+					? "Custom"
+					: component.monitorResolutionPreset.c_str();
+				if (ImGui::BeginCombo("Resolution Preset", currentPreset)) {
+					for (const MonitorResolutionPreset& preset : monitorPresets) {
+						const bool selected =
+							component.monitorResolutionPreset == preset.label ||
+							(
+								component.monitorResolutionPreset.empty() &&
+								std::string(preset.label) == "Custom"
+							);
+						if (ImGui::Selectable(preset.label, selected)) {
+							component.monitorResolutionPreset = preset.label;
+							if (preset.width != 0 && preset.height != 0) {
+								component.monitorWidth = preset.width;
+								component.monitorHeight = preset.height;
+							}
+							monitorChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
 				int monitorWidth = static_cast<int>(component.monitorWidth);
 				int monitorHeight = static_cast<int>(component.monitorHeight);
 				if (ImGui::DragInt("Width", &monitorWidth, 16.0f, 64, 2048)) {
 					component.monitorWidth =
 						static_cast<uint32_t>(std::clamp(monitorWidth, 64, 2048));
+					component.monitorResolutionPreset = "Custom";
 					monitorChanged = true;
 				}
 				if (ImGui::DragInt("Height", &monitorHeight, 16.0f, 64, 2048)) {
 					component.monitorHeight =
 						static_cast<uint32_t>(std::clamp(monitorHeight, 64, 2048));
+					component.monitorResolutionPreset = "Custom";
 					monitorChanged = true;
 				}
 				monitorChanged |= ImGui::Checkbox(

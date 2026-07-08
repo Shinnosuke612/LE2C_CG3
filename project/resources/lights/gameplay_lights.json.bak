@@ -30,6 +30,30 @@
             "texelSnap": true
         }
     },
-    "pointLights": [],
+    "pointLights": [
+        {
+            "color": [
+                1.0,
+                0.8500000238418579,
+                0.6499999761581421,
+                1.0
+            ],
+            "decay": 1.0,
+            "enable": 1,
+            "intensity": 2.0,
+            "position": [
+                -1.7000000476837158,
+                3.0,
+                -5.0
+            ],
+            "radius": 14.300000190734863,
+            "shadow": {
+                "bias": 0.0024999999441206455,
+                "enable": 0,
+                "normalBias": 0.019999999552965164,
+                "strength": 0.550000011920929
+            }
+        }
+    ],
     "spotLights": []
 }

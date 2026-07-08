@@ -14,6 +14,7 @@
 #include "../../engine/physics/PhysicsBody.h"
 #include "../../engine/physics/PhysicsWorld.h"
 #include "../../engine/effect/LightningRenderer.h"
+#include "../../engine/math/Vector3.h"
 #include "../../engine/3d/StarFieldGenerator.h"
 #include "../../engine/3d/CameraPathRuntime.h"
 #include "../camera/ThirdPersonCameraController.h"
@@ -56,10 +57,22 @@ private:
 	struct MonitorRuntime {
 		Camera* camera = nullptr;
 		SceneRenderTarget* renderTarget = nullptr;
-		std::string targetCameraName;
 		uint32_t width = 512;
 		uint32_t height = 512;
 		bool hideSelf = true;
+		uint64_t debugPassFrame = 0;
+		bool debugResolvedCamera = false;
+		bool debugRendered = false;
+		bool debugTextureApplied = false;
+		uint64_t debugTargetCameraId = 0;
+		std::string debugTargetCameraName;
+		Vector3 debugTargetTranslate{};
+		Vector3 debugTargetRotate{};
+		bool debugTargetIsMain = false;
+		bool debugTargetHasPlayerBehavior = false;
+		uint64_t debugSrvPtr = 0;
+		uint64_t debugAppliedTextureOverridePtr = 0;
+		std::string debugStatus = "Waiting for offscreen pass";
 	};
 
 public: //メンバ関数
@@ -96,6 +109,7 @@ private:
 	void ApplyRenderCamera(Camera* viewCamera);
 	Camera* GetSceneViewCamera() const;
 	void InitializePauseDebugCamera();
+	void DrawMonitorDebugWindow();
 	bool TryStartCameraPath(SceneDocument& document);
 	void DrawCameraPathDebug(
 		const SceneDocument& document,
@@ -138,6 +152,8 @@ private:
 	std::unordered_map<uint64_t, SceneModelObject> sceneModelObjects_;
 	std::unordered_map<uint64_t, SceneSpriteObject> sceneSpriteObjects_;
 	std::unordered_map<uint64_t, MonitorRuntime> monitorRuntimes_;
+	uint64_t monitorDebugFrame_ = 0;
+	bool monitorDebugForceProbeCamera_ = false;
 	std::vector<OBBCollider*> staticColliders_;
 	PhysicsWorld physicsWorld_;
 	CameraPathRuntime cameraPathRuntime_;

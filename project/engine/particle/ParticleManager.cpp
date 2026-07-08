@@ -2478,7 +2478,6 @@ void ParticleManager::Update() {
 
 	const auto cpuUpdateStart = Clock::now();
 	uint32_t cpuParticleActiveCount = 0;
-	uint32_t cpuParticleInstanceCount = 0;
 	for (auto& [name, group] : particleGroups_) {
 		group.uvOffset.x += group.render.uvScrollSpeed.x * deltaTime_;
 		group.uvOffset.y += group.render.uvScrollSpeed.y * deltaTime_;
@@ -2510,39 +2509,9 @@ void ParticleManager::Update() {
 		cpuParticleActiveCount += static_cast<uint32_t>(
 			(std::min)(group.particles.size(), static_cast<size_t>(kMaxInstanceCount))
 		);
-
-		for (const auto& particle : group.particles) {
-			if (group.instanceCount >= kMaxInstanceCount) {
-				break;
-			}
-
-			Matrix4x4 worldMatrix{};
-
-			if (particle.billboardMode == BillboardMode::kBillboard) {
-				worldMatrix = MakeBillboardMatrix(
-					camera_->GetWorldMatrix(),
-					particle.transform.scale,
-					particle.transform.translate,
-					particle.transform.rotate.z
-				);
-			}
-			else {
-				worldMatrix = MakeAffineMatrix(
-					particle.transform.scale,
-					particle.transform.rotate,
-					particle.transform.translate
-				);
-			}
-			Matrix4x4 wvp = Multiply(worldMatrix, camera_->GetViewProjectionMatrix());
-
-			group.instancingData[group.instanceCount].World = worldMatrix;
-			group.instancingData[group.instanceCount].WVP = wvp;
-			group.instancingData[group.instanceCount].color = particle.color;
-
-			++group.instanceCount;
-		}
-		cpuParticleInstanceCount += group.instanceCount;
 	}
+	const uint32_t cpuParticleInstanceCount =
+		RebuildCpuParticleInstances(camera_);
 	runtimeStats_.cpuParticleUpdateMs =
 		elapsedMs(cpuUpdateStart, Clock::now());
 	runtimeStats_.cpuParticleActiveCount = cpuParticleActiveCount;
@@ -2563,6 +2532,60 @@ void ParticleManager::Update() {
 		}
 	}
 	runtimeStats_.totalParticleUpdateMs = elapsedMs(updateStart, Clock::now());
+}
+
+void ParticleManager::RefreshCpuParticleInstancesForCamera(Camera* camera) {
+	if (!camera) {
+		return;
+	}
+	camera_ = camera;
+	runtimeStats_.cpuParticleInstanceCount =
+		RebuildCpuParticleInstances(camera);
+}
+
+uint32_t ParticleManager::RebuildCpuParticleInstances(Camera* camera) {
+	if (!camera) {
+		return 0;
+	}
+
+	uint32_t cpuParticleInstanceCount = 0;
+	for (auto& [name, group] : particleGroups_) {
+		(void)name;
+		group.instanceCount = 0;
+		for (const auto& particle : group.particles) {
+			if (group.instanceCount >= kMaxInstanceCount) {
+				break;
+			}
+
+			Matrix4x4 worldMatrix{};
+			if (particle.billboardMode == BillboardMode::kBillboard) {
+				worldMatrix = MakeBillboardMatrix(
+					camera->GetWorldMatrix(),
+					particle.transform.scale,
+					particle.transform.translate,
+					particle.transform.rotate.z
+				);
+			} else {
+				worldMatrix = MakeAffineMatrix(
+					particle.transform.scale,
+					particle.transform.rotate,
+					particle.transform.translate
+				);
+			}
+			Matrix4x4 wvp = Multiply(
+				worldMatrix,
+				camera->GetViewProjectionMatrix()
+			);
+
+			group.instancingData[group.instanceCount].World = worldMatrix;
+			group.instancingData[group.instanceCount].WVP = wvp;
+			group.instancingData[group.instanceCount].color = particle.color;
+
+			++group.instanceCount;
+		}
+		cpuParticleInstanceCount += group.instanceCount;
+	}
+	return cpuParticleInstanceCount;
 }
 
 void ParticleManager::Draw() {

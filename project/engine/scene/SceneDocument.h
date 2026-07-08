@@ -92,7 +92,9 @@ struct SceneComponent {
 	float cameraFarClip = 1000.0f;
 	bool cameraInvertYaw = false;
 	bool cameraInvertPitch = false;
+	uint64_t monitorCameraEntityId = 0;
 	std::string monitorCameraName;
+	std::string monitorResolutionPreset = "Square 512";
 	uint32_t monitorWidth = 512;
 	uint32_t monitorHeight = 512;
 	bool monitorHideSelf = true;

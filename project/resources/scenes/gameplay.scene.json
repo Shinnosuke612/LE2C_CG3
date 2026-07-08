@@ -395,7 +395,7 @@
         "translate": [
           0.0,
           0.8146223425865173,
-          -192.34378051757813
+          -11.263381958007813
         ]
       }
     },
@@ -1150,6 +1150,125 @@
           69.74636840820313,
           9.448873519897461,
           -74.19290924072266
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "enabled": true,
+          "farClip": 1000.0,
+          "fovY": 0.44999998807907104,
+          "invertPitch": false,
+          "invertYaw": false,
+          "isMain": false,
+          "nearClip": 0.10000000149011612,
+          "type": "Camera"
+        }
+      ],
+      "id": 20,
+      "locked": false,
+      "modelPath": "",
+      "name": "MonitorCamera",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          0.9999995827674866,
+          0.9999995827674866
+        ],
+        "translate": [
+          -1.598602056503296,
+          0.7397407293319702,
+          -7.10087776184082
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cameraEntityId": 20,
+          "cameraName": "MonitorCamera",
+          "enabled": true,
+          "height": 512,
+          "hideSelf": true,
+          "type": "MonitorRenderer",
+          "width": 512
+        },
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "monitor_screen.obj",
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 21,
+      "locked": false,
+      "modelPath": "monitor_screen.obj",
+      "name": "Entity",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "transform": {
+        "rotate": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "scale": [
+          12.775457382202148,
+          11.036136627197266,
+          0.01267394982278347
+        ],
+        "translate": [
+          -10.278345108032227,
+          3.826845169067383,
+          0.0
         ]
       }
     }

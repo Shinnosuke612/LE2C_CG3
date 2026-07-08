@@ -239,7 +239,9 @@ namespace {
 			result["invertYaw"] = component.cameraInvertYaw;
 			result["invertPitch"] = component.cameraInvertPitch;
 		} else if (component.type == "MonitorRenderer") {
+			result["cameraEntityId"] = component.monitorCameraEntityId;
 			result["cameraName"] = component.monitorCameraName;
+			result["resolutionPreset"] = component.monitorResolutionPreset;
 			result["width"] = component.monitorWidth;
 			result["height"] = component.monitorHeight;
 			result["hideSelf"] = component.monitorHideSelf;
@@ -380,6 +382,14 @@ namespace {
 				component.monitorCameraName = value.value(
 					"cameraName",
 					component.monitorCameraName
+				);
+				component.monitorCameraEntityId = value.value(
+					"cameraEntityId",
+					component.monitorCameraEntityId
+				);
+				component.monitorResolutionPreset = value.value(
+					"resolutionPreset",
+					component.monitorResolutionPreset
 				);
 				component.monitorWidth = value.value(
 					"width",
@@ -1060,6 +1070,10 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				changed = true;
 			}
 		} else if (type == "MonitorRenderer") {
+			if (found->monitorResolutionPreset.empty()) {
+				found->monitorResolutionPreset = "Custom";
+				changed = true;
+			}
 			const uint32_t width = std::clamp<uint32_t>(
 				found->monitorWidth,
 				64,
@@ -1197,7 +1211,9 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.cameraInvertYaw = false;
 		component.cameraInvertPitch = false;
 	} else if (type == "MonitorRenderer") {
+		component.monitorCameraEntityId = 0;
 		component.monitorCameraName = "";
+		component.monitorResolutionPreset = "Square 512";
 		component.monitorWidth = 512;
 		component.monitorHeight = 512;
 		component.monitorHideSelf = true;

@@ -70,6 +70,15 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 }
 
 void Object3d::Update(){
+	UpdateInternal(true);
+}
+
+void Object3d::UpdateForCamera(Camera* camera) {
+	this->camera = camera;
+	UpdateInternal(false);
+}
+
+void Object3d::UpdateInternal(bool advanceAnimation) {
 	objectWorldMatrix_ = MakeAffineMatrix(
 		transform.scale,
 		transform.rotate,
@@ -91,7 +100,7 @@ void Object3d::Update(){
 			: model->GetRootNodeLocalMatrix();
 		const Animation& animation = model->GetAnimation();
 		if (animation.IsValid()) {
-			if (isAnimationPlaying_) {
+			if (advanceAnimation && isAnimationPlaying_) {
 				animationTime_ += (1.0f / 60.0f) * animationSpeed_;
 				if (isAnimationLooping_) {
 					animationTime_ = std::fmod(animationTime_, animation.duration);

@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -54,6 +55,7 @@ public: //公開メンバ関数
 	void Initialize(Object3dCommon* object3dCommon);
 	//更新
 	void Update();
+	void UpdateForCamera(Camera* camera);
 	//描画
 	void Draw();
 	void DrawShadow(const Matrix4x4& lightViewProjection);
@@ -93,6 +95,9 @@ public: //公開メンバ関数
 		textureOverrideHandle_ = handle;
 	}
 	void ClearTextureOverride() { textureOverrideHandle_ = {}; }
+	uint64_t GetTextureOverridePtr() const {
+		return textureOverrideHandle_.ptr;
+	}
 
 	// getter（参照返しが軽くて安全）
 	const Vector3& GetScale() const{return transform.scale;}
@@ -117,6 +122,7 @@ private: //非公開メンバ関数
 	void CreateCameraResource();
 	void CreateShadowTransformationMatrixResource();
 	void CreateMaterialResource();
+	void UpdateInternal(bool advanceAnimation);
 private://メンバ変数
 	Transform transform;
 	Matrix4x4 objectWorldMatrix_ = MakeIdentity4x4();
