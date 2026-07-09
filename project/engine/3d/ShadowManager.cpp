@@ -12,6 +12,22 @@
 
 namespace {
 	constexpr float kPi = 3.1415926535f;
+	constexpr uint32_t kDefaultShadowMapSize = 2048;
+	constexpr uint32_t kMinShadowMapSize = 512;
+	constexpr uint32_t kMaxShadowMapSize = 4096;
+
+	uint32_t NormalizeShadowMapSize(uint32_t shadowMapSize) {
+		shadowMapSize = std::clamp(
+			shadowMapSize,
+			kMinShadowMapSize,
+			kMaxShadowMapSize
+		);
+		uint32_t result = kMinShadowMapSize;
+		while (result < shadowMapSize && result < kMaxShadowMapSize) {
+			result *= 2;
+		}
+		return result;
+	}
 
 	ShadowManager::ShadowInfoForGPU MakeDisabledShadowInfo() {
 		ShadowManager::ShadowInfoForGPU info{};
@@ -38,11 +54,20 @@ namespace {
 }
 
 void ShadowManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager) {
+	Initialize(dxCommon, srvManager, kDefaultShadowMapSize);
+}
+
+void ShadowManager::Initialize(
+	DirectXCommon* dxCommon,
+	SrvManager* srvManager,
+	uint32_t shadowMapSize
+) {
 	assert(dxCommon);
 	assert(srvManager);
 
 	dxCommon_ = dxCommon;
 	srvManager_ = srvManager;
+	shadowMapSize_ = NormalizeShadowMapSize(shadowMapSize);
 
 	CreateResources();
 	CreateDsv();
@@ -50,6 +75,24 @@ void ShadowManager::Initialize(DirectXCommon* dxCommon, SrvManager* srvManager) 
 	CreateShadowDataResource();
 
 	initialized_ = true;
+}
+
+void ShadowManager::SetShadowMapSize(uint32_t shadowMapSize) {
+	const uint32_t normalizedSize = NormalizeShadowMapSize(shadowMapSize);
+	if (shadowMapSize_ == normalizedSize) {
+		return;
+	}
+
+	shadowMapSize_ = normalizedSize;
+	if (!initialized_) {
+		return;
+	}
+
+	shadowMapResource_.Reset();
+	dsvHeap_.Reset();
+	CreateResources();
+	CreateDsv();
+	CreateSrv();
 }
 
 void ShadowManager::CreateResources() {
@@ -106,8 +149,10 @@ void ShadowManager::CreateDsv() {
 }
 
 void ShadowManager::CreateSrv() {
-	assert(srvManager_->CanAllocate());
-	srvIndex_ = srvManager_->Allocate();
+	if (srvIndex_ == UINT32_MAX) {
+		assert(srvManager_->CanAllocate());
+		srvIndex_ = srvManager_->Allocate();
+	}
 	srvManager_->CreateSRVforTexture2DArray(
 		srvIndex_,
 		shadowMapResource_.Get(),

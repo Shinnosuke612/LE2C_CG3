@@ -4,6 +4,7 @@
 #include "../engine/scene/SceneDocument.h"
 #include "../engine/scene/SceneManager.h"
 #include "../engine/math/Vector3.h"
+#include "../engine/math/Vector4.h"
 #include <string>
 
 class SceneRenderTarget;
@@ -40,6 +41,18 @@ private:
 		bool cameraInside = false;
 		Vector3 center{};
 		Vector3 halfSize{};
+		bool lightShaftEnabled = false;
+		Vector4 lightColor{ 0.55f, 0.90f, 1.15f, 1.0f };
+		Vector3 lightDirection{ -0.25f, -1.0f, 0.18f };
+		float lightIntensity = 0.0f;
+		float lightDensity = 0.045f;
+		float causticsIntensity = 0.35f;
+		float causticsScale = 0.08f;
+		float causticsSpeed = 1.0f;
+		float lightBreakupStrength = 1.0f;
+		float lightWarpStrength = 1.0f;
+		float lightNoiseScale = 1.0f;
+		int lightSampleCount = 16;
 	};
 
 	int GetEnabledPostEffectCount() const;

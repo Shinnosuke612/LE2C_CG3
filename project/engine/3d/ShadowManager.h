@@ -35,9 +35,15 @@ public:
 
 public:
 	void Initialize(DirectXCommon* dxCommon, SrvManager* srvManager);
+	void Initialize(
+		DirectXCommon* dxCommon,
+		SrvManager* srvManager,
+		uint32_t shadowMapSize
+	);
 	void Render(const LightManager& lightManager, Object3d* const* objects, uint32_t objectCount);
 	void Bind(ID3D12GraphicsCommandList* commandList, UINT shadowTextureRootIndex, UINT shadowDataRootIndex);
 
+	void SetShadowMapSize(uint32_t shadowMapSize);
 	uint32_t GetShadowMapSize() const { return shadowMapSize_; }
 
 private:
@@ -61,8 +67,8 @@ private:
 	DirectXCommon* dxCommon_ = nullptr;
 	SrvManager* srvManager_ = nullptr;
 
-	uint32_t shadowMapSize_ = 1024;
-	uint32_t srvIndex_ = 0;
+	uint32_t shadowMapSize_ = 2048;
+	uint32_t srvIndex_ = UINT32_MAX;
 	bool initialized_ = false;
 	bool hasRenderableShadow_ = false;
 

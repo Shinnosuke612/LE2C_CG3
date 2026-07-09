@@ -3101,7 +3101,8 @@ void GamePlayScene::Initialize()
 	shadowManager_ = std::make_unique<ShadowManager>();
 	shadowManager_->Initialize(
 		Object3dCommon::GetInstance()->GetDxCommon(),
-		SrvManager::GetInstance()
+		SrvManager::GetInstance(),
+		lightManager_ ? lightManager_->GetShadowMapSize() : 2048u
 	);
 
 	lightningRenderer_ = std::make_unique<LightningRenderer>();
@@ -3779,6 +3780,7 @@ void GamePlayScene::DrawShadow()
 	if (!lightManager_ || !shadowManager_) {
 		return;
 	}
+	shadowManager_->SetShadowMapSize(lightManager_->GetShadowMapSize());
 
 	std::vector<Object3d*> shadowCasters;
 	shadowCasters.reserve(

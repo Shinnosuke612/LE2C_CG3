@@ -55,5 +55,8 @@
             }
         }
     ],
+    "shadowQuality": {
+        "mapSize": 4096
+    },
     "spotLights": []
 }

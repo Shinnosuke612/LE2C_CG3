@@ -14,6 +14,13 @@
 using json = nlohmann::json;
 
 namespace {
+	constexpr uint32_t kDefaultShadowMapSize = 2048;
+	constexpr uint32_t kShadowMapOptions[] = {
+		1024,
+		2048,
+		4096
+	};
+
 	json ToJson(const Vector3& v) {
 		return json::array({ v.x, v.y, v.z });
 	}
@@ -46,6 +53,31 @@ namespace {
 			j[3].get<float>()
 		};
 	}
+
+	uint32_t NormalizeShadowMapSize(uint32_t value) {
+		uint32_t best = kDefaultShadowMapSize;
+		uint32_t bestDistance = UINT32_MAX;
+		for (uint32_t option : kShadowMapOptions) {
+			const uint32_t distance = value > option
+				? value - option
+				: option - value;
+			if (distance < bestDistance) {
+				best = option;
+				bestDistance = distance;
+			}
+		}
+		return best;
+	}
+
+	int ShadowMapSizeOptionIndex(uint32_t value) {
+		const uint32_t normalized = NormalizeShadowMapSize(value);
+		for (uint32_t index = 0; index < _countof(kShadowMapOptions); ++index) {
+			if (kShadowMapOptions[index] == normalized) {
+				return static_cast<int>(index);
+			}
+		}
+		return 1;
+	}
 }
 
 void LightManager::Initialize(DirectXCommon* dxCommon, const std::string& jsonPath) {
@@ -75,6 +107,7 @@ void LightManager::Reset() {
 	directionalLight_.padding[1] = 0.0f;
 	directionalLight_.padding[2] = 0.0f;
 	directionalShadowSettings_ = MakeDefaultShadowSettings(true);
+	shadowMapSize_ = kDefaultShadowMapSize;
 
 	pointLights_.clear();
 	spotLights_.clear();
@@ -278,6 +311,17 @@ bool LightManager::LoadFromJson(const std::string& jsonPath) {
 		}
 	}
 
+	if (root.contains("shadowQuality")) {
+		const json& shadowQuality = root["shadowQuality"];
+		shadowMapSize_ = NormalizeShadowMapSize(
+			shadowQuality.value("mapSize", shadowMapSize_)
+		);
+	} else if (root.contains("shadowMapSize")) {
+		shadowMapSize_ = NormalizeShadowMapSize(
+			root.value("shadowMapSize", shadowMapSize_)
+		);
+	}
+
 	pointLights_.clear();
 	pointShadowSettings_.clear();
 	if (root.contains("pointLights") && root["pointLights"].is_array()) {
@@ -350,6 +394,10 @@ bool LightManager::LoadFromJson(const std::string& jsonPath) {
 bool LightManager::SaveToJson(const std::string& jsonPath) const {
 	json root;
 
+	root["shadowQuality"] = {
+		{ "mapSize", shadowMapSize_ }
+	};
+
 	root["directionalLight"] = {
 		{ "color", ToJson(directionalLight_.color) },
 		{ "direction", ToJson(directionalLight_.direction) },
@@ -419,6 +467,10 @@ bool LightManager::SaveToJson(const std::string& jsonPath) const {
 	return EditableResourcePath::WriteTextAtomically(jsonPath, output.str());
 }
 
+void LightManager::SetShadowMapSize(uint32_t shadowMapSize) {
+	shadowMapSize_ = NormalizeShadowMapSize(shadowMapSize);
+}
+
 bool LightManager::DrawShadowSettingsImGui(
 	const char* label,
 	ShadowSettings& settings,
@@ -475,6 +527,32 @@ void LightManager::DrawImGui() {
 	ImGui::Begin("Light Manager");
 
 	ImGui::Text("Json: %s", jsonPath_.empty() ? "(none)" : jsonPath_.c_str());
+
+	if (ImGui::CollapsingHeader("Shadow Quality", ImGuiTreeNodeFlags_DefaultOpen)) {
+		const char* labels[] = {
+			"1024",
+			"2048",
+			"4096"
+		};
+		int currentIndex = ShadowMapSizeOptionIndex(shadowMapSize_);
+		if (ImGui::Combo("Shadow Map Size", &currentIndex, labels, _countof(labels))) {
+			SetShadowMapSize(kShadowMapOptions[currentIndex]);
+			changed = true;
+		}
+
+		const double estimatedBytes =
+			static_cast<double>(shadowMapSize_) *
+			static_cast<double>(shadowMapSize_) *
+			5.0 *
+			4.0;
+		ImGui::Text(
+			"Texture2DArray: %u x %u x 5 / %.1f MB",
+			shadowMapSize_,
+			shadowMapSize_,
+			estimatedBytes / (1024.0 * 1024.0)
+		);
+		ImGui::TextDisabled("Use a smaller Orthographic Size for sharper directional shadows.");
+	}
 
 	if (ImGui::Button("Load")) {
 		if (!jsonPath_.empty()) {

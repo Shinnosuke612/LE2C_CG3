@@ -20,7 +20,8 @@ public:
 		kOutline,
 		kDepthOfField,
 		kUnderwater,
-		kWaterRefraction
+		kWaterRefraction,
+		kWaterLightShafts
 	};
 
 	enum class OutputFormat {
@@ -72,6 +73,10 @@ public:
 		float waterVolumeHalfSizeEdge[4]{ 0.0f, 0.0f, 0.0f, 0.08f };
 		float waterRefractionTintColor[4]{ 0.02f, 0.55f, 0.82f, 1.0f };
 		float waterRefractionParams[4]{ 0.018f, 0.12f, 0.0f, 0.0f };
+		float waterLightColorIntensity[4]{ 0.55f, 0.90f, 1.15f, 0.55f };
+		float waterLightDirectionDensity[4]{ -0.25f, -1.0f, 0.18f, 0.045f };
+		float waterLightParams[4]{ 0.35f, 0.08f, 1.0f, 16.0f };
+		float waterLightNoiseParams[4]{ 1.0f, 1.0f, 1.0f, 0.0f };
 	};
 
 	void Initialize(DirectXCommon* dxCommon);
@@ -104,9 +109,12 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> depthOfFieldPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> underwaterPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> waterRefractionPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> waterLightShaftsPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState>
 		waterRefractionSceneHdrPipelineState_;
-	static constexpr uint32_t kMaxDrawsPerFrame = 16;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState>
+		waterLightShaftsSceneHdrPipelineState_;
+	static constexpr uint32_t kMaxDrawsPerFrame = 24;
 	Microsoft::WRL::ComPtr<ID3D12Resource>
 		parameterResources_[kMaxDrawsPerFrame];
 	Parameters* parameterData_[kMaxDrawsPerFrame]{};

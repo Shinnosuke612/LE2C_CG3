@@ -364,6 +364,22 @@ namespace {
 				component.waterSurfaceNormalStrength;
 			result["surfaceFresnelPower"] =
 				component.waterSurfaceFresnelPower;
+			result["lightShaftEnabled"] =
+				component.waterLightShaftEnabled;
+			result["lightColor"] = VectorToJson(component.waterLightColor);
+			result["lightDirection"] =
+				VectorToJson(component.waterLightDirection);
+			result["lightIntensity"] = component.waterLightIntensity;
+			result["lightDensity"] = component.waterLightDensity;
+			result["causticsIntensity"] =
+				component.waterLightCausticsIntensity;
+			result["causticsScale"] = component.waterLightCausticsScale;
+			result["causticsSpeed"] = component.waterLightCausticsSpeed;
+			result["breakupStrength"] =
+				component.waterLightBreakupStrength;
+			result["warpStrength"] = component.waterLightWarpStrength;
+			result["noiseScale"] = component.waterLightNoiseScale;
+			result["lightSampleCount"] = component.waterLightSampleCount;
 			result["moveSpeedMultiplier"] =
 				component.waterMoveSpeedMultiplier;
 			result["gravityScale"] = component.waterGravityScale;
@@ -776,6 +792,58 @@ namespace {
 				component.waterSurfaceFresnelPower = value.value(
 					"surfaceFresnelPower",
 					component.waterSurfaceFresnelPower
+				);
+				component.waterLightShaftEnabled = value.value(
+					"lightShaftEnabled",
+					component.waterLightShaftEnabled
+				);
+				if (value.contains("lightColor")) {
+					component.waterLightColor = JsonToVector(
+						value.at("lightColor"),
+						component.waterLightColor
+					);
+				}
+				if (value.contains("lightDirection")) {
+					component.waterLightDirection = JsonToVector(
+						value.at("lightDirection"),
+						component.waterLightDirection
+					);
+				}
+				component.waterLightIntensity = value.value(
+					"lightIntensity",
+					component.waterLightIntensity
+				);
+				component.waterLightDensity = value.value(
+					"lightDensity",
+					component.waterLightDensity
+				);
+				component.waterLightCausticsIntensity = value.value(
+					"causticsIntensity",
+					component.waterLightCausticsIntensity
+				);
+				component.waterLightCausticsScale = value.value(
+					"causticsScale",
+					component.waterLightCausticsScale
+				);
+				component.waterLightCausticsSpeed = value.value(
+					"causticsSpeed",
+					component.waterLightCausticsSpeed
+				);
+				component.waterLightBreakupStrength = value.value(
+					"breakupStrength",
+					component.waterLightBreakupStrength
+				);
+				component.waterLightWarpStrength = value.value(
+					"warpStrength",
+					component.waterLightWarpStrength
+				);
+				component.waterLightNoiseScale = value.value(
+					"noiseScale",
+					component.waterLightNoiseScale
+				);
+				component.waterLightSampleCount = value.value(
+					"lightSampleCount",
+					component.waterLightSampleCount
 				);
 				component.waterMoveSpeedMultiplier = value.value(
 					"moveSpeedMultiplier",
@@ -1608,6 +1676,73 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->waterSurfaceFresnelPower = surfaceFresnelPower;
 				changed = true;
 			}
+			const float lightIntensity = (std::max)(
+				found->waterLightIntensity,
+				0.0f
+			);
+			if (found->waterLightIntensity != lightIntensity) {
+				found->waterLightIntensity = lightIntensity;
+				changed = true;
+			}
+			const float lightDensity = (std::max)(
+				found->waterLightDensity,
+				0.0f
+			);
+			if (found->waterLightDensity != lightDensity) {
+				found->waterLightDensity = lightDensity;
+				changed = true;
+			}
+			const float causticsIntensity = (std::max)(
+				found->waterLightCausticsIntensity,
+				0.0f
+			);
+			if (found->waterLightCausticsIntensity != causticsIntensity) {
+				found->waterLightCausticsIntensity = causticsIntensity;
+				changed = true;
+			}
+			const float causticsScale = (std::max)(
+				found->waterLightCausticsScale,
+				0.001f
+			);
+			if (found->waterLightCausticsScale != causticsScale) {
+				found->waterLightCausticsScale = causticsScale;
+				changed = true;
+			}
+			const float breakupStrength = std::clamp(
+				found->waterLightBreakupStrength,
+				0.0f,
+				3.0f
+			);
+			if (found->waterLightBreakupStrength != breakupStrength) {
+				found->waterLightBreakupStrength = breakupStrength;
+				changed = true;
+			}
+			const float warpStrength = std::clamp(
+				found->waterLightWarpStrength,
+				0.0f,
+				3.0f
+			);
+			if (found->waterLightWarpStrength != warpStrength) {
+				found->waterLightWarpStrength = warpStrength;
+				changed = true;
+			}
+			const float noiseScale = (std::max)(
+				found->waterLightNoiseScale,
+				0.001f
+			);
+			if (found->waterLightNoiseScale != noiseScale) {
+				found->waterLightNoiseScale = noiseScale;
+				changed = true;
+			}
+			const int sampleCount = std::clamp(
+				found->waterLightSampleCount,
+				4,
+				32
+			);
+			if (found->waterLightSampleCount != sampleCount) {
+				found->waterLightSampleCount = sampleCount;
+				changed = true;
+			}
 		} else if (type == "CameraPath") {
 			if (found->cameraPathTriggerType.empty()) {
 				found->cameraPathTriggerType = "Key";
@@ -1753,6 +1888,18 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.waterSurfaceWaveScale = 1.0f;
 		component.waterSurfaceNormalStrength = 0.75f;
 		component.waterSurfaceFresnelPower = 3.0f;
+		component.waterLightShaftEnabled = true;
+		component.waterLightColor = { 0.55f, 0.90f, 1.15f, 1.0f };
+		component.waterLightDirection = { -0.25f, -1.0f, 0.18f };
+		component.waterLightIntensity = 0.55f;
+		component.waterLightDensity = 0.045f;
+		component.waterLightCausticsIntensity = 0.35f;
+		component.waterLightCausticsScale = 0.08f;
+		component.waterLightCausticsSpeed = 1.0f;
+		component.waterLightBreakupStrength = 1.0f;
+		component.waterLightWarpStrength = 1.0f;
+		component.waterLightNoiseScale = 1.0f;
+		component.waterLightSampleCount = 16;
 		component.waterMoveSpeedMultiplier = 0.45f;
 		component.waterGravityScale = 0.55f;
 		component.waterDrag = 4.0f;

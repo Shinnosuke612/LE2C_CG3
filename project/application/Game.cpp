@@ -1131,6 +1131,36 @@ void Game::Draw() {
 			waterRefractionStrength_;
 		parameters.waterRefractionParams[1] =
 			waterRefractionTintStrength_;
+		parameters.waterLightColorIntensity[0] =
+			waterState.lightColor.x;
+		parameters.waterLightColorIntensity[1] =
+			waterState.lightColor.y;
+		parameters.waterLightColorIntensity[2] =
+			waterState.lightColor.z;
+		parameters.waterLightColorIntensity[3] =
+			waterState.lightShaftEnabled ? waterState.lightIntensity : 0.0f;
+		parameters.waterLightDirectionDensity[0] =
+			waterState.lightDirection.x;
+		parameters.waterLightDirectionDensity[1] =
+			waterState.lightDirection.y;
+		parameters.waterLightDirectionDensity[2] =
+			waterState.lightDirection.z;
+		parameters.waterLightDirectionDensity[3] =
+			waterState.lightDensity;
+		parameters.waterLightParams[0] =
+			waterState.causticsIntensity;
+		parameters.waterLightParams[1] =
+			waterState.causticsScale;
+		parameters.waterLightParams[2] =
+			waterState.causticsSpeed;
+		parameters.waterLightParams[3] =
+			static_cast<float>(waterState.lightSampleCount);
+		parameters.waterLightNoiseParams[0] =
+			waterState.lightBreakupStrength;
+		parameters.waterLightNoiseParams[1] =
+			waterState.lightWarpStrength;
+		parameters.waterLightNoiseParams[2] =
+			waterState.lightNoiseScale;
 	};
 
 	bool waterRefractionAppliedBeforeForeground = false;
@@ -1177,6 +1207,50 @@ void Game::Draw() {
 		}
 	}
 	sceneManager_->SetDeferForegroundEffects(false);
+
+	auto applySceneHdrEffect = [&](
+		FullscreenCopy::Effect effect,
+		const FullscreenCopy::Parameters& parameters
+	) {
+		SceneRenderTarget* destination = foregroundComposeRenderTarget_;
+		destination->Begin();
+		srvManager_->PreDraw();
+		fullscreenCopy_->SetParameters(parameters);
+		fullscreenCopy_->Draw(
+			sceneRenderTarget_->GetSrvGpuHandle(),
+			depthHandle,
+			maskHandle,
+			effect,
+			FullscreenCopy::OutputFormat::kSceneHdr
+		);
+		destination->End();
+
+		sceneRenderTarget_->Begin(false, false);
+		srvManager_->PreDraw();
+		fullscreenCopy_->SetParameters(FullscreenCopy::Parameters{});
+		fullscreenCopy_->Draw(
+			destination->GetSrvGpuHandle(),
+			maskHandle,
+			maskHandle,
+			FullscreenCopy::Effect::kCopy,
+			FullscreenCopy::OutputFormat::kSceneHdr
+		);
+		sceneRenderTarget_->End();
+	};
+
+	if (
+		waterState.hasVolume &&
+		waterState.lightShaftEnabled &&
+		waterState.lightIntensity > 0.0f &&
+		renderCamera
+	) {
+		FullscreenCopy::Parameters parameters{};
+		fillWaterParameters(parameters);
+		applySceneHdrEffect(
+			FullscreenCopy::Effect::kWaterLightShafts,
+			parameters
+		);
+	}
 
 	bloomRenderer_->BeginFrame();
 	bloomRenderer_->SetParameters(bloomParameters_);
@@ -1432,6 +1506,36 @@ Game::WaterPostEffectState Game::ResolveWaterPostEffectState(
 			(std::max)(waterVolume->waterHalfSize.y, 0.001f),
 			(std::max)(waterVolume->waterHalfSize.z, 0.001f)
 		};
+		candidate.lightShaftEnabled =
+			waterVolume->waterLightShaftEnabled;
+		candidate.lightColor = waterVolume->waterLightColor;
+		candidate.lightDirection = waterVolume->waterLightDirection;
+		candidate.lightIntensity =
+			(std::max)(waterVolume->waterLightIntensity, 0.0f);
+		candidate.lightDensity =
+			(std::max)(waterVolume->waterLightDensity, 0.0f);
+		candidate.causticsIntensity =
+			(std::max)(waterVolume->waterLightCausticsIntensity, 0.0f);
+		candidate.causticsScale =
+			(std::max)(waterVolume->waterLightCausticsScale, 0.001f);
+		candidate.causticsSpeed = waterVolume->waterLightCausticsSpeed;
+		candidate.lightBreakupStrength = std::clamp(
+			waterVolume->waterLightBreakupStrength,
+			0.0f,
+			3.0f
+		);
+		candidate.lightWarpStrength = std::clamp(
+			waterVolume->waterLightWarpStrength,
+			0.0f,
+			3.0f
+		);
+		candidate.lightNoiseScale =
+			(std::max)(waterVolume->waterLightNoiseScale, 0.001f);
+		candidate.lightSampleCount = std::clamp(
+			waterVolume->waterLightSampleCount,
+			4,
+			32
+		);
 		candidate.cameraInside = IsPointInsideAabb(
 			cameraPosition,
 			candidate.center,

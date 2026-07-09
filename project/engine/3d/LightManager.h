@@ -94,6 +94,9 @@ public:
 
 	void SyncToGPU();
 
+	void SetShadowMapSize(uint32_t shadowMapSize);
+	uint32_t GetShadowMapSize() const { return shadowMapSize_; }
+
 	DirectionalLight& GetDirectionalLight() { return directionalLight_; }
 	std::vector<PointLight>& GetPointLights() { return pointLights_; }
 	std::vector<SpotLight>& GetSpotLights() { return spotLights_; }
@@ -133,4 +136,5 @@ private:
 	ShadowSettings directionalShadowSettings_{};
 	std::vector<ShadowSettings> pointShadowSettings_;
 	std::vector<ShadowSettings> spotShadowSettings_;
+	uint32_t shadowMapSize_ = 2048;
 };

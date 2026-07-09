@@ -3466,6 +3466,80 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.2f,
 					8.0f
 				);
+				ImGui::SeparatorText("Water Light");
+				waterChanged |= ImGui::Checkbox(
+					"Light Shafts",
+					&component.waterLightShaftEnabled
+				);
+				waterChanged |= ImGui::ColorEdit4(
+					"Light Color",
+					&component.waterLightColor.x,
+					ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
+				);
+				if (ImGui::DragFloat3(
+					"Light Direction",
+					&component.waterLightDirection.x,
+					0.01f,
+					-1.0f,
+					1.0f
+				)) {
+					waterChanged = true;
+				}
+				waterChanged |= ImGui::SliderFloat(
+					"Light Intensity",
+					&component.waterLightIntensity,
+					0.0f,
+					3.0f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Light Density",
+					&component.waterLightDensity,
+					0.0f,
+					0.25f,
+					"%.4f"
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Caustics Intensity",
+					&component.waterLightCausticsIntensity,
+					0.0f,
+					2.0f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Caustics Scale",
+					&component.waterLightCausticsScale,
+					0.02f,
+					8.0f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Caustics Speed",
+					&component.waterLightCausticsSpeed,
+					0.0f,
+					5.0f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Breakup Strength",
+					&component.waterLightBreakupStrength,
+					0.0f,
+					3.0f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Warp Strength",
+					&component.waterLightWarpStrength,
+					0.0f,
+					3.0f
+				);
+				waterChanged |= ImGui::SliderFloat(
+					"Noise Scale",
+					&component.waterLightNoiseScale,
+					0.1f,
+					4.0f
+				);
+				waterChanged |= ImGui::SliderInt(
+					"Raymarch Samples",
+					&component.waterLightSampleCount,
+					4,
+					32
+				);
 				ImGui::SeparatorText("Player Behavior");
 				waterChanged |= ImGui::SliderFloat(
 					"Move Speed Multiplier",
@@ -3531,6 +3605,31 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.waterSurfaceFresnelPower,
 					0.2f,
 					8.0f
+				);
+				component.waterLightIntensity =
+					(std::max)(component.waterLightIntensity, 0.0f);
+				component.waterLightDensity =
+					(std::max)(component.waterLightDensity, 0.0f);
+				component.waterLightCausticsIntensity =
+					(std::max)(component.waterLightCausticsIntensity, 0.0f);
+				component.waterLightCausticsScale =
+					(std::max)(component.waterLightCausticsScale, 0.001f);
+				component.waterLightBreakupStrength = std::clamp(
+					component.waterLightBreakupStrength,
+					0.0f,
+					3.0f
+				);
+				component.waterLightWarpStrength = std::clamp(
+					component.waterLightWarpStrength,
+					0.0f,
+					3.0f
+				);
+				component.waterLightNoiseScale =
+					(std::max)(component.waterLightNoiseScale, 0.001f);
+				component.waterLightSampleCount = std::clamp(
+					component.waterLightSampleCount,
+					4,
+					32
 				);
 				component.waterDrag = (std::max)(component.waterDrag, 0.0f);
 				component.waterMaxFallSpeed =

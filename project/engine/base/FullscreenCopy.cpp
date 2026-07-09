@@ -52,9 +52,13 @@ void FullscreenCopy::Draw(
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
 	ID3D12PipelineState* pipelineState = copyPipelineState_.Get();
 	if (outputFormat == OutputFormat::kSceneHdr) {
-		pipelineState = effect == Effect::kWaterRefraction
-			? waterRefractionSceneHdrPipelineState_.Get()
-			: copySceneHdrPipelineState_.Get();
+		if (effect == Effect::kWaterRefraction) {
+			pipelineState = waterRefractionSceneHdrPipelineState_.Get();
+		} else if (effect == Effect::kWaterLightShafts) {
+			pipelineState = waterLightShaftsSceneHdrPipelineState_.Get();
+		} else {
+			pipelineState = copySceneHdrPipelineState_.Get();
+		}
 	}
 	else if (effect == Effect::kGrayscale) {
 		pipelineState = grayscalePipelineState_.Get();
@@ -88,6 +92,9 @@ void FullscreenCopy::Draw(
 	}
 	else if (effect == Effect::kWaterRefraction) {
 		pipelineState = waterRefractionPipelineState_.Get();
+	}
+	else if (effect == Effect::kWaterLightShafts) {
+		pipelineState = waterLightShaftsPipelineState_.Get();
 	}
 	commandList->SetPipelineState(pipelineState);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -237,6 +244,10 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/WaterRefraction.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto waterLightShaftsPixelShader = dxCommon_->CompileShader(
+		L"resources/shaders/WaterLightShafts.PS.hlsl",
+		L"ps_6_0"
+	);
 	assert(vertexShader);
 	assert(copyPixelShader);
 	assert(grayscalePixelShader);
@@ -250,6 +261,7 @@ void FullscreenCopy::CreatePipelineState() {
 	assert(depthOfFieldPixelShader);
 	assert(underwaterPixelShader);
 	assert(waterRefractionPixelShader);
+	assert(waterLightShaftsPixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -402,6 +414,16 @@ void FullscreenCopy::CreatePipelineState() {
 	);
 	assert(SUCCEEDED(result));
 
+	pipelineDesc.PS = {
+		waterLightShaftsPixelShader->GetBufferPointer(),
+		waterLightShaftsPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&waterLightShaftsPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
 	pipelineDesc.RTVFormats[0] = RenderFormats::kSceneHdrFormat;
 	pipelineDesc.PS = {
 		copyPixelShader->GetBufferPointer(),
@@ -420,6 +442,16 @@ void FullscreenCopy::CreatePipelineState() {
 	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(&waterRefractionSceneHdrPipelineState_)
+	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = {
+		waterLightShaftsPixelShader->GetBufferPointer(),
+		waterLightShaftsPixelShader->GetBufferSize()
+	};
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc,
+		IID_PPV_ARGS(&waterLightShaftsSceneHdrPipelineState_)
 	);
 	assert(SUCCEEDED(result));
 }
