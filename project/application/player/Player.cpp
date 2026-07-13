@@ -36,13 +36,9 @@ void Player::Initialize(Object3dCommon* object3dCommon, const char* modelName) {
 	ApplyPosition();
 	object_->Update();
 
-	collider_.SetWorldTransform(&object_->GetTransform());
-	collider_.SetHalfSize({ 1.0f, 1.0f, 1.0f });
-	collider_.SetOffset({ 0.0f, 0.0f, 0.0f });
-
 	physicsBody_.type = PhysicsBodyType::Dynamic;
 	physicsBody_.transform = &object_->GetTransform();
-	physicsBody_.obbCollider = &collider_;
+	physicsBody_.collider = collider_;
 	physicsBody_.useGravity = true;
 	physicsBody_.gravityScale = 8.0f;
 	physicsBody_.maxFallSpeed = 60.0f;
@@ -56,17 +52,18 @@ void Player::Initialize(Object3d* object) {
 		return;
 	}
 	position_ = object_->GetTransform().translate;
-	collider_.SetWorldTransform(&object_->GetTransform());
-	collider_.SetHalfSize({ 1.0f, 1.0f, 1.0f });
-	collider_.SetOffset({ 0.0f, 0.0f, 0.0f });
-
 	physicsBody_.type = PhysicsBodyType::Dynamic;
 	physicsBody_.transform = &object_->GetTransform();
-	physicsBody_.obbCollider = &collider_;
+	physicsBody_.collider = collider_;
 	physicsBody_.useGravity = true;
 	physicsBody_.gravityScale = 8.0f;
 	physicsBody_.maxFallSpeed = 60.0f;
 	physicsBody_.friction = 0.0f;
+}
+
+void Player::SetCollider(Collider* collider) {
+	collider_ = collider;
+	physicsBody_.collider = collider_;
 }
 
 void Player::Update(

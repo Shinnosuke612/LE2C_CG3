@@ -3,7 +3,7 @@
 #include "../math/Transform.h"
 #include "../math/Vector3.h"
 
-class OBBCollider;
+class Collider;
 
 enum class PhysicsBodyType {
 	Static,
@@ -14,7 +14,7 @@ enum class PhysicsBodyType {
 struct PhysicsBody {
 	PhysicsBodyType type = PhysicsBodyType::Static;
 	Transform* transform = nullptr;
-	OBBCollider* obbCollider = nullptr;
+	Collider* collider = nullptr;
 
 	Vector3 velocity{};
 	float mass = 1.0f;

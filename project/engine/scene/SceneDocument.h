@@ -74,6 +74,18 @@ struct ScenePostProcessSettings {
 	float waterRefractionTintStrength = 0.12f;
 };
 
+struct SceneDebugSettings {
+	bool showCameraDirection = false;
+	bool showColliders = false;
+	bool showCameraPath = true;
+	bool showCameraPathPointCameraDirection = true;
+	bool showSkeleton = false;
+	bool showJointNames = false;
+	bool showJointAxes = true;
+	float jointRadius = 0.018f;
+	float jointAxisLength = 0.06f;
+};
+
 struct SceneTeamSettings {
 	std::string name = "Team";
 	bool agentBehaviorOverride = false;
@@ -190,6 +202,14 @@ struct SceneComponent {
 	bool physicsFreezePositionX = false;
 	bool physicsFreezePositionY = false;
 	bool physicsFreezePositionZ = false;
+	Vector3 colliderOffset = { 0.0f, 0.0f, 0.0f };
+	Vector3 colliderSizeMultiplier = { 1.0f, 1.0f, 1.0f };
+	Vector4 colliderDebugColor = { 0.2f, 0.95f, 0.7f, 1.0f };
+	std::string colliderShape = "Box";
+	float colliderSphereRadius = 0.5f;
+	bool colliderDebugVisible = true;
+	std::string colliderDebugDrawMode = "Wireframe";
+	int colliderDebugSegments = 16;
 	float playerMoveSpeed = 10.8f;
 	float playerJumpVelocity = 37.2f;
 	float playerTurnResponsiveness = 0.018f;
@@ -373,6 +393,13 @@ public:
 		postProcessSettings_ = settings;
 		MarkDirty();
 	}
+	const SceneDebugSettings& GetDebugSettings() const {
+		return debugSettings_;
+	}
+	void SetDebugSettings(const SceneDebugSettings& settings) {
+		debugSettings_ = settings;
+		MarkDirty();
+	}
 	bool IsDirty() const { return dirty_; }
 	uint64_t GetRevision() const { return revision_; }
 	void MarkDirty() {
@@ -390,6 +417,7 @@ private:
 	std::vector<SceneEntity> entities_;
 	std::vector<SceneTeamSettings> teams_;
 	ScenePostProcessSettings postProcessSettings_{};
+	SceneDebugSettings debugSettings_{};
 	uint64_t nextId_ = 1;
 	bool dirty_ = false;
 	uint64_t revision_ = 0;

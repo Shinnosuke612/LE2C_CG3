@@ -245,6 +245,68 @@ namespace {
 		return settings;
 	}
 
+	json DebugSettingsToJson(const SceneDebugSettings& settings) {
+		return {
+			{ "showCameraDirection", settings.showCameraDirection },
+			{ "showColliders", settings.showColliders },
+			{ "showCameraPath", settings.showCameraPath },
+			{ "showCameraPathPointCameraDirection", settings.showCameraPathPointCameraDirection },
+			{ "showSkeleton", settings.showSkeleton },
+			{ "showJointNames", settings.showJointNames },
+			{ "showJointAxes", settings.showJointAxes },
+			{ "jointRadius", settings.jointRadius },
+			{ "jointAxisLength", settings.jointAxisLength }
+		};
+	}
+
+	SceneDebugSettings DebugSettingsFromJson(
+		const json& source,
+		const SceneDebugSettings& fallback
+	) {
+		if (!source.is_object()) {
+			return fallback;
+		}
+
+		SceneDebugSettings settings = fallback;
+		settings.showCameraDirection = source.value(
+			"showCameraDirection",
+			settings.showCameraDirection
+		);
+		settings.showColliders = source.value(
+			"showColliders",
+			settings.showColliders
+		);
+		settings.showCameraPath = source.value(
+			"showCameraPath",
+			settings.showCameraPath
+		);
+		settings.showCameraPathPointCameraDirection = source.value(
+			"showCameraPathPointCameraDirection",
+			settings.showCameraPathPointCameraDirection
+		);
+		settings.showSkeleton = source.value(
+			"showSkeleton",
+			settings.showSkeleton
+		);
+		settings.showJointNames = source.value(
+			"showJointNames",
+			settings.showJointNames
+		);
+		settings.showJointAxes = source.value(
+			"showJointAxes",
+			settings.showJointAxes
+		);
+		settings.jointRadius = (std::max)(
+			source.value("jointRadius", settings.jointRadius),
+			0.001f
+		);
+		settings.jointAxisLength = (std::max)(
+			source.value("jointAxisLength", settings.jointAxisLength),
+			0.001f
+		);
+		return settings;
+	}
+
 	Vector3 NormalizeDirectionVector(
 		const Vector3& value,
 		const Vector3& fallback
@@ -763,6 +825,16 @@ namespace {
 			result["freezePositionX"] = component.physicsFreezePositionX;
 			result["freezePositionY"] = component.physicsFreezePositionY;
 			result["freezePositionZ"] = component.physicsFreezePositionZ;
+		} else if (component.type == "OBBCollider") {
+			result["offset"] = VectorToJson(component.colliderOffset);
+			result["sizeMultiplier"] =
+				VectorToJson(component.colliderSizeMultiplier);
+			result["debugColor"] = VectorToJson(component.colliderDebugColor);
+			result["shape"] = component.colliderShape;
+			result["sphereRadius"] = component.colliderSphereRadius;
+			result["debugVisible"] = component.colliderDebugVisible;
+			result["debugDrawMode"] = component.colliderDebugDrawMode;
+			result["debugSegments"] = component.colliderDebugSegments;
 		} else if (component.type == "PlayerBehavior") {
 			result["moveSpeed"] = component.playerMoveSpeed;
 			result["jumpVelocity"] = component.playerJumpVelocity;
@@ -1117,6 +1189,64 @@ namespace {
 					"freezePositionZ",
 					component.physicsFreezePositionZ
 				);
+				if (component.type == "OBBCollider") {
+					if (value.contains("offset")) {
+						component.colliderOffset = JsonToVector(
+							value.at("offset"),
+							component.colliderOffset
+						);
+					}
+					if (value.contains("sizeMultiplier")) {
+						component.colliderSizeMultiplier = JsonToVector(
+							value.at("sizeMultiplier"),
+							component.colliderSizeMultiplier
+						);
+					}
+					if (value.contains("debugColor")) {
+						component.colliderDebugColor = JsonToVector(
+							value.at("debugColor"),
+							component.colliderDebugColor
+						);
+					}
+					component.colliderShape = value.value(
+						"shape",
+						component.colliderShape
+					);
+					component.colliderSphereRadius = value.value(
+						"sphereRadius",
+						component.colliderSphereRadius
+					);
+					component.colliderDebugVisible = value.value(
+						"debugVisible",
+						component.colliderDebugVisible
+					);
+					component.colliderDebugDrawMode = value.value(
+						"debugDrawMode",
+						component.colliderDebugDrawMode
+					);
+					component.colliderDebugSegments = value.value(
+						"debugSegments",
+						component.colliderDebugSegments
+					);
+					if (component.colliderShape != "Sphere") {
+						component.colliderShape = "Box";
+					}
+					if (
+						component.colliderDebugDrawMode != "Solid" &&
+						component.colliderDebugDrawMode != "WireframeAndSolid"
+					) {
+						component.colliderDebugDrawMode = "Wireframe";
+					}
+					component.colliderSphereRadius = (std::max)(
+						component.colliderSphereRadius,
+						0.001f
+					);
+					component.colliderDebugSegments = std::clamp(
+						component.colliderDebugSegments,
+						4,
+						64
+					);
+				}
 				component.playerMoveSpeed = value.value(
 					"moveSpeed",
 					component.playerMoveSpeed
@@ -1848,6 +1978,7 @@ void SceneDocument::Clear(const std::string& sceneName) {
 	entities_.clear();
 	teams_.clear();
 	postProcessSettings_ = {};
+	debugSettings_ = {};
 	nextId_ = 1;
 	dirty_ = false;
 	revision_ = 0;
@@ -1869,9 +2000,10 @@ bool SceneDocument::Load(const std::string& filePath) {
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 21;
+	root["version"] = 23;
 	root["sceneName"] = sceneName_;
 	root["postProcess"] = PostProcessToJson(postProcessSettings_);
+	root["debug"] = DebugSettingsToJson(debugSettings_);
 	root["teams"] = json::array();
 	for (const SceneTeamSettings& team : teams_) {
 		root["teams"].push_back(TeamToJson(team));
@@ -3164,6 +3296,10 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 		postProcessSettings_ = PostProcessFromJson(
 			root.value("postProcess", json::object()),
 			ScenePostProcessSettings{}
+		);
+		debugSettings_ = DebugSettingsFromJson(
+			root.value("debug", json::object()),
+			SceneDebugSettings{}
 		);
 		if (root.contains("teams") && root.at("teams").is_array()) {
 			for (const json& source : root.at("teams")) {

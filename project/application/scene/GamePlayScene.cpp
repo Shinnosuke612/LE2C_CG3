@@ -1452,18 +1452,48 @@ void GamePlayScene::SyncSceneModelObjects() {
 		if (HasComponent(entity, "PlayerBehavior")) {
 			found->second.object->SetDissolve(0.0f);
 		}
-		const bool hasObbCollider = HasComponent(entity, "OBBCollider");
+		const SceneComponent* obbCollider =
+			FindEnabledComponent(entity, "OBBCollider");
+		const bool hasObbCollider = obbCollider != nullptr;
 		found->second.hasCollider = hasObbCollider;
 		if (hasObbCollider) {
-			found->second.collider.SetWorldTransform(
+			Collider* runtimeCollider = obbCollider->colliderShape == "Sphere"
+				? static_cast<Collider*>(&found->second.sphereCollider)
+				: static_cast<Collider*>(&found->second.boxCollider);
+			runtimeCollider->SetWorldTransform(
 				&found->second.object->GetTransform()
 			);
-			found->second.collider.SetHalfSize({
-				(std::max)(entity.transform.scale.x, 0.001f),
-				(std::max)(entity.transform.scale.y, 0.001f),
-				(std::max)(entity.transform.scale.z, 0.001f)
-			});
-			found->second.collider.SetOffset({ 0.0f, 0.0f, 0.0f });
+			runtimeCollider->SetOffset(obbCollider->colliderOffset);
+			if (obbCollider->colliderShape == "Sphere") {
+				found->second.sphereCollider.SetRadius(
+					(std::max)(obbCollider->colliderSphereRadius, 0.001f)
+				);
+			} else {
+				found->second.boxCollider.SetHalfSize({
+					(std::max)(
+						entity.transform.scale.x * obbCollider->colliderSizeMultiplier.x,
+						0.001f
+					),
+					(std::max)(
+						entity.transform.scale.y * obbCollider->colliderSizeMultiplier.y,
+						0.001f
+					),
+					(std::max)(
+						entity.transform.scale.z * obbCollider->colliderSizeMultiplier.z,
+						0.001f
+					)
+				});
+			}
+			found->second.collider = runtimeCollider;
+			found->second.colliderDebugColor = obbCollider->colliderDebugColor;
+			found->second.colliderDebugVisible =
+				obbCollider->colliderDebugVisible;
+			found->second.colliderDebugDrawMode =
+				obbCollider->colliderDebugDrawMode;
+			found->second.colliderDebugSegments =
+				static_cast<uint32_t>(obbCollider->colliderDebugSegments);
+		} else {
+			found->second.collider = nullptr;
 		}
 
 		const SceneComponent* physicsBody =
@@ -1476,9 +1506,7 @@ void GamePlayScene::SyncSceneModelObjects() {
 				ToPhysicsBodyType(physicsBody->physicsBodyType);
 			found->second.physicsBody.transform =
 				&found->second.object->GetTransform();
-			found->second.physicsBody.obbCollider = hasObbCollider
-				? &found->second.collider
-				: nullptr;
+			found->second.physicsBody.collider = found->second.collider;
 			found->second.physicsBody.mass =
 				(std::max)(physicsBody->physicsMass, 0.001f);
 			found->second.physicsBody.useGravity =
@@ -1814,6 +1842,12 @@ void GamePlayScene::ApplyPlayerPhysicsComponent(
 	if (!playerEntity || !HasComponent(*playerEntity, "PlayerBehavior")) {
 		return;
 	}
+	const auto playerRuntime = sceneModelObjects_.find(playerEntity->id);
+	player_->SetCollider(
+		playerRuntime != sceneModelObjects_.end()
+			? playerRuntime->second.collider
+			: nullptr
+	);
 
 	const SceneComponent* physicsBody =
 		FindEnabledComponent(*playerEntity, "PhysicsBody");
@@ -2659,7 +2693,7 @@ void GamePlayScene::StepPhysics(float deltaTime) {
 	}
 
 	physicsWorld_.Clear();
-	for (OBBCollider* staticCollider : staticColliders_) {
+	for (Collider* staticCollider : staticColliders_) {
 		physicsWorld_.AddStaticCollider(staticCollider);
 	}
 	if (player_ && player_->GetObject()) {
@@ -2864,7 +2898,12 @@ bool GamePlayScene::ApplyPlayerCameraMouseLook(SceneDocument& document) {
 			found != sceneModelObjects_.end() &&
 			found->second.hasCollider
 		) {
-			cameraObstacles.push_back(&found->second.collider);
+			if (
+				found->second.collider &&
+				found->second.collider->GetType() == Collider::Type::OBB
+			) {
+				cameraObstacles.push_back(&found->second.boxCollider);
+			}
 		}
 	}
 	for (StageObject& stageObject : stageObjects_) {
@@ -3841,7 +3880,9 @@ void GamePlayScene::RebuildStaticColliders() {
 				found != sceneModelObjects_.end() &&
 				found->second.hasCollider
 			) {
-				staticColliders_.push_back(&found->second.collider);
+				if (found->second.collider) {
+					staticColliders_.push_back(found->second.collider);
+				}
 			}
 		}
 	}
@@ -3852,9 +3893,127 @@ void GamePlayScene::RebuildStaticColliders() {
 	}
 }
 
+void GamePlayScene::DrawColliderDebug() const {
+	constexpr Vector4 kStaticColliderColor = { 0.2f, 0.95f, 0.7f, 1.0f };
+	DebugRenderer* debugRenderer = DebugRenderer::GetInstance();
+	auto drawCollider = [debugRenderer](
+		const Collider* collider,
+		const Vector4& color,
+		const std::string& mode,
+		uint32_t segments
+	) {
+		if (!collider) {
+			return;
+		}
+		const bool drawWire = mode != "Solid";
+		const bool drawSolid = mode != "Wireframe";
+		Vector4 solidColor = color;
+		solidColor.w = (std::min)(solidColor.w, 0.25f);
+		if (collider->GetType() == Collider::Type::Sphere) {
+			const auto& sphere = static_cast<const SphereCollider&>(*collider);
+			if (drawSolid) {
+				debugRenderer->AddSolidSphere(
+					sphere.GetWorldCenter(), sphere.GetRadius(), solidColor, segments
+				);
+			}
+			if (drawWire) {
+				debugRenderer->AddSphere(
+					sphere.GetWorldCenter(), sphere.GetRadius(), color, segments
+				);
+			}
+			return;
+		}
+		const auto& box = static_cast<const OBBCollider&>(*collider);
+		const OBBCollider::OBB obb = box.GetOBB();
+		if (drawSolid) {
+			debugRenderer->AddSolidOBB(
+				obb.center, obb.axis, obb.halfSize, solidColor
+			);
+		}
+		if (drawWire) {
+			debugRenderer->AddOBB(obb.center, obb.axis, obb.halfSize, color);
+		}
+	};
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (document) {
+		for (const SceneEntity& entity : document->GetEntities()) {
+			const auto found = sceneModelObjects_.find(entity.id);
+			if (
+				found != sceneModelObjects_.end() &&
+				found->second.hasCollider &&
+				IsEntityActiveInHierarchy(*document, entity) &&
+				found->second.colliderDebugVisible
+			) {
+				drawCollider(
+					found->second.collider,
+					found->second.colliderDebugColor,
+					found->second.colliderDebugDrawMode,
+					found->second.colliderDebugSegments
+				);
+			}
+		}
+	}
+	for (const StageObject& stageObject : stageObjects_) {
+		if (stageObject.object) {
+			drawCollider(
+				&stageObject.collider,
+				kStaticColliderColor,
+				"Wireframe",
+				12
+			);
+		}
+	}
+}
+
+void GamePlayScene::LoadSceneDebugSettings() {
+	const SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (!document) {
+		return;
+	}
+
+	const SceneDebugSettings& settings = document->GetDebugSettings();
+	showCameraDebug_ = settings.showCameraDirection;
+	showColliderDebug_ = settings.showColliders;
+	showCameraPathDebug_ = settings.showCameraPath;
+	showCameraPathPointCameraDebug_ =
+		settings.showCameraPathPointCameraDirection;
+	showSkeletonDebug_ = settings.showSkeleton;
+	showJointNames_ = settings.showJointNames;
+	showJointAxes_ = settings.showJointAxes;
+	jointRadius_ = settings.jointRadius;
+	jointAxisLength_ = settings.jointAxisLength;
+}
+
+void GamePlayScene::SaveSceneDebugSettings() {
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (!document) {
+		return;
+	}
+
+	SceneDebugSettings settings = document->GetDebugSettings();
+	settings.showCameraDirection = showCameraDebug_;
+	settings.showColliders = showColliderDebug_;
+	settings.showCameraPath = showCameraPathDebug_;
+	settings.showCameraPathPointCameraDirection =
+		showCameraPathPointCameraDebug_;
+	settings.showSkeleton = showSkeletonDebug_;
+	settings.showJointNames = showJointNames_;
+	settings.showJointAxes = showJointAxes_;
+	settings.jointRadius = jointRadius_;
+	settings.jointAxisLength = jointAxisLength_;
+	document->SetDebugSettings(settings);
+}
+
 void GamePlayScene::Initialize()
 {
 	// ゲーム固有の初期化
+	LoadSceneDebugSettings();
 
 	camera_ = new Camera();
 	camera_->SetOrbitMode(true);
@@ -4119,31 +4278,51 @@ void GamePlayScene::Update()
 		ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
 	}
 	ImGui::SeparatorText("Debug Draw");
-	ImGui::Checkbox("Show Camera Direction", &showCameraDebug_);
-	ImGui::Checkbox("Show CameraPath", &showCameraPathDebug_);
-	ImGui::Checkbox(
+	bool debugSettingsChanged = false;
+	debugSettingsChanged |= ImGui::Checkbox(
+		"Show Camera Direction",
+		&showCameraDebug_
+	);
+	debugSettingsChanged |= ImGui::Checkbox(
+		"Show Colliders",
+		&showColliderDebug_
+	);
+	debugSettingsChanged |= ImGui::Checkbox(
+		"Show CameraPath",
+		&showCameraPathDebug_
+	);
+	debugSettingsChanged |= ImGui::Checkbox(
 		"Show CameraPath Point Camera Direction",
 		&showCameraPathPointCameraDebug_
 	);
 	ImGui::SeparatorText("Skeleton");
-	ImGui::Checkbox("Show Skeleton", &showSkeletonDebug_);
+	debugSettingsChanged |= ImGui::Checkbox("Show Skeleton", &showSkeletonDebug_);
 	if (showSkeletonDebug_) {
-		ImGui::Checkbox("Show Joint Names", &showJointNames_);
-		ImGui::Checkbox("Show Joint Axes", &showJointAxes_);
-		ImGui::DragFloat(
+		debugSettingsChanged |= ImGui::Checkbox(
+			"Show Joint Names",
+			&showJointNames_
+		);
+		debugSettingsChanged |= ImGui::Checkbox(
+			"Show Joint Axes",
+			&showJointAxes_
+		);
+		debugSettingsChanged |= ImGui::DragFloat(
 			"Joint Radius",
 			&jointRadius_,
 			0.001f,
 			0.002f,
 			0.1f
 		);
-		ImGui::DragFloat(
+		debugSettingsChanged |= ImGui::DragFloat(
 			"Joint Axis Length",
 			&jointAxisLength_,
 			0.002f,
 			0.01f,
 			0.5f
 		);
+	}
+	if (debugSettingsChanged) {
+		SaveSceneDebugSettings();
 	}
 	Object3d* human = FindSceneModelObjectByName("Human");
 	if (human && human->GetSkeleton()) {
@@ -4398,6 +4577,9 @@ void GamePlayScene::Update()
 			);
 		}
 	}
+	if (showColliderDebug_) {
+		DrawColliderDebug();
+	}
 #endif
 
 	for (StageObject& stageObject : stageObjects_) {
@@ -4430,12 +4612,26 @@ void GamePlayScene::UpdatePaused()
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	ImGui::Begin("Scene Controls");
 	ImGui::TextDisabled("Paused Debug View");
-	ImGui::Checkbox("Show Camera Direction", &showCameraDebug_);
-	ImGui::Checkbox("Show CameraPath", &showCameraPathDebug_);
-	ImGui::Checkbox(
+	bool debugSettingsChanged = false;
+	debugSettingsChanged |= ImGui::Checkbox(
+		"Show Camera Direction",
+		&showCameraDebug_
+	);
+	debugSettingsChanged |= ImGui::Checkbox(
+		"Show Colliders",
+		&showColliderDebug_
+	);
+	debugSettingsChanged |= ImGui::Checkbox(
+		"Show CameraPath",
+		&showCameraPathDebug_
+	);
+	debugSettingsChanged |= ImGui::Checkbox(
 		"Show CameraPath Point Camera Direction",
 		&showCameraPathPointCameraDebug_
 	);
+	if (debugSettingsChanged) {
+		SaveSceneDebugSettings();
+	}
 	ImGui::End();
 	DrawMonitorDebugWindow();
 #endif
@@ -4498,6 +4694,9 @@ void GamePlayScene::UpdatePaused()
 				showCameraPathPointCameraDebug_
 			);
 		}
+	}
+	if (showColliderDebug_) {
+		DrawColliderDebug();
 	}
 #endif
 }

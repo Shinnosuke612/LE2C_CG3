@@ -4,6 +4,7 @@
 
 #include "../math/Transform.h"
 #include "../math/Vector3.h"
+#include "../math/Vector4.h"
 
 class SphereCollider;
 class OBBCollider;
@@ -37,6 +38,7 @@ public:
 
 	bool CanCollideWith(const Collider& other) const;
 	Vector3 GetWorldCenter() const;
+	void DrawDebug(const Vector4& color) const;
 
 protected:
 	const Transform* worldTransform_ = nullptr;

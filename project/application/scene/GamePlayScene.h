@@ -11,11 +11,13 @@
 #include "../../engine/3d/LightManager.h"
 #include "../../engine/3d/ShadowManager.h"
 #include "../../engine/collision/OBBCollider.h"
+#include "../../engine/collision/SphereCollider.h"
 #include "../../engine/physics/PhysicsBody.h"
 #include "../../engine/physics/PhysicsWorld.h"
 #include "../../engine/effect/LightningRenderer.h"
 #include "../../engine/effect/WaterSurfaceRenderer.h"
 #include "../../engine/math/Vector3.h"
+#include "../../engine/math/Vector4.h"
 #include "../../engine/3d/StarFieldGenerator.h"
 #include "../../engine/3d/CameraPathRuntime.h"
 #include "../camera/ThirdPersonCameraController.h"
@@ -44,8 +46,14 @@ private:
 		Object3d* object = nullptr;
 		std::string modelPath;
 		bool hasRenderer = false;
-		OBBCollider collider;
+		OBBCollider boxCollider;
+		SphereCollider sphereCollider;
+		Collider* collider = nullptr;
 		bool hasCollider = false;
+		Vector4 colliderDebugColor = { 0.2f, 0.95f, 0.7f, 1.0f };
+		bool colliderDebugVisible = true;
+		std::string colliderDebugDrawMode = "Wireframe";
+		uint32_t colliderDebugSegments = 16;
 		PhysicsBody physicsBody;
 		bool hasPhysicsBody = false;
 	};
@@ -145,6 +153,9 @@ private:
 	void ApplyWaterVolumes(const SceneDocument& document);
 	void UpdateAgentBehaviors(SceneDocument& document, float deltaTime);
 	void StepPhysics(float deltaTime);
+	void DrawColliderDebug() const;
+	void LoadSceneDebugSettings();
+	void SaveSceneDebugSettings();
 	Object3d* FindSceneModelObjectByName(const char* name) const;
 	void SyncMonitorRenderers();
 	void ClearMonitorRenderers();
@@ -195,6 +206,7 @@ private:
 	Object3d* axis = nullptr;
 	bool showSkeletonDebug_ = false;
 	bool showCameraDebug_ = false;
+	bool showColliderDebug_ = false;
 	bool showCameraPathDebug_ = true;
 	bool showCameraPathPointCameraDebug_ = true;
 	bool showJointNames_ = false;
@@ -214,7 +226,7 @@ private:
 	std::unordered_map<std::string, TeamRuntime> agentTeamRuntimes_;
 	uint64_t monitorDebugFrame_ = 0;
 	bool monitorDebugForceProbeCamera_ = false;
-	std::vector<OBBCollider*> staticColliders_;
+	std::vector<Collider*> staticColliders_;
 	PhysicsWorld physicsWorld_;
 	CameraPathRuntime cameraPathRuntime_;
 	std::vector<Sprite*> sprites_;

@@ -52,6 +52,7 @@ void DebugRenderer::Initialize(
 	dxCommon_ = dxCommon;
 	maxVertexCount_ = maxVertexCount;
 	vertices_.reserve(maxVertexCount_);
+	solidVertices_.reserve(maxVertexCount_);
 
 	CreateRootSignature();
 	CreateGraphicsPipeline();
@@ -61,12 +62,17 @@ void DebugRenderer::Initialize(
 
 void DebugRenderer::Finalize() {
 	vertices_.clear();
+	solidVertices_.clear();
 	vertices_.shrink_to_fit();
+	solidVertices_.shrink_to_fit();
 	mappedVertices_ = nullptr;
+	mappedSolidVertices_ = nullptr;
 	cameraData_ = nullptr;
 	vertexResource_.Reset();
+	solidVertexResource_.Reset();
 	cameraResource_.Reset();
 	pipelineState_.Reset();
+	solidPipelineState_.Reset();
 	rootSignature_.Reset();
 	dxCommon_ = nullptr;
 	maxVertexCount_ = 0;
@@ -75,6 +81,7 @@ void DebugRenderer::Finalize() {
 
 void DebugRenderer::Clear() {
 	vertices_.clear();
+	solidVertices_.clear();
 }
 
 void DebugRenderer::AddLine(
@@ -138,6 +145,142 @@ void DebugRenderer::AddSphere(
 	}
 }
 
+void DebugRenderer::AddOBB(
+	const Vector3& center,
+	const std::array<Vector3, 3>& axis,
+	const Vector3& halfSize,
+	const Vector4& color
+) {
+	if (
+		halfSize.x <= 0.0f ||
+		halfSize.y <= 0.0f ||
+		halfSize.z <= 0.0f
+	) {
+		return;
+	}
+
+	const Vector3 extentX = Math::Multiply(axis[0], halfSize.x);
+	const Vector3 extentY = Math::Multiply(axis[1], halfSize.y);
+	const Vector3 extentZ = Math::Multiply(axis[2], halfSize.z);
+	const auto makeCorner = [&](float x, float y, float z) {
+		return Math::Add(
+			Math::Add(center, Math::Multiply(extentX, x)),
+			Math::Add(Math::Multiply(extentY, y), Math::Multiply(extentZ, z))
+		);
+	};
+
+	const std::array<Vector3, 8> corners = {
+		makeCorner(-1.0f, -1.0f, -1.0f),
+		makeCorner(1.0f, -1.0f, -1.0f),
+		makeCorner(1.0f, 1.0f, -1.0f),
+		makeCorner(-1.0f, 1.0f, -1.0f),
+		makeCorner(-1.0f, -1.0f, 1.0f),
+		makeCorner(1.0f, -1.0f, 1.0f),
+		makeCorner(1.0f, 1.0f, 1.0f),
+		makeCorner(-1.0f, 1.0f, 1.0f)
+	};
+	constexpr std::array<std::array<uint32_t, 2>, 12> edges = {{
+		{{0, 1}}, {{1, 2}}, {{2, 3}}, {{3, 0}},
+		{{4, 5}}, {{5, 6}}, {{6, 7}}, {{7, 4}},
+		{{0, 4}}, {{1, 5}}, {{2, 6}}, {{3, 7}}
+	}};
+	for (const auto& edge : edges) {
+		AddLine(corners[edge[0]], corners[edge[1]], color);
+	}
+}
+
+void DebugRenderer::AddTriangle(
+	const Vector3& a,
+	const Vector3& b,
+	const Vector3& c,
+	const Vector4& color
+) {
+	if (!isInitialized_ || solidVertices_.size() + 3 > maxVertexCount_) {
+		return;
+	}
+	solidVertices_.push_back({ a, color });
+	solidVertices_.push_back({ b, color });
+	solidVertices_.push_back({ c, color });
+}
+
+void DebugRenderer::AddSolidSphere(
+	const Vector3& center,
+	float radius,
+	const Vector4& color,
+	uint32_t segments
+) {
+	if (radius <= 0.0f) {
+		return;
+	}
+	segments = (std::max)(segments, 4u);
+	const uint32_t rings = (std::max)(segments / 2u, 3u);
+	for (uint32_t ring = 0; ring < rings; ++ring) {
+		const float latitude0 = -kPi * 0.5f +
+			kPi * static_cast<float>(ring) / static_cast<float>(rings);
+		const float latitude1 = -kPi * 0.5f +
+			kPi * static_cast<float>(ring + 1) / static_cast<float>(rings);
+		for (uint32_t segment = 0; segment < segments; ++segment) {
+			const float longitude0 = 2.0f * kPi *
+				static_cast<float>(segment) / static_cast<float>(segments);
+			const float longitude1 = 2.0f * kPi *
+				static_cast<float>(segment + 1) / static_cast<float>(segments);
+			auto point = [&](float latitude, float longitude) {
+				return Vector3{
+					center.x + radius * std::cos(latitude) * std::cos(longitude),
+					center.y + radius * std::sin(latitude),
+					center.z + radius * std::cos(latitude) * std::sin(longitude)
+				};
+			};
+			const Vector3 a = point(latitude0, longitude0);
+			const Vector3 b = point(latitude0, longitude1);
+			const Vector3 c = point(latitude1, longitude1);
+			const Vector3 d = point(latitude1, longitude0);
+			AddTriangle(a, b, c, color);
+			AddTriangle(a, c, d, color);
+		}
+	}
+}
+
+void DebugRenderer::AddSolidOBB(
+	const Vector3& center,
+	const std::array<Vector3, 3>& axis,
+	const Vector3& halfSize,
+	const Vector4& color
+) {
+	if (
+		halfSize.x <= 0.0f ||
+		halfSize.y <= 0.0f ||
+		halfSize.z <= 0.0f
+	) {
+		return;
+	}
+	const Vector3 extentX = Math::Multiply(axis[0], halfSize.x);
+	const Vector3 extentY = Math::Multiply(axis[1], halfSize.y);
+	const Vector3 extentZ = Math::Multiply(axis[2], halfSize.z);
+	const auto makeCorner = [&](float x, float y, float z) {
+		return Math::Add(
+			Math::Add(center, Math::Multiply(extentX, x)),
+			Math::Add(Math::Multiply(extentY, y), Math::Multiply(extentZ, z))
+		);
+	};
+	const std::array<Vector3, 8> corners = {
+		makeCorner(-1.0f, -1.0f, -1.0f), makeCorner(1.0f, -1.0f, -1.0f),
+		makeCorner(1.0f, 1.0f, -1.0f), makeCorner(-1.0f, 1.0f, -1.0f),
+		makeCorner(-1.0f, -1.0f, 1.0f), makeCorner(1.0f, -1.0f, 1.0f),
+		makeCorner(1.0f, 1.0f, 1.0f), makeCorner(-1.0f, 1.0f, 1.0f)
+	};
+	constexpr std::array<std::array<uint32_t, 3>, 12> triangles = {{
+		{{0, 2, 1}}, {{0, 3, 2}}, {{4, 5, 6}}, {{4, 6, 7}},
+		{{0, 1, 5}}, {{0, 5, 4}}, {{1, 2, 6}}, {{1, 6, 5}},
+		{{2, 3, 7}}, {{2, 7, 6}}, {{3, 0, 4}}, {{3, 4, 7}}
+	}};
+	for (const auto& triangle : triangles) {
+		AddTriangle(
+			corners[triangle[0]], corners[triangle[1]], corners[triangle[2]], color
+		);
+	}
+}
+
 void DebugRenderer::AddAxis(
 	const Matrix4x4& worldMatrix,
 	float length
@@ -172,7 +315,7 @@ void DebugRenderer::Draw(const Camera* camera) {
 	if (
 		!isInitialized_ ||
 		!camera ||
-		vertices_.empty()
+		vertices_.empty() && solidVertices_.empty()
 	) {
 		return;
 	}
@@ -183,23 +326,37 @@ void DebugRenderer::Draw(const Camera* camera) {
 			static_cast<size_t>(maxVertexCount_)
 		)
 	);
-	std::memcpy(
-		mappedVertices_,
-		vertices_.data(),
-		sizeof(Vertex) * vertexCount
+	if (vertexCount > 0) {
+		std::memcpy(mappedVertices_, vertices_.data(), sizeof(Vertex) * vertexCount);
+	}
+	const uint32_t solidVertexCount = static_cast<uint32_t>(
+		(std::min)(solidVertices_.size(), static_cast<size_t>(maxVertexCount_))
 	);
+	if (solidVertexCount > 0) {
+		std::memcpy(
+			mappedSolidVertices_, solidVertices_.data(), sizeof(Vertex) * solidVertexCount
+		);
+	}
 	cameraData_->viewProjection = camera->GetViewProjectionMatrix();
 
 	ID3D12GraphicsCommandList* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
-	commandList->SetPipelineState(pipelineState_.Get());
-	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
-	commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
 	commandList->SetGraphicsRootConstantBufferView(
 		0,
 		cameraResource_->GetGPUVirtualAddress()
 	);
-	commandList->DrawInstanced(vertexCount, 1, 0, 0);
+	if (solidVertexCount > 0) {
+		commandList->SetPipelineState(solidPipelineState_.Get());
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		commandList->IASetVertexBuffers(0, 1, &solidVertexBufferView_);
+		commandList->DrawInstanced(solidVertexCount, 1, 0, 0);
+	}
+	if (vertexCount > 0) {
+		commandList->SetPipelineState(pipelineState_.Get());
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+		commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
+		commandList->DrawInstanced(vertexCount, 1, 0, 0);
+	}
 }
 
 void DebugRenderer::CreateRootSignature() {
@@ -314,6 +471,15 @@ void DebugRenderer::CreateGraphicsPipeline() {
 			IID_PPV_ARGS(&pipelineState_)
 		);
 	assert(SUCCEEDED(result));
+
+	pipelineDesc.PrimitiveTopologyType =
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	const HRESULT solidResult =
+		dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+			&pipelineDesc,
+			IID_PPV_ARGS(&solidPipelineState_)
+		);
+	assert(SUCCEEDED(solidResult));
 }
 
 void DebugRenderer::CreateResources() {
@@ -331,6 +497,20 @@ void DebugRenderer::CreateResources() {
 	vertexBufferView_.SizeInBytes =
 		static_cast<UINT>(sizeof(Vertex) * maxVertexCount_);
 	vertexBufferView_.StrideInBytes = sizeof(Vertex);
+
+	solidVertexResource_ = dxCommon_->CreateBufferResource(
+		sizeof(Vertex) * maxVertexCount_
+	);
+	solidVertexResource_->Map(
+		0,
+		nullptr,
+		reinterpret_cast<void**>(&mappedSolidVertices_)
+	);
+	solidVertexBufferView_.BufferLocation =
+		solidVertexResource_->GetGPUVirtualAddress();
+	solidVertexBufferView_.SizeInBytes =
+		static_cast<UINT>(sizeof(Vertex) * maxVertexCount_);
+	solidVertexBufferView_.StrideInBytes = sizeof(Vertex);
 
 	cameraResource_ = dxCommon_->CreateBufferResource(sizeof(CameraData));
 	cameraResource_->Map(

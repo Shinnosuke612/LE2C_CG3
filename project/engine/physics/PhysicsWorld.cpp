@@ -1,5 +1,6 @@
 #include "PhysicsWorld.h"
 
+#include "../collision/Collider.h"
 #include "../collision/OBBCollider.h"
 #include "../math/Math.h"
 
@@ -143,7 +144,7 @@ void PhysicsWorld::AddBody(PhysicsBody* body) {
 	bodies_.push_back(body);
 }
 
-void PhysicsWorld::AddStaticCollider(OBBCollider* collider) {
+void PhysicsWorld::AddStaticCollider(Collider* collider) {
 	if (!collider) {
 		return;
 	}
@@ -227,7 +228,7 @@ void PhysicsWorld::Step(float deltaTime) {
 }
 
 bool PhysicsWorld::CollidesWithStatic(const PhysicsBody& body) const {
-	if (!body.obbCollider) {
+	if (!body.collider) {
 		return false;
 	}
 
@@ -235,21 +236,21 @@ bool PhysicsWorld::CollidesWithStatic(const PhysicsBody& body) const {
 		if (
 			!other ||
 			other == &body ||
-			!other->obbCollider ||
+			!other->collider ||
 			other->type == PhysicsBodyType::Dynamic
 		) {
 			continue;
 		}
-		if (body.obbCollider->Intersects(*other->obbCollider)) {
+		if (body.collider->Intersects(*other->collider)) {
 			return true;
 		}
 	}
 
-	for (const OBBCollider* collider : staticColliders_) {
+	for (const Collider* collider : staticColliders_) {
 		if (
 			collider &&
-			collider != body.obbCollider &&
-			body.obbCollider->Intersects(*collider)
+			collider != body.collider &&
+			body.collider->Intersects(*collider)
 		) {
 			return true;
 		}
@@ -264,7 +265,7 @@ bool PhysicsWorld::SnapToGround(
 ) const {
 	if (
 		!body.transform ||
-		!body.obbCollider ||
+		!body.collider ||
 		probeDistance <= 0.0f
 	) {
 		return false;
@@ -294,18 +295,28 @@ bool PhysicsWorld::SnapToGround(
 }
 
 bool PhysicsWorld::ResolveStaticPenetration(PhysicsBody& body) const {
-	if (!body.transform || !body.obbCollider) {
+	if (
+		!body.transform ||
+		!body.collider ||
+		body.collider->GetType() != Collider::Type::OBB
+	) {
 		return false;
 	}
 
 	bool resolvedAny = false;
 	std::vector<const OBBCollider*> testedColliders;
+	const auto* bodyCollider =
+		static_cast<const OBBCollider*>(body.collider);
 
-	auto resolveAgainst = [&](const OBBCollider* collider) {
+	auto resolveAgainst = [&](const Collider* candidate) {
+		if (!candidate || candidate->GetType() != Collider::Type::OBB) {
+			return;
+		}
+		const auto* collider = static_cast<const OBBCollider*>(candidate);
 		if (
 			!collider ||
-			collider == body.obbCollider ||
-			!body.obbCollider->CanCollideWith(*collider) ||
+			collider == bodyCollider ||
+			!bodyCollider->CanCollideWith(*collider) ||
 			std::find(
 				testedColliders.begin(),
 				testedColliders.end(),
@@ -321,7 +332,7 @@ bool PhysicsWorld::ResolveStaticPenetration(PhysicsBody& body) const {
 			++iteration) {
 			Vector3 pushOut{};
 			if (!TryComputePushOut(
-				body.obbCollider->GetOBB(),
+				bodyCollider->GetOBB(),
 				collider->GetOBB(),
 				pushOut
 			)) {
@@ -357,15 +368,15 @@ bool PhysicsWorld::ResolveStaticPenetration(PhysicsBody& body) const {
 		if (
 			!other ||
 			other == &body ||
-			!other->obbCollider ||
+			!other->collider ||
 			other->type == PhysicsBodyType::Dynamic
 		) {
 			continue;
 		}
-		resolveAgainst(other->obbCollider);
+		resolveAgainst(other->collider);
 	}
 
-	for (const OBBCollider* collider : staticColliders_) {
+	for (const Collider* collider : staticColliders_) {
 		resolveAgainst(collider);
 	}
 

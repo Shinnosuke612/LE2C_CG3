@@ -1,4 +1,15 @@
 {
+  "debug": {
+    "jointAxisLength": 0.05999999865889549,
+    "jointRadius": 0.017999999225139618,
+    "showCameraDirection": false,
+    "showCameraPath": true,
+    "showCameraPathPointCameraDirection": true,
+    "showColliders": true,
+    "showJointAxes": true,
+    "showJointNames": false,
+    "showSkeleton": false
+  },
   "entities": [
     {
       "active": true,
@@ -317,7 +328,23 @@
           "type": "PlayerBehavior"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         },
         {
@@ -430,7 +457,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -789,7 +832,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -850,7 +909,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -911,7 +986,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -972,7 +1063,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1033,7 +1140,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1094,7 +1217,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1155,7 +1294,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1216,7 +1371,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1277,7 +1448,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1338,7 +1525,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1399,7 +1602,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1460,7 +1679,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1521,7 +1756,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1582,7 +1833,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1643,7 +1910,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -1704,7 +1987,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -3551,7 +3850,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -3612,7 +3927,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -3673,7 +4004,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -3734,7 +4081,23 @@
           "type": "MeshRenderer"
         },
         {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
           "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         }
       ],
@@ -4611,5 +4974,5 @@
       "name": "School Fish"
     }
   ],
-  "version": 21
+  "version": 22
 }

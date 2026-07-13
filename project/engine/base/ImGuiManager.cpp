@@ -2845,7 +2845,9 @@ void ImGuiManager::DrawInspectorWindow() {
 		std::string removeComponentType;
 		for (SceneComponent& component : entity->components) {
 			ImGui::PushID(component.type.c_str());
-			ImGui::SeparatorText(component.type.c_str());
+			ImGui::SeparatorText(
+				component.type == "OBBCollider" ? "Collider" : component.type.c_str()
+			);
 			ImGui::BeginDisabled(entityLocked || !editorSession_->IsEditing());
 			if (ImGui::Checkbox("Enabled", &component.enabled)) {
 				document.MarkDirty();
@@ -3755,6 +3757,105 @@ void ImGuiManager::DrawInspectorWindow() {
 					pointChanged = true;
 				}
 				if (pointChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "OBBCollider") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool colliderChanged = false;
+				const char* shape = component.colliderShape == "Sphere"
+					? "Sphere"
+					: "Box";
+				if (ImGui::BeginCombo("Shape", shape)) {
+					for (const char* candidate : { "Box", "Sphere" }) {
+						if (ImGui::Selectable(
+							candidate,
+							component.colliderShape == candidate
+						)) {
+							component.colliderShape = candidate;
+							colliderChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				colliderChanged |= ImGui::DragFloat3(
+					"Offset",
+					&component.colliderOffset.x,
+					0.01f
+				);
+				if (component.colliderShape == "Sphere") {
+					colliderChanged |= ImGui::DragFloat(
+						"Radius",
+						&component.colliderSphereRadius,
+						0.01f,
+						0.001f,
+						100.0f
+					);
+				} else {
+					colliderChanged |= ImGui::DragFloat3(
+						"Size Multiplier",
+						&component.colliderSizeMultiplier.x,
+						0.01f,
+						0.001f,
+						100.0f
+					);
+				}
+				colliderChanged |= ImGui::Checkbox(
+					"Debug Visible",
+					&component.colliderDebugVisible
+				);
+				if (ImGui::BeginCombo(
+					"Draw Mode",
+					component.colliderDebugDrawMode.c_str()
+				)) {
+					for (const char* mode : {
+						"Wireframe", "Solid", "WireframeAndSolid"
+					}) {
+						if (ImGui::Selectable(
+							mode,
+							component.colliderDebugDrawMode == mode
+						)) {
+							component.colliderDebugDrawMode = mode;
+							colliderChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				if (component.colliderShape == "Sphere") {
+					colliderChanged |= ImGui::SliderInt(
+						"Debug Segments",
+						&component.colliderDebugSegments,
+						4,
+						64
+					);
+				}
+				colliderChanged |= ImGui::ColorEdit4(
+					"Debug Color",
+					&component.colliderDebugColor.x,
+					ImGuiColorEditFlags_Float
+				);
+				component.colliderSizeMultiplier.x = (std::max)(
+					component.colliderSizeMultiplier.x,
+					0.001f
+				);
+				component.colliderSizeMultiplier.y = (std::max)(
+					component.colliderSizeMultiplier.y,
+					0.001f
+				);
+				component.colliderSizeMultiplier.z = (std::max)(
+					component.colliderSizeMultiplier.z,
+					0.001f
+				);
+				component.colliderSphereRadius = (std::max)(
+					component.colliderSphereRadius,
+					0.001f
+				);
+				component.colliderDebugSegments = std::clamp(
+					component.colliderDebugSegments,
+					4,
+					64
+				);
+				if (colliderChanged) {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();

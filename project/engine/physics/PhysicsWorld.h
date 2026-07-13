@@ -5,13 +5,13 @@
 #include "PhysicsBody.h"
 #include "../math/Vector3.h"
 
-class OBBCollider;
+class Collider;
 
 class PhysicsWorld {
 public:
 	void Clear();
 	void AddBody(PhysicsBody* body);
-	void AddStaticCollider(OBBCollider* collider);
+	void AddStaticCollider(Collider* collider);
 	void Step(float deltaTime);
 
 	void SetGravity(const Vector3& gravity) { gravity_ = gravity; }
@@ -29,5 +29,5 @@ private:
 
 	Vector3 gravity_ = { 0.0f, -9.8f, 0.0f };
 	std::vector<PhysicsBody*> bodies_;
-	std::vector<OBBCollider*> staticColliders_;
+	std::vector<Collider*> staticColliders_;
 };

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../engine/collision/OBBCollider.h"
+#include "../../engine/collision/Collider.h"
 #include "../../engine/physics/PhysicsBody.h"
 #include "../../engine/math/Vector3.h"
 #include "../../engine/math/Transform.h"
@@ -23,9 +23,10 @@ public:
 	void Finalize();
 
 	const Vector3& GetPosition() const { return position_; }
-	OBBCollider& GetCollider() { return collider_; }
+	Collider* GetCollider() const { return collider_; }
 	PhysicsBody& GetPhysicsBody() { return physicsBody_; }
 	Object3d* GetObject() const { return object_; }
+	void SetCollider(Collider* collider);
 	void SetTransform(const Transform& transform);
 	void SetBehaviorSettings(
 		float moveSpeed,
@@ -48,7 +49,7 @@ private:
 private:
 	Object3d* object_ = nullptr;
 	bool ownsObject_ = false;
-	OBBCollider collider_;
+	Collider* collider_ = nullptr;
 	PhysicsBody physicsBody_;
 	Vector3 position_ = { 0.0f, 1.0f, -4.0f };
 	float moveSpeed_ = 10.8f;
