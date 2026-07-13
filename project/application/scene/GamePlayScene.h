@@ -78,6 +78,21 @@ private:
 
 	struct AgentRuntime {
 		Vector3 velocity{};
+		Vector3 jitterOffset{};
+		Vector3 cachedSchoolingSteering{};
+		float phase = 0.0f;
+		float schoolingTimer = 0.0f;
+		bool initialized = false;
+		bool flockInitialized = false;
+		bool schoolingCacheValid = false;
+	};
+
+	struct TeamRuntime {
+		Vector3 center{};
+		Vector3 velocity{};
+		Vector3 heading = { 0.0f, 0.0f, 1.0f };
+		Vector3 rotation{};
+		std::string forwardAxis = "+Z";
 		float phase = 0.0f;
 		bool initialized = false;
 	};
@@ -181,6 +196,7 @@ private:
 	std::unordered_map<uint64_t, SceneSpriteObject> sceneSpriteObjects_;
 	std::unordered_map<uint64_t, MonitorRuntime> monitorRuntimes_;
 	std::unordered_map<uint64_t, AgentRuntime> agentRuntimes_;
+	std::unordered_map<std::string, TeamRuntime> agentTeamRuntimes_;
 	uint64_t monitorDebugFrame_ = 0;
 	bool monitorDebugForceProbeCamera_ = false;
 	std::vector<OBBCollider*> staticColliders_;

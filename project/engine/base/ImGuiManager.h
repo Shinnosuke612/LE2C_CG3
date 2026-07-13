@@ -136,6 +136,8 @@ private:
 	bool showConsole_ = true;
 	int selectedHierarchyItem_ = 0;
 	uint64_t selectedEntityId_ = 0;
+	uint64_t hierarchyDragSourceId_ = 0;
+	bool hierarchyDragActive_ = false;
 	char hierarchySearchBuffer_[128] = {};
 	bool focusInspectorRequested_ = false;
 	EditorSession* editorSession_ = nullptr;

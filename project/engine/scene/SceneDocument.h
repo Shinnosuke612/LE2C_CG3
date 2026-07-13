@@ -74,6 +74,52 @@ struct ScenePostProcessSettings {
 	float waterRefractionTintStrength = 0.12f;
 };
 
+struct SceneTeamSettings {
+	std::string name = "Team";
+	bool agentBehaviorOverride = false;
+	std::string agentGroupName;
+	float agentMinSpeed = 1.0f;
+	float agentMaxSpeed = 3.0f;
+	float agentTurnSpeed = 2.5f;
+	float agentWanderStrength = 0.8f;
+	float agentFlockAcceleration = 4.0f;
+	float agentFlockTurnRate = 1.5f;
+	float agentMemberCenterFollow = 1.5f;
+	float agentMemberJitterStrength = 0.35f;
+	float agentMemberJitterFrequency = 0.9f;
+	float agentMemberJitterFollowSpeed = 2.0f;
+	float agentMemberSpeedVariation = 0.15f;
+	bool agentUseTeamHeading = false;
+	bool agentTeamHeadingFromAverage = true;
+	Vector3 agentTeamHeadingDirection = { 0.0f, 0.0f, 1.0f };
+	float agentTeamHeadingWeight = 0.75f;
+	float agentTeamHeadingFollowSpeed = 2.5f;
+	bool agentUseTeamRotation = false;
+	float agentTeamRotationWeight = 0.6f;
+	float agentTeamRotationFollowSpeed = 4.0f;
+	bool agentAlignForwardToVelocity = true;
+	std::string agentForwardAxis = "+Z";
+	bool agentRotateAxisX = true;
+	bool agentRotateAxisY = true;
+	bool agentRotateAxisZ = false;
+	float agentRotationFollowSpeed = 12.0f;
+	float agentPitchFromVerticalVelocity = 1.0f;
+	float agentBankingStrength = 0.0f;
+	bool agentSchooling = false;
+	float agentSchoolingUpdateInterval = 0.0f;
+	float agentSchoolingUpdateJitter = 0.0f;
+	int agentNeighborLimit = 0;
+	float agentSchoolingBlend = 1.0f;
+	float agentSeparationRadius = 1.2f;
+	float agentAlignmentRadius = 4.0f;
+	float agentCohesionRadius = 5.0f;
+	float agentSeparationWeight = 1.8f;
+	float agentAlignmentWeight = 0.8f;
+	float agentCohesionWeight = 0.9f;
+	Vector4 agentVisualColor = { 0.25f, 0.75f, 1.0f, 1.0f };
+	bool agentEnableLighting = true;
+};
+
 struct SceneComponent {
 	SceneComponent() = default;
 	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
@@ -148,8 +194,35 @@ struct SceneComponent {
 	float agentMaxSpeed = 3.0f;
 	float agentTurnSpeed = 2.5f;
 	float agentWanderStrength = 0.8f;
+	float agentFlockAcceleration = 4.0f;
+	float agentFlockTurnRate = 1.5f;
+	float agentMemberCenterFollow = 1.5f;
+	float agentMemberJitterStrength = 0.35f;
+	float agentMemberJitterFrequency = 0.9f;
+	float agentMemberJitterFollowSpeed = 2.0f;
+	float agentMemberSpeedVariation = 0.15f;
 	float agentBoundsWeight = 3.0f;
+	bool agentUseTeamHeading = false;
+	bool agentTeamHeadingFromAverage = true;
+	Vector3 agentTeamHeadingDirection = { 0.0f, 0.0f, 1.0f };
+	float agentTeamHeadingWeight = 0.75f;
+	float agentTeamHeadingFollowSpeed = 2.5f;
+	bool agentUseTeamRotation = false;
+	float agentTeamRotationWeight = 0.6f;
+	float agentTeamRotationFollowSpeed = 4.0f;
+	bool agentAlignForwardToVelocity = true;
+	std::string agentForwardAxis = "+Z";
+	bool agentRotateAxisX = true;
+	bool agentRotateAxisY = true;
+	bool agentRotateAxisZ = false;
+	float agentRotationFollowSpeed = 12.0f;
+	float agentPitchFromVerticalVelocity = 1.0f;
+	float agentBankingStrength = 0.0f;
 	bool agentSchooling = false;
+	float agentSchoolingUpdateInterval = 0.0f;
+	float agentSchoolingUpdateJitter = 0.0f;
+	int agentNeighborLimit = 0;
+	float agentSchoolingBlend = 1.0f;
 	float agentSeparationRadius = 1.2f;
 	float agentAlignmentRadius = 4.0f;
 	float agentCohesionRadius = 5.0f;
@@ -157,6 +230,7 @@ struct SceneComponent {
 	float agentAlignmentWeight = 0.8f;
 	float agentCohesionWeight = 0.9f;
 	float agentAttractorWeight = 0.0f;
+	bool agentTeamSettingsOverride = false;
 	Vector4 agentVisualColor = { 0.25f, 0.75f, 1.0f, 1.0f };
 	bool agentEnableLighting = true;
 	std::string attractorTag = "Default";
@@ -209,8 +283,11 @@ struct SceneEntity {
 	uint64_t id = 0;
 	uint64_t parentId = 0;
 	std::string name;
+	bool folder = false;
+	bool folderTeamEnabled = false;
 	bool active = true;
 	bool locked = false;
+	std::string teamName;
 	Transform transform{};
 	std::string modelPath;
 	std::string spriteTexturePath;
@@ -234,9 +311,18 @@ public:
 	uint64_t DuplicateEntity(uint64_t id);
 	bool SetParent(uint64_t id, uint64_t parentId);
 	bool MoveEntity(uint64_t id, int direction);
+	bool MoveEntityToParent(uint64_t id, uint64_t parentId);
+	bool MoveEntityToSibling(uint64_t id, uint64_t siblingId, bool after);
 	bool AddComponent(uint64_t id, const std::string& type);
 	bool RemoveComponent(uint64_t id, const std::string& type);
 	bool IsDescendantOf(uint64_t id, uint64_t potentialAncestorId) const;
+	SceneTeamSettings& CreateTeam(const std::string& name);
+	bool RenameTeam(const std::string& oldName, const std::string& newName);
+	bool RemoveTeam(const std::string& name);
+	SceneTeamSettings* FindTeam(const std::string& name);
+	const SceneTeamSettings* FindTeam(const std::string& name) const;
+	std::string ResolveInheritedFolderTeamName(uint64_t entityId) const;
+	const SceneTeamSettings* ResolveEntityTeam(const SceneEntity& entity) const;
 	SceneEntity* FindEntity(uint64_t id);
 	const SceneEntity* FindEntity(uint64_t id) const;
 	SceneEntity* FindEntityByName(const std::string& name);
@@ -249,6 +335,8 @@ public:
 	}
 	std::vector<SceneEntity>& GetEntities() { return entities_; }
 	const std::vector<SceneEntity>& GetEntities() const { return entities_; }
+	std::vector<SceneTeamSettings>& GetTeams() { return teams_; }
+	const std::vector<SceneTeamSettings>& GetTeams() const { return teams_; }
 	ScenePostProcessSettings& GetPostProcessSettings() {
 		return postProcessSettings_;
 	}
@@ -274,6 +362,7 @@ private:
 
 	std::string sceneName_;
 	std::vector<SceneEntity> entities_;
+	std::vector<SceneTeamSettings> teams_;
 	ScenePostProcessSettings postProcessSettings_{};
 	uint64_t nextId_ = 1;
 	bool dirty_ = false;

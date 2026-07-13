@@ -245,6 +245,355 @@ namespace {
 		return settings;
 	}
 
+	Vector3 NormalizeDirectionVector(
+		const Vector3& value,
+		const Vector3& fallback
+	) {
+		const float length = std::sqrt(
+			value.x * value.x +
+			value.y * value.y +
+			value.z * value.z
+		);
+		if (length <= 0.000001f) {
+			return fallback;
+		}
+		return {
+			value.x / length,
+			value.y / length,
+			value.z / length
+		};
+	}
+
+	void NormalizeTeamSettings(SceneTeamSettings& team) {
+		if (team.name.empty()) {
+			team.name = "Team";
+		}
+		auto normalizeForwardAxis = [](std::string& axis) {
+			if (
+				axis != "+Z" &&
+				axis != "-Z" &&
+				axis != "+X" &&
+				axis != "-X" &&
+				axis != "+Y" &&
+				axis != "-Y"
+			) {
+				axis = "+Z";
+			}
+		};
+		normalizeForwardAxis(team.agentForwardAxis);
+		team.agentMinSpeed = (std::max)(team.agentMinSpeed, 0.0f);
+		team.agentMaxSpeed = (std::max)(team.agentMaxSpeed, team.agentMinSpeed);
+		team.agentTurnSpeed = (std::max)(team.agentTurnSpeed, 0.0f);
+		team.agentWanderStrength =
+			(std::max)(team.agentWanderStrength, 0.0f);
+		team.agentFlockAcceleration =
+			(std::max)(team.agentFlockAcceleration, 0.0f);
+		team.agentFlockTurnRate =
+			(std::max)(team.agentFlockTurnRate, 0.0f);
+		team.agentMemberCenterFollow =
+			(std::max)(team.agentMemberCenterFollow, 0.0f);
+		team.agentMemberJitterStrength =
+			(std::max)(team.agentMemberJitterStrength, 0.0f);
+		team.agentMemberJitterFrequency =
+			(std::max)(team.agentMemberJitterFrequency, 0.0f);
+		team.agentMemberJitterFollowSpeed =
+			(std::max)(team.agentMemberJitterFollowSpeed, 0.0f);
+		team.agentMemberSpeedVariation = std::clamp(
+			team.agentMemberSpeedVariation,
+			0.0f,
+			1.0f
+		);
+		team.agentTeamHeadingDirection = NormalizeDirectionVector(
+			team.agentTeamHeadingDirection,
+			{ 0.0f, 0.0f, 1.0f }
+		);
+		team.agentTeamHeadingWeight =
+			(std::max)(team.agentTeamHeadingWeight, 0.0f);
+		team.agentTeamHeadingFollowSpeed =
+			(std::max)(team.agentTeamHeadingFollowSpeed, 0.0f);
+		team.agentTeamRotationWeight =
+			std::clamp(team.agentTeamRotationWeight, 0.0f, 1.0f);
+		team.agentTeamRotationFollowSpeed =
+			(std::max)(team.agentTeamRotationFollowSpeed, 0.0f);
+		team.agentRotationFollowSpeed =
+			(std::max)(team.agentRotationFollowSpeed, 0.0f);
+		team.agentPitchFromVerticalVelocity =
+			(std::max)(team.agentPitchFromVerticalVelocity, 0.0f);
+		team.agentBankingStrength =
+			(std::max)(team.agentBankingStrength, 0.0f);
+		team.agentSchoolingUpdateInterval =
+			(std::max)(team.agentSchoolingUpdateInterval, 0.0f);
+		team.agentSchoolingUpdateJitter =
+			(std::max)(team.agentSchoolingUpdateJitter, 0.0f);
+		team.agentNeighborLimit = (std::max)(team.agentNeighborLimit, 0);
+		team.agentSchoolingBlend =
+			std::clamp(team.agentSchoolingBlend, 0.0f, 1.0f);
+		team.agentSeparationRadius =
+			(std::max)(team.agentSeparationRadius, 0.0f);
+		team.agentAlignmentRadius =
+			(std::max)(team.agentAlignmentRadius, 0.0f);
+		team.agentCohesionRadius =
+			(std::max)(team.agentCohesionRadius, 0.0f);
+		team.agentSeparationWeight =
+			(std::max)(team.agentSeparationWeight, 0.0f);
+		team.agentAlignmentWeight =
+			(std::max)(team.agentAlignmentWeight, 0.0f);
+		team.agentCohesionWeight =
+			(std::max)(team.agentCohesionWeight, 0.0f);
+	}
+
+	json TeamToJson(const SceneTeamSettings& team) {
+		return {
+			{ "name", team.name },
+			{ "agentBehaviorOverride", team.agentBehaviorOverride },
+			{ "agentGroupName", team.agentGroupName },
+			{ "agentMinSpeed", team.agentMinSpeed },
+			{ "agentMaxSpeed", team.agentMaxSpeed },
+			{ "agentTurnSpeed", team.agentTurnSpeed },
+			{ "agentWanderStrength", team.agentWanderStrength },
+			{ "agentFlockAcceleration", team.agentFlockAcceleration },
+			{ "agentFlockTurnRate", team.agentFlockTurnRate },
+			{ "agentMemberCenterFollow", team.agentMemberCenterFollow },
+			{ "agentMemberJitterStrength", team.agentMemberJitterStrength },
+			{ "agentMemberJitterFrequency", team.agentMemberJitterFrequency },
+			{ "agentMemberJitterFollowSpeed",
+				team.agentMemberJitterFollowSpeed },
+			{ "agentMemberSpeedVariation", team.agentMemberSpeedVariation },
+			{ "agentUseTeamHeading", team.agentUseTeamHeading },
+			{ "agentTeamHeadingFromAverage",
+				team.agentTeamHeadingFromAverage },
+			{ "agentTeamHeadingDirection",
+				VectorToJson(team.agentTeamHeadingDirection) },
+			{ "agentTeamHeadingWeight", team.agentTeamHeadingWeight },
+			{ "agentTeamHeadingFollowSpeed",
+				team.agentTeamHeadingFollowSpeed },
+			{ "agentUseTeamRotation", team.agentUseTeamRotation },
+			{ "agentTeamRotationWeight", team.agentTeamRotationWeight },
+			{ "agentTeamRotationFollowSpeed",
+				team.agentTeamRotationFollowSpeed },
+			{ "agentAlignForwardToVelocity",
+				team.agentAlignForwardToVelocity },
+			{ "agentForwardAxis", team.agentForwardAxis },
+			{ "agentRotateAxisX", team.agentRotateAxisX },
+			{ "agentRotateAxisY", team.agentRotateAxisY },
+			{ "agentRotateAxisZ", team.agentRotateAxisZ },
+			{ "agentRotationFollowSpeed", team.agentRotationFollowSpeed },
+			{ "agentPitchFromVerticalVelocity",
+				team.agentPitchFromVerticalVelocity },
+			{ "agentBankingStrength", team.agentBankingStrength },
+			{ "agentSchooling", team.agentSchooling },
+			{ "agentSchoolingUpdateInterval",
+				team.agentSchoolingUpdateInterval },
+			{ "agentSchoolingUpdateJitter",
+				team.agentSchoolingUpdateJitter },
+			{ "agentNeighborLimit", team.agentNeighborLimit },
+			{ "agentSchoolingBlend", team.agentSchoolingBlend },
+			{ "agentSeparationRadius", team.agentSeparationRadius },
+			{ "agentAlignmentRadius", team.agentAlignmentRadius },
+			{ "agentCohesionRadius", team.agentCohesionRadius },
+			{ "agentSeparationWeight", team.agentSeparationWeight },
+			{ "agentAlignmentWeight", team.agentAlignmentWeight },
+			{ "agentCohesionWeight", team.agentCohesionWeight },
+			{ "agentVisualColor", VectorToJson(team.agentVisualColor) },
+			{ "agentEnableLighting", team.agentEnableLighting }
+		};
+	}
+
+	SceneTeamSettings TeamFromJson(const json& source) {
+		SceneTeamSettings team{};
+		if (!source.is_object()) {
+			return team;
+		}
+		team.name = source.value("name", team.name);
+		team.agentBehaviorOverride = source.value(
+			"agentBehaviorOverride",
+			team.agentBehaviorOverride
+		);
+		team.agentGroupName = source.value("agentGroupName", team.agentGroupName);
+		team.agentMinSpeed = source.value("agentMinSpeed", team.agentMinSpeed);
+		team.agentMaxSpeed = source.value("agentMaxSpeed", team.agentMaxSpeed);
+		team.agentTurnSpeed = source.value("agentTurnSpeed", team.agentTurnSpeed);
+		team.agentWanderStrength = source.value(
+			"agentWanderStrength",
+			team.agentWanderStrength
+		);
+		team.agentFlockAcceleration = source.value(
+			"agentFlockAcceleration",
+			team.agentFlockAcceleration
+		);
+		team.agentFlockTurnRate = source.value(
+			"agentFlockTurnRate",
+			team.agentFlockTurnRate
+		);
+		team.agentMemberCenterFollow = source.value(
+			"agentMemberCenterFollow",
+			team.agentMemberCenterFollow
+		);
+		team.agentMemberJitterStrength = source.value(
+			"agentMemberJitterStrength",
+			team.agentMemberJitterStrength
+		);
+		team.agentMemberJitterFrequency = source.value(
+			"agentMemberJitterFrequency",
+			team.agentMemberJitterFrequency
+		);
+		team.agentMemberJitterFollowSpeed = source.value(
+			"agentMemberJitterFollowSpeed",
+			team.agentMemberJitterFollowSpeed
+		);
+		team.agentMemberSpeedVariation = source.value(
+			"agentMemberSpeedVariation",
+			team.agentMemberSpeedVariation
+		);
+		team.agentUseTeamHeading = source.value(
+			"agentUseTeamHeading",
+			team.agentUseTeamHeading
+		);
+		team.agentTeamHeadingFromAverage = source.value(
+			"agentTeamHeadingFromAverage",
+			team.agentTeamHeadingFromAverage
+		);
+		if (source.contains("agentTeamHeadingDirection")) {
+			team.agentTeamHeadingDirection = JsonToVector(
+				source.at("agentTeamHeadingDirection"),
+				team.agentTeamHeadingDirection
+			);
+		}
+		team.agentTeamHeadingWeight = source.value(
+			"agentTeamHeadingWeight",
+			team.agentTeamHeadingWeight
+		);
+		team.agentTeamHeadingFollowSpeed = source.value(
+			"agentTeamHeadingFollowSpeed",
+			team.agentTeamHeadingFollowSpeed
+		);
+		team.agentUseTeamRotation = source.value(
+			"agentUseTeamRotation",
+			team.agentUseTeamRotation
+		);
+		team.agentTeamRotationWeight = source.value(
+			"agentTeamRotationWeight",
+			team.agentTeamRotationWeight
+		);
+		team.agentTeamRotationFollowSpeed = source.value(
+			"agentTeamRotationFollowSpeed",
+			team.agentTeamRotationFollowSpeed
+		);
+		team.agentAlignForwardToVelocity = source.value(
+			"agentAlignForwardToVelocity",
+			team.agentAlignForwardToVelocity
+		);
+		team.agentForwardAxis = source.value(
+			"agentForwardAxis",
+			team.agentForwardAxis
+		);
+		team.agentRotateAxisX = source.value(
+			"agentRotateAxisX",
+			team.agentRotateAxisX
+		);
+		team.agentRotateAxisY = source.value(
+			"agentRotateAxisY",
+			team.agentRotateAxisY
+		);
+		team.agentRotateAxisZ = source.value(
+			"agentRotateAxisZ",
+			team.agentRotateAxisZ
+		);
+		team.agentRotationFollowSpeed = source.value(
+			"agentRotationFollowSpeed",
+			team.agentRotationFollowSpeed
+		);
+		team.agentPitchFromVerticalVelocity = source.value(
+			"agentPitchFromVerticalVelocity",
+			team.agentPitchFromVerticalVelocity
+		);
+		team.agentBankingStrength = source.value(
+			"agentBankingStrength",
+			team.agentBankingStrength
+		);
+		team.agentSchooling = source.value("agentSchooling", team.agentSchooling);
+		team.agentSchoolingUpdateInterval = source.value(
+			"agentSchoolingUpdateInterval",
+			team.agentSchoolingUpdateInterval
+		);
+		team.agentSchoolingUpdateJitter = source.value(
+			"agentSchoolingUpdateJitter",
+			team.agentSchoolingUpdateJitter
+		);
+		team.agentNeighborLimit = source.value(
+			"agentNeighborLimit",
+			team.agentNeighborLimit
+		);
+		team.agentSchoolingBlend = source.value(
+			"agentSchoolingBlend",
+			team.agentSchoolingBlend
+		);
+		team.agentSeparationRadius = source.value(
+			"agentSeparationRadius",
+			team.agentSeparationRadius
+		);
+		team.agentAlignmentRadius = source.value(
+			"agentAlignmentRadius",
+			team.agentAlignmentRadius
+		);
+		team.agentCohesionRadius = source.value(
+			"agentCohesionRadius",
+			team.agentCohesionRadius
+		);
+		team.agentSeparationWeight = source.value(
+			"agentSeparationWeight",
+			team.agentSeparationWeight
+		);
+		team.agentAlignmentWeight = source.value(
+			"agentAlignmentWeight",
+			team.agentAlignmentWeight
+		);
+		team.agentCohesionWeight = source.value(
+			"agentCohesionWeight",
+			team.agentCohesionWeight
+		);
+		if (source.contains("agentVisualColor")) {
+			team.agentVisualColor = JsonToVector(
+				source.at("agentVisualColor"),
+				team.agentVisualColor
+			);
+		}
+		team.agentEnableLighting = source.value(
+			"agentEnableLighting",
+			team.agentEnableLighting
+		);
+		NormalizeTeamSettings(team);
+		return team;
+	}
+
+	std::string MakeUniqueTeamName(
+		const std::vector<SceneTeamSettings>& teams,
+		const std::string& requestedName,
+		const std::string& ignoredName = {}
+	) {
+		const std::string baseName = requestedName.empty()
+			? std::string("Team")
+			: requestedName;
+		std::string candidate = baseName;
+		uint32_t suffix = 2;
+		auto exists = [&](const std::string& name) {
+			if (!ignoredName.empty() && name == ignoredName) {
+				return false;
+			}
+			return std::any_of(
+				teams.begin(),
+				teams.end(),
+				[&](const SceneTeamSettings& team) {
+					return team.name == name;
+				}
+			);
+		};
+		while (exists(candidate)) {
+			candidate = baseName + " " + std::to_string(suffix++);
+		}
+		return candidate;
+	}
+
 	json ComponentToJson(const SceneComponent& component) {
 		json result = {
 			{ "type", component.type },
@@ -329,8 +678,47 @@ namespace {
 			result["maxSpeed"] = component.agentMaxSpeed;
 			result["turnSpeed"] = component.agentTurnSpeed;
 			result["wanderStrength"] = component.agentWanderStrength;
+			result["flockAcceleration"] = component.agentFlockAcceleration;
+			result["flockTurnRate"] = component.agentFlockTurnRate;
+			result["memberCenterFollow"] = component.agentMemberCenterFollow;
+			result["memberJitterStrength"] = component.agentMemberJitterStrength;
+			result["memberJitterFrequency"] = component.agentMemberJitterFrequency;
+			result["memberJitterFollowSpeed"] =
+				component.agentMemberJitterFollowSpeed;
+			result["memberSpeedVariation"] = component.agentMemberSpeedVariation;
 			result["boundsWeight"] = component.agentBoundsWeight;
+			result["useTeamHeading"] = component.agentUseTeamHeading;
+			result["teamHeadingFromAverage"] =
+				component.agentTeamHeadingFromAverage;
+			result["teamHeadingDirection"] =
+				VectorToJson(component.agentTeamHeadingDirection);
+			result["teamHeadingWeight"] =
+				component.agentTeamHeadingWeight;
+			result["teamHeadingFollowSpeed"] =
+				component.agentTeamHeadingFollowSpeed;
+			result["useTeamRotation"] = component.agentUseTeamRotation;
+			result["teamRotationWeight"] =
+				component.agentTeamRotationWeight;
+			result["teamRotationFollowSpeed"] =
+				component.agentTeamRotationFollowSpeed;
+			result["alignForwardToVelocity"] =
+				component.agentAlignForwardToVelocity;
+			result["forwardAxis"] = component.agentForwardAxis;
+			result["rotateAxisX"] = component.agentRotateAxisX;
+			result["rotateAxisY"] = component.agentRotateAxisY;
+			result["rotateAxisZ"] = component.agentRotateAxisZ;
+			result["rotationFollowSpeed"] =
+				component.agentRotationFollowSpeed;
+			result["pitchFromVerticalVelocity"] =
+				component.agentPitchFromVerticalVelocity;
+			result["bankingStrength"] = component.agentBankingStrength;
 			result["schooling"] = component.agentSchooling;
+			result["schoolingUpdateInterval"] =
+				component.agentSchoolingUpdateInterval;
+			result["schoolingUpdateJitter"] =
+				component.agentSchoolingUpdateJitter;
+			result["neighborLimit"] = component.agentNeighborLimit;
+			result["schoolingBlend"] = component.agentSchoolingBlend;
 			result["separationRadius"] = component.agentSeparationRadius;
 			result["alignmentRadius"] = component.agentAlignmentRadius;
 			result["cohesionRadius"] = component.agentCohesionRadius;
@@ -338,6 +726,8 @@ namespace {
 			result["alignmentWeight"] = component.agentAlignmentWeight;
 			result["cohesionWeight"] = component.agentCohesionWeight;
 			result["attractorWeight"] = component.agentAttractorWeight;
+			result["teamSettingsOverride"] =
+				component.agentTeamSettingsOverride;
 			result["visualColor"] = VectorToJson(component.agentVisualColor);
 			result["enableLighting"] = component.agentEnableLighting;
 		} else if (component.type == "AgentAttractor") {
@@ -679,13 +1069,123 @@ namespace {
 					"wanderStrength",
 					component.agentWanderStrength
 				);
+				component.agentFlockAcceleration = value.value(
+					"flockAcceleration",
+					component.agentFlockAcceleration
+				);
+				component.agentFlockTurnRate = value.value(
+					"flockTurnRate",
+					component.agentFlockTurnRate
+				);
+				component.agentMemberCenterFollow = value.value(
+					"memberCenterFollow",
+					component.agentMemberCenterFollow
+				);
+				component.agentMemberJitterStrength = value.value(
+					"memberJitterStrength",
+					component.agentMemberJitterStrength
+				);
+				component.agentMemberJitterFrequency = value.value(
+					"memberJitterFrequency",
+					component.agentMemberJitterFrequency
+				);
+				component.agentMemberJitterFollowSpeed = value.value(
+					"memberJitterFollowSpeed",
+					component.agentMemberJitterFollowSpeed
+				);
+				component.agentMemberSpeedVariation = value.value(
+					"memberSpeedVariation",
+					component.agentMemberSpeedVariation
+				);
 				component.agentBoundsWeight = value.value(
 					"boundsWeight",
 					component.agentBoundsWeight
 				);
+				component.agentUseTeamHeading = value.value(
+					"useTeamHeading",
+					component.agentUseTeamHeading
+				);
+				component.agentTeamHeadingFromAverage = value.value(
+					"teamHeadingFromAverage",
+					component.agentTeamHeadingFromAverage
+				);
+				if (value.contains("teamHeadingDirection")) {
+					component.agentTeamHeadingDirection = JsonToVector(
+						value.at("teamHeadingDirection"),
+						component.agentTeamHeadingDirection
+					);
+				}
+				component.agentTeamHeadingWeight = value.value(
+					"teamHeadingWeight",
+					component.agentTeamHeadingWeight
+				);
+				component.agentTeamHeadingFollowSpeed = value.value(
+					"teamHeadingFollowSpeed",
+					component.agentTeamHeadingFollowSpeed
+				);
+				component.agentUseTeamRotation = value.value(
+					"useTeamRotation",
+					component.agentUseTeamRotation
+				);
+				component.agentTeamRotationWeight = value.value(
+					"teamRotationWeight",
+					component.agentTeamRotationWeight
+				);
+				component.agentTeamRotationFollowSpeed = value.value(
+					"teamRotationFollowSpeed",
+					component.agentTeamRotationFollowSpeed
+				);
+				component.agentAlignForwardToVelocity = value.value(
+					"alignForwardToVelocity",
+					component.agentAlignForwardToVelocity
+				);
+				component.agentForwardAxis = value.value(
+					"forwardAxis",
+					component.agentForwardAxis
+				);
+				component.agentRotateAxisX = value.value(
+					"rotateAxisX",
+					component.agentRotateAxisX
+				);
+				component.agentRotateAxisY = value.value(
+					"rotateAxisY",
+					component.agentRotateAxisY
+				);
+				component.agentRotateAxisZ = value.value(
+					"rotateAxisZ",
+					component.agentRotateAxisZ
+				);
+				component.agentRotationFollowSpeed = value.value(
+					"rotationFollowSpeed",
+					component.agentRotationFollowSpeed
+				);
+				component.agentPitchFromVerticalVelocity = value.value(
+					"pitchFromVerticalVelocity",
+					component.agentPitchFromVerticalVelocity
+				);
+				component.agentBankingStrength = value.value(
+					"bankingStrength",
+					component.agentBankingStrength
+				);
 				component.agentSchooling = value.value(
 					"schooling",
 					component.agentSchooling
+				);
+				component.agentSchoolingUpdateInterval = value.value(
+					"schoolingUpdateInterval",
+					component.agentSchoolingUpdateInterval
+				);
+				component.agentSchoolingUpdateJitter = value.value(
+					"schoolingUpdateJitter",
+					component.agentSchoolingUpdateJitter
+				);
+				component.agentNeighborLimit = value.value(
+					"neighborLimit",
+					component.agentNeighborLimit
+				);
+				component.agentSchoolingBlend = value.value(
+					"schoolingBlend",
+					component.agentSchoolingBlend
 				);
 				component.agentSeparationRadius = value.value(
 					"separationRadius",
@@ -714,6 +1214,10 @@ namespace {
 				component.agentAttractorWeight = value.value(
 					"attractorWeight",
 					component.agentAttractorWeight
+				);
+				component.agentTeamSettingsOverride = value.value(
+					"teamSettingsOverride",
+					component.agentTeamSettingsOverride
 				);
 				if (value.contains("visualColor")) {
 					component.agentVisualColor = JsonToVector(
@@ -942,8 +1446,78 @@ namespace {
 						(std::max)(component.agentTurnSpeed, 0.0f);
 					component.agentWanderStrength =
 						(std::max)(component.agentWanderStrength, 0.0f);
+					component.agentFlockAcceleration =
+						(std::max)(component.agentFlockAcceleration, 0.0f);
+					component.agentFlockTurnRate =
+						(std::max)(component.agentFlockTurnRate, 0.0f);
+					component.agentMemberCenterFollow =
+						(std::max)(component.agentMemberCenterFollow, 0.0f);
+					component.agentMemberJitterStrength =
+						(std::max)(component.agentMemberJitterStrength, 0.0f);
+					component.agentMemberJitterFrequency =
+						(std::max)(component.agentMemberJitterFrequency, 0.0f);
+					component.agentMemberJitterFollowSpeed =
+						(std::max)(component.agentMemberJitterFollowSpeed, 0.0f);
+					component.agentMemberSpeedVariation = std::clamp(
+						component.agentMemberSpeedVariation,
+						0.0f,
+						1.0f
+					);
 					component.agentBoundsWeight =
 						(std::max)(component.agentBoundsWeight, 0.0f);
+					component.agentTeamHeadingDirection =
+						NormalizeDirectionVector(
+							component.agentTeamHeadingDirection,
+							{ 0.0f, 0.0f, 1.0f }
+						);
+					component.agentTeamHeadingWeight =
+						(std::max)(component.agentTeamHeadingWeight, 0.0f);
+					component.agentTeamHeadingFollowSpeed =
+						(std::max)(
+							component.agentTeamHeadingFollowSpeed,
+							0.0f
+						);
+					component.agentTeamRotationWeight =
+						std::clamp(
+							component.agentTeamRotationWeight,
+							0.0f,
+							1.0f
+						);
+					component.agentTeamRotationFollowSpeed =
+						(std::max)(
+							component.agentTeamRotationFollowSpeed,
+							0.0f
+						);
+					if (
+						component.agentForwardAxis != "+Z" &&
+						component.agentForwardAxis != "-Z" &&
+						component.agentForwardAxis != "+X" &&
+						component.agentForwardAxis != "-X" &&
+						component.agentForwardAxis != "+Y" &&
+						component.agentForwardAxis != "-Y"
+					) {
+						component.agentForwardAxis = "+Z";
+					}
+					component.agentRotationFollowSpeed =
+						(std::max)(component.agentRotationFollowSpeed, 0.0f);
+					component.agentPitchFromVerticalVelocity =
+						(std::max)(
+							component.agentPitchFromVerticalVelocity,
+							0.0f
+						);
+					component.agentBankingStrength =
+						(std::max)(component.agentBankingStrength, 0.0f);
+					component.agentSchoolingUpdateInterval =
+						(std::max)(
+							component.agentSchoolingUpdateInterval,
+							0.0f
+						);
+					component.agentSchoolingUpdateJitter =
+						(std::max)(component.agentSchoolingUpdateJitter, 0.0f);
+					component.agentNeighborLimit =
+						(std::max)(component.agentNeighborLimit, 0);
+					component.agentSchoolingBlend =
+						std::clamp(component.agentSchoolingBlend, 0.0f, 1.0f);
 					component.agentSeparationRadius =
 						(std::max)(component.agentSeparationRadius, 0.0f);
 					component.agentAlignmentRadius =
@@ -1070,6 +1644,7 @@ namespace {
 void SceneDocument::Clear(const std::string& sceneName) {
 	sceneName_ = sceneName;
 	entities_.clear();
+	teams_.clear();
 	postProcessSettings_ = {};
 	nextId_ = 1;
 	dirty_ = false;
@@ -1092,9 +1667,13 @@ bool SceneDocument::Load(const std::string& filePath) {
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 10;
+	root["version"] = 16;
 	root["sceneName"] = sceneName_;
 	root["postProcess"] = PostProcessToJson(postProcessSettings_);
+	root["teams"] = json::array();
+	for (const SceneTeamSettings& team : teams_) {
+		root["teams"].push_back(TeamToJson(team));
+	}
 	root["entities"] = json::array();
 
 	for (const SceneEntity& entity : entities_) {
@@ -1129,8 +1708,11 @@ bool SceneDocument::Save(const std::string& filePath) {
 			{ "id", entity.id },
 			{ "parentId", entity.parentId },
 			{ "name", entity.name },
+			{ "folder", entity.folder },
+			{ "folderTeamEnabled", entity.folderTeamEnabled },
 			{ "active", entity.active },
 			{ "locked", entity.locked },
+			{ "team", entity.teamName },
 			{ "transform", {
 				{ "scale", VectorToJson(entity.transform.scale) },
 				{ "rotate", VectorToJson(entity.transform.rotate) },
@@ -1280,8 +1862,11 @@ uint64_t SceneDocument::DuplicateEntity(uint64_t id) {
 			newParentId
 		);
 		const uint64_t duplicateId = duplicate.id;
+		duplicate.folder = found->folder;
+		duplicate.folderTeamEnabled = found->folderTeamEnabled;
 		duplicate.active = found->active;
 		duplicate.locked = found->locked;
+		duplicate.teamName = found->teamName;
 		duplicate.transform = found->transform;
 		duplicate.modelPath = found->modelPath;
 		duplicate.spriteTexturePath = found->spriteTexturePath;
@@ -1390,12 +1975,275 @@ bool SceneDocument::MoveEntity(uint64_t id, int direction) {
 	return true;
 }
 
+bool SceneDocument::MoveEntityToParent(uint64_t id, uint64_t parentId) {
+	if (id == 0 || id == parentId) {
+		return false;
+	}
+	if (parentId != 0 && !FindEntity(parentId)) {
+		return false;
+	}
+	if (parentId != 0 && IsDescendantOf(parentId, id)) {
+		return false;
+	}
+
+	SceneEntity* entity = FindEntity(id);
+	if (!entity) {
+		return false;
+	}
+
+	const bool parentChanged = entity->parentId != parentId;
+	if (parentChanged && !SetParent(id, parentId)) {
+		return false;
+	}
+
+	const auto sourceIt = std::find_if(
+		entities_.begin(),
+		entities_.end(),
+		[id](const SceneEntity& candidate) {
+			return candidate.id == id;
+		}
+	);
+	if (sourceIt == entities_.end()) {
+		return false;
+	}
+
+	size_t sourceIndex =
+		static_cast<size_t>(std::distance(entities_.begin(), sourceIt));
+	size_t insertIndex = 0;
+	bool foundSibling = false;
+	bool siblingAfterSource = false;
+	for (size_t index = 0; index < entities_.size(); ++index) {
+		if (index != sourceIndex && entities_[index].parentId == parentId) {
+			insertIndex = index + 1;
+			foundSibling = true;
+			if (index > sourceIndex) {
+				siblingAfterSource = true;
+			}
+		}
+	}
+	if (!foundSibling) {
+		insertIndex = entities_.size();
+	}
+	if (!parentChanged && !siblingAfterSource) {
+		return false;
+	}
+
+	if (insertIndex == sourceIndex || insertIndex == sourceIndex + 1) {
+		if (!parentChanged) {
+			return false;
+		}
+		return true;
+	}
+
+	SceneEntity moved = std::move(entities_[sourceIndex]);
+	entities_.erase(entities_.begin() + static_cast<std::ptrdiff_t>(sourceIndex));
+	if (sourceIndex < insertIndex) {
+		--insertIndex;
+	}
+	insertIndex = (std::min)(insertIndex, entities_.size());
+	entities_.insert(
+		entities_.begin() + static_cast<std::ptrdiff_t>(insertIndex),
+		std::move(moved)
+	);
+	MarkDirty();
+	return true;
+}
+
+bool SceneDocument::MoveEntityToSibling(
+	uint64_t id,
+	uint64_t siblingId,
+	bool after
+) {
+	if (id == 0 || siblingId == 0 || id == siblingId) {
+		return false;
+	}
+	SceneEntity* entity = FindEntity(id);
+	const SceneEntity* sibling = FindEntity(siblingId);
+	if (!entity || !sibling) {
+		return false;
+	}
+	const uint64_t targetParentId = sibling->parentId;
+	if (targetParentId != 0 && IsDescendantOf(targetParentId, id)) {
+		return false;
+	}
+	if (entity->parentId != targetParentId) {
+		if (!SetParent(id, targetParentId)) {
+			return false;
+		}
+	}
+
+	const auto sourceIt = std::find_if(
+		entities_.begin(),
+		entities_.end(),
+		[id](const SceneEntity& candidate) {
+			return candidate.id == id;
+		}
+	);
+	const auto targetIt = std::find_if(
+		entities_.begin(),
+		entities_.end(),
+		[siblingId](const SceneEntity& candidate) {
+			return candidate.id == siblingId;
+		}
+	);
+	if (sourceIt == entities_.end() || targetIt == entities_.end()) {
+		return false;
+	}
+
+	size_t sourceIndex =
+		static_cast<size_t>(std::distance(entities_.begin(), sourceIt));
+	size_t targetIndex =
+		static_cast<size_t>(std::distance(entities_.begin(), targetIt));
+	SceneEntity moved = std::move(entities_[sourceIndex]);
+	entities_.erase(entities_.begin() + static_cast<std::ptrdiff_t>(sourceIndex));
+	if (sourceIndex < targetIndex) {
+		--targetIndex;
+	}
+	size_t insertIndex = targetIndex + (after ? 1u : 0u);
+	insertIndex = (std::min)(insertIndex, entities_.size());
+	entities_.insert(
+		entities_.begin() + static_cast<std::ptrdiff_t>(insertIndex),
+		std::move(moved)
+	);
+	MarkDirty();
+	return true;
+}
+
+SceneTeamSettings& SceneDocument::CreateTeam(const std::string& name) {
+	SceneTeamSettings team{};
+	team.name = MakeUniqueTeamName(teams_, name);
+	NormalizeTeamSettings(team);
+	teams_.push_back(std::move(team));
+	MarkDirty();
+	return teams_.back();
+}
+
+bool SceneDocument::RenameTeam(
+	const std::string& oldName,
+	const std::string& newName
+) {
+	if (oldName.empty()) {
+		return false;
+	}
+	SceneTeamSettings* team = FindTeam(oldName);
+	if (!team) {
+		return false;
+	}
+	const std::string resolvedName = MakeUniqueTeamName(
+		teams_,
+		newName,
+		oldName
+	);
+	if (resolvedName == oldName) {
+		return true;
+	}
+	team->name = resolvedName;
+	for (SceneEntity& entity : entities_) {
+		if (entity.teamName == oldName) {
+			entity.teamName = resolvedName;
+		}
+	}
+	MarkDirty();
+	return true;
+}
+
+bool SceneDocument::RemoveTeam(const std::string& name) {
+	const auto oldSize = teams_.size();
+	teams_.erase(
+		std::remove_if(
+			teams_.begin(),
+			teams_.end(),
+			[&](const SceneTeamSettings& team) {
+				return team.name == name;
+			}
+		),
+		teams_.end()
+	);
+	if (teams_.size() == oldSize) {
+		return false;
+	}
+	for (SceneEntity& entity : entities_) {
+		if (entity.teamName == name) {
+			entity.teamName.clear();
+			entity.folderTeamEnabled = false;
+		}
+	}
+	MarkDirty();
+	return true;
+}
+
+SceneTeamSettings* SceneDocument::FindTeam(const std::string& name) {
+	const auto found = std::find_if(
+		teams_.begin(),
+		teams_.end(),
+		[&](const SceneTeamSettings& team) {
+			return team.name == name;
+		}
+	);
+	return found == teams_.end() ? nullptr : &(*found);
+}
+
+const SceneTeamSettings* SceneDocument::FindTeam(
+	const std::string& name
+) const {
+	const auto found = std::find_if(
+		teams_.begin(),
+		teams_.end(),
+		[&](const SceneTeamSettings& team) {
+			return team.name == name;
+		}
+	);
+	return found == teams_.end() ? nullptr : &(*found);
+}
+
+std::string SceneDocument::ResolveInheritedFolderTeamName(
+	uint64_t entityId
+) const {
+	const SceneEntity* entity = FindEntity(entityId);
+	if (!entity) {
+		return {};
+	}
+	std::unordered_set<uint64_t> visited;
+	uint64_t parentId = entity->parentId;
+	while (parentId != 0 && visited.insert(parentId).second) {
+		const SceneEntity* parent = FindEntity(parentId);
+		if (!parent) {
+			break;
+		}
+		if (
+			parent->folder &&
+			parent->folderTeamEnabled &&
+			!parent->teamName.empty() &&
+			FindTeam(parent->teamName)
+		) {
+			return parent->teamName;
+		}
+		parentId = parent->parentId;
+	}
+	return {};
+}
+
+const SceneTeamSettings* SceneDocument::ResolveEntityTeam(
+	const SceneEntity& entity
+) const {
+	if (!entity.teamName.empty()) {
+		if (const SceneTeamSettings* team = FindTeam(entity.teamName)) {
+			return team;
+		}
+	}
+	const std::string inheritedName = ResolveInheritedFolderTeamName(entity.id);
+	return inheritedName.empty() ? nullptr : FindTeam(inheritedName);
+}
+
 bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 	if (type.empty()) {
 		return false;
 	}
 	SceneEntity* entity = FindEntity(id);
 	if (!entity) {
+		return false;
+	}
+	if (entity->folder) {
 		return false;
 	}
 	const auto found = std::find_if(
@@ -1562,6 +2410,83 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 			}
 			if (found->agentBoundsWeight < 0.0f) {
 				found->agentBoundsWeight = 0.0f;
+				changed = true;
+			}
+			const Vector3 teamHeadingDirection = NormalizeDirectionVector(
+				found->agentTeamHeadingDirection,
+				{ 0.0f, 0.0f, 1.0f }
+			);
+			if (
+				found->agentTeamHeadingDirection.x != teamHeadingDirection.x ||
+				found->agentTeamHeadingDirection.y != teamHeadingDirection.y ||
+				found->agentTeamHeadingDirection.z != teamHeadingDirection.z
+			) {
+				found->agentTeamHeadingDirection = teamHeadingDirection;
+				changed = true;
+			}
+			if (found->agentTeamHeadingWeight < 0.0f) {
+				found->agentTeamHeadingWeight = 0.0f;
+				changed = true;
+			}
+			if (found->agentTeamHeadingFollowSpeed < 0.0f) {
+				found->agentTeamHeadingFollowSpeed = 0.0f;
+				changed = true;
+			}
+			const float teamRotationWeight = std::clamp(
+				found->agentTeamRotationWeight,
+				0.0f,
+				1.0f
+			);
+			if (found->agentTeamRotationWeight != teamRotationWeight) {
+				found->agentTeamRotationWeight = teamRotationWeight;
+				changed = true;
+			}
+			if (found->agentTeamRotationFollowSpeed < 0.0f) {
+				found->agentTeamRotationFollowSpeed = 0.0f;
+				changed = true;
+			}
+			if (
+				found->agentForwardAxis != "+Z" &&
+				found->agentForwardAxis != "-Z" &&
+				found->agentForwardAxis != "+X" &&
+				found->agentForwardAxis != "-X" &&
+				found->agentForwardAxis != "+Y" &&
+				found->agentForwardAxis != "-Y"
+			) {
+				found->agentForwardAxis = "+Z";
+				changed = true;
+			}
+			if (found->agentRotationFollowSpeed < 0.0f) {
+				found->agentRotationFollowSpeed = 0.0f;
+				changed = true;
+			}
+			if (found->agentPitchFromVerticalVelocity < 0.0f) {
+				found->agentPitchFromVerticalVelocity = 0.0f;
+				changed = true;
+			}
+			if (found->agentBankingStrength < 0.0f) {
+				found->agentBankingStrength = 0.0f;
+				changed = true;
+			}
+			if (found->agentSchoolingUpdateInterval < 0.0f) {
+				found->agentSchoolingUpdateInterval = 0.0f;
+				changed = true;
+			}
+			if (found->agentSchoolingUpdateJitter < 0.0f) {
+				found->agentSchoolingUpdateJitter = 0.0f;
+				changed = true;
+			}
+			if (found->agentNeighborLimit < 0) {
+				found->agentNeighborLimit = 0;
+				changed = true;
+			}
+			const float schoolingBlend = std::clamp(
+				found->agentSchoolingBlend,
+				0.0f,
+				1.0f
+			);
+			if (found->agentSchoolingBlend != schoolingBlend) {
+				found->agentSchoolingBlend = schoolingBlend;
 				changed = true;
 			}
 			if (found->agentSeparationRadius < 0.0f) {
@@ -2033,17 +2958,31 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 
 		sceneName_ = root.value("sceneName", std::string{});
 		entities_.clear();
+		teams_.clear();
 		postProcessSettings_ = PostProcessFromJson(
 			root.value("postProcess", json::object()),
 			ScenePostProcessSettings{}
 		);
+		if (root.contains("teams") && root.at("teams").is_array()) {
+			for (const json& source : root.at("teams")) {
+				SceneTeamSettings team = TeamFromJson(source);
+				team.name = MakeUniqueTeamName(teams_, team.name);
+				teams_.push_back(std::move(team));
+			}
+		}
 		for (const json& source : root.at("entities")) {
 			SceneEntity entity{};
 			entity.id = source.value("id", uint64_t{});
 			entity.parentId = source.value("parentId", uint64_t{});
 			entity.name = source.value("name", std::string("Entity"));
+			entity.folder = source.value("folder", false);
+			entity.folderTeamEnabled = source.value(
+				"folderTeamEnabled",
+				false
+			);
 			entity.active = source.value("active", true);
 			entity.locked = source.value("locked", false);
+			entity.teamName = source.value("team", std::string{});
 			entity.modelPath = source.value("modelPath", std::string{});
 			if (source.contains("sprite") && source.at("sprite").is_object()) {
 				const json& sprite = source.at("sprite");
@@ -2095,6 +3034,7 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 	}
 	catch (...) {
 		entities_.clear();
+		teams_.clear();
 		return false;
 	}
 
@@ -2112,7 +3052,24 @@ void SceneDocument::RebuildNextId() {
 }
 
 void SceneDocument::ValidateHierarchy() {
+	for (SceneTeamSettings& team : teams_) {
+		NormalizeTeamSettings(team);
+	}
 	for (SceneEntity& entity : entities_) {
+		if (!entity.teamName.empty() && !FindTeam(entity.teamName)) {
+			entity.teamName.clear();
+		}
+		if (!entity.folder) {
+			entity.folderTeamEnabled = false;
+		}
+		if (entity.folder) {
+			entity.components.clear();
+			entity.modelPath.clear();
+			entity.spriteTexturePath.clear();
+			if (entity.teamName.empty()) {
+				entity.folderTeamEnabled = false;
+			}
+		}
 		if (
 			entity.parentId == entity.id ||
 			(entity.parentId != 0 && !FindEntity(entity.parentId))

@@ -201,7 +201,7 @@ void Player::Update(
 			desiredVelocity.y = waterSwimUpSpeed_ * speedMultiplier;
 			physicsBody_.isGrounded = false;
 		} else if (swimDown) {
-			desiredVelocity.y = -waterSwimUpSpeed_ * 0.6f * speedMultiplier;
+			desiredVelocity.y = -waterSwimUpSpeed_ * 10.6f * speedMultiplier;
 			physicsBody_.isGrounded = false;
 		} else {
 			desiredVelocity.y = std::clamp(

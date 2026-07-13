@@ -30,6 +30,7 @@
 #include "../player/Player.h"
 #include "../../engine/utility/EditableResourcePath.h"
 #include "../../engine/math/Math.h"
+#include "../../engine/math/Matrix4x4.h"
 #include "../../engine/math/Vector2.h"
 
 #include "../../externals/imgui/imgui.h"
@@ -130,6 +131,76 @@ namespace {
 			);
 		}
 		return std::clamp(environmentDefault, 0.0f, 1.0f);
+	}
+
+	SceneComponent ResolveAgentBehaviorSettings(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& behavior
+	) {
+		SceneComponent resolved = behavior;
+		const SceneTeamSettings* team = document.ResolveEntityTeam(entity);
+		if (
+			!team ||
+			!team->agentBehaviorOverride ||
+			resolved.agentTeamSettingsOverride
+		) {
+			return resolved;
+		}
+
+		resolved.agentGroupName = team->agentGroupName.empty()
+			? team->name
+			: team->agentGroupName;
+		resolved.agentMinSpeed = team->agentMinSpeed;
+		resolved.agentMaxSpeed = team->agentMaxSpeed;
+		resolved.agentTurnSpeed = team->agentTurnSpeed;
+		resolved.agentWanderStrength = team->agentWanderStrength;
+		resolved.agentFlockAcceleration = team->agentFlockAcceleration;
+		resolved.agentFlockTurnRate = team->agentFlockTurnRate;
+		resolved.agentMemberCenterFollow = team->agentMemberCenterFollow;
+		resolved.agentMemberJitterStrength = team->agentMemberJitterStrength;
+		resolved.agentMemberJitterFrequency = team->agentMemberJitterFrequency;
+		resolved.agentMemberJitterFollowSpeed =
+			team->agentMemberJitterFollowSpeed;
+		resolved.agentMemberSpeedVariation = team->agentMemberSpeedVariation;
+		resolved.agentUseTeamHeading = team->agentUseTeamHeading;
+		resolved.agentTeamHeadingFromAverage =
+			team->agentTeamHeadingFromAverage;
+		resolved.agentTeamHeadingDirection =
+			team->agentTeamHeadingDirection;
+		resolved.agentTeamHeadingWeight = team->agentTeamHeadingWeight;
+		resolved.agentTeamHeadingFollowSpeed =
+			team->agentTeamHeadingFollowSpeed;
+		resolved.agentUseTeamRotation = team->agentUseTeamRotation;
+		resolved.agentTeamRotationWeight = team->agentTeamRotationWeight;
+		resolved.agentTeamRotationFollowSpeed =
+			team->agentTeamRotationFollowSpeed;
+		resolved.agentAlignForwardToVelocity =
+			team->agentAlignForwardToVelocity;
+		resolved.agentForwardAxis = team->agentForwardAxis;
+		resolved.agentRotateAxisX = team->agentRotateAxisX;
+		resolved.agentRotateAxisY = team->agentRotateAxisY;
+		resolved.agentRotateAxisZ = team->agentRotateAxisZ;
+		resolved.agentRotationFollowSpeed = team->agentRotationFollowSpeed;
+		resolved.agentPitchFromVerticalVelocity =
+			team->agentPitchFromVerticalVelocity;
+		resolved.agentBankingStrength = team->agentBankingStrength;
+		resolved.agentSchooling = team->agentSchooling;
+		resolved.agentSchoolingUpdateInterval =
+			team->agentSchoolingUpdateInterval;
+		resolved.agentSchoolingUpdateJitter =
+			team->agentSchoolingUpdateJitter;
+		resolved.agentNeighborLimit = team->agentNeighborLimit;
+		resolved.agentSchoolingBlend = team->agentSchoolingBlend;
+		resolved.agentSeparationRadius = team->agentSeparationRadius;
+		resolved.agentAlignmentRadius = team->agentAlignmentRadius;
+		resolved.agentCohesionRadius = team->agentCohesionRadius;
+		resolved.agentSeparationWeight = team->agentSeparationWeight;
+		resolved.agentAlignmentWeight = team->agentAlignmentWeight;
+		resolved.agentCohesionWeight = team->agentCohesionWeight;
+		resolved.agentVisualColor = team->agentVisualColor;
+		resolved.agentEnableLighting = team->agentEnableLighting;
+		return resolved;
 	}
 
 	const SceneComponent* FindEnabledComponent(
@@ -490,6 +561,257 @@ namespace {
 		return Math::Length(value) > 0.000001f
 			? Math::Normalize(value)
 			: fallback;
+	}
+
+	float FollowAmount(float followSpeed, float deltaTime) {
+		if (followSpeed <= 0.0f || deltaTime <= 0.0f) {
+			return 0.0f;
+		}
+		return std::clamp(
+			1.0f - std::exp(-followSpeed * deltaTime),
+			0.0f,
+			1.0f
+		);
+	}
+
+	Vector3 BlendDirections(
+		const Vector3& from,
+		const Vector3& to,
+		float amount,
+		const Vector3& fallback
+	) {
+		const float blend = std::clamp(amount, 0.0f, 1.0f);
+		const Vector3 fromDirection = SafeNormalize(from, fallback);
+		const Vector3 toDirection = SafeNormalize(to, fromDirection);
+		return SafeNormalize(
+			LerpVector(fromDirection, toDirection, blend),
+			blend < 0.5f ? fromDirection : toDirection
+		);
+	}
+
+	Vector3 ClampVectorLength(const Vector3& value, float maximumLength) {
+		const float length = Math::Length(value);
+		if (maximumLength <= 0.0f || length <= maximumLength) {
+			return maximumLength <= 0.0f ? Vector3{} : value;
+		}
+		return Math::Multiply(value, maximumLength / length);
+	}
+
+	Vector3 MoveVectorToward(
+		const Vector3& current,
+		const Vector3& target,
+		float maximumDelta
+	) {
+		if (maximumDelta <= 0.0f) {
+			return current;
+		}
+		const Vector3 delta = Math::Subtract(target, current);
+		return Math::Add(current, ClampVectorLength(delta, maximumDelta));
+	}
+
+	Vector3 RotateDirectionToward(
+		const Vector3& current,
+		const Vector3& target,
+		float maximumRadians,
+		const Vector3& fallback
+	) {
+		const Vector3 currentDirection = SafeNormalize(current, fallback);
+		const Vector3 targetDirection = SafeNormalize(target, currentDirection);
+		if (maximumRadians <= 0.0f) {
+			return currentDirection;
+		}
+		const float dot = std::clamp(
+			currentDirection.x * targetDirection.x +
+				currentDirection.y * targetDirection.y +
+				currentDirection.z * targetDirection.z,
+			-1.0f,
+			1.0f
+		);
+		const float angle = std::acos(dot);
+		if (angle <= maximumRadians || angle <= 0.0001f) {
+			return targetDirection;
+		}
+		return BlendDirections(
+			currentDirection,
+			targetDirection,
+			maximumRadians / angle,
+			currentDirection
+		);
+	}
+
+	void ApplyForwardAxisOffset(Vector3& rotate, const std::string& axis) {
+		constexpr float halfPi = 1.57079632679f;
+		constexpr float pi = 3.14159265359f;
+		if (axis == "-Z") {
+			rotate.y += pi;
+		} else if (axis == "+X") {
+			rotate.y -= halfPi;
+		} else if (axis == "-X") {
+			rotate.y += halfPi;
+		} else if (axis == "+Y") {
+			rotate.x += halfPi;
+		} else if (axis == "-Y") {
+			rotate.x -= halfPi;
+		}
+	}
+
+	Vector3 ResolveForwardAxisVector(const std::string& axis) {
+		if (axis == "-Z") {
+			return { 0.0f, 0.0f, -1.0f };
+		}
+		if (axis == "+X") {
+			return { 1.0f, 0.0f, 0.0f };
+		}
+		if (axis == "-X") {
+			return { -1.0f, 0.0f, 0.0f };
+		}
+		if (axis == "+Y") {
+			return { 0.0f, 1.0f, 0.0f };
+		}
+		if (axis == "-Y") {
+			return { 0.0f, -1.0f, 0.0f };
+		}
+		return { 0.0f, 0.0f, 1.0f };
+	}
+
+	Vector3 RotateDirection(const Vector3& direction, const Vector3& rotate) {
+		const Matrix4x4 matrix = MakeAffineMatrix(
+			{ 1.0f, 1.0f, 1.0f },
+			rotate,
+			{ 0.0f, 0.0f, 0.0f }
+		);
+		return {
+			direction.x * matrix.m[0][0] +
+				direction.y * matrix.m[1][0] +
+				direction.z * matrix.m[2][0],
+			direction.x * matrix.m[0][1] +
+				direction.y * matrix.m[1][1] +
+				direction.z * matrix.m[2][1],
+			direction.x * matrix.m[0][2] +
+				direction.y * matrix.m[1][2] +
+				direction.z * matrix.m[2][2]
+		};
+	}
+
+	Vector3 ForwardDirectionFromRotation(
+		const Vector3& rotate,
+		const std::string& forwardAxis,
+		const Vector3& fallback
+	) {
+		return SafeNormalize(
+			RotateDirection(ResolveForwardAxisVector(forwardAxis), rotate),
+			fallback
+		);
+	}
+
+	Vector3 BuildAgentVelocityRotation(
+		const SceneComponent& behavior,
+		const Vector3& currentRotate,
+		const Vector3& velocity,
+		const Vector3& desiredDirection,
+		float deltaTime,
+		float rotationFollowSpeed
+	) {
+		Vector3 target = currentRotate;
+		if (!behavior.agentAlignForwardToVelocity) {
+			return target;
+		}
+
+		if (Math::Length(velocity) <= 0.0001f) {
+			return target;
+		}
+		const float horizontalLength = std::sqrt(
+			velocity.x * velocity.x +
+			velocity.z * velocity.z
+		);
+
+		Vector3 velocityRotate = currentRotate;
+		if (horizontalLength > 0.0001f) {
+			velocityRotate.y = std::atan2(velocity.x, velocity.z);
+		}
+		velocityRotate.x = std::clamp(
+			-std::atan2(velocity.y, horizontalLength) *
+				behavior.agentPitchFromVerticalVelocity,
+			-1.45f,
+			1.45f
+		);
+		const Vector3 velocityDirection =
+			SafeNormalize(velocity, { 0.0f, 0.0f, 1.0f });
+		const float turnSign =
+			velocityDirection.x * desiredDirection.z -
+			velocityDirection.z * desiredDirection.x;
+		velocityRotate.z = std::clamp(
+			-turnSign * behavior.agentBankingStrength,
+			-1.35f,
+			1.35f
+		);
+		ApplyForwardAxisOffset(velocityRotate, behavior.agentForwardAxis);
+
+		const float rotationLerp = std::clamp(
+			FollowAmount(rotationFollowSpeed, deltaTime),
+			0.0f,
+			1.0f
+		);
+		if (behavior.agentRotateAxisX) {
+			target.x = Math::NormalizeAngle(
+				Math::LerpAngle(
+					currentRotate.x,
+					velocityRotate.x,
+					rotationLerp
+				)
+			);
+		}
+		if (behavior.agentRotateAxisY) {
+			target.y = Math::NormalizeAngle(
+				Math::LerpAngle(
+					currentRotate.y,
+					velocityRotate.y,
+					rotationLerp
+				)
+			);
+		}
+		if (behavior.agentRotateAxisZ) {
+			target.z = Math::NormalizeAngle(
+				Math::LerpAngle(
+					currentRotate.z,
+					velocityRotate.z,
+					rotationLerp
+				)
+			);
+		}
+		return target;
+	}
+
+	Vector3 BuildAgentVelocityRotation(
+		const SceneComponent& behavior,
+		const Vector3& currentRotate,
+		const Vector3& velocity,
+		const Vector3& desiredDirection,
+		float deltaTime
+	) {
+		return BuildAgentVelocityRotation(
+			behavior,
+			currentRotate,
+			velocity,
+			desiredDirection,
+			deltaTime,
+			behavior.agentRotationFollowSpeed
+		);
+	}
+
+	std::string ResolveAgentTeamRuntimeKey(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& behavior
+	) {
+		const SceneTeamSettings* team = document.ResolveEntityTeam(entity);
+		if (team && !team->name.empty()) {
+			return "team:" + team->name;
+		}
+		if (!behavior.agentGroupName.empty()) {
+			return "group:" + behavior.agentGroupName;
+		}
+		return {};
 	}
 
 	bool TryResolveWaterBounds(
@@ -988,14 +1310,22 @@ void GamePlayScene::SyncSceneModelObjects() {
 			);
 		} else if (const SceneComponent* agentBehavior =
 			FindEnabledComponent(entity, "AgentBehavior")) {
-			found->second.object->SetColor(agentBehavior->agentVisualColor);
+			const SceneComponent resolvedAgentBehavior =
+				ResolveAgentBehaviorSettings(
+					*document,
+					entity,
+					*agentBehavior
+				);
+			found->second.object->SetColor(
+				resolvedAgentBehavior.agentVisualColor
+			);
 			found->second.object->SetEnableLighting(
-				agentBehavior->agentEnableLighting
+				resolvedAgentBehavior.agentEnableLighting
 			);
 			found->second.object->SetEnvironmentCoefficient(0.05f);
 			found->second.object->SetEmissive(
-				agentBehavior->agentEnableLighting ? 0.0f : 0.12f,
-				agentBehavior->agentVisualColor
+				resolvedAgentBehavior.agentEnableLighting ? 0.0f : 0.12f,
+				resolvedAgentBehavior.agentVisualColor
 			);
 		} else if (const SceneComponent* agentAttractor =
 			FindEnabledComponent(entity, "AgentAttractor")) {
@@ -1470,10 +1800,11 @@ void GamePlayScene::UpdateAgentBehaviors(
 ) {
 	struct AgentUpdateEntry {
 		SceneEntity* entity = nullptr;
-		const SceneComponent* behavior = nullptr;
+		SceneComponent behavior{};
 		Object3d* object = nullptr;
 		AgentRuntime* runtime = nullptr;
 		Transform transform{};
+		std::string teamKey;
 	};
 
 	const float dt = std::clamp(deltaTime, 0.0f, 0.1f);
@@ -1499,6 +1830,8 @@ void GamePlayScene::UpdateAgentBehaviors(
 		) {
 			continue;
 		}
+		const SceneComponent resolvedBehavior =
+			ResolveAgentBehaviorSettings(document, entity, *behavior);
 
 		AgentRuntime& runtime = agentRuntimes_[entity.id];
 		if (!runtime.initialized) {
@@ -1506,8 +1839,9 @@ void GamePlayScene::UpdateAgentBehaviors(
 				entity.transform.rotate.y +
 				Hash01(entity.id, 17u) * 6.28318530718f;
 			const float speed =
-				behavior->agentMinSpeed +
-				(behavior->agentMaxSpeed - behavior->agentMinSpeed) *
+				resolvedBehavior.agentMinSpeed +
+				(resolvedBehavior.agentMaxSpeed -
+					resolvedBehavior.agentMinSpeed) *
 				Hash01(entity.id, 29u);
 			runtime.velocity = {
 				std::sin(yaw) * speed,
@@ -1521,10 +1855,11 @@ void GamePlayScene::UpdateAgentBehaviors(
 		requiredIds.insert(entity.id);
 		agents.push_back({
 			&entity,
-			behavior,
+			resolvedBehavior,
 			objectIt->second.object,
 			&runtime,
-			objectIt->second.object->GetTransform()
+			objectIt->second.object->GetTransform(),
+			ResolveAgentTeamRuntimeKey(document, entity, resolvedBehavior)
 		});
 	}
 
@@ -1537,11 +1872,284 @@ void GamePlayScene::UpdateAgentBehaviors(
 		}
 	}
 
+	struct TeamFrameState {
+		Vector3 centerSum{};
+		SceneComponent motionBehavior{};
+		uint64_t seedId = 0;
+		uint32_t count = 0;
+		bool hasMotionBehavior = false;
+	};
+
+	std::unordered_map<std::string, TeamFrameState> teamFrames;
+	std::unordered_set<std::string> requiredTeamKeys;
+	for (const AgentUpdateEntry& agent : agents) {
+		if (agent.teamKey.empty()) {
+			continue;
+		}
+
+		TeamFrameState& frame = teamFrames[agent.teamKey];
+		frame.centerSum = Math::Add(
+			frame.centerSum,
+			agent.transform.translate
+		);
+		if (!frame.hasMotionBehavior) {
+			frame.motionBehavior = agent.behavior;
+			frame.seedId = agent.entity->id;
+			frame.hasMotionBehavior = true;
+		}
+		++frame.count;
+		requiredTeamKeys.insert(agent.teamKey);
+	}
+
+	for (auto iterator = agentTeamRuntimes_.begin();
+		iterator != agentTeamRuntimes_.end();) {
+		if (!requiredTeamKeys.contains(iterator->first)) {
+			iterator = agentTeamRuntimes_.erase(iterator);
+		} else {
+			++iterator;
+		}
+	}
+
+	for (const auto& [teamKey, frame] : teamFrames) {
+		if (frame.count == 0) {
+			continue;
+		}
+
+		const float invCount = 1.0f / static_cast<float>(frame.count);
+		const Vector3 center = Math::Multiply(frame.centerSum, invCount);
+		TeamRuntime& runtime = agentTeamRuntimes_[teamKey];
+		if (!runtime.initialized) {
+			runtime.center = center;
+			runtime.phase = Hash01(frame.seedId, 211u) * 6.28318530718f;
+			runtime.heading = SafeNormalize(
+				frame.motionBehavior.agentTeamHeadingDirection,
+				{ 0.0f, 0.0f, 1.0f }
+			);
+			const float initialSpeed =
+				(frame.motionBehavior.agentMinSpeed +
+					frame.motionBehavior.agentMaxSpeed) * 0.5f;
+			runtime.velocity = Math::Multiply(runtime.heading, initialSpeed);
+			runtime.initialized = true;
+		}
+
+		const SceneComponent& behavior = frame.motionBehavior;
+		const Vector3 velocityDirection = SafeNormalize(
+			runtime.velocity,
+			runtime.heading
+		);
+		Vector3 desired = AddScaled({}, velocityDirection, 0.65f);
+		runtime.phase += dt * 0.9f;
+		const Vector3 wander = SafeNormalize(
+			{
+				std::sin(runtime.phase * 1.37f + Hash01(frame.seedId, 3u) * 8.0f),
+				std::sin(runtime.phase * 0.83f + Hash01(frame.seedId, 5u) * 9.0f) * 0.45f,
+				std::cos(runtime.phase * 1.11f + Hash01(frame.seedId, 7u) * 7.0f)
+			},
+			velocityDirection
+		);
+		desired = AddScaled(desired, wander, behavior.agentWanderStrength);
+		if (behavior.agentUseTeamHeading) {
+			desired = AddScaled(
+				desired,
+				SafeNormalize(
+					behavior.agentTeamHeadingDirection,
+					velocityDirection
+				),
+				behavior.agentTeamHeadingWeight
+			);
+		}
+
+		AgentBounds bounds{};
+		if (TryResolveAgentBounds(document, behavior, runtime.center, bounds)) {
+			desired = AddScaled(
+				desired,
+				ComputeBoundsSteering(runtime.center, bounds),
+				behavior.agentBoundsWeight
+			);
+		}
+		AgentAttractorTarget attractor{};
+		float speedScale = 1.0f;
+		if (
+			behavior.agentAttractorWeight > 0.0f &&
+			TryResolveAgentAttractor(document, behavior, attractor)
+		) {
+			const Vector3 toAttractor = Math::Subtract(
+				attractor.position,
+				runtime.center
+			);
+			const float distance = Math::Length(toAttractor);
+			const float radius = (std::max)(attractor.radius, 0.001f);
+			const float strength =
+				behavior.agentAttractorWeight * attractor.strength;
+			desired = AddScaled(
+				desired,
+				SafeNormalize(toAttractor, velocityDirection),
+				strength * std::clamp(distance / radius, 0.0f, 2.0f)
+			);
+			if (distance < radius) {
+				speedScale = 0.7f;
+			}
+		}
+		const Vector3 desiredDirection = SafeNormalize(desired, velocityDirection);
+		const float speed =
+			(behavior.agentMinSpeed + behavior.agentMaxSpeed) * 0.5f * speedScale;
+		runtime.heading = RotateDirectionToward(
+			runtime.heading,
+			desiredDirection,
+			behavior.agentFlockTurnRate * dt,
+			velocityDirection
+		);
+		runtime.velocity = MoveVectorToward(
+			runtime.velocity,
+			Math::Multiply(runtime.heading, speed),
+			behavior.agentFlockAcceleration * dt
+		);
+		runtime.center = Math::Add(
+			runtime.center,
+			Math::Multiply(runtime.velocity, dt)
+		);
+		if (bounds.valid) {
+			runtime.center = ClampToBounds(runtime.center, bounds);
+		}
+		runtime.forwardAxis = behavior.agentForwardAxis;
+		runtime.rotation = BuildAgentVelocityRotation(
+			behavior,
+			runtime.rotation,
+			runtime.velocity,
+			desiredDirection,
+			dt
+		);
+	}
+
 	for (AgentUpdateEntry& agent : agents) {
-		const SceneComponent& behavior = *agent.behavior;
+		const SceneComponent& behavior = agent.behavior;
 		AgentRuntime& runtime = *agent.runtime;
 		Transform transform = agent.transform;
 		Vector3 position = transform.translate;
+		const auto teamRuntimeIt =
+			agent.teamKey.empty()
+				? agentTeamRuntimes_.end()
+				: agentTeamRuntimes_.find(agent.teamKey);
+		const TeamRuntime* teamRuntime =
+			teamRuntimeIt == agentTeamRuntimes_.end()
+				? nullptr
+				: &teamRuntimeIt->second;
+		if (teamRuntime) {
+			if (!runtime.flockInitialized) {
+				runtime.velocity = teamRuntime->velocity;
+				runtime.flockInitialized = true;
+			}
+			const Vector3 teamDirection = SafeNormalize(
+				teamRuntime->velocity,
+				teamRuntime->heading
+			);
+			runtime.phase += dt * behavior.agentMemberJitterFrequency;
+			const Vector3 jitterTarget = {
+				std::sin(runtime.phase * 1.37f + Hash01(agent.entity->id, 3u) * 8.0f) *
+					behavior.agentMemberJitterStrength,
+				std::sin(runtime.phase * 0.83f + Hash01(agent.entity->id, 5u) * 9.0f) *
+					behavior.agentMemberJitterStrength * 0.45f,
+				std::cos(runtime.phase * 1.11f + Hash01(agent.entity->id, 7u) * 7.0f) *
+					behavior.agentMemberJitterStrength
+			};
+			runtime.jitterOffset = LerpVector(
+				runtime.jitterOffset,
+				jitterTarget,
+				FollowAmount(behavior.agentMemberJitterFollowSpeed, dt)
+			);
+			Vector3 desired = teamDirection;
+			const Vector3 memberTarget = Math::Add(
+				teamRuntime->center,
+				runtime.jitterOffset
+			);
+			const Vector3 toCenter = Math::Subtract(memberTarget, position);
+			desired = AddScaled(
+				desired,
+				toCenter,
+				behavior.agentMemberCenterFollow * 0.2f
+			);
+
+			Vector3 separation{};
+			int neighborCount = 0;
+			for (const AgentUpdateEntry& other : agents) {
+				if (other.entity == agent.entity || other.teamKey != agent.teamKey) {
+					continue;
+				}
+				if (
+					behavior.agentNeighborLimit > 0 &&
+					neighborCount >= behavior.agentNeighborLimit
+				) {
+					break;
+				}
+				const Vector3 offset = Math::Subtract(
+					position,
+					other.transform.translate
+				);
+				const float distance = Math::Length(offset);
+				if (
+					distance > 0.0001f &&
+					distance < behavior.agentSeparationRadius
+				) {
+					const float linearRatio = 1.0f - distance / (std::max)(
+						behavior.agentSeparationRadius,
+						0.0001f
+					);
+					const float ratio =
+						linearRatio * linearRatio * (3.0f - 2.0f * linearRatio);
+					separation = AddScaled(
+						separation,
+						Math::Normalize(offset),
+						ratio
+					);
+				}
+				++neighborCount;
+			}
+			if (Math::Length(separation) > 0.0001f) {
+				desired = AddScaled(
+					desired,
+					Math::Normalize(separation),
+					behavior.agentSeparationWeight
+				);
+			}
+
+			const Vector3 desiredDirection = RotateDirectionToward(
+				SafeNormalize(runtime.velocity, teamDirection),
+				SafeNormalize(desired, teamDirection),
+				behavior.agentFlockTurnRate * dt,
+				teamDirection
+			);
+			const float speedVariation =
+				(Hash01(agent.entity->id, 97u) * 2.0f - 1.0f) *
+				behavior.agentMemberSpeedVariation;
+			const float targetSpeed = (std::max)(
+				Math::Length(teamRuntime->velocity) * (1.0f + speedVariation),
+				0.01f
+			);
+			runtime.velocity = MoveVectorToward(
+				runtime.velocity,
+				Math::Multiply(desiredDirection, targetSpeed),
+				behavior.agentFlockAcceleration * dt
+			);
+			position = Math::Add(position, Math::Multiply(runtime.velocity, dt));
+			AgentBounds bounds{};
+			if (TryResolveAgentBounds(document, behavior, position, bounds) && bounds.valid) {
+				position = ClampToBounds(position, bounds);
+			}
+			transform.translate = position;
+			transform.rotate = BuildAgentVelocityRotation(
+				behavior,
+				transform.rotate,
+				runtime.velocity,
+				desiredDirection,
+				dt
+			);
+			agent.object->GetTransform() = transform;
+			agent.object->Update();
+			agent.entity->transform = transform;
+			agent.transform = transform;
+			continue;
+		}
+		runtime.flockInitialized = false;
 
 		const Vector3 velocityDirection = SafeNormalize(
 			runtime.velocity,
@@ -1618,89 +2226,149 @@ void GamePlayScene::UpdateAgentBehaviors(
 			}
 		}
 
+		runtime.schoolingTimer =
+			(std::max)(runtime.schoolingTimer - dt, 0.0f);
 		if (behavior.agentSchooling) {
-			Vector3 separation{};
-			Vector3 alignment{};
-			Vector3 cohesion{};
-			uint32_t alignmentCount = 0;
-			uint32_t cohesionCount = 0;
+			const bool shouldUpdateSchooling =
+				behavior.agentSchoolingUpdateInterval <= 0.0f ||
+				!runtime.schoolingCacheValid ||
+				runtime.schoolingTimer <= 0.0f;
+			if (shouldUpdateSchooling) {
+				Vector3 separation{};
+				Vector3 alignment{};
+				Vector3 cohesion{};
+				uint32_t alignmentCount = 0;
+				uint32_t cohesionCount = 0;
+				int neighborCount = 0;
 
-			for (const AgentUpdateEntry& other : agents) {
-				if (
-					other.entity == agent.entity ||
-					!other.behavior ||
-					other.behavior->agentGroupName != behavior.agentGroupName ||
-					other.behavior->agentBehaviorName != behavior.agentBehaviorName
-				) {
-					continue;
-				}
+				for (const AgentUpdateEntry& other : agents) {
+					if (
+						other.entity == agent.entity ||
+						other.behavior.agentGroupName != behavior.agentGroupName ||
+						other.behavior.agentBehaviorName != behavior.agentBehaviorName
+					) {
+						continue;
+					}
+					if (
+						behavior.agentNeighborLimit > 0 &&
+						neighborCount >= behavior.agentNeighborLimit
+					) {
+						break;
+					}
+					++neighborCount;
 
-				const Vector3 offset =
-					Math::Subtract(position, other.transform.translate);
-				const float distance = Math::Length(offset);
-				if (distance <= 0.0001f) {
-					continue;
-				}
-				if (distance < behavior.agentSeparationRadius) {
-					const float ratio = 1.0f -
-						distance / (std::max)(
-							behavior.agentSeparationRadius,
-							0.0001f
+					const Vector3 offset =
+						Math::Subtract(position, other.transform.translate);
+					const float distance = Math::Length(offset);
+					if (distance <= 0.0001f) {
+						continue;
+					}
+					if (distance < behavior.agentSeparationRadius) {
+						const float ratio = 1.0f -
+							distance / (std::max)(
+								behavior.agentSeparationRadius,
+								0.0001f
+							);
+						separation = AddScaled(
+							separation,
+							Math::Normalize(offset),
+							ratio
 						);
-					separation = AddScaled(
-						separation,
-						Math::Normalize(offset),
-						ratio
-					);
+					}
+					if (distance < behavior.agentAlignmentRadius) {
+						alignment = Math::Add(
+							alignment,
+							other.runtime->velocity
+						);
+						++alignmentCount;
+					}
+					if (distance < behavior.agentCohesionRadius) {
+						cohesion = Math::Add(
+							cohesion,
+							other.transform.translate
+						);
+						++cohesionCount;
+					}
 				}
-				if (distance < behavior.agentAlignmentRadius) {
-					alignment = Math::Add(
-						alignment,
-						other.runtime->velocity
-					);
-					++alignmentCount;
-				}
-				if (distance < behavior.agentCohesionRadius) {
-					cohesion = Math::Add(
-						cohesion,
-						other.transform.translate
-					);
-					++cohesionCount;
-				}
-			}
 
-			if (Math::Length(separation) > 0.0001f) {
-				desired = AddScaled(
-					desired,
-					Math::Normalize(separation),
-					behavior.agentSeparationWeight
+				Vector3 schoolingSteering{};
+				if (Math::Length(separation) > 0.0001f) {
+					schoolingSteering = AddScaled(
+						schoolingSteering,
+						Math::Normalize(separation),
+						behavior.agentSeparationWeight
+					);
+				}
+				if (alignmentCount > 0) {
+					alignment = Math::Multiply(
+						alignment,
+						1.0f / static_cast<float>(alignmentCount)
+					);
+					schoolingSteering = AddScaled(
+						schoolingSteering,
+						SafeNormalize(alignment, velocityDirection),
+						behavior.agentAlignmentWeight
+					);
+				}
+				if (cohesionCount > 0) {
+					cohesion = Math::Multiply(
+						cohesion,
+						1.0f / static_cast<float>(cohesionCount)
+					);
+					schoolingSteering = AddScaled(
+						schoolingSteering,
+						SafeNormalize(
+							Math::Subtract(cohesion, position),
+							velocityDirection
+						),
+						behavior.agentCohesionWeight
+					);
+				}
+
+				const float schoolingBlend = std::clamp(
+					behavior.agentSchoolingBlend,
+					0.0f,
+					1.0f
 				);
+				runtime.cachedSchoolingSteering =
+					runtime.schoolingCacheValid
+						? LerpVector(
+							runtime.cachedSchoolingSteering,
+							schoolingSteering,
+							schoolingBlend
+						)
+						: schoolingSteering;
+				runtime.schoolingCacheValid = true;
+				if (behavior.agentSchoolingUpdateInterval > 0.0f) {
+					const float jitter =
+						(Hash01(agent.entity->id, 193u) * 2.0f - 1.0f) *
+						behavior.agentSchoolingUpdateJitter;
+					runtime.schoolingTimer = (std::max)(
+						behavior.agentSchoolingUpdateInterval *
+							(1.0f + jitter),
+						0.0f
+					);
+				} else {
+					runtime.schoolingTimer = 0.0f;
+				}
 			}
-			if (alignmentCount > 0) {
-				alignment = Math::Multiply(
-					alignment,
-					1.0f / static_cast<float>(alignmentCount)
-				);
-				desired = AddScaled(
-					desired,
-					SafeNormalize(alignment, velocityDirection),
-					behavior.agentAlignmentWeight
-				);
-			}
-			if (cohesionCount > 0) {
-				cohesion = Math::Multiply(
-					cohesion,
-					1.0f / static_cast<float>(cohesionCount)
-				);
-				desired = AddScaled(
-					desired,
-					SafeNormalize(
-						Math::Subtract(cohesion, position),
-						velocityDirection
-					),
-					behavior.agentCohesionWeight
-				);
-			}
+			desired = Math::Add(desired, runtime.cachedSchoolingSteering);
+		} else {
+			runtime.schoolingCacheValid = false;
+			runtime.cachedSchoolingSteering = {};
+			runtime.schoolingTimer = 0.0f;
+		}
+
+		if (
+			teamRuntime &&
+			behavior.agentUseTeamHeading &&
+			behavior.agentTeamHeadingWeight > 0.0f
+		) {
+			desired = AddScaled(
+				desired,
+				teamRuntime->heading,
+				behavior.agentTeamHeadingWeight
+			);
 		}
 
 		const Vector3 desiredDirection =
@@ -1728,20 +2396,35 @@ void GamePlayScene::UpdateAgentBehaviors(
 		}
 		transform.translate = position;
 
-		const float horizontalLength = std::sqrt(
-			runtime.velocity.x * runtime.velocity.x +
-			runtime.velocity.z * runtime.velocity.z
+		Vector3 rotationDirection = SafeNormalize(
+			runtime.velocity,
+			desiredDirection
 		);
-		if (horizontalLength > 0.0001f) {
-			transform.rotate.y = std::atan2(
-				runtime.velocity.x,
-				runtime.velocity.z
-			);
-			transform.rotate.x = -std::atan2(
-				runtime.velocity.y,
-				horizontalLength
+		if (
+			teamRuntime &&
+			behavior.agentUseTeamRotation &&
+			behavior.agentTeamRotationWeight > 0.0f
+		) {
+			const Vector3 teamRotationDirection =
+				ForwardDirectionFromRotation(
+					teamRuntime->rotation,
+					teamRuntime->forwardAxis,
+					teamRuntime->heading
+				);
+			rotationDirection = BlendDirections(
+				rotationDirection,
+				teamRotationDirection,
+				behavior.agentTeamRotationWeight,
+				rotationDirection
 			);
 		}
+		transform.rotate = BuildAgentVelocityRotation(
+			behavior,
+			transform.rotate,
+			rotationDirection,
+			desiredDirection,
+			dt
+		);
 
 		agent.object->GetTransform() = transform;
 		agent.object->Update();

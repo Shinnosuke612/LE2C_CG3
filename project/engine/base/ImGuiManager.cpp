@@ -1319,6 +1319,7 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		SceneDocument& document = editorSession_->GetActiveDocument();
 		ImGui::BeginDisabled(!editorSession_->IsEditing());
 		bool createRequested = false;
+		bool createFolderRequested = false;
 		bool createCameraPathRequested = false;
 		uint64_t createParentId = 0;
 		if (ImGui::SmallButton("+")) {
@@ -1326,6 +1327,13 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		}
 		if (ImGui::IsItemHovered()) {
 			ImGui::SetTooltip("Create Empty Entity");
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("+ Folder")) {
+			createFolderRequested = true;
+		}
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("Create Folder");
 		}
 		ImGui::SameLine();
 		if (ImGui::SmallButton("+ Path")) {
@@ -1348,6 +1356,9 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 
 		uint64_t removeId = 0;
 		uint64_t duplicateId = 0;
+		uint64_t reorderId = 0;
+		uint64_t reorderTargetId = 0;
+		bool reorderAfter = false;
 		uint64_t reparentId = 0;
 		uint64_t reparentTargetId = 0;
 		uint64_t moveId = 0;
@@ -1372,24 +1383,24 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			}
 		}
 
-		auto acceptEntityDrop = [&](uint64_t parentId) {
-			if (ImGui::BeginDragDropTarget()) {
-				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
-					"SCENE_ENTITY_ID"
-				)) {
-					if (payload->DataSize == sizeof(uint64_t)) {
-						std::memcpy(
-							&reparentId,
-							payload->Data,
-							sizeof(uint64_t)
-						);
-						reparentTargetId = parentId;
-					}
-				}
-				ImGui::EndDragDropTarget();
-			}
+		auto drawDropLine = [](const ImVec2& start, const ImVec2& end) {
+			ImGui::GetWindowDrawList()->AddLine(
+				start,
+				end,
+				IM_COL32(90, 180, 255, 255),
+				2.0f
+			);
 		};
-
+		auto drawDropRect = [](const ImVec2& itemMin, const ImVec2& itemMax) {
+			ImGui::GetWindowDrawList()->AddRect(
+				itemMin,
+				itemMax,
+				IM_COL32(90, 180, 255, 255),
+				3.0f,
+				0,
+				2.0f
+			);
+		};
 		auto toLower = [](std::string value) {
 			std::transform(
 				value.begin(),
@@ -1403,6 +1414,14 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		};
 		const std::string hierarchySearch = toLower(hierarchySearchBuffer_);
 		const bool searchActive = !hierarchySearch.empty();
+		uint64_t hierarchyDropTargetId = 0;
+		bool hierarchyDropAfter = false;
+		bool hierarchyDropIntoFolder = false;
+		bool hierarchyDropToRoot = false;
+		if (!editorSession_->IsEditing() || searchActive) {
+			hierarchyDragSourceId_ = 0;
+			hierarchyDragActive_ = false;
+		}
 		auto entityNameMatches = [&](const SceneEntity& entity) {
 			if (!searchActive) {
 				return true;
@@ -1503,10 +1522,16 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				flags |= ImGuiTreeNodeFlags_Selected;
 			}
 			const std::string label = entity->locked
-				? entity->name + " [locked]"
+				? (entity->folder ? "[Folder] " : "") + entity->name + " [locked]"
 				: entity->active
-					? entity->name
-					: entity->name + " (inactive)";
+					? (entity->folder ? "[Folder] " : "") + entity->name
+					: (entity->folder ? "[Folder] " : "") +
+						entity->name + " (inactive)";
+			const SceneTeamSettings* effectiveTeam =
+				document.ResolveEntityTeam(*entity);
+			const std::string labelWithTeam = effectiveTeam
+				? label + " {" + effectiveTeam->name + "}"
+				: label;
 			if (searchActive) {
 				ImGui::SetNextItemOpen(true, ImGuiCond_Always);
 			}
@@ -1514,8 +1539,10 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				"##Entity",
 				flags,
 				"%s",
-				label.c_str()
+				labelWithTeam.c_str()
 			);
+			const ImVec2 itemMin = ImGui::GetItemRectMin();
+			const ImVec2 itemMax = ImGui::GetItemRectMax();
 			if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
 				selectedEntityId_ = entity->id;
 				selectedProjectFile_.clear();
@@ -1523,18 +1550,69 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				focusInspectorRequested_ = true;
 			}
 
-			if (editable && ImGui::BeginDragDropSource()) {
-				const uint64_t draggedId = entity->id;
-				ImGui::SetDragDropPayload(
-					"SCENE_ENTITY_ID",
-					&draggedId,
-					sizeof(draggedId)
-				);
-				ImGui::TextUnformatted(entity->name.c_str());
-				ImGui::EndDragDropSource();
+			const bool rowHovered =
+				ImGui::IsMouseHoveringRect(itemMin, itemMax);
+			if (
+				editable &&
+				!searchActive &&
+				!entitySubtreeHasLocked(entity->id) &&
+				rowHovered &&
+				ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+			) {
+				hierarchyDragSourceId_ = entity->id;
+				hierarchyDragActive_ = false;
 			}
-			if (editable) {
-				acceptEntityDrop(entity->id);
+			if (
+				hierarchyDragSourceId_ == entity->id &&
+				ImGui::IsMouseDragging(ImGuiMouseButton_Left, 4.0f)
+			) {
+				hierarchyDragActive_ = true;
+			}
+			if (hierarchyDragActive_ && hierarchyDragSourceId_ != 0) {
+				const SceneEntity* draggedEntity =
+					document.FindEntity(hierarchyDragSourceId_);
+				if (
+					draggedEntity &&
+					draggedEntity->id != entity->id &&
+					!entity->locked &&
+					rowHovered
+				) {
+					const float itemHeight =
+						(std::max)(itemMax.y - itemMin.y, 1.0f);
+					const float localY = ImGui::GetMousePos().y - itemMin.y;
+					const bool canDropIntoFolder =
+						entity->folder &&
+						!document.IsDescendantOf(entity->id, draggedEntity->id);
+					const bool canDropAsSibling =
+						entity->parentId == 0 ||
+						!document.IsDescendantOf(entity->parentId, draggedEntity->id);
+					if (
+						canDropIntoFolder &&
+						localY >= itemHeight * 0.25f &&
+						localY <= itemHeight * 0.75f
+					) {
+						hierarchyDropTargetId = entity->id;
+						hierarchyDropAfter = false;
+						hierarchyDropIntoFolder = true;
+					} else if (canDropAsSibling) {
+						hierarchyDropTargetId = entity->id;
+						hierarchyDropAfter =
+							ImGui::GetMousePos().y >= (itemMin.y + itemMax.y) * 0.5f;
+						hierarchyDropIntoFolder = false;
+					}
+				}
+			}
+			if (
+				hierarchyDragActive_ &&
+				hierarchyDropTargetId == entity->id
+			) {
+				if (hierarchyDropIntoFolder) {
+					drawDropRect(itemMin, itemMax);
+				} else if (hierarchyDropAfter) {
+					drawDropLine(ImVec2(itemMin.x, itemMax.y), itemMax);
+				} else {
+					drawDropLine(itemMin, ImVec2(itemMax.x, itemMin.y));
+				}
 			}
 
 			if (
@@ -1543,6 +1621,10 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			) {
 				if (ImGui::MenuItem("Create Child")) {
 					createRequested = true;
+					createParentId = entity->id;
+				}
+				if (ImGui::MenuItem("Create Child Folder")) {
+					createFolderRequested = true;
 					createParentId = entity->id;
 				}
 				if (ImGui::MenuItem("Duplicate")) {
@@ -1582,17 +1664,28 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			? (sceneName && sceneName[0] != '\0' ? sceneName : "Scene")
 			: document.GetSceneName().c_str();
 		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-		if (ImGui::TreeNodeEx(
+		const bool rootOpen = ImGui::TreeNodeEx(
 			"##SceneRoot",
 			ImGuiTreeNodeFlags_DefaultOpen |
 				ImGuiTreeNodeFlags_OpenOnArrow |
 				ImGuiTreeNodeFlags_SpanAvailWidth,
 			"%s",
 			rootName
-		)) {
-			if (editorSession_->IsEditing()) {
-				acceptEntityDrop(0);
-			}
+		);
+		const ImVec2 rootItemMin = ImGui::GetItemRectMin();
+		const ImVec2 rootItemMax = ImGui::GetItemRectMax();
+		const SceneEntity* draggedEntity =
+			document.FindEntity(hierarchyDragSourceId_);
+		if (
+			hierarchyDragActive_ &&
+			draggedEntity &&
+			draggedEntity->parentId != 0 &&
+			ImGui::IsMouseHoveringRect(rootItemMin, rootItemMax)
+		) {
+			hierarchyDropToRoot = true;
+			drawDropRect(rootItemMin, rootItemMax);
+		}
+		if (rootOpen) {
 			for (const SceneEntity& entity : document.GetEntities()) {
 				if (entity.parentId == 0) {
 					drawEntity(entity.id);
@@ -1601,15 +1694,60 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			ImGui::TreePop();
 		}
 
+		if (
+			hierarchyDragSourceId_ != 0 &&
+			!ImGui::IsMouseDown(ImGuiMouseButton_Left)
+		) {
+			if (
+				hierarchyDragActive_ &&
+				(hierarchyDropTargetId != 0 || hierarchyDropToRoot)
+			) {
+				if (hierarchyDropToRoot) {
+					reparentId = hierarchyDragSourceId_;
+					reparentTargetId = 0;
+				} else if (hierarchyDropIntoFolder) {
+					reparentId = hierarchyDragSourceId_;
+					reparentTargetId = hierarchyDropTargetId;
+				} else {
+					reorderId = hierarchyDragSourceId_;
+					reorderTargetId = hierarchyDropTargetId;
+					reorderAfter = hierarchyDropAfter;
+				}
+			}
+			hierarchyDragSourceId_ = 0;
+			hierarchyDragActive_ = false;
+		}
+
+		if (reorderId != 0) {
+			const SceneEntity* reorderEntity = document.FindEntity(reorderId);
+			const SceneEntity* targetEntity = document.FindEntity(reorderTargetId);
+			if (
+				reorderEntity &&
+				targetEntity &&
+				!reorderEntity->locked &&
+				!targetEntity->locked &&
+				!entitySubtreeHasLocked(reorderId)
+			) {
+				document.MoveEntityToSibling(
+					reorderId,
+					reorderTargetId,
+					reorderAfter
+				);
+			}
+		}
 		if (reparentId != 0) {
 			const SceneEntity* reparentEntity = document.FindEntity(reparentId);
 			const SceneEntity* targetEntity = document.FindEntity(reparentTargetId);
 			if (
 				reparentEntity &&
 				!reparentEntity->locked &&
-				(reparentTargetId == 0 || (targetEntity && !targetEntity->locked))
+				(
+					reparentTargetId == 0 ||
+					(targetEntity && targetEntity->folder && !targetEntity->locked)
+				) &&
+				!entitySubtreeHasLocked(reparentId)
 			) {
-				document.SetParent(reparentId, reparentTargetId);
+				document.MoveEntityToParent(reparentId, reparentTargetId);
 			}
 		}
 		if (moveId != 0) {
@@ -1642,6 +1780,12 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		if (createRequested) {
 			SceneEntity& entity = document.CreateEntity("Entity", createParentId);
 			selectedEntityId_ = entity.id;
+			selectedProjectFile_.clear();
+		}
+		if (createFolderRequested) {
+			SceneEntity& folder = document.CreateEntity("Folder", createParentId);
+			folder.folder = true;
+			selectedEntityId_ = folder.id;
 			selectedProjectFile_.clear();
 		}
 		if (createCameraPathRequested) {
@@ -1956,6 +2100,22 @@ void ImGuiManager::DrawInspectorWindow() {
 		if (ImGui::Checkbox("Locked", &entity->locked)) {
 			document.MarkDirty();
 		}
+		ImGui::BeginDisabled(entityLocked || !entity->components.empty());
+		bool folder = entity->folder;
+		if (ImGui::Checkbox("Folder", &folder)) {
+			entity->folder = folder;
+			if (entity->folder) {
+				entity->modelPath.clear();
+				entity->spriteTexturePath.clear();
+			}
+			document.MarkDirty();
+			editorSession_->RequestSceneReload();
+		}
+		ImGui::EndDisabled();
+		if (!entity->components.empty()) {
+			ImGui::SameLine();
+			ImGui::TextDisabled("Folder requires no components");
+		}
 
 		const SceneEntity* parent = document.FindEntity(entity->parentId);
 		const char* parentName = parent ? parent->name.c_str() : "None (Root)";
@@ -1981,6 +2141,593 @@ void ImGuiManager::DrawInspectorWindow() {
 			ImGui::EndCombo();
 		}
 		ImGui::EndDisabled();
+
+		auto resolveEffectiveTeamName = [&]() {
+			if (!entity->teamName.empty()) {
+				return entity->teamName;
+			}
+			return document.ResolveInheritedFolderTeamName(entity->id);
+		};
+		const std::string inheritedFolderTeamName =
+			entity->teamName.empty()
+				? document.ResolveInheritedFolderTeamName(entity->id)
+				: std::string{};
+		const bool teamInheritedFromFolder =
+			!inheritedFolderTeamName.empty();
+
+		ImGui::SeparatorText("Team");
+		const std::string currentTeamLabel = entity->teamName.empty()
+			? (
+				teamInheritedFromFolder
+					? "Inherit: " + inheritedFolderTeamName
+					: std::string("None")
+			)
+			: entity->teamName;
+		ImGui::BeginDisabled(entityLocked);
+		if (ImGui::BeginCombo("Team", currentTeamLabel.c_str())) {
+			if (ImGui::Selectable("None", entity->teamName.empty())) {
+				entity->teamName.clear();
+				entity->folderTeamEnabled = false;
+				document.MarkDirty();
+				editorSession_->RequestSceneReload();
+			}
+			for (const SceneTeamSettings& team : document.GetTeams()) {
+				if (ImGui::Selectable(
+					team.name.c_str(),
+					entity->teamName == team.name
+				)) {
+					entity->teamName = team.name;
+					document.MarkDirty();
+					editorSession_->RequestSceneReload();
+				}
+			}
+			ImGui::EndCombo();
+		}
+		static char newTeamNameBuffer[64] = "Team";
+		ImGui::SetNextItemWidth(160.0f);
+		ImGui::InputText(
+			"New Team",
+			newTeamNameBuffer,
+			sizeof(newTeamNameBuffer)
+		);
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Create")) {
+			SceneTeamSettings& team = document.CreateTeam(newTeamNameBuffer);
+			entity->teamName = team.name;
+			if (entity->folder) {
+				entity->folderTeamEnabled = true;
+			}
+			document.MarkDirty();
+			editorSession_->RequestSceneReload();
+		}
+		ImGui::EndDisabled();
+
+		if (teamInheritedFromFolder) {
+			ImGui::Text(
+				"Inherited from folder: %s",
+				inheritedFolderTeamName.c_str()
+			);
+		}
+
+		SceneTeamSettings* selectedTeam =
+			document.FindTeam(resolveEffectiveTeamName());
+		if (selectedTeam) {
+			int memberCount = 0;
+			for (const SceneEntity& candidate : document.GetEntities()) {
+				if (candidate.folder) {
+					continue;
+				}
+				const SceneTeamSettings* candidateTeam =
+					document.ResolveEntityTeam(candidate);
+				if (candidateTeam && candidateTeam->name == selectedTeam->name) {
+					++memberCount;
+				}
+			}
+			ImGui::Text("Members: %d", memberCount);
+			if (ImGui::TreeNodeEx(
+				"Team Settings",
+				ImGuiTreeNodeFlags_DefaultOpen
+			)) {
+				ImGui::BeginDisabled(entityLocked);
+				std::string previousTeamName = selectedTeam->name;
+				char teamNameBuffer[64]{};
+				strncpy_s(
+					teamNameBuffer,
+					selectedTeam->name.c_str(),
+					_TRUNCATE
+				);
+				if (ImGui::InputText(
+					"Team Name",
+					teamNameBuffer,
+					sizeof(teamNameBuffer)
+				)) {
+					document.RenameTeam(previousTeamName, teamNameBuffer);
+					selectedTeam = document.FindTeam(resolveEffectiveTeamName());
+					editorSession_->RequestSceneReload();
+				}
+				if (selectedTeam) {
+					bool teamChanged = false;
+					ImGui::SeparatorText("Agent Common");
+					teamChanged |= ImGui::Checkbox(
+						"Team Agent Settings",
+						&selectedTeam->agentBehaviorOverride
+					);
+					ImGui::BeginDisabled(
+						!selectedTeam->agentBehaviorOverride
+					);
+					char teamGroupBuffer[64]{};
+					strncpy_s(
+						teamGroupBuffer,
+						selectedTeam->agentGroupName.c_str(),
+						_TRUNCATE
+					);
+					if (ImGui::InputText(
+						"Team Agent Group",
+						teamGroupBuffer,
+						sizeof(teamGroupBuffer)
+					)) {
+						selectedTeam->agentGroupName = teamGroupBuffer;
+						teamChanged = true;
+					}
+					teamChanged |= ImGui::DragFloat(
+						"Team Min Speed",
+						&selectedTeam->agentMinSpeed,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Max Speed",
+						&selectedTeam->agentMaxSpeed,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Turn Speed",
+						&selectedTeam->agentTurnSpeed,
+						0.05f,
+						0.0f,
+						20.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Wander Strength",
+						&selectedTeam->agentWanderStrength,
+						0.05f,
+						0.0f,
+						20.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Acceleration",
+						&selectedTeam->agentFlockAcceleration,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Max Turn Rate",
+						&selectedTeam->agentFlockTurnRate,
+						0.01f,
+						0.0f,
+						6.283185f
+					);
+					ImGui::SeparatorText("Member Variation");
+					teamChanged |= ImGui::DragFloat(
+						"Member Center Follow",
+						&selectedTeam->agentMemberCenterFollow,
+						0.05f,
+						0.0f,
+						20.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Member Jitter Strength",
+						&selectedTeam->agentMemberJitterStrength,
+						0.01f,
+						0.0f,
+						10.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Member Jitter Frequency",
+						&selectedTeam->agentMemberJitterFrequency,
+						0.01f,
+						0.0f,
+						10.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Member Jitter Follow Speed",
+						&selectedTeam->agentMemberJitterFollowSpeed,
+						0.01f,
+						0.0f,
+						20.0f
+					);
+					teamChanged |= ImGui::SliderFloat(
+						"Member Speed Variation",
+						&selectedTeam->agentMemberSpeedVariation,
+						0.0f,
+						1.0f
+					);
+
+					ImGui::SeparatorText("Team Heading");
+					teamChanged |= ImGui::Checkbox(
+						"Team Use Heading",
+						&selectedTeam->agentUseTeamHeading
+					);
+					teamChanged |= ImGui::DragFloat3(
+						"Team Heading Direction",
+						&selectedTeam->agentTeamHeadingDirection.x,
+						0.01f,
+						-1.0f,
+						1.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Heading Weight",
+						&selectedTeam->agentTeamHeadingWeight,
+						0.05f,
+						0.0f,
+						20.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Heading Follow Speed",
+						&selectedTeam->agentTeamHeadingFollowSpeed,
+						0.05f,
+						0.0f,
+						20.0f
+					);
+
+					ImGui::SeparatorText("Agent Rotation");
+					teamChanged |= ImGui::Checkbox(
+						"Team Align Forward To Velocity",
+						&selectedTeam->agentAlignForwardToVelocity
+					);
+					const char* forwardAxes[] = {
+						"+Z",
+						"-Z",
+						"+X",
+						"-X",
+						"+Y",
+						"-Y"
+					};
+					const char* currentForwardAxis =
+						selectedTeam->agentForwardAxis.c_str();
+					if (ImGui::BeginCombo(
+						"Team Forward Axis",
+						currentForwardAxis
+					)) {
+						for (const char* axis : forwardAxes) {
+							if (ImGui::Selectable(
+								axis,
+								selectedTeam->agentForwardAxis == axis
+							)) {
+								selectedTeam->agentForwardAxis = axis;
+								teamChanged = true;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					teamChanged |= ImGui::Checkbox(
+						"Team Rotate X",
+						&selectedTeam->agentRotateAxisX
+					);
+					ImGui::SameLine();
+					teamChanged |= ImGui::Checkbox(
+						"Team Rotate Y",
+						&selectedTeam->agentRotateAxisY
+					);
+					ImGui::SameLine();
+					teamChanged |= ImGui::Checkbox(
+						"Team Rotate Z",
+						&selectedTeam->agentRotateAxisZ
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Rotation Follow Speed",
+						&selectedTeam->agentRotationFollowSpeed,
+						0.05f,
+						0.0f,
+						60.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Pitch From Vertical Velocity",
+						&selectedTeam->agentPitchFromVerticalVelocity,
+						0.05f,
+						0.0f,
+						4.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Banking Strength",
+						&selectedTeam->agentBankingStrength,
+						0.05f,
+						0.0f,
+						4.0f
+					);
+
+					teamChanged |= ImGui::Checkbox(
+						"Team Schooling",
+						&selectedTeam->agentSchooling
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Schooling Update Interval",
+						&selectedTeam->agentSchoolingUpdateInterval,
+						0.01f,
+						0.0f,
+						5.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Schooling Update Jitter",
+						&selectedTeam->agentSchoolingUpdateJitter,
+						0.01f,
+						0.0f,
+						1.0f
+					);
+					teamChanged |= ImGui::InputInt(
+						"Team Neighbor Limit",
+						&selectedTeam->agentNeighborLimit
+					);
+					teamChanged |= ImGui::SliderFloat(
+						"Team Schooling Blend",
+						&selectedTeam->agentSchoolingBlend,
+						0.0f,
+						1.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Separation Radius",
+						&selectedTeam->agentSeparationRadius,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Alignment Radius",
+						&selectedTeam->agentAlignmentRadius,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Cohesion Radius",
+						&selectedTeam->agentCohesionRadius,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Separation Weight",
+						&selectedTeam->agentSeparationWeight,
+						0.05f,
+						0.0f,
+						50.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Alignment Weight",
+						&selectedTeam->agentAlignmentWeight,
+						0.05f,
+						0.0f,
+						50.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Team Cohesion Weight",
+						&selectedTeam->agentCohesionWeight,
+						0.05f,
+						0.0f,
+						50.0f
+					);
+					teamChanged |= ImGui::ColorEdit4(
+						"Team Agent Color",
+						&selectedTeam->agentVisualColor.x,
+						ImGuiColorEditFlags_Float
+					);
+					teamChanged |= ImGui::Checkbox(
+						"Team Agent Lighting",
+						&selectedTeam->agentEnableLighting
+					);
+					ImGui::EndDisabled();
+
+					const float previousMinSpeed = selectedTeam->agentMinSpeed;
+					const float previousMaxSpeed = selectedTeam->agentMaxSpeed;
+					const float previousTurnSpeed = selectedTeam->agentTurnSpeed;
+					const float previousWanderStrength =
+						selectedTeam->agentWanderStrength;
+					const Vector3 previousTeamHeadingDirection =
+						selectedTeam->agentTeamHeadingDirection;
+					const float previousTeamHeadingWeight =
+						selectedTeam->agentTeamHeadingWeight;
+					const float previousTeamHeadingFollowSpeed =
+						selectedTeam->agentTeamHeadingFollowSpeed;
+					const float previousTeamRotationWeight =
+						selectedTeam->agentTeamRotationWeight;
+					const float previousTeamRotationFollowSpeed =
+						selectedTeam->agentTeamRotationFollowSpeed;
+					const float previousRotationFollowSpeed =
+						selectedTeam->agentRotationFollowSpeed;
+					const float previousPitchFromVerticalVelocity =
+						selectedTeam->agentPitchFromVerticalVelocity;
+					const float previousBankingStrength =
+						selectedTeam->agentBankingStrength;
+					const float previousSchoolingUpdateInterval =
+						selectedTeam->agentSchoolingUpdateInterval;
+					const float previousSchoolingUpdateJitter =
+						selectedTeam->agentSchoolingUpdateJitter;
+					const int previousNeighborLimit =
+						selectedTeam->agentNeighborLimit;
+					const float previousSchoolingBlend =
+						selectedTeam->agentSchoolingBlend;
+					const float previousSeparationRadius =
+						selectedTeam->agentSeparationRadius;
+					const float previousAlignmentRadius =
+						selectedTeam->agentAlignmentRadius;
+					const float previousCohesionRadius =
+						selectedTeam->agentCohesionRadius;
+					const float previousSeparationWeight =
+						selectedTeam->agentSeparationWeight;
+					const float previousAlignmentWeight =
+						selectedTeam->agentAlignmentWeight;
+					const float previousCohesionWeight =
+						selectedTeam->agentCohesionWeight;
+					selectedTeam->agentMinSpeed =
+						(std::max)(selectedTeam->agentMinSpeed, 0.0f);
+					selectedTeam->agentMaxSpeed =
+						(std::max)(
+							selectedTeam->agentMaxSpeed,
+							selectedTeam->agentMinSpeed
+						);
+					selectedTeam->agentTurnSpeed =
+						(std::max)(selectedTeam->agentTurnSpeed, 0.0f);
+					selectedTeam->agentWanderStrength =
+						(std::max)(selectedTeam->agentWanderStrength, 0.0f);
+					if (
+						Math::Length(selectedTeam->agentTeamHeadingDirection) <=
+						0.000001f
+					) {
+						selectedTeam->agentTeamHeadingDirection = {
+							0.0f,
+							0.0f,
+							1.0f
+						};
+					} else {
+						selectedTeam->agentTeamHeadingDirection =
+							Math::Normalize(
+								selectedTeam->agentTeamHeadingDirection
+							);
+					}
+					selectedTeam->agentTeamHeadingWeight =
+						(std::max)(selectedTeam->agentTeamHeadingWeight, 0.0f);
+					selectedTeam->agentTeamHeadingFollowSpeed =
+						(std::max)(
+							selectedTeam->agentTeamHeadingFollowSpeed,
+							0.0f
+						);
+					selectedTeam->agentTeamRotationWeight = std::clamp(
+						selectedTeam->agentTeamRotationWeight,
+						0.0f,
+						1.0f
+					);
+					selectedTeam->agentTeamRotationFollowSpeed =
+						(std::max)(
+							selectedTeam->agentTeamRotationFollowSpeed,
+							0.0f
+						);
+					selectedTeam->agentRotationFollowSpeed =
+						(std::max)(
+							selectedTeam->agentRotationFollowSpeed,
+							0.0f
+						);
+					selectedTeam->agentPitchFromVerticalVelocity =
+						(std::max)(
+							selectedTeam->agentPitchFromVerticalVelocity,
+							0.0f
+						);
+					selectedTeam->agentBankingStrength =
+						(std::max)(selectedTeam->agentBankingStrength, 0.0f);
+					selectedTeam->agentSchoolingUpdateInterval =
+						(std::max)(
+							selectedTeam->agentSchoolingUpdateInterval,
+							0.0f
+						);
+					selectedTeam->agentSchoolingUpdateJitter =
+						(std::max)(
+							selectedTeam->agentSchoolingUpdateJitter,
+							0.0f
+						);
+					selectedTeam->agentNeighborLimit =
+						(std::max)(selectedTeam->agentNeighborLimit, 0);
+					selectedTeam->agentSchoolingBlend = std::clamp(
+						selectedTeam->agentSchoolingBlend,
+						0.0f,
+						1.0f
+					);
+					selectedTeam->agentSeparationRadius =
+						(std::max)(selectedTeam->agentSeparationRadius, 0.0f);
+					selectedTeam->agentAlignmentRadius =
+						(std::max)(selectedTeam->agentAlignmentRadius, 0.0f);
+					selectedTeam->agentCohesionRadius =
+						(std::max)(selectedTeam->agentCohesionRadius, 0.0f);
+					selectedTeam->agentSeparationWeight =
+						(std::max)(selectedTeam->agentSeparationWeight, 0.0f);
+					selectedTeam->agentAlignmentWeight =
+						(std::max)(selectedTeam->agentAlignmentWeight, 0.0f);
+					selectedTeam->agentCohesionWeight =
+						(std::max)(selectedTeam->agentCohesionWeight, 0.0f);
+					teamChanged |=
+						previousMinSpeed != selectedTeam->agentMinSpeed ||
+						previousMaxSpeed != selectedTeam->agentMaxSpeed ||
+						previousTurnSpeed != selectedTeam->agentTurnSpeed ||
+						previousWanderStrength !=
+							selectedTeam->agentWanderStrength ||
+						previousTeamHeadingDirection.x !=
+							selectedTeam->agentTeamHeadingDirection.x ||
+						previousTeamHeadingDirection.y !=
+							selectedTeam->agentTeamHeadingDirection.y ||
+						previousTeamHeadingDirection.z !=
+							selectedTeam->agentTeamHeadingDirection.z ||
+						previousTeamHeadingWeight !=
+							selectedTeam->agentTeamHeadingWeight ||
+						previousTeamHeadingFollowSpeed !=
+							selectedTeam->agentTeamHeadingFollowSpeed ||
+						previousTeamRotationWeight !=
+							selectedTeam->agentTeamRotationWeight ||
+						previousTeamRotationFollowSpeed !=
+							selectedTeam->agentTeamRotationFollowSpeed ||
+						previousRotationFollowSpeed !=
+							selectedTeam->agentRotationFollowSpeed ||
+						previousPitchFromVerticalVelocity !=
+							selectedTeam->agentPitchFromVerticalVelocity ||
+						previousBankingStrength !=
+							selectedTeam->agentBankingStrength ||
+						previousSchoolingUpdateInterval !=
+							selectedTeam->agentSchoolingUpdateInterval ||
+						previousSchoolingUpdateJitter !=
+							selectedTeam->agentSchoolingUpdateJitter ||
+						previousNeighborLimit !=
+							selectedTeam->agentNeighborLimit ||
+						previousSchoolingBlend !=
+							selectedTeam->agentSchoolingBlend ||
+						previousSeparationRadius !=
+							selectedTeam->agentSeparationRadius ||
+						previousAlignmentRadius !=
+							selectedTeam->agentAlignmentRadius ||
+						previousCohesionRadius !=
+							selectedTeam->agentCohesionRadius ||
+						previousSeparationWeight !=
+							selectedTeam->agentSeparationWeight ||
+						previousAlignmentWeight !=
+							selectedTeam->agentAlignmentWeight ||
+						previousCohesionWeight !=
+							selectedTeam->agentCohesionWeight;
+					if (teamChanged) {
+						document.MarkDirty();
+						editorSession_->RequestSceneReload();
+					}
+					if (ImGui::SmallButton("Remove Team")) {
+						const std::string removeTeamName = selectedTeam->name;
+						document.RemoveTeam(removeTeamName);
+						selectedTeam = nullptr;
+						editorSession_->RequestSceneReload();
+					}
+				}
+				ImGui::EndDisabled();
+				ImGui::TreePop();
+			}
+		}
+
+		if (entity->folder) {
+			ImGui::SeparatorText("Folder");
+			ImGui::TextDisabled("Folders organize children in the hierarchy.");
+			ImGui::BeginDisabled(entityLocked || entity->teamName.empty());
+			bool folderTeamEnabled = entity->folderTeamEnabled;
+			if (ImGui::Checkbox("Use Folder As Team", &folderTeamEnabled)) {
+				entity->folderTeamEnabled = folderTeamEnabled;
+				document.MarkDirty();
+				editorSession_->RequestSceneReload();
+			}
+			ImGui::EndDisabled();
+			if (entity->teamName.empty()) {
+				ImGui::TextDisabled("Assign a Team above to enable folder team.");
+			}
+			if (editorSession_->IsPlaying() || editorSession_->IsPaused()) {
+				ImGui::TextDisabled("Play mode changes are temporary");
+			}
+			ImGui::End();
+			return;
+		}
 
 		ImGui::SeparatorText("Transform");
 		bool transformChanged = false;
@@ -2186,6 +2933,9 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndCombo();
 				}
 				bool reflectionChanged = false;
+				if (!component.meshEnvironmentReflectionOverride) {
+					ImGui::TextDisabled("Using Environment Reflection");
+				}
 				reflectionChanged |= ImGui::Checkbox(
 					"Override Environment Reflection",
 					&component.meshEnvironmentReflectionOverride
@@ -3137,6 +3887,26 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.agentProfileName = profileBuffer;
 					agentChanged = true;
 				}
+				const SceneTeamSettings* agentTeam =
+					document.ResolveEntityTeam(*entity);
+				const bool hasTeamAgentSettings =
+					agentTeam && agentTeam->agentBehaviorOverride;
+				if (hasTeamAgentSettings) {
+					agentChanged |= ImGui::Checkbox(
+						"Override Team Agent Settings",
+						&component.agentTeamSettingsOverride
+					);
+				}
+				const bool useTeamAgentSettings =
+					hasTeamAgentSettings &&
+					!component.agentTeamSettingsOverride;
+				if (useTeamAgentSettings) {
+					ImGui::Text(
+						"Using Team Agent Settings: %s",
+						agentTeam->name.c_str()
+					);
+				}
+				ImGui::BeginDisabled(useTeamAgentSettings);
 				char groupBuffer[64]{};
 				strncpy_s(
 					groupBuffer,
@@ -3181,6 +3951,147 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.0f,
 					20.0f
 				);
+				agentChanged |= ImGui::DragFloat(
+					"Flock Acceleration",
+					&component.agentFlockAcceleration,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Flock Max Turn Rate",
+					&component.agentFlockTurnRate,
+					0.01f,
+					0.0f,
+					6.283185f
+				);
+				ImGui::SeparatorText("Member Variation");
+				agentChanged |= ImGui::DragFloat(
+					"Center Follow",
+					&component.agentMemberCenterFollow,
+					0.05f,
+					0.0f,
+					20.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Jitter Strength",
+					&component.agentMemberJitterStrength,
+					0.01f,
+					0.0f,
+					10.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Jitter Frequency",
+					&component.agentMemberJitterFrequency,
+					0.01f,
+					0.0f,
+					10.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Jitter Follow Speed",
+					&component.agentMemberJitterFollowSpeed,
+					0.01f,
+					0.0f,
+					20.0f
+				);
+				agentChanged |= ImGui::SliderFloat(
+					"Speed Variation",
+					&component.agentMemberSpeedVariation,
+					0.0f,
+					1.0f
+				);
+
+				ImGui::SeparatorText("Team Heading");
+				agentChanged |= ImGui::Checkbox(
+					"Use Team Heading",
+					&component.agentUseTeamHeading
+				);
+				agentChanged |= ImGui::DragFloat3(
+					"Team Heading Direction",
+					&component.agentTeamHeadingDirection.x,
+					0.01f,
+					-1.0f,
+					1.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Team Heading Weight",
+					&component.agentTeamHeadingWeight,
+					0.05f,
+					0.0f,
+					20.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Team Heading Follow Speed",
+					&component.agentTeamHeadingFollowSpeed,
+					0.05f,
+					0.0f,
+					20.0f
+				);
+
+				ImGui::SeparatorText("Rotation");
+				agentChanged |= ImGui::Checkbox(
+					"Align Forward To Velocity",
+					&component.agentAlignForwardToVelocity
+				);
+				const char* agentForwardAxes[] = {
+					"+Z",
+					"-Z",
+					"+X",
+					"-X",
+					"+Y",
+					"-Y"
+				};
+				if (ImGui::BeginCombo(
+					"Forward Axis",
+					component.agentForwardAxis.c_str()
+				)) {
+					for (const char* axis : agentForwardAxes) {
+						if (ImGui::Selectable(
+							axis,
+							component.agentForwardAxis == axis
+						)) {
+							component.agentForwardAxis = axis;
+							agentChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				agentChanged |= ImGui::Checkbox(
+					"Rotate X",
+					&component.agentRotateAxisX
+				);
+				ImGui::SameLine();
+				agentChanged |= ImGui::Checkbox(
+					"Rotate Y",
+					&component.agentRotateAxisY
+				);
+				ImGui::SameLine();
+				agentChanged |= ImGui::Checkbox(
+					"Rotate Z",
+					&component.agentRotateAxisZ
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Rotation Follow Speed",
+					&component.agentRotationFollowSpeed,
+					0.05f,
+					0.0f,
+					60.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Pitch From Vertical Velocity",
+					&component.agentPitchFromVerticalVelocity,
+					0.05f,
+					0.0f,
+					4.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Banking Strength",
+					&component.agentBankingStrength,
+					0.05f,
+					0.0f,
+					4.0f
+				);
+				ImGui::EndDisabled();
 
 				ImGui::SeparatorText("Bounds");
 				agentChanged |= ImGui::Checkbox(
@@ -3242,10 +4153,35 @@ void ImGuiManager::DrawInspectorWindow() {
 					50.0f
 				);
 
+				ImGui::BeginDisabled(useTeamAgentSettings);
 				ImGui::SeparatorText("Schooling");
 				agentChanged |= ImGui::Checkbox(
 					"Schooling",
 					&component.agentSchooling
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Schooling Update Interval",
+					&component.agentSchoolingUpdateInterval,
+					0.01f,
+					0.0f,
+					5.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Schooling Update Jitter",
+					&component.agentSchoolingUpdateJitter,
+					0.01f,
+					0.0f,
+					1.0f
+				);
+				agentChanged |= ImGui::InputInt(
+					"Neighbor Limit",
+					&component.agentNeighborLimit
+				);
+				agentChanged |= ImGui::SliderFloat(
+					"Schooling Blend",
+					&component.agentSchoolingBlend,
+					0.0f,
+					1.0f
 				);
 				agentChanged |= ImGui::DragFloat(
 					"Separation Radius",
@@ -3300,6 +4236,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					"Enable Lighting",
 					&component.agentEnableLighting
 				);
+				ImGui::EndDisabled();
 
 				if (component.agentBehaviorName.empty()) {
 					component.agentBehaviorName = "Agent";
@@ -3319,6 +4256,77 @@ void ImGuiManager::DrawInspectorWindow() {
 					(std::max)(component.agentWanderStrength, 0.0f);
 				component.agentBoundsWeight =
 					(std::max)(component.agentBoundsWeight, 0.0f);
+				const Vector3 normalizedTeamHeading =
+					Math::Length(component.agentTeamHeadingDirection) <= 0.000001f
+						? Vector3{ 0.0f, 0.0f, 1.0f }
+						: Math::Normalize(component.agentTeamHeadingDirection);
+				if (
+					component.agentTeamHeadingDirection.x !=
+						normalizedTeamHeading.x ||
+					component.agentTeamHeadingDirection.y !=
+						normalizedTeamHeading.y ||
+					component.agentTeamHeadingDirection.z !=
+						normalizedTeamHeading.z
+				) {
+					component.agentTeamHeadingDirection =
+						normalizedTeamHeading;
+					agentChanged = true;
+				}
+				if (component.agentTeamHeadingWeight < 0.0f) {
+					component.agentTeamHeadingWeight = 0.0f;
+					agentChanged = true;
+				}
+				if (component.agentTeamHeadingFollowSpeed < 0.0f) {
+					component.agentTeamHeadingFollowSpeed = 0.0f;
+					agentChanged = true;
+				}
+				const float teamRotationWeight = std::clamp(
+					component.agentTeamRotationWeight,
+					0.0f,
+					1.0f
+				);
+				if (component.agentTeamRotationWeight != teamRotationWeight) {
+					component.agentTeamRotationWeight = teamRotationWeight;
+					agentChanged = true;
+				}
+				if (component.agentTeamRotationFollowSpeed < 0.0f) {
+					component.agentTeamRotationFollowSpeed = 0.0f;
+					agentChanged = true;
+				}
+				if (
+					component.agentForwardAxis != "+Z" &&
+					component.agentForwardAxis != "-Z" &&
+					component.agentForwardAxis != "+X" &&
+					component.agentForwardAxis != "-X" &&
+					component.agentForwardAxis != "+Y" &&
+					component.agentForwardAxis != "-Y"
+				) {
+					component.agentForwardAxis = "+Z";
+					agentChanged = true;
+				}
+				component.agentRotationFollowSpeed =
+					(std::max)(component.agentRotationFollowSpeed, 0.0f);
+				component.agentPitchFromVerticalVelocity =
+					(std::max)(
+						component.agentPitchFromVerticalVelocity,
+						0.0f
+					);
+				component.agentBankingStrength =
+					(std::max)(component.agentBankingStrength, 0.0f);
+				component.agentSchoolingUpdateInterval =
+					(std::max)(
+						component.agentSchoolingUpdateInterval,
+						0.0f
+					);
+				component.agentSchoolingUpdateJitter =
+					(std::max)(component.agentSchoolingUpdateJitter, 0.0f);
+				component.agentNeighborLimit =
+					(std::max)(component.agentNeighborLimit, 0);
+				component.agentSchoolingBlend = std::clamp(
+					component.agentSchoolingBlend,
+					0.0f,
+					1.0f
+				);
 				component.agentSeparationRadius =
 					(std::max)(component.agentSeparationRadius, 0.0f);
 				component.agentAlignmentRadius =
