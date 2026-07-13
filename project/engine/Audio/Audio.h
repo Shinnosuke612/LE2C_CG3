@@ -1,3 +1,4 @@
+// 役割: WAV音声の読み込み、再生、停止を管理する。
 #pragma once
 #include <xaudio2.h>
 #pragma comment(lib, "xaudio2.lib")

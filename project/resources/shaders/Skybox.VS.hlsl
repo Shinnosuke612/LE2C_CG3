@@ -1,3 +1,4 @@
+// 役割: Skybox頂点を回転のみ反映してクリップ空間へ変換する頂点シェーダー。
 #include "Skybox.hlsli"
 
 cbuffer TransformationMatrixCB : register(b0)

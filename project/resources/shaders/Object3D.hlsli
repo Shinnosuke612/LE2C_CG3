@@ -1,3 +1,4 @@
+// 役割: 3Dモデル描画で共有する頂点、材質、ライト、Camera定数を定義する。
 struct VertexShaderInput
 {
     float4 position : POSITION0;

@@ -1,3 +1,4 @@
+// 役割: アニメーションキー補間とノードTransform適用を実装する。
 #include "Animation.h"
 
 #include <algorithm>
@@ -142,15 +143,6 @@ std::vector<Animation> LoadAnimationFiles(
 		}
 	}
 	return animations;
-}
-
-Animation LoadAnimationFile(
-	const std::string& directoryPath,
-	const std::string& filename
-) {
-	std::vector<Animation> animations =
-		LoadAnimationFiles(directoryPath, filename);
-	return animations.empty() ? Animation{} : std::move(animations.front());
 }
 
 void AnimationPlayer::SetAnimations(

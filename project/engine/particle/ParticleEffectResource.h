@@ -1,3 +1,4 @@
+// 役割: パーティクルエフェクトの保存形式とリソース読み込みを定義する。
 #pragma once
 #include <cstdint>
 #include <string>

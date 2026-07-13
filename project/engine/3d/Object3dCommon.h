@@ -1,3 +1,4 @@
+// 役割: Object3d全体で共有する描画状態と既定Cameraを管理する。
 #pragma once
 #include <d3dx12.h>
 #include "../math/Vector3.h"

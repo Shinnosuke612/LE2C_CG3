@@ -1,3 +1,4 @@
+// 役割: モデル空間の頂点をワールド空間経由でクリップ空間へ変換する頂点シェーダー。
 #include "Object3D.hlsli"
 
 cbuffer TransformationMatrixCB : register(b0)

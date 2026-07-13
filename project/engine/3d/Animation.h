@@ -1,3 +1,4 @@
+// 役割: glTFアニメーションのキー情報と補間結果を定義する。
 #pragma once
 
 #include <string>
@@ -88,11 +89,6 @@ private:
 };
 
 std::vector<Animation> LoadAnimationFiles(
-	const std::string& directoryPath,
-	const std::string& filename
-);
-
-Animation LoadAnimationFile(
 	const std::string& directoryPath,
 	const std::string& filename
 );

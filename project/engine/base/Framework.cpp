@@ -1,3 +1,4 @@
+// 役割: Frameworkのフレーム更新と終了判定を実装する。
 #include "Framework.h"
 
 #include "../utility/Logger.h"
@@ -16,6 +17,8 @@
 #include "../audio/Audio.h"
 #include "../debug/DebugRenderer.h"
 #include "../scene/AbstractSceneFactory.h"
+
+#include <algorithm>
 
 void Framework::Run() {
 	// ゲームの初期化
@@ -76,9 +79,19 @@ void Framework::Initialize() {
 	audio_->Initialize();
 
 	endRequest_ = false;
+	deltaTime_ = 1.0f / 60.0f;
+	previousFrameTime_ = std::chrono::steady_clock::now();
 }
 
 void Framework::Update() {
+	const auto now = std::chrono::steady_clock::now();
+	deltaTime_ = std::clamp(
+		std::chrono::duration<float>(now - previousFrameTime_).count(),
+		0.0f,
+		0.1f
+	);
+	previousFrameTime_ = now;
+
 	if (winApp_->ProcessMessage()) {
 		endRequest_ = true;
 		return;

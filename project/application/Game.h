@@ -1,3 +1,4 @@
+// 役割: エディタとゲーム実行を統合し、フレーム更新と描画順序を管理する。
 #pragma once
 #include "../engine/base/Framework.h"
 #include "../engine/base/BloomRenderer.h"

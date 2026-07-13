@@ -1,3 +1,4 @@
+// 役割: フルスクリーン画像コピーとポストエフェクトの共通描画を管理する。
 #pragma once
 
 #include <cstdint>

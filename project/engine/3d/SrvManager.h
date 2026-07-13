@@ -1,3 +1,4 @@
+// 役割: SRV、UAV、CBV用DescriptorHeapの割り当てとGPUハンドル取得を管理する。
 #pragma once
 #include "../base/DirectXCommon.h"
 class SrvManager{

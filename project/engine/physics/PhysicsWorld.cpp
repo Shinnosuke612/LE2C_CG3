@@ -1,10 +1,13 @@
+// 役割: 物理ボディの積分、地面判定、静的Colliderとの押し戻しを実装する。
 #include "PhysicsWorld.h"
 
 #include "../collision/Collider.h"
 #include "../collision/OBBCollider.h"
+#include "../collision/SphereCollider.h"
 #include "../math/Math.h"
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <cmath>
 
@@ -130,6 +133,152 @@ namespace {
 			pushOut.z = 0.0f;
 		}
 	}
+
+	Vector3 ClosestPointOnOBB(
+		const OBBCollider::OBB& obb,
+		const Vector3& point,
+		std::array<float, 3>& localCoordinates
+	) {
+		const Vector3 delta = Math::Subtract(point, obb.center);
+		Vector3 closestPoint = obb.center;
+		for (uint32_t axis = 0; axis < 3; ++axis) {
+			const float distance = Math::Dot(delta, obb.axis[axis]);
+			localCoordinates[axis] = distance;
+			const float halfSize = axis == 0
+				? obb.halfSize.x
+				: (axis == 1 ? obb.halfSize.y : obb.halfSize.z);
+			closestPoint = Math::Add(
+				closestPoint,
+				Math::Multiply(
+					obb.axis[axis],
+					std::clamp(distance, -halfSize, halfSize)
+				)
+			);
+		}
+		return closestPoint;
+	}
+
+	bool TryComputeSphereSpherePushOut(
+		const SphereCollider& moving,
+		const SphereCollider& obstacle,
+		Vector3& pushOut
+	) {
+		const Vector3 delta = Math::Subtract(
+			moving.GetWorldCenter(),
+			obstacle.GetWorldCenter()
+		);
+		const float distance = Math::Length(delta);
+		const float overlap = moving.GetRadius() + obstacle.GetRadius() - distance;
+		if (overlap <= kPenetrationSlop) {
+			return false;
+		}
+		const Vector3 direction = distance > kPenetrationEpsilon
+			? Math::Multiply(delta, 1.0f / distance)
+			: Vector3{ 0.0f, 1.0f, 0.0f };
+		pushOut = Math::Multiply(direction, overlap + kPenetrationSkin);
+		return true;
+	}
+
+	bool TryComputeSphereObbPushOut(
+		const SphereCollider& moving,
+		const OBBCollider::OBB& obstacle,
+		Vector3& pushOut
+	) {
+		std::array<float, 3> localCoordinates{};
+		const Vector3 center = moving.GetWorldCenter();
+		const Vector3 closestPoint =
+			ClosestPointOnOBB(obstacle, center, localCoordinates);
+		const Vector3 delta = Math::Subtract(center, closestPoint);
+		const float distance = Math::Length(delta);
+		if (distance > kPenetrationEpsilon) {
+			const float overlap = moving.GetRadius() - distance;
+			if (overlap <= kPenetrationSlop) {
+				return false;
+			}
+			pushOut = Math::Multiply(
+				delta,
+				(overlap + kPenetrationSkin) / distance
+			);
+			return true;
+		}
+
+		float nearestFaceDistance = FLT_MAX;
+		Vector3 outwardAxis{};
+		for (uint32_t axis = 0; axis < 3; ++axis) {
+			const float halfSize = axis == 0
+				? obstacle.halfSize.x
+				: (axis == 1 ? obstacle.halfSize.y : obstacle.halfSize.z);
+			const float faceDistance =
+				halfSize - std::fabs(localCoordinates[axis]);
+			if (faceDistance < nearestFaceDistance) {
+				nearestFaceDistance = faceDistance;
+				outwardAxis = localCoordinates[axis] < 0.0f
+					? Math::Multiply(obstacle.axis[axis], -1.0f)
+					: obstacle.axis[axis];
+			}
+		}
+		if (nearestFaceDistance == FLT_MAX) {
+			return false;
+		}
+		pushOut = Math::Multiply(
+			outwardAxis,
+			moving.GetRadius() + nearestFaceDistance + kPenetrationSkin
+		);
+		return true;
+	}
+
+	bool TryComputeObbSpherePushOut(
+		const OBBCollider::OBB& moving,
+		const SphereCollider& obstacle,
+		Vector3& pushOut
+	) {
+		std::array<float, 3> localCoordinates{};
+		const Vector3 closestPoint = ClosestPointOnOBB(
+			moving,
+			obstacle.GetWorldCenter(),
+			localCoordinates
+		);
+		const Vector3 delta = Math::Subtract(
+			closestPoint,
+			obstacle.GetWorldCenter()
+		);
+		const float distance = Math::Length(delta);
+		if (distance > kPenetrationEpsilon) {
+			const float overlap = obstacle.GetRadius() - distance;
+			if (overlap <= kPenetrationSlop) {
+				return false;
+			}
+			pushOut = Math::Multiply(
+				delta,
+				(overlap + kPenetrationSkin) / distance
+			);
+			return true;
+		}
+
+		float nearestFaceDistance = FLT_MAX;
+		Vector3 outwardAxis{};
+		for (uint32_t axis = 0; axis < 3; ++axis) {
+			const float halfSize = axis == 0
+				? moving.halfSize.x
+				: (axis == 1 ? moving.halfSize.y : moving.halfSize.z);
+			const float faceDistance =
+				halfSize - std::fabs(localCoordinates[axis]);
+			if (faceDistance < nearestFaceDistance) {
+				nearestFaceDistance = faceDistance;
+				outwardAxis = localCoordinates[axis] < 0.0f
+					? Math::Multiply(moving.axis[axis], -1.0f)
+					: moving.axis[axis];
+			}
+		}
+		if (nearestFaceDistance == FLT_MAX) {
+			return false;
+		}
+		pushOut = Math::Multiply(
+			outwardAxis,
+			-(obstacle.GetRadius() + nearestFaceDistance + kPenetrationSkin)
+		);
+		return true;
+	}
 }
 
 void PhysicsWorld::Clear() {
@@ -165,6 +314,8 @@ void PhysicsWorld::Step(float deltaTime) {
 		) {
 			continue;
 		}
+		// Colliderは常にObject3d更新後のワールド行列を使って判定する。
+		body->SynchronizeTransform();
 
 		if (body->useGravity) {
 			body->velocity = Math::Add(
@@ -274,8 +425,10 @@ bool PhysicsWorld::SnapToGround(
 	const float startY = body.transform->translate.y;
 	const float delta = -probeDistance;
 	body.transform->translate.y = startY + delta;
+	body.SynchronizeTransform();
 	if (!CollidesWithStatic(body)) {
 		body.transform->translate.y = startY;
+		body.SynchronizeTransform();
 		return false;
 	}
 
@@ -284,6 +437,7 @@ bool PhysicsWorld::SnapToGround(
 	for (uint32_t i = 0; i < kAxisSweepIterations; ++i) {
 		const float testRate = (safeRate + hitRate) * 0.5f;
 		body.transform->translate.y = startY + delta * testRate;
+		body.SynchronizeTransform();
 		if (CollidesWithStatic(body)) {
 			hitRate = testRate;
 		} else {
@@ -291,51 +445,75 @@ bool PhysicsWorld::SnapToGround(
 		}
 	}
 	body.transform->translate.y = startY + delta * safeRate;
+	body.SynchronizeTransform();
 	return true;
 }
 
 bool PhysicsWorld::ResolveStaticPenetration(PhysicsBody& body) const {
 	if (
 		!body.transform ||
-		!body.collider ||
-		body.collider->GetType() != Collider::Type::OBB
+		!body.collider
 	) {
 		return false;
 	}
 
 	bool resolvedAny = false;
-	std::vector<const OBBCollider*> testedColliders;
-	const auto* bodyCollider =
-		static_cast<const OBBCollider*>(body.collider);
+	std::vector<const Collider*> testedColliders;
 
 	auto resolveAgainst = [&](const Collider* candidate) {
-		if (!candidate || candidate->GetType() != Collider::Type::OBB) {
-			return;
-		}
-		const auto* collider = static_cast<const OBBCollider*>(candidate);
 		if (
-			!collider ||
-			collider == bodyCollider ||
-			!bodyCollider->CanCollideWith(*collider) ||
+			!candidate ||
+			candidate == body.collider ||
+			!body.collider->CanCollideWith(*candidate) ||
 			std::find(
 				testedColliders.begin(),
 				testedColliders.end(),
-				collider
+				candidate
 			) != testedColliders.end()
 		) {
 			return;
 		}
-		testedColliders.push_back(collider);
+		testedColliders.push_back(candidate);
 
 		for (uint32_t iteration = 0;
 			iteration < kPenetrationResolveIterations;
 			++iteration) {
 			Vector3 pushOut{};
-			if (!TryComputePushOut(
-				bodyCollider->GetOBB(),
-				collider->GetOBB(),
-				pushOut
-			)) {
+			bool intersects = false;
+			if (body.collider->GetType() == Collider::Type::Sphere) {
+				const auto& moving =
+					static_cast<const SphereCollider&>(*body.collider);
+				if (candidate->GetType() == Collider::Type::Sphere) {
+					intersects = TryComputeSphereSpherePushOut(
+						moving,
+						static_cast<const SphereCollider&>(*candidate),
+						pushOut
+					);
+				} else {
+					intersects = TryComputeSphereObbPushOut(
+						moving,
+						static_cast<const OBBCollider&>(*candidate).GetOBB(),
+						pushOut
+					);
+				}
+			} else {
+				const auto& moving =
+					static_cast<const OBBCollider&>(*body.collider);
+				if (candidate->GetType() == Collider::Type::Sphere) {
+					intersects = TryComputeObbSpherePushOut(
+						moving.GetOBB(),
+						static_cast<const SphereCollider&>(*candidate),
+						pushOut
+					);
+				} else {
+					intersects = TryComputePushOut(
+						moving.GetOBB(),
+						static_cast<const OBBCollider&>(*candidate).GetOBB(),
+						pushOut
+					);
+				}
+			}
+			if (!intersects) {
 				return;
 			}
 
@@ -348,6 +526,7 @@ bool PhysicsWorld::ResolveStaticPenetration(PhysicsBody& body) const {
 				body.transform->translate,
 				pushOut
 			);
+			body.SynchronizeTransform();
 			if (std::abs(pushOut.x) > kPenetrationEpsilon) {
 				body.velocity.x = 0.0f;
 			}
@@ -405,13 +584,16 @@ bool PhysicsWorld::IntegrateAxis(
 
 	const float startPosition = *components[axis];
 	*components[axis] += delta;
+	body.SynchronizeTransform();
 	if (CollidesWithStatic(body)) {
 		*components[axis] = startPosition;
+		body.SynchronizeTransform();
 		float safeRate = 0.0f;
 		float hitRate = 1.0f;
 		for (uint32_t i = 0; i < kAxisSweepIterations; ++i) {
 			const float testRate = (safeRate + hitRate) * 0.5f;
 			*components[axis] = startPosition + delta * testRate;
+			body.SynchronizeTransform();
 			if (CollidesWithStatic(body)) {
 				hitRate = testRate;
 			} else {
@@ -419,6 +601,7 @@ bool PhysicsWorld::IntegrateAxis(
 			}
 		}
 		*components[axis] = startPosition + delta * safeRate;
+		body.SynchronizeTransform();
 		const float velocity = *velocityComponents[axis];
 		if (
 			body.restitution > 0.0f &&

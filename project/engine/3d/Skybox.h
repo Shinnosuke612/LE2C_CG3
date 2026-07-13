@@ -1,3 +1,4 @@
+// 役割: 環境CubeMapを使うSkyboxの描画状態を管理する。
 #pragma once
 #include <string>
 #include <d3d12.h>

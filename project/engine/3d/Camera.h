@@ -1,3 +1,4 @@
+// 役割: 視点のTransform、投影行列、ViewProjectionを管理する。
 #pragma once
 #include "../math/Vector2.h"
 #include "../math/Vector3.h"

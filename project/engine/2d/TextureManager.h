@@ -1,3 +1,4 @@
+// 役割: テクスチャの読み込み、SRV割り当て、キャッシュを管理する。
 #pragma once
 #include <string>
 #include <DirectXTex.h>

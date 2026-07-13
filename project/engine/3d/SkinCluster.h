@@ -1,3 +1,4 @@
+// 役割: Skinning用のJointPaletteと頂点Weight情報を定義する。
 #pragma once
 
 #include <array>

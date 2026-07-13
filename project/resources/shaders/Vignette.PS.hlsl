@@ -1,3 +1,4 @@
+// 役割: 画面周辺を減光するVignetteを合成するピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

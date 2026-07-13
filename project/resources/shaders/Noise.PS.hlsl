@@ -1,3 +1,4 @@
+// 役割: 時間変化するノイズを画面画像へ重ねるピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

@@ -1,3 +1,4 @@
+// 役割: 指定中心から放射状にぼかすピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

@@ -1,3 +1,4 @@
+// 役割: モデルインスタンスのTransform、材質、Animation状態、描画を管理する。
 #pragma once
 #include <cstdint>
 #include <string>
@@ -111,7 +112,6 @@ public: //公開メンバ関数
 		animationPoseDirty_ |= played;
 		return played;
 	}
-	void ResetAnimation();
 	void SetColor(const Vector4& color);
 	void SetEnableLighting(bool enableLighting);
 	void SetEmissive(float intensity, const Vector4& color = { 1.0f, 1.0f, 1.0f, 1.0f });
@@ -140,6 +140,7 @@ public: //公開メンバ関数
 	}
 	const Transform& GetTransform() const { return transform; }
 	Transform& GetTransform() { return transform; }
+	const Matrix4x4& GetWorldMatrix() const { return objectWorldMatrix_; }
 	bool HasAnimation() const;
 	bool IsAnimationEnabled() const { return animationPlayer_.IsEnabled(); }
 	bool IsAnimationPlaying() const { return animationPlayer_.IsPlaying(); }

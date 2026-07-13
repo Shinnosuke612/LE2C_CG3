@@ -1,3 +1,4 @@
+// 役割: 3次元座標と3次元ベクトルの値型を定義する。
 #pragma once
 struct Vector3 {
 	float x, y, z;

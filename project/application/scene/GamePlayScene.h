@@ -1,3 +1,4 @@
+// 役割: シーンデータを実行時オブジェクトへ反映し、ゲームプレイ中の更新と描画を管理する。
 #pragma once
 #include "../../engine/scene/BaseScene.h"
 #include <cstdint>
@@ -5,7 +6,6 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include "../../engine/audio/Audio.h"
 #include "../../engine/particle/ParticleEffectResource.h"
 #include "../../engine/particle/ParticleEffectEditor.h"
 #include "../../engine/3d/LightManager.h"
@@ -22,7 +22,6 @@
 #include "../../engine/3d/CameraPathRuntime.h"
 #include "../camera/ThirdPersonCameraController.h"
 
-class SpriteCommon;
 class Sprite;
 class Camera;
 class Object3d;
@@ -37,11 +36,6 @@ struct SceneComponent;
 class GamePlayScene : public BaseScene
 {
 private:
-	struct StageObject {
-		Object3d* object = nullptr;
-		OBBCollider collider;
-	};
-
 	struct SceneModelObject {
 		Object3d* object = nullptr;
 		std::string modelPath;
@@ -137,7 +131,7 @@ public: //メンバ関数
 	void Finalize() override;
 
 	//更新
-	void Update() override;
+	void Update(float deltaTime) override;
 	void UpdatePaused() override;
 
 	//描画
@@ -208,13 +202,8 @@ private:
 	bool ApplyPlayerCameraMouseLook(SceneDocument& document);
 	void ApplyPlayerCameraDissolve(const SceneDocument& document);
 
-	SpriteCommon* spriteCommon_ = nullptr;
 	Camera* camera_ = nullptr;
 	Camera* debugCamera_ = nullptr;
-	ParticleEmitter* emitter_ = nullptr;
-
-	Object3d* plane_ = nullptr;
-	Object3d* axis = nullptr;
 	bool showSkeletonDebug_ = false;
 	bool showCameraDebug_ = false;
 	bool showColliderDebug_ = false;
@@ -231,7 +220,6 @@ private:
 	ThirdPersonCameraController playerCameraController_;
 	bool playerCameraInitialized_ = false;
 	bool debugCameraInitialized_ = false;
-	std::vector<StageObject> stageObjects_;
 	std::unordered_map<uint64_t, SceneModelObject> sceneModelObjects_;
 	std::unordered_map<uint64_t, SceneSpriteObject> sceneSpriteObjects_;
 	std::unordered_map<uint64_t, MonitorRuntime> monitorRuntimes_;
@@ -242,9 +230,7 @@ private:
 	std::vector<Collider*> staticColliders_;
 	PhysicsWorld physicsWorld_;
 	CameraPathRuntime cameraPathRuntime_;
-	std::vector<Sprite*> sprites_;
-	Audio::SoundData soundData_{};
-	
+
 	ParticleEffectDesc editingEffect_{};
 	ParticleEmitter* editorPreviewEmitter_ = nullptr;
 	ParticleEffectEditor particleEffectEditor_;

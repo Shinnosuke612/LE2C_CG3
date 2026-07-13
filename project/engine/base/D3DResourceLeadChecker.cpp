@@ -1,3 +1,4 @@
+// 役割: D3D12リソースの参照数監視と診断出力を実装する。
 #include "D3DResourceLeadChecker.h"
 #include <dxgidebug.h>
 #include <d3d12.h>

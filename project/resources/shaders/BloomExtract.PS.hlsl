@@ -1,3 +1,4 @@
+// 役割: 明るい領域だけをBloom用に抽出するピクセルシェーダー。
 #include "Bloom.hlsli"
 
 PixelShaderOutput main(VertexShaderOutput input)

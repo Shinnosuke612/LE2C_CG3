@@ -1,3 +1,4 @@
+// 役割: ライト設定の初期化とGPU定数Buffer更新を実装する。
 #include "LightManager.h"
 
 #include "../base/DirectXCommon.h"

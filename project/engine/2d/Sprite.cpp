@@ -1,3 +1,4 @@
+// 役割: スプライトの頂点更新と描画コマンド設定を実装する。
 #include "Sprite.h"
 #include "SpriteCommon.h"
 #include "../base/DirectXCommon.h"

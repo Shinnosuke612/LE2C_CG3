@@ -1,3 +1,4 @@
+// 役割: XAudio2を使ったWAVデータの再生処理を実装する。
 #include "Audio.h"
 
 Audio* Audio::instance = nullptr;

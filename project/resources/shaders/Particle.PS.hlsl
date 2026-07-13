@@ -1,3 +1,4 @@
+// 役割: パーティクルテクスチャと頂点カラーを合成するピクセルシェーダー。
 #include "Particle.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

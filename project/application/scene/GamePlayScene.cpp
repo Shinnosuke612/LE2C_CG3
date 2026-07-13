@@ -1,9 +1,14 @@
+// 役割: シーン実行、物理、カメラ、水面、群れ、監視カメラの連携を実装する。
 #include "GamePlayScene.h"
 
 #include "TitleScene.h"
 #include "../../engine/scene/SceneManager.h"
 #include "../../engine/scene/EditorSession.h"
 #include "../../engine/scene/SceneDocument.h"
+#include "../../engine/scene/SceneEntityQuery.h"
+#include "../../engine/scene/SceneTransformResolver.h"
+#include "../../engine/agent/AgentSettingsResolver.h"
+#include "../../engine/agent/AgentSteering.h"
 
 #include "../../engine/base/DirectXCommon.h"
 #include "../../engine/base/RenderFormats.h"
@@ -37,7 +42,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -45,6 +49,30 @@
 #include <unordered_set>
 
 namespace {
+	using AgentSettingsResolver::ResolveAgentBehaviorSettings;
+	using AgentSettingsResolver::ResolveTeamLeaderSettings;
+	using AgentSteering::AddScaled;
+	using AgentSteering::BlendDirections;
+	using AgentSteering::BuildAgentVelocityRotation;
+	using AgentSteering::BuildFlockMemberJitterTarget;
+	using AgentSteering::BuildFlockRuntimeSeed;
+	using AgentSteering::BuildFlockWanderDirection;
+	using AgentSteering::ClampVectorLength;
+	using AgentSteering::FollowAmount;
+	using AgentSteering::ForwardDirectionFromRotation;
+	using AgentSteering::Hash01;
+	using AgentSteering::LerpVector;
+	using AgentSteering::MoveVectorToward;
+	using AgentSteering::RotateDirection;
+	using AgentSteering::RotateDirectionToward;
+	using AgentSteering::SafeNormalize;
+	using SceneEntityQuery::FindComponent;
+	using SceneEntityQuery::FindEnabledComponent;
+	using SceneEntityQuery::HasComponent;
+	using SceneEntityQuery::IsEntityActiveInHierarchy;
+	using SceneTransformResolver::ResolveScene2DTransform;
+	using SceneTransformResolver::ResolveScene3DTransform;
+
 	const SceneEntity* FindSceneEntity(
 		const SceneManager* sceneManager,
 		const char* name
@@ -62,40 +90,6 @@ namespace {
 	) {
 		const SceneEntity* entity = FindSceneEntity(sceneManager, name);
 		return entity ? entity->transform : fallback;
-	}
-
-	const SceneComponent* FindEnabledComponent(
-		const SceneEntity& entity,
-		const char* componentName
-	);
-
-	Transform ResolveScene3DTransform(
-		const SceneDocument& document,
-		const SceneEntity& entity
-	);
-
-	SceneComponent* FindComponent(
-		SceneEntity& entity,
-		const char* componentName
-	) {
-		const auto found = std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[componentName](const SceneComponent& component) {
-				return component.type == componentName;
-			}
-		);
-		return found == entity.components.end() ? nullptr : &(*found);
-	}
-
-	bool HasComponent(const SceneEntity& entity, const char* componentName) {
-		return std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[componentName](const SceneComponent& component) {
-				return component.enabled && component.type == componentName;
-			}
-		) != entity.components.end();
 	}
 
 	Object3dCommon::CullMode ToObjectCullMode(const std::string& cullMode) {
@@ -135,155 +129,12 @@ namespace {
 		return std::clamp(environmentDefault, 0.0f, 1.0f);
 	}
 
-	SceneComponent ResolveAgentBehaviorSettings(
-		const SceneDocument& document,
-		const SceneEntity& entity,
-		const SceneComponent& behavior
-	) {
-		SceneComponent resolved = behavior;
-		const SceneTeamSettings* team = document.ResolveEntityTeam(entity);
-		if (
-			!team ||
-			!team->agentBehaviorOverride ||
-			resolved.agentTeamSettingsOverride
-		) {
-			return resolved;
-		}
-
-		resolved.agentGroupName = team->agentGroupName.empty()
-			? team->name
-			: team->agentGroupName;
-		resolved.agentMinSpeed = team->agentMinSpeed;
-		resolved.agentMaxSpeed = team->agentMaxSpeed;
-		resolved.agentTurnSpeed = team->agentTurnSpeed;
-		resolved.agentWanderStrength = team->agentWanderStrength;
-		resolved.agentWanderChangeInterval = team->agentWanderChangeInterval;
-		resolved.agentWanderDirectionRange = team->agentWanderDirectionRange;
-		resolved.agentWanderVerticalRange = team->agentWanderVerticalRange;
-		resolved.agentRandomizeSeedOnPlay = team->agentRandomizeSeedOnPlay;
-		resolved.agentRandomSeed = team->agentRandomSeed;
-		resolved.agentFlockDecisionInterval = team->agentFlockDecisionInterval;
-		resolved.agentFlockAcceleration = team->agentFlockAcceleration;
-		resolved.agentFlockTurnRate = team->agentFlockTurnRate;
-		resolved.agentMemberCenterFollow = team->agentMemberCenterFollow;
-		resolved.agentMemberJitterStrength = team->agentMemberJitterStrength;
-		resolved.agentMemberJitterFrequency = team->agentMemberJitterFrequency;
-		resolved.agentMemberJitterUpdateInterval =
-			team->agentMemberJitterUpdateInterval;
-		resolved.agentMemberJitterFollowSpeed =
-			team->agentMemberJitterFollowSpeed;
-		resolved.agentMemberSpeedVariation = team->agentMemberSpeedVariation;
-		resolved.agentMemberLeashDistance = team->agentMemberLeashDistance;
-		resolved.agentMemberLeashStrength = team->agentMemberLeashStrength;
-		resolved.agentMemberCatchupSpeed = team->agentMemberCatchupSpeed;
-		resolved.agentMemberSeparationUpdateInterval =
-			team->agentMemberSeparationUpdateInterval;
-		resolved.agentMemberSeparationBlend = team->agentMemberSeparationBlend;
-		resolved.agentUseTeamHeading = team->agentUseTeamHeading;
-		resolved.agentTeamHeadingFromAverage =
-			team->agentTeamHeadingFromAverage;
-		resolved.agentTeamHeadingDirection =
-			team->agentTeamHeadingDirection;
-		resolved.agentTeamHeadingWeight = team->agentTeamHeadingWeight;
-		resolved.agentTeamHeadingFollowSpeed =
-			team->agentTeamHeadingFollowSpeed;
-		resolved.agentUseTeamRotation = team->agentUseTeamRotation;
-		resolved.agentTeamRotationWeight = team->agentTeamRotationWeight;
-		resolved.agentTeamRotationFollowSpeed =
-			team->agentTeamRotationFollowSpeed;
-		resolved.agentAlignForwardToVelocity =
-			team->agentAlignForwardToVelocity;
-		resolved.agentForwardAxis = team->agentForwardAxis;
-		resolved.agentRotateAxisX = team->agentRotateAxisX;
-		resolved.agentRotateAxisY = team->agentRotateAxisY;
-		resolved.agentRotateAxisZ = team->agentRotateAxisZ;
-		resolved.agentRotationFollowSpeed = team->agentRotationFollowSpeed;
-		resolved.agentPitchFromVerticalVelocity =
-			team->agentPitchFromVerticalVelocity;
-		resolved.agentBankingStrength = team->agentBankingStrength;
-		resolved.agentSchooling = team->agentSchooling;
-		resolved.agentSchoolingUpdateInterval =
-			team->agentSchoolingUpdateInterval;
-		resolved.agentSchoolingUpdateJitter =
-			team->agentSchoolingUpdateJitter;
-		resolved.agentNeighborLimit = team->agentNeighborLimit;
-		resolved.agentSchoolingBlend = team->agentSchoolingBlend;
-		resolved.agentSeparationRadius = team->agentSeparationRadius;
-		resolved.agentAlignmentRadius = team->agentAlignmentRadius;
-		resolved.agentCohesionRadius = team->agentCohesionRadius;
-		resolved.agentSeparationWeight = team->agentSeparationWeight;
-		resolved.agentAlignmentWeight = team->agentAlignmentWeight;
-		resolved.agentCohesionWeight = team->agentCohesionWeight;
-		resolved.agentVisualColor = team->agentVisualColor;
-		resolved.agentEnableLighting = team->agentEnableLighting;
-		return resolved;
-	}
-
-	SceneComponent ResolveTeamLeaderSettings(
-		const SceneDocument& document,
-		const SceneEntity& entity,
-		const SceneComponent& behavior
-	) {
-		SceneComponent resolved = behavior;
-		const SceneTeamSettings* team = document.ResolveEntityTeam(entity);
-		if (!team) {
-			return resolved;
-		}
-		resolved.agentMinSpeed = team->agentMinSpeed;
-		resolved.agentMaxSpeed = team->agentMaxSpeed;
-		resolved.agentWanderStrength = team->agentWanderStrength;
-		resolved.agentWanderChangeInterval = team->agentWanderChangeInterval;
-		resolved.agentWanderDirectionRange = team->agentWanderDirectionRange;
-		resolved.agentWanderVerticalRange = team->agentWanderVerticalRange;
-		resolved.agentRandomizeSeedOnPlay = team->agentRandomizeSeedOnPlay;
-		resolved.agentRandomSeed = team->agentRandomSeed;
-		resolved.agentFlockDecisionInterval = team->agentFlockDecisionInterval;
-		resolved.agentFlockAcceleration = team->agentFlockAcceleration;
-		resolved.agentFlockTurnRate = team->agentFlockTurnRate;
-		resolved.agentUseTeamHeading = team->agentUseTeamHeading;
-		resolved.agentTeamHeadingDirection = team->agentTeamHeadingDirection;
-		resolved.agentTeamHeadingWeight = team->agentTeamHeadingWeight;
-		resolved.agentForwardAxis = team->agentForwardAxis;
-		return resolved;
-	}
-
-	const SceneComponent* FindEnabledComponent(
-		const SceneEntity& entity,
-		const char* componentName
-	) {
-		const auto found = std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[componentName](const SceneComponent& component) {
-				return component.enabled && component.type == componentName;
-			}
-		);
-		return found == entity.components.end() ? nullptr : &(*found);
-	}
-
 	bool IsSceneEntityActive(
 		const SceneManager* sceneManager,
 		const char* name
 	) {
 		const SceneEntity* entity = FindSceneEntity(sceneManager, name);
 		return !entity || entity->active;
-	}
-
-	bool IsEntityActiveInHierarchy(
-		const SceneDocument& document,
-		const SceneEntity& entity
-	) {
-		if (!entity.active) {
-			return false;
-		}
-		const SceneEntity* parent = document.FindEntity(entity.parentId);
-		while (parent) {
-			if (!parent->active) {
-				return false;
-			}
-			parent = document.FindEntity(parent->parentId);
-		}
-		return true;
 	}
 
 	bool ResolveMonitorTargetCamera(
@@ -408,86 +259,6 @@ namespace {
 		));
 	}
 
-	Transform ResolveScene2DTransform(
-		const SceneDocument& document,
-		const SceneEntity& entity,
-		std::unordered_set<uint64_t>& visited
-	) {
-		Transform result = entity.transform;
-		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
-			return result;
-		}
-		const SceneEntity* parent = document.FindEntity(entity.parentId);
-		if (!parent) {
-			return result;
-		}
-		const Transform parentTransform = ResolveScene2DTransform(
-			document,
-			*parent,
-			visited
-		);
-		const float scaledX = result.translate.x * parentTransform.scale.x;
-		const float scaledY = result.translate.y * parentTransform.scale.y;
-		const float cosine = std::cos(parentTransform.rotate.z);
-		const float sine = std::sin(parentTransform.rotate.z);
-		result.translate.x = parentTransform.translate.x + scaledX * cosine - scaledY * sine;
-		result.translate.y = parentTransform.translate.y + scaledX * sine + scaledY * cosine;
-		result.rotate.z += parentTransform.rotate.z;
-		result.scale.x *= parentTransform.scale.x;
-		result.scale.y *= parentTransform.scale.y;
-		return result;
-	}
-
-	Transform ResolveScene2DTransform(
-		const SceneDocument& document,
-		const SceneEntity& entity
-	) {
-		std::unordered_set<uint64_t> visited;
-		return ResolveScene2DTransform(document, entity, visited);
-	}
-
-	Matrix4x4 ResolveSceneWorldMatrix(
-		const SceneDocument& document,
-		const SceneEntity& entity,
-		std::unordered_set<uint64_t>& visited
-	) {
-		const Matrix4x4 local = MakeAffineMatrix(
-			entity.transform.scale,
-			entity.transform.rotate,
-			entity.transform.translate
-		);
-		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
-			return local;
-		}
-		const SceneEntity* parent = document.FindEntity(entity.parentId);
-		if (!parent) {
-			return local;
-		}
-		return Multiply(
-			local,
-			ResolveSceneWorldMatrix(document, *parent, visited)
-		);
-	}
-
-	Transform ResolveScene3DTransform(
-		const SceneDocument& document,
-		const SceneEntity& entity
-	) {
-		std::unordered_set<uint64_t> visited;
-		const Matrix4x4 world =
-			ResolveSceneWorldMatrix(document, entity, visited);
-		Transform result = entity.transform;
-		Vector3 scale{};
-		Vector3 rotate{};
-		Vector3 translate{};
-		if (DecomposeAffineMatrix(world, scale, rotate, translate)) {
-			result.scale = scale;
-			result.rotate = rotate;
-			result.translate = translate;
-		}
-		return result;
-	}
-
 	bool IsPointInsideWaterVolume(
 		const SceneDocument& document,
 		const SceneEntity& entity,
@@ -576,332 +347,6 @@ namespace {
 		float radius = 0.0f;
 		float strength = 0.0f;
 	};
-
-	float Hash01(uint64_t id, uint32_t salt) {
-		uint64_t value = id + 0x9E3779B97F4A7C15ull + salt;
-		value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ull;
-		value = (value ^ (value >> 27)) * 0x94D049BB133111EBull;
-		value = value ^ (value >> 31);
-		return static_cast<float>(value & 0x00FFFFFFu) /
-			static_cast<float>(0x00FFFFFFu);
-	}
-
-	uint64_t BuildFlockRuntimeSeed(
-		uint64_t stableId,
-		int configuredSeed,
-		bool randomizeOnPlay
-	) {
-		uint64_t seed = stableId ^
-			(static_cast<uint64_t>((std::max)(configuredSeed, 0)) << 32);
-		if (!randomizeOnPlay) {
-			return seed;
-		}
-		static uint64_t sequence = 0;
-		const uint64_t ticks = static_cast<uint64_t>(
-			std::chrono::high_resolution_clock::now().time_since_epoch().count()
-		);
-		return seed ^ ticks ^ (++sequence * 0x9E3779B97F4A7C15ull);
-	}
-
-	Vector3 AddScaled(Vector3 base, const Vector3& value, float scale) {
-		base.x += value.x * scale;
-		base.y += value.y * scale;
-		base.z += value.z * scale;
-		return base;
-	}
-
-	Vector3 LerpVector(const Vector3& a, const Vector3& b, float t) {
-		return {
-			a.x + (b.x - a.x) * t,
-			a.y + (b.y - a.y) * t,
-			a.z + (b.z - a.z) * t
-		};
-	}
-
-	Vector3 SafeNormalize(const Vector3& value, const Vector3& fallback) {
-		return Math::Length(value) > 0.000001f
-			? Math::Normalize(value)
-			: fallback;
-	}
-
-	Vector3 BuildFlockWanderDirection(
-		const Vector3& currentHeading,
-		uint64_t seedId,
-		uint32_t step,
-		float directionRange,
-		float verticalRange
-	) {
-		const Vector3 heading = SafeNormalize(
-			currentHeading,
-			{ 0.0f, 0.0f, 1.0f }
-		);
-		const float yaw = std::atan2(heading.x, heading.z);
-		const float yawOffset =
-			(Hash01(seedId, 307u + step * 3u) * 2.0f - 1.0f) *
-			directionRange;
-		const float vertical =
-			(Hash01(seedId, 311u + step * 3u) * 2.0f - 1.0f) *
-			verticalRange;
-		return SafeNormalize(
-			{
-				std::sin(yaw + yawOffset),
-				vertical,
-				std::cos(yaw + yawOffset)
-			},
-			heading
-		);
-	}
-
-	Vector3 BuildFlockMemberJitterTarget(
-		uint64_t entityId,
-		uint64_t teamSeed,
-		uint32_t step,
-		float strength
-	) {
-		const uint64_t seed = entityId ^ teamSeed;
-		const uint32_t salt = 601u + step * 5u;
-		return {
-			(Hash01(seed, salt) * 2.0f - 1.0f) * strength,
-			(Hash01(seed, salt + 1u) * 2.0f - 1.0f) * strength * 0.45f,
-			(Hash01(seed, salt + 2u) * 2.0f - 1.0f) * strength
-		};
-	}
-
-	float FollowAmount(float followSpeed, float deltaTime) {
-		if (followSpeed <= 0.0f || deltaTime <= 0.0f) {
-			return 0.0f;
-		}
-		return std::clamp(
-			1.0f - std::exp(-followSpeed * deltaTime),
-			0.0f,
-			1.0f
-		);
-	}
-
-	Vector3 BlendDirections(
-		const Vector3& from,
-		const Vector3& to,
-		float amount,
-		const Vector3& fallback
-	) {
-		const float blend = std::clamp(amount, 0.0f, 1.0f);
-		const Vector3 fromDirection = SafeNormalize(from, fallback);
-		const Vector3 toDirection = SafeNormalize(to, fromDirection);
-		return SafeNormalize(
-			LerpVector(fromDirection, toDirection, blend),
-			blend < 0.5f ? fromDirection : toDirection
-		);
-	}
-
-	Vector3 ClampVectorLength(const Vector3& value, float maximumLength) {
-		const float length = Math::Length(value);
-		if (maximumLength <= 0.0f || length <= maximumLength) {
-			return maximumLength <= 0.0f ? Vector3{} : value;
-		}
-		return Math::Multiply(value, maximumLength / length);
-	}
-
-	Vector3 MoveVectorToward(
-		const Vector3& current,
-		const Vector3& target,
-		float maximumDelta
-	) {
-		if (maximumDelta <= 0.0f) {
-			return current;
-		}
-		const Vector3 delta = Math::Subtract(target, current);
-		return Math::Add(current, ClampVectorLength(delta, maximumDelta));
-	}
-
-	Vector3 RotateDirectionToward(
-		const Vector3& current,
-		const Vector3& target,
-		float maximumRadians,
-		const Vector3& fallback
-	) {
-		const Vector3 currentDirection = SafeNormalize(current, fallback);
-		const Vector3 targetDirection = SafeNormalize(target, currentDirection);
-		if (maximumRadians <= 0.0f) {
-			return currentDirection;
-		}
-		const float dot = std::clamp(
-			currentDirection.x * targetDirection.x +
-				currentDirection.y * targetDirection.y +
-				currentDirection.z * targetDirection.z,
-			-1.0f,
-			1.0f
-		);
-		const float angle = std::acos(dot);
-		if (angle <= maximumRadians || angle <= 0.0001f) {
-			return targetDirection;
-		}
-		return BlendDirections(
-			currentDirection,
-			targetDirection,
-			maximumRadians / angle,
-			currentDirection
-		);
-	}
-
-	void ApplyForwardAxisOffset(Vector3& rotate, const std::string& axis) {
-		constexpr float halfPi = 1.57079632679f;
-		constexpr float pi = 3.14159265359f;
-		if (axis == "-Z") {
-			rotate.y += pi;
-		} else if (axis == "+X") {
-			rotate.y -= halfPi;
-		} else if (axis == "-X") {
-			rotate.y += halfPi;
-		} else if (axis == "+Y") {
-			rotate.x += halfPi;
-		} else if (axis == "-Y") {
-			rotate.x -= halfPi;
-		}
-	}
-
-	Vector3 ResolveForwardAxisVector(const std::string& axis) {
-		if (axis == "-Z") {
-			return { 0.0f, 0.0f, -1.0f };
-		}
-		if (axis == "+X") {
-			return { 1.0f, 0.0f, 0.0f };
-		}
-		if (axis == "-X") {
-			return { -1.0f, 0.0f, 0.0f };
-		}
-		if (axis == "+Y") {
-			return { 0.0f, 1.0f, 0.0f };
-		}
-		if (axis == "-Y") {
-			return { 0.0f, -1.0f, 0.0f };
-		}
-		return { 0.0f, 0.0f, 1.0f };
-	}
-
-	Vector3 RotateDirection(const Vector3& direction, const Vector3& rotate) {
-		const Matrix4x4 matrix = MakeAffineMatrix(
-			{ 1.0f, 1.0f, 1.0f },
-			rotate,
-			{ 0.0f, 0.0f, 0.0f }
-		);
-		return {
-			direction.x * matrix.m[0][0] +
-				direction.y * matrix.m[1][0] +
-				direction.z * matrix.m[2][0],
-			direction.x * matrix.m[0][1] +
-				direction.y * matrix.m[1][1] +
-				direction.z * matrix.m[2][1],
-			direction.x * matrix.m[0][2] +
-				direction.y * matrix.m[1][2] +
-				direction.z * matrix.m[2][2]
-		};
-	}
-
-	Vector3 ForwardDirectionFromRotation(
-		const Vector3& rotate,
-		const std::string& forwardAxis,
-		const Vector3& fallback
-	) {
-		return SafeNormalize(
-			RotateDirection(ResolveForwardAxisVector(forwardAxis), rotate),
-			fallback
-		);
-	}
-
-	Vector3 BuildAgentVelocityRotation(
-		const SceneComponent& behavior,
-		const Vector3& currentRotate,
-		const Vector3& velocity,
-		const Vector3& desiredDirection,
-		float deltaTime,
-		float rotationFollowSpeed
-	) {
-		Vector3 target = currentRotate;
-		if (!behavior.agentAlignForwardToVelocity) {
-			return target;
-		}
-
-		if (Math::Length(velocity) <= 0.0001f) {
-			return target;
-		}
-		const float horizontalLength = std::sqrt(
-			velocity.x * velocity.x +
-			velocity.z * velocity.z
-		);
-
-		Vector3 velocityRotate = currentRotate;
-		if (horizontalLength > 0.0001f) {
-			velocityRotate.y = std::atan2(velocity.x, velocity.z);
-		}
-		velocityRotate.x = std::clamp(
-			-std::atan2(velocity.y, horizontalLength) *
-				behavior.agentPitchFromVerticalVelocity,
-			-1.45f,
-			1.45f
-		);
-		const Vector3 velocityDirection =
-			SafeNormalize(velocity, { 0.0f, 0.0f, 1.0f });
-		const float turnSign =
-			velocityDirection.x * desiredDirection.z -
-			velocityDirection.z * desiredDirection.x;
-		velocityRotate.z = std::clamp(
-			-turnSign * behavior.agentBankingStrength,
-			-1.35f,
-			1.35f
-		);
-		ApplyForwardAxisOffset(velocityRotate, behavior.agentForwardAxis);
-
-		const float rotationLerp = std::clamp(
-			FollowAmount(rotationFollowSpeed, deltaTime),
-			0.0f,
-			1.0f
-		);
-		if (behavior.agentRotateAxisX) {
-			target.x = Math::NormalizeAngle(
-				Math::LerpAngle(
-					currentRotate.x,
-					velocityRotate.x,
-					rotationLerp
-				)
-			);
-		}
-		if (behavior.agentRotateAxisY) {
-			target.y = Math::NormalizeAngle(
-				Math::LerpAngle(
-					currentRotate.y,
-					velocityRotate.y,
-					rotationLerp
-				)
-			);
-		}
-		if (behavior.agentRotateAxisZ) {
-			target.z = Math::NormalizeAngle(
-				Math::LerpAngle(
-					currentRotate.z,
-					velocityRotate.z,
-					rotationLerp
-				)
-			);
-		}
-		return target;
-	}
-
-	Vector3 BuildAgentVelocityRotation(
-		const SceneComponent& behavior,
-		const Vector3& currentRotate,
-		const Vector3& velocity,
-		const Vector3& desiredDirection,
-		float deltaTime
-	) {
-		return BuildAgentVelocityRotation(
-			behavior,
-			currentRotate,
-			velocity,
-			desiredDirection,
-			deltaTime,
-			behavior.agentRotationFollowSpeed
-		);
-	}
 
 	std::string ResolveAgentTeamRuntimeKey(
 		const SceneDocument& document,
@@ -1524,8 +969,8 @@ void GamePlayScene::SyncSceneModelObjects(float deltaTime) {
 			Collider* runtimeCollider = obbCollider->colliderShape == "Sphere"
 				? static_cast<Collider*>(&found->second.sphereCollider)
 				: static_cast<Collider*>(&found->second.boxCollider);
-			runtimeCollider->SetWorldTransform(
-				&found->second.object->GetTransform()
+			runtimeCollider->SetWorldMatrix(
+				&found->second.object->GetWorldMatrix()
 			);
 			runtimeCollider->SetOffset(obbCollider->colliderOffset);
 			if (obbCollider->colliderShape == "Sphere") {
@@ -1535,15 +980,15 @@ void GamePlayScene::SyncSceneModelObjects(float deltaTime) {
 			} else {
 				found->second.boxCollider.SetHalfSize({
 					(std::max)(
-						entity.transform.scale.x * obbCollider->colliderSizeMultiplier.x,
+						std::abs(obbCollider->colliderSizeMultiplier.x),
 						0.001f
 					),
 					(std::max)(
-						entity.transform.scale.y * obbCollider->colliderSizeMultiplier.y,
+						std::abs(obbCollider->colliderSizeMultiplier.y),
 						0.001f
 					),
 					(std::max)(
-						entity.transform.scale.z * obbCollider->colliderSizeMultiplier.z,
+						std::abs(obbCollider->colliderSizeMultiplier.z),
 						0.001f
 					)
 				});
@@ -1570,6 +1015,13 @@ void GamePlayScene::SyncSceneModelObjects(float deltaTime) {
 				ToPhysicsBodyType(physicsBody->physicsBodyType);
 			found->second.physicsBody.transform =
 				&found->second.object->GetTransform();
+			found->second.physicsBody.syncTransform = [
+				object = found->second.object
+			]() {
+				if (object) {
+					object->Update();
+				}
+			};
 			found->second.physicsBody.collider = found->second.collider;
 			found->second.physicsBody.mass =
 				(std::max)(physicsBody->physicsMass, 0.001f);
@@ -1598,6 +1050,8 @@ void GamePlayScene::SyncSceneModelObjects(float deltaTime) {
 				physicsBody->physicsFreezePositionY;
 			found->second.physicsBody.freezePositionZ =
 				physicsBody->physicsFreezePositionZ;
+		} else {
+			found->second.physicsBody.syncTransform = {};
 		}
 	}
 
@@ -1868,153 +1322,6 @@ Object3d* GamePlayScene::FindSceneModelObjectByName(const char* name) const {
 	return found == sceneModelObjects_.end() ? nullptr : found->second.object;
 }
 
-#if defined(_DEBUG) || defined(DEVELOPMENT)
-void GamePlayScene::DrawAnimationControls(const SceneDocument& document) {
-	ImGui::SeparatorText("Animation");
-	std::vector<const SceneEntity*> animatorEntities;
-	for (const SceneEntity& entity : document.GetEntities()) {
-		if (FindEnabledComponent(entity, "Animator")) {
-			animatorEntities.push_back(&entity);
-		}
-	}
-
-	if (animatorEntities.empty()) {
-		animationControlEntityId_ = 0;
-		ImGui::TextDisabled("No enabled Animator components");
-		return;
-	}
-
-	auto selected = std::find_if(
-		animatorEntities.begin(),
-		animatorEntities.end(),
-		[this](const SceneEntity* entity) {
-			return entity->id == animationControlEntityId_;
-		}
-	);
-	if (selected == animatorEntities.end()) {
-		selected = animatorEntities.begin();
-		animationControlEntityId_ = (*selected)->id;
-		const auto runtime = sceneModelObjects_.find(animationControlEntityId_);
-		if (runtime != sceneModelObjects_.end()) {
-			animationControlTransitionDuration_ =
-				runtime->second.animatorTransitionDuration;
-		}
-	}
-
-	const SceneEntity* selectedEntity = *selected;
-	if (ImGui::BeginCombo("Animator Entity", selectedEntity->name.c_str())) {
-		for (const SceneEntity* entity : animatorEntities) {
-			const std::string itemLabel = entity->name + "##" +
-				std::to_string(entity->id);
-			if (ImGui::Selectable(
-				itemLabel.c_str(),
-				entity->id == animationControlEntityId_
-			)) {
-				animationControlEntityId_ = entity->id;
-				selectedEntity = entity;
-				const auto runtime = sceneModelObjects_.find(entity->id);
-				if (runtime != sceneModelObjects_.end()) {
-					animationControlTransitionDuration_ =
-						runtime->second.animatorTransitionDuration;
-				}
-			}
-		}
-		ImGui::EndCombo();
-	}
-
-	const auto runtime = sceneModelObjects_.find(animationControlEntityId_);
-	if (
-		runtime == sceneModelObjects_.end() ||
-		!runtime->second.object ||
-		!runtime->second.object->HasAnimation()
-	) {
-		ImGui::TextDisabled("The selected model has no animation clips");
-		return;
-	}
-
-	Object3d* object = runtime->second.object;
-	size_t currentClip = object->GetAnimationClipIndex();
-	std::string currentClipName = object->GetAnimationClipName(currentClip);
-	if (currentClipName.empty()) {
-		currentClipName = "Clip " + std::to_string(currentClip);
-	}
-	if (ImGui::BeginCombo("Clip", currentClipName.c_str())) {
-		for (size_t index = 0; index < object->GetAnimationClipCount(); ++index) {
-			std::string clipName = object->GetAnimationClipName(index);
-			if (clipName.empty()) {
-				clipName = "Clip " + std::to_string(index);
-			}
-			const std::string itemLabel = clipName + "##" +
-				std::to_string(index);
-			if (ImGui::Selectable(itemLabel.c_str(), index == currentClip)) {
-				if (object->PlayAnimation(
-					index,
-					animationControlTransitionDuration_,
-					true
-				)) {
-					currentClip = index;
-				}
-			}
-		}
-		ImGui::EndCombo();
-	}
-
-	bool playing = object->IsAnimationPlaying();
-	if (ImGui::Checkbox("Playing", &playing)) {
-		object->SetAnimationPlaying(playing);
-	}
-	bool looping = object->IsAnimationLooping();
-	if (ImGui::Checkbox("Loop", &looping)) {
-		object->SetAnimationLoop(looping);
-	}
-	float speed = object->GetAnimationSpeed();
-	if (ImGui::DragFloat("Speed", &speed, 0.01f, -8.0f, 8.0f)) {
-		object->SetAnimationSpeed(speed);
-	}
-	ImGui::DragFloat(
-		"Transition Duration",
-		&animationControlTransitionDuration_,
-		0.01f,
-		0.0f,
-		10.0f
-	);
-	animationControlTransitionDuration_ = (std::max)(
-		animationControlTransitionDuration_,
-		0.0f
-	);
-
-	const char* blendCurve =
-		object->GetAnimationBlendCurve() == AnimationBlendCurve::Linear
-		? "Linear"
-		: "SmoothStep";
-	if (ImGui::BeginCombo("Blend Curve", blendCurve)) {
-		for (const char* candidate : { "Linear", "SmoothStep" }) {
-			if (ImGui::Selectable(candidate, std::strcmp(candidate, blendCurve) == 0)) {
-				object->SetAnimationBlendCurve(
-					std::strcmp(candidate, "Linear") == 0
-					? AnimationBlendCurve::Linear
-					: AnimationBlendCurve::SmoothStep
-				);
-			}
-		}
-		ImGui::EndCombo();
-	}
-
-	float time = object->GetAnimationTime();
-	const float duration = object->GetAnimationDuration();
-	if (ImGui::SliderFloat("Time", &time, 0.0f, duration)) {
-		object->SetAnimationTime(time);
-	}
-	if (ImGui::Button("Restart")) {
-		object->PlayAnimation(currentClip, 0.0f, true);
-	}
-	if (object->IsAnimationTransitioning()) {
-		ImGui::SameLine();
-		ImGui::Text("Blend %.0f%%", object->GetAnimationBlendWeight() * 100.0f);
-	}
-}
-#endif
-
 void GamePlayScene::ApplyPlayerBehaviorComponent(
 	const SceneDocument& document
 ) {
@@ -2074,6 +1381,11 @@ void GamePlayScene::ApplyPlayerPhysicsComponent(
 		body.type = PhysicsBodyType::Dynamic;
 	}
 	body.transform = &player_->GetObject()->GetTransform();
+	body.syncTransform = [object = player_->GetObject()]() {
+		if (object) {
+			object->Update();
+		}
+	};
 	body.mass = (std::max)(physicsBody->physicsMass, 0.001f);
 	body.useGravity = physicsBody->physicsUseGravity;
 	body.gravityScale = physicsBody->physicsGravityScale;
@@ -2161,6 +1473,7 @@ void GamePlayScene::UpdateAgentBehaviors(
 		return;
 	}
 
+	// 実行対象だけを収集し、削除済みEntityのランタイム状態を後段で破棄する。
 	std::vector<AgentUpdateEntry> agents;
 	std::unordered_set<uint64_t> requiredIds;
 	for (SceneEntity& entity : document.GetEntities()) {
@@ -2233,6 +1546,7 @@ void GamePlayScene::UpdateAgentBehaviors(
 
 	std::unordered_map<std::string, TeamFrameState> teamFrames;
 	std::unordered_set<std::string> requiredTeamKeys;
+	// 群れの仮想リーダーは個体更新より先に決定し、同じフレームの共通基準にする。
 	for (const AgentUpdateEntry& agent : agents) {
 		if (agent.teamKey.empty()) {
 			continue;
@@ -2436,6 +1750,7 @@ void GamePlayScene::UpdateAgentBehaviors(
 		);
 	}
 
+	// 個体は毎フレーム追従と逸脱補正を行い、Jitterは更新間隔ごとに目標だけを変更する。
 	for (AgentUpdateEntry& agent : agents) {
 		const SceneComponent& behavior = agent.behavior;
 		AgentRuntime& runtime = *agent.runtime;
@@ -3118,11 +2433,6 @@ bool GamePlayScene::ApplyPlayerCameraMouseLook(SceneDocument& document) {
 			}
 		}
 	}
-	for (StageObject& stageObject : stageObjects_) {
-		if (stageObject.object) {
-			cameraObstacles.push_back(&stageObject.collider);
-		}
-	}
 	playerCameraController_.Update(
 		player_->GetPosition(),
 		cameraObstacles,
@@ -3257,22 +2567,11 @@ void GamePlayScene::SyncMonitorRenderers() {
 
 void GamePlayScene::ApplyRenderCamera(Camera* viewCamera) {
 	Object3dCommon::GetInstance()->SetDefaultCamera(viewCamera);
-	for (StageObject& stageObject : stageObjects_) {
-		if (stageObject.object) {
-			stageObject.object->UpdateForCamera(viewCamera);
-		}
-	}
 	for (auto& [entityId, sceneObject] : sceneModelObjects_) {
 		(void)entityId;
 		if (sceneObject.object) {
 			sceneObject.object->UpdateForCamera(viewCamera);
 		}
-	}
-	if (plane_) {
-		plane_->UpdateForCamera(viewCamera);
-	}
-	if (axis) {
-		axis->UpdateForCamera(viewCamera);
 	}
 	if (skybox_) {
 		skybox_->SetCamera(viewCamera);
@@ -3881,12 +3180,6 @@ void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 		);
 	}
 
-	if (plane_) {
-		plane_->Draw();
-	}
-	if (axis) {
-		axis->Draw();
-	}
 	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
 		const bool hidePlayerModel =
 			ShouldHidePlayerModelForCamera(viewCamera);
@@ -3903,11 +3196,6 @@ void GamePlayScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 			if (found != sceneModelObjects_.end() && found->second.object) {
 				found->second.object->Draw();
 			}
-		}
-	}
-	for (StageObject& stageObject : stageObjects_) {
-		if (stageObject.object) {
-			stageObject.object->Draw();
 		}
 	}
 	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument();
@@ -4090,7 +3378,8 @@ void GamePlayScene::RebuildStaticColliders() {
 			const auto found = sceneModelObjects_.find(entity.id);
 			if (
 				found != sceneModelObjects_.end() &&
-				found->second.hasCollider
+				found->second.hasCollider &&
+				!found->second.hasPhysicsBody
 			) {
 				if (found->second.collider) {
 					staticColliders_.push_back(found->second.collider);
@@ -4098,128 +3387,6 @@ void GamePlayScene::RebuildStaticColliders() {
 			}
 		}
 	}
-	for (StageObject& stageObject : stageObjects_) {
-		if (stageObject.object) {
-			staticColliders_.push_back(&stageObject.collider);
-		}
-	}
-}
-
-void GamePlayScene::DrawColliderDebug() const {
-	constexpr Vector4 kStaticColliderColor = { 0.2f, 0.95f, 0.7f, 1.0f };
-	DebugRenderer* debugRenderer = DebugRenderer::GetInstance();
-	auto drawCollider = [debugRenderer](
-		const Collider* collider,
-		const Vector4& color,
-		const std::string& mode,
-		uint32_t segments
-	) {
-		if (!collider) {
-			return;
-		}
-		const bool drawWire = mode != "Solid";
-		const bool drawSolid = mode != "Wireframe";
-		Vector4 solidColor = color;
-		solidColor.w = (std::min)(solidColor.w, 0.25f);
-		if (collider->GetType() == Collider::Type::Sphere) {
-			const auto& sphere = static_cast<const SphereCollider&>(*collider);
-			if (drawSolid) {
-				debugRenderer->AddSolidSphere(
-					sphere.GetWorldCenter(), sphere.GetRadius(), solidColor, segments
-				);
-			}
-			if (drawWire) {
-				debugRenderer->AddSphere(
-					sphere.GetWorldCenter(), sphere.GetRadius(), color, segments
-				);
-			}
-			return;
-		}
-		const auto& box = static_cast<const OBBCollider&>(*collider);
-		const OBBCollider::OBB obb = box.GetOBB();
-		if (drawSolid) {
-			debugRenderer->AddSolidOBB(
-				obb.center, obb.axis, obb.halfSize, solidColor
-			);
-		}
-		if (drawWire) {
-			debugRenderer->AddOBB(obb.center, obb.axis, obb.halfSize, color);
-		}
-	};
-	SceneDocument* document = sceneManager_
-		? sceneManager_->GetActiveSceneDocument()
-		: nullptr;
-	if (document) {
-		for (const SceneEntity& entity : document->GetEntities()) {
-			const auto found = sceneModelObjects_.find(entity.id);
-			if (
-				found != sceneModelObjects_.end() &&
-				found->second.hasCollider &&
-				IsEntityActiveInHierarchy(*document, entity) &&
-				found->second.colliderDebugVisible
-			) {
-				drawCollider(
-					found->second.collider,
-					found->second.colliderDebugColor,
-					found->second.colliderDebugDrawMode,
-					found->second.colliderDebugSegments
-				);
-			}
-		}
-	}
-	for (const StageObject& stageObject : stageObjects_) {
-		if (stageObject.object) {
-			drawCollider(
-				&stageObject.collider,
-				kStaticColliderColor,
-				"Wireframe",
-				12
-			);
-		}
-	}
-}
-
-void GamePlayScene::LoadSceneDebugSettings() {
-	const SceneDocument* document = sceneManager_
-		? sceneManager_->GetActiveSceneDocument()
-		: nullptr;
-	if (!document) {
-		return;
-	}
-
-	const SceneDebugSettings& settings = document->GetDebugSettings();
-	showCameraDebug_ = settings.showCameraDirection;
-	showColliderDebug_ = settings.showColliders;
-	showCameraPathDebug_ = settings.showCameraPath;
-	showCameraPathPointCameraDebug_ =
-		settings.showCameraPathPointCameraDirection;
-	showSkeletonDebug_ = settings.showSkeleton;
-	showJointNames_ = settings.showJointNames;
-	showJointAxes_ = settings.showJointAxes;
-	jointRadius_ = settings.jointRadius;
-	jointAxisLength_ = settings.jointAxisLength;
-}
-
-void GamePlayScene::SaveSceneDebugSettings() {
-	SceneDocument* document = sceneManager_
-		? sceneManager_->GetActiveSceneDocument()
-		: nullptr;
-	if (!document) {
-		return;
-	}
-
-	SceneDebugSettings settings = document->GetDebugSettings();
-	settings.showCameraDirection = showCameraDebug_;
-	settings.showColliders = showColliderDebug_;
-	settings.showCameraPath = showCameraPathDebug_;
-	settings.showCameraPathPointCameraDirection =
-		showCameraPathPointCameraDebug_;
-	settings.showSkeleton = showSkeletonDebug_;
-	settings.showJointNames = showJointNames_;
-	settings.showJointAxes = showJointAxes_;
-	settings.jointRadius = jointRadius_;
-	settings.jointAxisLength = jointAxisLength_;
-	document->SetDebugSettings(settings);
 }
 
 void GamePlayScene::Initialize()
@@ -4247,10 +3414,6 @@ void GamePlayScene::Initialize()
 	particleManager->ClearGpuParticles();
 	TextureManager::GetInstance()->LoadTexture("resources/monsterBall.png");
 	TextureManager::GetInstance()->LoadTexture("resources/uvChecker.png");
-	ModelManager::GetInstance()->LoadModel("terrain.obj");
-	ModelManager::GetInstance()->LoadModel("Cube.obj");
-	ModelManager::GetInstance()->LoadModel("AnimatedCube/AnimatedCube.gltf");
-	ModelManager::GetInstance()->LoadModel("human/walk.gltf");
 	if (SceneDocument* document = sceneManager_
 		? sceneManager_->GetActiveSceneDocument()
 		: nullptr) {
@@ -4265,15 +3428,6 @@ void GamePlayScene::Initialize()
 			}
 		}
 	}
-
-	ParticleEffectDesc gameplayEffect{};
-
-	/*if (ParticleEffectResource::Load(
-		"resources/particles/fairyParticle.json",
-		gameplayEffect
-	)) {
-		emitter_ = ParticleEffectResource::CreateEmitter(gameplayEffect);
-	}*/
 
 	if (ParticleEffectResource::Load(
 		"resources/particles/core_burst.json",
@@ -4324,36 +3478,6 @@ void GamePlayScene::Initialize()
 		}
 	));
 
-	auto addStageObject =
-		[this](
-			const char* modelName,
-			const Vector3& translate,
-			const Vector3& scale,
-			const Vector3& halfSize,
-			bool collidable
-		) {
-			StageObject stageObject{};
-			stageObject.object = new Object3d();
-			stageObject.object->Initialize(Object3dCommon::GetInstance());
-			stageObject.object->SetModel(modelName);
-			stageObject.object->SetTranslate(translate);
-			stageObject.object->SetScale(scale);
-			stageObject.object->Update();
-
-			stageObject.collider.SetWorldTransform(&stageObject.object->GetTransform());
-			stageObject.collider.SetHalfSize(halfSize);
-
-			stageObjects_.push_back(stageObject);
-			(void)collidable;
-		};
-
-	stageObjects_.clear();
-	stageObjects_.reserve(4);
-	//addStageObject("Cube.obj", { 0.0f, -0.1f, 0.0f }, { 5.0f, 0.1f, 5.0f }, { 5.0f, 0.1f, 5.0f }, false);
-	//addStageObject("Cube.obj", { 0.0f, 2.0f, 5.0f }, { 5.0f, 2.0f, 0.2f }, { 5.0f, 2.0f, 0.2f }, true);
-	//addStageObject("Cube.obj", { -5.0f, 2.0f, 0.0f }, { 0.2f, 2.0f, 5.0f }, { 0.2f, 2.0f, 5.0f }, true);
-	//addStageObject("Cube.obj", { 3.0f, 0.5f, -2.0f }, { 1.0f, 0.5f, 1.0f }, { 1.0f, 0.5f, 1.0f }, true);
-
 	SyncEnvironmentComponent();
 
 	lightManager_ = std::make_unique<LightManager>();
@@ -4377,10 +3501,9 @@ void GamePlayScene::Initialize()
 		Object3dCommon::GetInstance()->GetDxCommon()
 	);
 
-	//soundData_ = audio_->SoundLoadWave("resources/fanfare.wav");
 }
 
-void GamePlayScene::Update()
+void GamePlayScene::Update(float deltaTime)
 {
 	EditorSession* editorSession = sceneManager_
 		? sceneManager_->GetEditorSession()
@@ -4417,9 +3540,6 @@ void GamePlayScene::Update()
 		ParticleManager::GetInstance()->CycleSceneParticleAssets("GAMEPLAY");
 	}
 
-	if (emitter_) {
-		emitter_->Update();
-	}
 	if (editorPreviewEmitter_) {
 		editorPreviewEmitter_->Update();
 	}
@@ -4448,10 +3568,10 @@ void GamePlayScene::Update()
 			settings.seed = lightningEvent.seed;
 			lightningRenderer_->Trigger(settings);
 		}
-		lightningRenderer_->Update(1.0f / 60.0f);
+		lightningRenderer_->Update(deltaTime);
 	}
 	if (waterSurfaceRenderer_) {
-		waterSurfaceRenderer_->Update(1.0f / 60.0f);
+		waterSurfaceRenderer_->Update(deltaTime);
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
@@ -4574,17 +3694,7 @@ void GamePlayScene::Update()
 	}
 #endif
 
-	for (Sprite* sprite : sprites_) {
-		sprite->Update();
-	}
-
-	if (plane_) {
-		plane_->Update();
-	}
-	if (axis) {
-		axis->Update();
-	}
-	SyncSceneModelObjects(1.0f / 60.0f);
+	SyncSceneModelObjects(deltaTime);
 	SyncEnvironmentComponent();
 	RebuildStaticColliders();
 	SceneDocument* activeDocument = sceneManager_
@@ -4595,7 +3705,7 @@ void GamePlayScene::Update()
 		ApplyPlayerPhysicsComponent(*activeDocument);
 		ApplyWaterVolumes(*activeDocument);
 		if (!editorSession || !editorSession->IsEditing()) {
-			UpdateAgentBehaviors(*activeDocument, 1.0f / 60.0f);
+			UpdateAgentBehaviors(*activeDocument, deltaTime);
 		}
 	}
 	if (
@@ -4606,7 +3716,7 @@ void GamePlayScene::Update()
 		debugCameraInitialized_ = false;
 		if (activeDocument) {
 			if (cameraPathRuntime_.IsPlaying()) {
-				cameraPathRuntime_.Update(1.0f / 60.0f, *camera_);
+				cameraPathRuntime_.Update(deltaTime, *camera_);
 				if (cameraPathRuntime_.ConsumeFinishedThisFrame()) {
 					SyncPlayerCameraControllerFromCurrentCamera(*activeDocument);
 				}
@@ -4615,7 +3725,7 @@ void GamePlayScene::Update()
 				ApplyPlayerCameraMouseLook(*activeDocument);
 				TryStartCameraPath(*activeDocument);
 				if (cameraPathRuntime_.IsPlaying()) {
-					cameraPathRuntime_.Update(1.0f / 60.0f, *camera_);
+					cameraPathRuntime_.Update(deltaTime, *camera_);
 					if (cameraPathRuntime_.ConsumeFinishedThisFrame()) {
 						SyncPlayerCameraControllerFromCurrentCamera(
 							*activeDocument
@@ -4629,7 +3739,7 @@ void GamePlayScene::Update()
 	if (player_ && (!editorSession || editorSession->IsPlaying())) {
 		player_->Update(camera_);
 	}
-	StepPhysics(1.0f / 60.0f);
+	StepPhysics(deltaTime);
 	if (player_ && (!editorSession || editorSession->IsPlaying())) {
 		player_->PostPhysicsUpdate();
 		SceneDocument* document = sceneManager_->GetActiveSceneDocument();
@@ -4728,11 +3838,6 @@ void GamePlayScene::Update()
 	}
 #endif
 
-	for (StageObject& stageObject : stageObjects_) {
-		if (stageObject.object) {
-			stageObject.object->Update();
-		}
-	}
 	SyncEnvironmentComponent();
 	if (skybox_) {
 		skybox_->Update();
@@ -5036,25 +4141,8 @@ void GamePlayScene::DrawShadow()
 	shadowManager_->SetShadowMapSize(lightManager_->GetShadowMapSize());
 
 	std::vector<Object3d*> shadowCasters;
-	shadowCasters.reserve(
-		stageObjects_.size() + sceneModelObjects_.size() +
-		(player_ ? 1 : 0)
-	);
-	//if (plane_) {
-	//	shadowCasters.push_back(plane_);
-	//}
-	//if (axis) {
-	//	shadowCasters.push_back(axis);
-	//}
-	//if (player_) {
-	//	shadowCasters.push_back(player_->GetObject());
-	//}
+	shadowCasters.reserve(sceneModelObjects_.size());
 	const bool hidePlayerModel = ShouldHidePlayerModelForCamera(camera_);
-	for (StageObject& stageObject : stageObjects_) {
-		if (stageObject.object) {
-			shadowCasters.push_back(stageObject.object);
-		}
-	}
 	if (SceneDocument* document = sceneManager_->GetActiveSceneDocument()) {
 		for (const SceneEntity& entity : document->GetEntities()) {
 			if (
@@ -5084,16 +4172,6 @@ void GamePlayScene::Finalize()
 	ClearMonitorRenderers();
 	ClearSceneModelObjects();
 	ClearSceneSpriteObjects();
-	for (Sprite* sprite : sprites_) {
-		delete sprite;
-	}
-	sprites_.clear();
-
-	delete plane_;
-	plane_ = nullptr;
-
-	delete axis;
-	axis = nullptr;
 
 	if (player_) {
 		player_->Finalize();
@@ -5101,15 +4179,7 @@ void GamePlayScene::Finalize()
 		player_ = nullptr;
 	}
 
-	for (StageObject& stageObject : stageObjects_) {
-		delete stageObject.object;
-		stageObject.object = nullptr;
-	}
-	stageObjects_.clear();
 	staticColliders_.clear();
-
-	delete emitter_;
-	emitter_ = nullptr;
 
 	delete editorPreviewEmitter_;
 	editorPreviewEmitter_ = nullptr;

@@ -1,3 +1,4 @@
+// 役割: 編集用と実行用のSceneDocumentを切り替える処理を実装する。
 #include "EditorSession.h"
 
 #include <algorithm>

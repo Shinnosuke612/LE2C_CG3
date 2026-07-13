@@ -1,3 +1,4 @@
+// 役割: 稲妻エフェクトの設定、頂点生成、描画を管理する。
 #pragma once
 
 #include <cstdint>

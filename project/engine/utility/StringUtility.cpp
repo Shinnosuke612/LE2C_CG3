@@ -1,3 +1,4 @@
+// 役割: UTF-8文字列とWindows用ワイド文字列の変換を実装する。
 #include "StringUtility.h"
 #include <Windows.h>
 std::wstring StringUtility::ConvertString(const std::string& str){

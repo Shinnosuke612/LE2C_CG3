@@ -1,3 +1,4 @@
+// 役割: Direct3D12のデバイス、CommandList、SwapChain、同期を管理する。
 #pragma once
 #include <d3d12.h>
 #pragma comment(lib,"d3d12.lib")
@@ -49,8 +50,6 @@ public:
 	void ScissorRectInitialize();
 	//DXCコンパイラの生成
 	void DXCCompilerGenerate();
-	//ImGuiの初期化
-	void ImGuiInitialize();
 	//実行から待ち、リセットを行う関数
 	void ExecuteCommandListAndWait();
 

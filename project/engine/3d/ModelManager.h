@@ -1,3 +1,4 @@
+// 役割: モデルリソースの読み込み、キャッシュ、取得を管理する。
 #pragma once
 #include <map>
 #include <string>

@@ -1,3 +1,4 @@
+// 役割: スプライトテクスチャと頂点カラーを合成するピクセルシェーダー。
 struct VertexShaderOutput
 {
     float4 position : SV_POSITION;

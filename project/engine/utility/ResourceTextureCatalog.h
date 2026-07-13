@@ -1,3 +1,4 @@
+// 役割: エディタで選択できるテクスチャリソースの一覧を定義する。
 #pragma once
 
 #include <algorithm>

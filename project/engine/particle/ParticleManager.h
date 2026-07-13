@@ -1,3 +1,4 @@
+// 役割: CPUおよびGPUパーティクルの更新、Emitter、描画を統合管理する。
 #pragma once
 #include <memory>
 #include <string>
@@ -495,7 +496,6 @@ public:
 	void RequestGpuParticleReset();
 	void EmitGpuParticleOnce();
 	const RuntimeStats& GetRuntimeStats() const { return runtimeStats_; }
-	void DrawGpuParticleImGui(const char* windowTitle = "GPU Particle");
 
 	bool LoadSceneParticleLayout(
 		const std::string& filePath = "resources/particles/scene_particles.json",
@@ -503,7 +503,6 @@ public:
 	);
 	bool SaveSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json") const;
 	void UpdateSceneParticles(const std::string& sceneName);
-	void EmitSceneParticles(const std::string& sceneName);
 	void CycleSceneParticleAssets(const std::string& sceneName);
 	void DrawSceneParticleImGui(
 		const std::string& currentSceneName,

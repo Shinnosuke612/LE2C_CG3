@@ -1,3 +1,4 @@
+// 役割: DirectXTexを使ったテクスチャ読み込みとGPUリソース生成を実装する。
 #include "TextureManager.h"
 #include "../base/DirectXCommon.h"
 #include "../3d/SrvManager.h"

@@ -1,3 +1,4 @@
+// 役割: Windowsの性能情報を取得し、実行時統計を更新する。
 #include "SystemPerformanceMonitor.h"
 
 #define WIN32_LEAN_AND_MEAN

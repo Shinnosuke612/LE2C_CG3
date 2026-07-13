@@ -1,3 +1,4 @@
+// 役割: ノイズテクスチャを使って画面画像をDissolve表示するピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

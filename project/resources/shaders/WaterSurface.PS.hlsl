@@ -1,3 +1,4 @@
+// 役割: 水面の反射、屈折、深度色を合成するピクセルシェーダー。
 struct PixelShaderInput
 {
     float4 position : SV_POSITION;

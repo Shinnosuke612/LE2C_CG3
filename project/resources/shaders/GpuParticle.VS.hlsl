@@ -1,3 +1,4 @@
+// 役割: GPUパーティクルのインスタンス情報を頂点描画用に展開する頂点シェーダー。
 #include "Particle.hlsli"
 #include "GpuParticle.hlsli"
 

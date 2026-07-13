@@ -1,3 +1,4 @@
+// 役割: 回転を表すQuaternionと補間操作を定義する。
 #pragma once
 
 #include "Matrix4x4.h"

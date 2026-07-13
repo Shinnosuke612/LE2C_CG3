@@ -1,3 +1,4 @@
+// 役割: モデル描画で共有するRootSignatureとPipelineStateを管理する。
 #pragma once
 #include <d3dx12.h>
 class DirectXCommon;

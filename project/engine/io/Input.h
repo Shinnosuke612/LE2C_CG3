@@ -1,3 +1,4 @@
+// 役割: キーボード、マウス、ゲームパッドの入力状態を取得する。
 #pragma once
 #include <cassert>
 #include <Windows.h>
@@ -39,8 +40,6 @@ public:
 	bool TriggerKey(BYTE keyNumber);
 
 	bool PushMouse(MouseButton button) const;
-	bool TriggerMouse(MouseButton button) const;
-	bool ReleaseMouse(MouseButton button) const;
 
 	const Vector2& GetMousePosition() const { return mousePosition_; }
 	Vector2 GetMouseMove() const {

@@ -1,3 +1,4 @@
+// 役割: フルスクリーン三角形をクリップ空間へ出力する頂点シェーダー。
 #include "Fullscreen.hlsli"
 
 static const float4 kPositions[3] =

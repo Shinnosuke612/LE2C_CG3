@@ -1,6 +1,9 @@
+// 役割: ゲーム全体の更新、描画、ポストプロセスとエディタ再生制御を実装する。
 #include "Game.h"
 #include "scene/SceneFactory.h"
 #include "../engine/scene/EditorSession.h"
+#include "../engine/scene/SceneEntityQuery.h"
+#include "../engine/scene/SceneTransformResolver.h"
 
 #include "../engine/base/DirectXCommon.h"
 #include "../engine/base/BloomRenderer.h"
@@ -29,10 +32,13 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
-#include <unordered_set>
 #include <utility>
 
 namespace {
+	using SceneEntityQuery::FindEnabledComponent;
+	using SceneEntityQuery::IsEntityActiveInHierarchy;
+	using SceneTransformResolver::ResolveScene3DTransform;
+
 #if defined(NDEBUG) && !defined(DEVELOPMENT)
 	constexpr bool kStartInPlayMode = true;
 #else
@@ -117,79 +123,6 @@ namespace {
 			NearlyEqual(a.y, b.y) &&
 			NearlyEqual(a.z, b.z) &&
 			NearlyEqual(a.w, b.w);
-	}
-
-	const SceneComponent* FindEnabledSceneComponent(
-		const SceneEntity& entity,
-		const char* componentType
-	) {
-		const auto found = std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[componentType](const SceneComponent& component) {
-				return component.enabled && component.type == componentType;
-			}
-		);
-		return found == entity.components.end() ? nullptr : &(*found);
-	}
-
-	bool IsEntityActiveInHierarchy(
-		const SceneDocument& document,
-		const SceneEntity& entity
-	) {
-		if (!entity.active) {
-			return false;
-		}
-		const SceneEntity* parent = document.FindEntity(entity.parentId);
-		while (parent) {
-			if (!parent->active) {
-				return false;
-			}
-			parent = document.FindEntity(parent->parentId);
-		}
-		return true;
-	}
-
-	Matrix4x4 ResolveSceneWorldMatrix(
-		const SceneDocument& document,
-		const SceneEntity& entity,
-		std::unordered_set<uint64_t>& visited
-	) {
-		const Matrix4x4 local = MakeAffineMatrix(
-			entity.transform.scale,
-			entity.transform.rotate,
-			entity.transform.translate
-		);
-		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
-			return local;
-		}
-		const SceneEntity* parent = document.FindEntity(entity.parentId);
-		if (!parent) {
-			return local;
-		}
-		return Multiply(
-			local,
-			ResolveSceneWorldMatrix(document, *parent, visited)
-		);
-	}
-
-	Transform ResolveScene3DTransform(
-		const SceneDocument& document,
-		const SceneEntity& entity
-	) {
-		std::unordered_set<uint64_t> visited;
-		const Matrix4x4 world =
-			ResolveSceneWorldMatrix(document, entity, visited);
-		Transform result = entity.transform;
-		Vector3 scale{};
-		Vector3 rotate{};
-		Vector3 translate{};
-		if (DecomposeAffineMatrix(world, scale, rotate, translate)) {
-			result.scale = scale;
-			result.rotate = rotate;
-			result.translate = translate;
-		}
-		return result;
 	}
 
 	bool IsPointInsideAabb(
@@ -479,9 +412,10 @@ void Game::Update() {
 	if (IsEndRequest()) {
 		return;
 	}
+	const float deltaTime = GetDeltaTime();
 
 	if (noiseAnimate_) {
-		noiseTime_ += (1.0f / 60.0f) * noiseSpeed_;
+		noiseTime_ += deltaTime * noiseSpeed_;
 	}
 
 	if (editorSession_) {
@@ -980,7 +914,7 @@ void Game::Update() {
 		EndPauseDebugCamera();
 	}
 	if (!editorSession_->IsPaused()) {
-		sceneManager_->Update();
+		sceneManager_->Update(deltaTime);
 	} else {
 		sceneManager_->UpdatePaused();
 	}
@@ -1003,7 +937,7 @@ void Game::Update() {
 	}
 
 	const float exposureLerp =
-		std::clamp(exposureReturnSpeed_ * (1.0f / 60.0f), 0.0f, 1.0f);
+		std::clamp(exposureReturnSpeed_ * deltaTime, 0.0f, 1.0f);
 	currentExposure_ += (baseExposure_ - currentExposure_) * exposureLerp;
 	bloomParameters_.exposure = currentExposure_;
 
@@ -1487,7 +1421,7 @@ Game::WaterPostEffectState Game::ResolveWaterPostEffectState(
 			continue;
 		}
 		const SceneComponent* waterVolume =
-			FindEnabledSceneComponent(entity, "WaterVolume");
+			FindEnabledComponent(entity, "WaterVolume");
 		if (!waterVolume) {
 			continue;
 		}

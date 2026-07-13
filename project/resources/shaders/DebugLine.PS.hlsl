@@ -1,3 +1,4 @@
+// 役割: DebugRendererが渡す頂点カラーを出力するピクセルシェーダー。
 struct PixelShaderInput
 {
     float4 position : SV_POSITION;

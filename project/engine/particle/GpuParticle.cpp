@@ -1,3 +1,4 @@
+// 役割: GPUパーティクル用のBuffer、PipelineState、Compute Shader連携を実装する。
 #include "GpuParticle.h"
 #include "../base/RenderFormats.h"
 

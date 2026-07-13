@@ -1,3 +1,4 @@
+// 役割: Object3dの更新、アニメーション遷移、モデル描画を実装する。
 #include "Object3d.h"
 #include "Object3dCommon.h"
 #include "../base/DirectXCommon.h"
@@ -394,11 +395,6 @@ void Object3d::DrawSkeletonDebug(
 void Object3d::SetModel(const std::string& filePath){
 //モデルを検索してセットする
 	SetModel(ModelManager::GetInstance()->FindModel(filePath));
-}
-
-void Object3d::ResetAnimation() {
-	animationPlayer_.Reset();
-	animationPoseDirty_ = true;
 }
 
 bool Object3d::HasAnimation() const {

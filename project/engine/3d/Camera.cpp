@@ -1,3 +1,4 @@
+// 役割: CameraのViewProjection更新と定数Buffer転送を実装する。
 #define NOMINMAX
 #include "Camera.h"
 

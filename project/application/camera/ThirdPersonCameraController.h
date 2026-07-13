@@ -1,3 +1,4 @@
+// 役割: 三人称カメラの距離、注視点、入力による回転を管理する。
 #pragma once
 
 #include <vector>

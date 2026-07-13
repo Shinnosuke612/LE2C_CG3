@@ -1,3 +1,4 @@
+// 役割: 入力画像をグレースケール化するピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

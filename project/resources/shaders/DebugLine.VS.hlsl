@@ -1,3 +1,4 @@
+// 役割: デバッグ線分のワールド座標をクリップ空間へ変換する頂点シェーダー。
 struct VertexShaderInput
 {
     float3 position : POSITION0;

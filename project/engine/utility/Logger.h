@@ -1,3 +1,4 @@
+// 役割: アプリケーションのメッセージをログファイルへ出力する。
 #pragma once
 #include <string>
 #include <Windows.h>

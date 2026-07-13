@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <FxCompile Include="resources\shaders\Object3D.PS.hlsl" />
@@ -19,7 +19,6 @@
 	<ClCompile Include="externals\ImGuizmo\ImGuizmo.cpp" />
     <ClCompile Include="engine\collision\Collider.cpp" />
     <ClCompile Include="engine\collision\Collision.cpp" />
-    <ClCompile Include="engine\collision\CollisionManager.cpp" />
     <ClCompile Include="engine\collision\OBBCollider.cpp" />
     <ClCompile Include="engine\collision\SphereCollider.cpp" />
     <ClCompile Include="engine\physics\PhysicsWorld.cpp">
@@ -74,6 +73,9 @@
     <ClCompile Include="application\scene\GamePlayScene.cpp">
       <Filter>Application\Scene</Filter>
     </ClCompile>
+    <ClCompile Include="application\scene\GamePlaySceneDebug.cpp">
+      <Filter>Application\Scene</Filter>
+    </ClCompile>
     <ClCompile Include="engine\scene\BaseScene.cpp">
       <Filter>Engine\Scene</Filter>
     </ClCompile>
@@ -83,10 +85,22 @@
     <ClCompile Include="application\scene\TitleScene.cpp">
       <Filter>Application\Scene</Filter>
     </ClCompile>
+    <ClCompile Include="engine\agent\AgentSettingsResolver.cpp">
+      <Filter>Engine\Agent</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\agent\AgentSteering.cpp">
+      <Filter>Engine\Agent</Filter>
+    </ClCompile>
     <ClCompile Include="engine\scene\SceneManager.cpp">
       <Filter>Engine\Scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\SceneDocument.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\SceneEntityQuery.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\SceneTransformResolver.cpp">
       <Filter>Engine\Scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\EditorSession.cpp">
@@ -101,7 +115,6 @@
   <ItemGroup>
 	<ClInclude Include="externals\ImGuizmo\ImGuizmo.h" />
     <ClInclude Include="engine\collision\Collider.h" />
-    <ClInclude Include="engine\collision\CollisionManager.h" />
     <ClInclude Include="engine\collision\OBBCollider.h" />
     <ClInclude Include="engine\collision\SphereCollider.h" />
     <ClInclude Include="engine\physics\PhysicsBody.h">
@@ -126,6 +139,8 @@
     <ClInclude Include="engine\base\SceneRenderTarget.h" />
     <ClInclude Include="engine\io\Input.h" />
     <ClInclude Include="engine\utility\Logger.h" />
+    <ClInclude Include="engine\utility\EditableResourcePath.h" />
+    <ClInclude Include="engine\utility\ResourceTextureCatalog.h" />
     <ClInclude Include="engine\utility\SystemPerformanceMonitor.h" />
     <ClInclude Include="engine\math\Math.h" />
     <ClInclude Include="engine\2d\Sprite.h" />
@@ -133,9 +148,6 @@
     <ClInclude Include="engine\utility\StringUtility.h" />
     <ClInclude Include="engine\2d\TextureManager.h" />
     <ClInclude Include="engine\math\Transform.h" />
-    <ClInclude Include="Vector\Vector2.h" />
-    <ClInclude Include="Vector\Vector3.h" />
-    <ClInclude Include="Vector\Vector4.h" />
     <ClInclude Include="engine\base\WinApp.h" />
     <ClInclude Include="engine\3d\Object3dCommon.h" />
     <ClInclude Include="engine\3d\Object3d.h" />
@@ -179,10 +191,25 @@
     <ClInclude Include="application\scene\TitleScene.h">
       <Filter>Application\Scene</Filter>
     </ClInclude>
+    <ClInclude Include="engine\agent\AgentSettingsResolver.h">
+      <Filter>Engine\Agent</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\agent\AgentSteering.h">
+      <Filter>Engine\Agent</Filter>
+    </ClInclude>
     <ClInclude Include="engine\scene\SceneManager.h">
       <Filter>Engine\Scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\SceneDocument.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneEntityQuery.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneSettings.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneTransformResolver.h">
       <Filter>Engine\Scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\EditorSession.h">
@@ -247,6 +274,9 @@
     </Filter>
     <Filter Include="Engine\Physics">
       <UniqueIdentifier>{5D0AF557-1B52-4E2C-93B1-257B4D0E0F7D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Agent">
+      <UniqueIdentifier>{A8E15772-C3F8-44D5-9D23-65986C4118D9}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

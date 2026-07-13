@@ -1,3 +1,4 @@
+// 役割: 水面の反射、屈折、ライトシャフト描画を管理する。
 #pragma once
 
 #include <cstdint>

@@ -1,3 +1,4 @@
+// 役割: フルスクリーン三角形を使った画像コピー描画を実装する。
 #include "FullscreenCopy.h"
 
 #include <cassert>

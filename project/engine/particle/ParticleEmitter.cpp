@@ -1,3 +1,4 @@
+// 役割: Emitter設定から粒子の初期値を生成する。
 #include "ParticleEmitter.h"
 #include "ParticleManager.h"
 

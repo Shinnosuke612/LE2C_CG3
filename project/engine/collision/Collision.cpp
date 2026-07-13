@@ -1,3 +1,4 @@
+// 役割: Collider同士の基本的な交差判定を実装する。
 #include "Collider.h"
 
 #include "OBBCollider.h"

@@ -1,3 +1,4 @@
+// 役割: デバッグ形状の頂点生成と描画コマンド設定を実装する。
 #include "DebugRenderer.h"
 #include "../base/RenderFormats.h"
 

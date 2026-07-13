@@ -1,3 +1,4 @@
+// 役割: SceneManagerが利用するシーン生成インターフェースを定義する。
 #pragma once
 
 #include <string>

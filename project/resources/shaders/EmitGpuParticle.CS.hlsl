@@ -1,3 +1,4 @@
+// 役割: Emitter設定からGPUパーティクルの初期状態を生成するCompute Shader。
 #include "GpuParticle.hlsli"
 
 RWStructuredBuffer<GpuParticle> gParticles : register(u0);

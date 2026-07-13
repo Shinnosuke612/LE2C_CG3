@@ -1,3 +1,4 @@
+// 役割: パーティクルエフェクトの編集UIと保存操作を実装する。
 #include "ParticleEffectEditor.h"
 
 #include <algorithm>

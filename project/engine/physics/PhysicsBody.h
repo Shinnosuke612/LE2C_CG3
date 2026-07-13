@@ -1,4 +1,7 @@
+// 役割: 物理シミュレーションに必要な速度、質量、拘束、同期処理を保持する。
 #pragma once
+
+#include <functional>
 
 #include "../math/Transform.h"
 #include "../math/Vector3.h"
@@ -30,4 +33,11 @@ struct PhysicsBody {
 	bool freezePositionZ = false;
 
 	bool isGrounded = false;
+	std::function<void()> syncTransform;
+
+	void SynchronizeTransform() const {
+		if (syncTransform) {
+			syncTransform();
+		}
+	}
 };

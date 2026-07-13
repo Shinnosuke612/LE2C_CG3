@@ -1,3 +1,4 @@
+// 役割: モデルファイルの非重複読み込みとModelキャッシュを実装する。
 #include "ModelManager.h"
 #include "../base/DirectXCommon.h"
 #include "ModelCommon.h"

@@ -1,3 +1,4 @@
+// 役割: 文字列とワイド文字列の変換を提供する。
 #pragma once
 #include <string>
 //文字コード

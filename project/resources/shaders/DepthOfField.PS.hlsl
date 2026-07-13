@@ -1,3 +1,4 @@
+// 役割: 深度に応じた焦点外ぼかしを画面全体へ適用するピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

@@ -1,3 +1,4 @@
+// 役割: シーン内のCameraPathを実行時の補間可能なカメラ経路へ変換する。
 #pragma once
 
 #include <cstdint>

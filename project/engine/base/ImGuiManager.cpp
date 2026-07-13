@@ -1,4 +1,4 @@
-// engine/base/ImGuiManager.cpp
+// 役割: ImGuiエディタ各ウィンドウの描画、入力、シーン編集操作を実装する。
 #include "ImGuiManager.h"
 
 #include <cassert>
@@ -10,7 +10,6 @@
 #include <functional>
 #include <numbers>
 #include <limits>
-#include <unordered_set>
 
 #include "WinApp.h"
 #include "DirectXCommon.h"
@@ -26,6 +25,8 @@
 #include "../particle/ParticleManager.h"
 #include "../scene/EditorSession.h"
 #include "../scene/SceneDocument.h"
+#include "../scene/SceneEntityQuery.h"
+#include "../scene/SceneTransformResolver.h"
 #include "../utility/SystemPerformanceMonitor.h"
 
 #include "../../externals/imgui/imgui.h"
@@ -35,6 +36,11 @@
 #include "../../externals/ImGuizmo/ImGuizmo.h"
 
 namespace {
+	using SceneEntityQuery::FindComponent;
+	using SceneEntityQuery::FindEnabledComponent;
+	using SceneEntityQuery::HasComponent;
+	using SceneTransformResolver::ResolveSceneWorldMatrix;
+
 	bool IsModelAssetPath(const std::filesystem::path& path) {
 		std::string extension = path.extension().string();
 		std::transform(
@@ -98,72 +104,6 @@ namespace {
 		}
 		std::sort(paths.begin(), paths.end());
 		return paths;
-	}
-
-	bool HasComponent(const SceneEntity& entity, const char* name) {
-		return std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[name](const SceneComponent& component) {
-				return component.enabled && component.type == name;
-			}
-		) != entity.components.end();
-	}
-
-	SceneComponent* FindComponent(SceneEntity& entity, const char* name) {
-		const auto found = std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[name](const SceneComponent& component) {
-				return component.type == name;
-			}
-		);
-		return found == entity.components.end() ? nullptr : &(*found);
-	}
-
-	const SceneComponent* FindEnabledComponent(
-		const SceneEntity& entity,
-		const char* name
-	) {
-		const auto found = std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[name](const SceneComponent& component) {
-				return component.enabled && component.type == name;
-			}
-		);
-		return found == entity.components.end() ? nullptr : &(*found);
-	}
-
-	Matrix4x4 CalculateSceneWorldMatrix(
-		const SceneDocument& document,
-		const SceneEntity& entity,
-		std::unordered_set<uint64_t>& visited
-	) {
-		const Matrix4x4 localMatrix = MakeAffineMatrix(
-			entity.transform.scale,
-			entity.transform.rotate,
-			entity.transform.translate
-		);
-		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
-			return localMatrix;
-		}
-		const SceneEntity* parent = document.FindEntity(entity.parentId);
-		if (!parent) {
-			return localMatrix;
-		}
-		return Multiply(
-			localMatrix,
-			CalculateSceneWorldMatrix(document, *parent, visited)
-		);
-	}
-
-	Matrix4x4 CalculateSceneWorldMatrix(
-		const SceneDocument& document,
-		const SceneEntity& entity
-	) {
-		std::unordered_set<uint64_t> visited;
-		return CalculateSceneWorldMatrix(document, entity, visited);
 	}
 
 	Vector3 TransformCoord(const Vector3& value, const Matrix4x4& matrix) {
@@ -833,7 +773,7 @@ bool ImGuiManager::PickSceneEntity(
 			continue;
 		}
 		const Matrix4x4 inverseWorld =
-			Inverse(CalculateSceneWorldMatrix(document, entity));
+			Inverse(ResolveSceneWorldMatrix(document, entity));
 		const Vector3 localRayOrigin =
 			TransformCoord(nearPoint, inverseWorld);
 		const Vector3 localRayFar =
@@ -856,7 +796,7 @@ bool ImGuiManager::PickSceneEntity(
 			);
 			const Vector3 worldHit = TransformCoord(
 				localHit,
-				CalculateSceneWorldMatrix(document, entity)
+				ResolveSceneWorldMatrix(document, entity)
 			);
 			const float worldDistance =
 				Math::Length(Math::Subtract(worldHit, nearPoint));
@@ -1033,7 +973,7 @@ void ImGuiManager::DrawSceneGizmo(
 		if (const SceneEntity* parent = document.FindEntity(entity->parentId)) {
 			worldMatrix = Multiply(
 				worldMatrix,
-				CalculateSceneWorldMatrix(document, *parent)
+				ResolveSceneWorldMatrix(document, *parent)
 			);
 		}
 		viewMatrix = MakeIdentity4x4();
@@ -1046,7 +986,7 @@ void ImGuiManager::DrawSceneGizmo(
 			100.0f
 		);
 	} else {
-		worldMatrix = CalculateSceneWorldMatrix(document, *entity);
+		worldMatrix = ResolveSceneWorldMatrix(document, *entity);
 		viewMatrix = camera->GetViewMatrix();
 		projectionMatrix = camera->GetProjectionMatrix();
 	}
@@ -1084,7 +1024,7 @@ void ImGuiManager::DrawSceneGizmo(
 
 	Matrix4x4 localMatrix = worldMatrix;
 	if (const SceneEntity* parent = document.FindEntity(entity->parentId)) {
-		const Matrix4x4 parentWorld = CalculateSceneWorldMatrix(document, *parent);
+		const Matrix4x4 parentWorld = ResolveSceneWorldMatrix(document, *parent);
 		localMatrix = Multiply(worldMatrix, Inverse(parentWorld));
 	}
 

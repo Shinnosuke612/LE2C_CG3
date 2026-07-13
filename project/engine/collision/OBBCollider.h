@@ -1,3 +1,4 @@
+// 役割: 回転可能なボックスColliderの形状と交差判定用データを定義する。
 #pragma once
 
 #include <array>

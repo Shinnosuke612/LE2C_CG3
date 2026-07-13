@@ -1,4 +1,7 @@
+// 役割: SceneDocumentのJSON入出力、Hierarchy操作、Component検証を実装する。
 #include "SceneDocument.h"
+#include "SceneEntityQuery.h"
+#include "SceneTransformResolver.h"
 #include "../math/Matrix4x4.h"
 
 #include <algorithm>
@@ -16,6 +19,8 @@
 
 namespace {
 	using json = nlohmann::json;
+	using SceneEntityQuery::FindComponent;
+	using SceneTransformResolver::ResolveSceneWorldMatrix;
 
 	json VectorToJson(const Vector3& value) {
 		return json::array({ value.x, value.y, value.z });
@@ -1931,34 +1936,6 @@ namespace {
 		return components;
 	}
 
-	SceneComponent* FindComponent(
-		SceneEntity& entity,
-		const std::string& type
-	) {
-		const auto found = std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[&type](const SceneComponent& component) {
-				return component.type == type;
-			}
-		);
-		return found == entity.components.end() ? nullptr : &(*found);
-	}
-
-	const SceneComponent* FindComponent(
-		const SceneEntity& entity,
-		const std::string& type
-	) {
-		const auto found = std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[&type](const SceneComponent& component) {
-				return component.type == type;
-			}
-		);
-		return found == entity.components.end() ? nullptr : &(*found);
-	}
-
 	void SynchronizeLegacyRendererFields(SceneEntity& entity) {
 		if (SceneComponent* meshRenderer = FindComponent(entity, "MeshRenderer")) {
 			if (meshRenderer->modelPath.empty()) {
@@ -1984,36 +1961,6 @@ namespace {
 		}
 	}
 
-	Matrix4x4 CalculateEntityWorldMatrix(
-		const SceneDocument& document,
-		const SceneEntity& entity,
-		std::unordered_set<uint64_t>& visited
-	) {
-		const Matrix4x4 local = MakeAffineMatrix(
-			entity.transform.scale,
-			entity.transform.rotate,
-			entity.transform.translate
-		);
-		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
-			return local;
-		}
-		const SceneEntity* parent = document.FindEntity(entity.parentId);
-		if (!parent) {
-			return local;
-		}
-		return Multiply(
-			local,
-			CalculateEntityWorldMatrix(document, *parent, visited)
-		);
-	}
-
-	Matrix4x4 CalculateEntityWorldMatrix(
-		const SceneDocument& document,
-		const SceneEntity& entity
-	) {
-		std::unordered_set<uint64_t> visited;
-		return CalculateEntityWorldMatrix(document, entity, visited);
-	}
 }
 
 void SceneDocument::Clear(const std::string& sceneName) {
@@ -2278,11 +2225,12 @@ bool SceneDocument::SetParent(uint64_t id, uint64_t parentId) {
 	if (entity->parentId == parentId) {
 		return true;
 	}
-	const Matrix4x4 worldMatrix = CalculateEntityWorldMatrix(*this, *entity);
+	// 親変更後も見た目の位置を維持するため、変更前のワールド行列を基準にする。
+	const Matrix4x4 worldMatrix = ResolveSceneWorldMatrix(*this, *entity);
 	Matrix4x4 localMatrix = worldMatrix;
 	if (const SceneEntity* newParent = FindEntity(parentId)) {
 		const Matrix4x4 parentWorld =
-			CalculateEntityWorldMatrix(*this, *newParent);
+			ResolveSceneWorldMatrix(*this, *newParent);
 		if (std::abs(Determinant(parentWorld)) < 0.000001f) {
 			return false;
 		}

@@ -1,13 +1,9 @@
+// 役割: ワールド行列からOBBの軸と半サイズを計算する。
 #include "OBBCollider.h"
 
 #include "SphereCollider.h"
 #include "../math/Matrix4x4.h"
 #include "../math/Math.h"
-#include "../math/Transform.h"
-
-#include <algorithm>
-#include <cmath>
-
 namespace {
 	Vector3 GetMatrixAxis(const Matrix4x4& matrix, uint32_t index) {
 		Vector3 axis = {
@@ -49,23 +45,18 @@ bool OBBCollider::Intersects(const Collider& other) const {
 OBBCollider::OBB OBBCollider::GetOBB() const {
 	OBB obb{};
 	obb.center = GetWorldCenter();
-	obb.halfSize = halfSize_;
+	obb.halfSize = {
+		halfSize_.x * GetWorldAxisScale(0),
+		halfSize_.y * GetWorldAxisScale(1),
+		halfSize_.z * GetWorldAxisScale(2)
+	};
 
-	Matrix4x4 rotateMatrix = MakeIdentity4x4();
-	if (worldTransform_) {
-		if (worldTransform_->useQuaternionRotation) {
-			rotateMatrix = MakeRotateMatrix(worldTransform_->quaternionRotate);
-		} else {
-			Matrix4x4 rotateX = MakeRotateXMatrix(worldTransform_->rotate.x);
-			Matrix4x4 rotateY = MakeRotateYMatrix(worldTransform_->rotate.y);
-			Matrix4x4 rotateZ = MakeRotateZMatrix(worldTransform_->rotate.z);
-			rotateMatrix = Multiply(Multiply(rotateZ, rotateY), rotateX);
-		}
-	}
-
-	obb.axis[0] = GetMatrixAxis(rotateMatrix, 0);
-	obb.axis[1] = GetMatrixAxis(rotateMatrix, 1);
-	obb.axis[2] = GetMatrixAxis(rotateMatrix, 2);
+	const Matrix4x4 fallbackMatrix = MakeIdentity4x4();
+	const Matrix4x4& worldMatrix =
+		GetWorldMatrix() ? *GetWorldMatrix() : fallbackMatrix;
+	obb.axis[0] = GetMatrixAxis(worldMatrix, 0);
+	obb.axis[1] = GetMatrixAxis(worldMatrix, 1);
+	obb.axis[2] = GetMatrixAxis(worldMatrix, 2);
 
 	return obb;
 }

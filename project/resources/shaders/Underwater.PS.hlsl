@@ -1,3 +1,4 @@
+// 役割: 水中時の色減衰とフォグ表現を合成するピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

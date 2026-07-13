@@ -1,3 +1,4 @@
+// 役割: ログファイルの初期化とメッセージ出力を実装する。
 #include "Logger.h"
 #include "StringUtility.h"
 

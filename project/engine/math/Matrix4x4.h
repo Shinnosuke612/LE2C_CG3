@@ -1,3 +1,4 @@
+// 役割: 3D変換と射影に利用する4行4列行列を定義する。
 #pragma once
 #include "../engine/math/Vector3.h"
 #include <cmath>

@@ -1,3 +1,4 @@
+// 役割: Windowsアプリケーションを起動し、Gameのライフサイクルを開始する。
 #include <Windows.h>
 #include "application/Game.h"
 #include "engine/base/Framework.h"

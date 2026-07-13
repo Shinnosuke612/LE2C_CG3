@@ -1,3 +1,4 @@
+// 役割: PhysicsBodyとColliderを使った重力、移動、衝突解決を管理する。
 #pragma once
 
 #include <vector>

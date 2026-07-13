@@ -1,3 +1,4 @@
+// 役割: モデル頂点をライトのクリップ空間へ変換しShadowMapへ出力する頂点シェーダー。
 struct VertexShaderInput
 {
     float4 position : POSITION0;

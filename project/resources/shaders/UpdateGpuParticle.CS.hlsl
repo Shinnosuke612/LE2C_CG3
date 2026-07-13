@@ -1,3 +1,4 @@
+// 役割: GPUパーティクルの寿命、速度、位置を更新するCompute Shader。
 #include "GpuParticle.hlsli"
 
 RWStructuredBuffer<GpuParticle> gParticles : register(u0);

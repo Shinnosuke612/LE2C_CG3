@@ -1,3 +1,4 @@
+// 役割: 水面メッシュと水中ポストエフェクトの描画を実装する。
 #include "WaterSurfaceRenderer.h"
 
 #include <algorithm>

@@ -1,3 +1,4 @@
+// 役割: 線、球、OBBなどの実行時デバッグ形状を収集して描画する。
 #pragma once
 
 #include <array>

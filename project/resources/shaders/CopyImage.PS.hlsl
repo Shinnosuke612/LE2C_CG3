@@ -1,3 +1,4 @@
+// 役割: 入力テクスチャをそのまま出力するフルスクリーンコピー用ピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

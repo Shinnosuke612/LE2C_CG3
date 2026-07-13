@@ -1,3 +1,4 @@
+// 役割: Windowsウィンドウ生成とメッセージ処理を管理する。
 #pragma once
 #include <Windows.h>
 #include <cstdint>

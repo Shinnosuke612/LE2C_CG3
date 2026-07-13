@@ -1,3 +1,4 @@
+// 役割: GPUパーティクルBufferを未発生状態へ初期化するCompute Shader。
 #include "GpuParticle.hlsli"
 
 RWStructuredBuffer<GpuParticle> gParticles : register(u0);

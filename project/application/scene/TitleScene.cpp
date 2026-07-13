@@ -1,3 +1,4 @@
+// 役割: タイトル画面の表示とゲーム開始遷移を実装する。
 #include "TitleScene.h"
 #include "../../externals/imgui/imgui.h"
 #include "../../engine/scene/SceneManager.h"
@@ -63,8 +64,9 @@ void TitleScene::Finalize()
 	previewEmitter_ = nullptr;
 }
 
-void TitleScene::Update()
+void TitleScene::Update(float deltaTime)
 {
+	(void)deltaTime;
 	std::string particlePath;
 	if (ImGuiManager::GetInstance() && ImGuiManager::GetInstance()->GetRequestLoadParticle(particlePath)) {
 		ParticleEffectDesc loadedEffect{};

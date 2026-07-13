@@ -1,3 +1,4 @@
+// 役割: CPU、メモリ、フレーム時間などの実行時性能情報を保持する。
 #pragma once
 
 #include <cstdint>

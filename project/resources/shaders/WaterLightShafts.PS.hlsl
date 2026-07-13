@@ -1,3 +1,4 @@
+// 役割: 水中の光芒を画面画像へ合成するピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

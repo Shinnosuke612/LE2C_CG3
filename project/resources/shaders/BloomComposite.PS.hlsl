@@ -1,3 +1,4 @@
+// 役割: 元画像とBloom画像を合成するピクセルシェーダー。
 #include "Bloom.hlsli"
 
 float3 ToneMapAces(float3 color)

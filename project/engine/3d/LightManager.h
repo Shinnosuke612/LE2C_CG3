@@ -1,3 +1,4 @@
+// 役割: Directional、Point、Spot Lightの定数Bufferを管理する。
 #pragma once
 
 #include <array>

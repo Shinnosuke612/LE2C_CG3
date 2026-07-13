@@ -1,3 +1,4 @@
+// 役割: 視線方向からCubeMapをサンプリングするSkybox用ピクセルシェーダー。
 #include "Skybox.hlsli"
 
 TextureCube gTexture : register(t0);

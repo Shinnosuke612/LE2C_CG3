@@ -1,3 +1,4 @@
+// 役割: 稲妻頂点をCameraのクリップ空間へ変換する頂点シェーダー。
 struct VertexShaderInput
 {
     float3 position : POSITION0;

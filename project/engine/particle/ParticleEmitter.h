@@ -1,3 +1,4 @@
+// 役割: パーティクル発生位置、頻度、初期状態を定義する。
 #pragma once
 #include <string>
 #include "../math/Transform.h"

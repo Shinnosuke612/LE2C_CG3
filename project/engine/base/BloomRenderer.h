@@ -1,3 +1,4 @@
+// 役割: 輝度抽出、ぼかし、合成によるBloomポストエフェクトを管理する。
 #pragma once
 
 #include <cstdint>
@@ -42,8 +43,6 @@ public:
 		D3D12_GPU_DESCRIPTOR_HANDLE sceneTexture,
 		SceneRenderTarget* outputTarget
 	);
-
-	D3D12_GPU_DESCRIPTOR_HANDLE GetBloomSrvGpuHandle() const;
 
 private:
 	enum class Pass {

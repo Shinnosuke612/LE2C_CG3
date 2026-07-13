@@ -1,3 +1,4 @@
+// 役割: 球Colliderの半径とワールドスケールを定義する。
 #pragma once
 
 #include "Collider.h"
@@ -8,7 +9,7 @@ public:
 	bool Intersects(const Collider& other) const override;
 
 	void SetRadius(float radius) { radius_ = radius; }
-	float GetRadius() const { return radius_; }
+	float GetRadius() const;
 
 private:
 	float radius_ = 1.0f;

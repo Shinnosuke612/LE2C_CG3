@@ -1,3 +1,4 @@
+// 役割: Bloomの抽出、ぼかし、合成で共有する定数と補助関数を定義する。
 #include "Fullscreen.hlsli"
 
 struct BloomParameters

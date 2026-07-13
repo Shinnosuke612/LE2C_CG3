@@ -1,3 +1,4 @@
+// 役割: 稲妻の分岐形状と描画用GPUリソース生成を実装する。
 #include "LightningRenderer.h"
 
 #include <algorithm>

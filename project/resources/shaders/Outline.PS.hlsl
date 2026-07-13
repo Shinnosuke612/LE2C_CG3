@@ -1,3 +1,4 @@
+// 役割: 深度と法線の差分から輪郭線を合成するピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

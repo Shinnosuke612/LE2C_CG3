@@ -1,3 +1,4 @@
+// 役割: スプライト共通の描画パイプライン初期化を実装する。
 #include "SpriteCommon.h"
 #include "../base/DirectXCommon.h"
 #include "../utility/Logger.h"

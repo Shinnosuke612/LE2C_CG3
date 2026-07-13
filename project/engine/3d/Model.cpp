@@ -1,3 +1,4 @@
+// 役割: モデルのメッシュ描画、材質設定、Skinning描画を実装する。
 #include "Model.h"
 #include "ModelCommon.h"
 #include "../base/DirectXCommon.h"
@@ -150,10 +151,6 @@ void Model::DrawForShadow(
 	);
 }
 
-void Model::DrawWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& customVertexBufferView) {
-	DrawWithVertexBufferAndMaterial(customVertexBufferView, materialResource);
-}
-
 void Model::DrawWithVertexBufferAndMaterial(
 	const D3D12_VERTEX_BUFFER_VIEW& customVertexBufferView,
 	ID3D12Resource* materialOverride,
@@ -192,30 +189,6 @@ void Model::DrawForShadowWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& custom
 		0,
 		0
 	);
-}
-
-Model::MaterialData Model::LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename) {
-	MaterialData materialData;      // 構築するMaterialData
-	std::string line;               // 1行分
-	std::ifstream file(directoryPath + "/" + filename); // ファイルを開く
-	assert(file.is_open());         // 開けなかったら止める（資料準拠）
-
-	while (std::getline(file, line)) {
-		std::string identifier;
-		std::istringstream s(line);
-		s >> identifier;
-
-		// 必要なのはTextureなので map_Kd だけ処理する
-		if (identifier == "map_Kd") {
-			std::string textureFilename;
-			s >> textureFilename;
-
-			// 連結してフルパスにする
-			materialData.textureFilePath = directoryPath + "/" + textureFilename;
-		}
-	}
-
-	return materialData;
 }
 
 Model::ModelData Model::LoadModelFile(const std::string& directoryPath, const std::string& filename) {

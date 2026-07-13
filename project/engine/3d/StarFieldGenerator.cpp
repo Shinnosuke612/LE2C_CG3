@@ -1,3 +1,4 @@
+// 役割: シードから再現可能な星空頂点データを生成する。
 #include "StarFieldGenerator.h"
 
 #include <DirectXTex.h>

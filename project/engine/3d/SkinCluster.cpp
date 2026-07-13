@@ -1,3 +1,4 @@
+// 役割: SkinClusterのGPU Buffer生成とJointPalette更新を実装する。
 #include "SkinCluster.h"
 
 #include <algorithm>

@@ -1,3 +1,4 @@
+// 役割: Mathで公開するベクトル演算と角度計算を実装する。
 #include "Math.h"
 #define _USE_MATH_DEFINES
 #include <algorithm>

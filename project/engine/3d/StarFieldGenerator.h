@@ -1,3 +1,4 @@
+// 役割: 星の位置と色を生成し、星空描画用データを提供する。
 #pragma once
 
 #include <atomic>

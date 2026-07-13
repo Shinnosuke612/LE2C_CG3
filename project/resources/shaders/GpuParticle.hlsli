@@ -1,3 +1,4 @@
+// 役割: GPUパーティクルの状態、Emitter、Compute Shader共有定数を定義する。
 static const uint32_t kGpuParticleEmitFlagEmitParticles = 1u << 0;
 static const uint32_t kGpuParticleEmitFlagSeedVisibleParticle = 1u << 1;
 static const uint32_t kGpuParticleMaxParticles = 20480;

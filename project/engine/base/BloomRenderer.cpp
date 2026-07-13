@@ -1,3 +1,4 @@
+// 役割: Bloom用RenderTargetと各ポストエフェクトパスを実装する。
 #include "BloomRenderer.h"
 
 #include <algorithm>
@@ -138,10 +139,6 @@ void BloomRenderer::Apply(
 		1.0f / static_cast<float>(outputTarget->GetHeight());
 	DrawFullscreen(sceneTexture, bloomSource, Pass::kComposite);
 	outputTarget->End();
-}
-
-D3D12_GPU_DESCRIPTOR_HANDLE BloomRenderer::GetBloomSrvGpuHandle() const {
-	return blurTargets_[1].GetSrvGpuHandle();
 }
 
 void BloomRenderer::CreateRootSignature() {

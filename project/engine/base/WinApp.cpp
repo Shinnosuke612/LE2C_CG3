@@ -1,3 +1,4 @@
+// 役割: Win32ウィンドウ手続きとメッセージ取得を実装する。
 #include "WinApp.h"
 #include "../externals/imgui/imgui.h"
 #include "../externals/imgui/imgui_impl_dx12.h"

@@ -1,3 +1,4 @@
+// 役割: Object3d共通の描画初期化とRenderState設定を実装する。
 #include "Object3dCommon.h"
 #include "../base/RenderFormats.h"
 #include "../base/DirectXCommon.h"

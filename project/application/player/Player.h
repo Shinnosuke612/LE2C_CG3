@@ -1,3 +1,4 @@
+// 役割: プレイヤーの移動状態、物理ボディ、表示オブジェクトをまとめる。
 #pragma once
 
 #include "../../engine/collision/Collider.h"

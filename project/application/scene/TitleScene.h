@@ -1,3 +1,4 @@
+// 役割: タイトル画面の初期化、更新、描画を管理する。
 #pragma once
 #include <vector>
 #include "../../engine/scene/BaseScene.h"
@@ -13,7 +14,7 @@ class TitleScene : public BaseScene
 public:
 	void Initialize() override;
 	void Finalize() override;
-	void Update() override;
+	void Update(float deltaTime) override;
 	void Draw() override;
 
 private:

@@ -1,3 +1,4 @@
+// 役割: 行列生成、積、逆行列、Transform分解を実装する。
 #include "Matrix4x4.h"
 #include "Math.h"
 #include "Quaternion.h"

@@ -147,7 +147,6 @@
 	<ClCompile Include="externals\ImGuizmo\ImGuizmo.cpp" />
     <ClCompile Include="engine\collision\Collider.cpp" />
     <ClCompile Include="engine\collision\Collision.cpp" />
-    <ClCompile Include="engine\collision\CollisionManager.cpp" />
     <ClCompile Include="engine\collision\OBBCollider.cpp" />
     <ClCompile Include="engine\collision\SphereCollider.cpp" />
     <ClCompile Include="engine\physics\PhysicsWorld.cpp" />
@@ -176,6 +175,7 @@
     <ClCompile Include="engine\base\Framework.cpp" />
     <ClCompile Include="application\Game.cpp" />
     <ClCompile Include="application\scene\GamePlayScene.cpp" />
+    <ClCompile Include="application\scene\GamePlaySceneDebug.cpp" />
     <ClCompile Include="engine\3d\LightManager.cpp" />
     <ClCompile Include="engine\3d\ShadowManager.cpp" />
     <ClCompile Include="main.cpp">
@@ -202,8 +202,12 @@
     <ClCompile Include="engine\particle\ParticleManager.cpp" />
     <ClCompile Include="engine\particle\ParticleEmitter.cpp" />
     <ClCompile Include="application\scene\TitleScene.cpp" />
+    <ClCompile Include="engine\agent\AgentSettingsResolver.cpp" />
+    <ClCompile Include="engine\agent\AgentSteering.cpp" />
     <ClCompile Include="engine\scene\SceneManager.cpp" />
     <ClCompile Include="engine\scene\SceneDocument.cpp" />
+    <ClCompile Include="engine\scene\SceneEntityQuery.cpp" />
+    <ClCompile Include="engine\scene\SceneTransformResolver.cpp" />
     <ClCompile Include="engine\scene\EditorSession.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectResource.cpp" />
 	<ClCompile Include="engine\3d\Skybox.cpp" />
@@ -283,7 +287,6 @@
   <ItemGroup>
 	<ClInclude Include="externals\ImGuizmo\ImGuizmo.h" />
     <ClInclude Include="engine\collision\Collider.h" />
-    <ClInclude Include="engine\collision\CollisionManager.h" />
     <ClInclude Include="engine\collision\OBBCollider.h" />
     <ClInclude Include="engine\collision\SphereCollider.h" />
     <ClInclude Include="engine\physics\PhysicsBody.h" />
@@ -314,6 +317,8 @@
     <ClInclude Include="engine\math\Vector3.h" />
     <ClInclude Include="engine\math\Vector4.h" />
     <ClInclude Include="engine\utility\Logger.h" />
+    <ClInclude Include="engine\utility\EditableResourcePath.h" />
+    <ClInclude Include="engine\utility\ResourceTextureCatalog.h" />
     <ClInclude Include="engine\utility\SystemPerformanceMonitor.h" />
     <ClInclude Include="engine\math\Math.h" />
     <ClInclude Include="engine\3d\Model.h" />
@@ -339,17 +344,19 @@
     <ClInclude Include="application\Game.h" />
     <ClInclude Include="application\scene\GamePlayScene.h" />
     <ClInclude Include="application\scene\TitleScene.h" />
+    <ClInclude Include="engine\agent\AgentSettingsResolver.h" />
+    <ClInclude Include="engine\agent\AgentSteering.h" />
     <ClInclude Include="engine\scene\SceneManager.h" />
     <ClInclude Include="engine\scene\SceneDocument.h" />
+    <ClInclude Include="engine\scene\SceneEntityQuery.h" />
+    <ClInclude Include="engine\scene\SceneSettings.h" />
+    <ClInclude Include="engine\scene\SceneTransformResolver.h" />
     <ClInclude Include="engine\scene\EditorSession.h" />
     <ClInclude Include="engine\particle\ParticleEffectResource.h" />
     <ClInclude Include="engine\3d\LightManager.h" />
     <ClInclude Include="engine\3d\ShadowManager.h" />
 	<ClInclude Include="engine\3d\Skybox.h" />
 	<ClInclude Include="engine\3d\StarFieldGenerator.h" />
-    <ClInclude Include="Vector\Vector2.h" />
-    <ClInclude Include="Vector\Vector3.h" />
-    <ClInclude Include="Vector\Vector4.h" />
     <ClInclude Include="engine\base\WinApp.h" />
   </ItemGroup>
   <ItemGroup>

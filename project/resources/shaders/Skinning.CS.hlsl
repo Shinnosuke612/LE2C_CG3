@@ -1,3 +1,4 @@
+// 役割: JointPaletteを使ってSkinning済み頂点Bufferを生成するCompute Shader。
 struct Vertex
 {
     float4 position;

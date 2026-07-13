@@ -1,3 +1,4 @@
+// 役割: SceneRenderTargetのGPUリソース生成と状態遷移を実装する。
 #include "SceneRenderTarget.h"
 
 #include <algorithm>

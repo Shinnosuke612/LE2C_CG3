@@ -1,3 +1,4 @@
+// 役割: CPUパーティクル共通の描画パイプライン初期化を実装する。
 #include "ParticleCommon.h"
 #include "../base/RenderFormats.h"
 #include "../base/DirectXCommon.h"

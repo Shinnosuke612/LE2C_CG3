@@ -1,3 +1,4 @@
+// 役割: ShadowMapリソース生成と影描画パスの開始、終了を実装する。
 #include "ShadowManager.h"
 
 #include "Object3d.h"
@@ -292,8 +293,6 @@ void ShadowManager::BeginShadowPass(uint32_t mapIndex) {
 	scissorRect.bottom = static_cast<LONG>(shadowMapSize_);
 	dxCommon_->GetCommandList()->RSSetScissorRects(1, &scissorRect);
 }
-
-void ShadowManager::EndShadowPass() {}
 
 Matrix4x4 ShadowManager::MakeLookAtMatrix(const Vector3& eye, const Vector3& target, const Vector3& up) const {
 	Vector3 forward = Math::Normalize(Math::Subtract(target, eye));

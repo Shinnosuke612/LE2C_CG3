@@ -1,3 +1,4 @@
+// 役割: スプライト描画で共有するPipelineStateとRootSignatureを管理する。
 #pragma once
 #include <d3dx12.h>
 #include <wrl.h>

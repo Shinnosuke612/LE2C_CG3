@@ -1,3 +1,4 @@
+// 役割: ノード階層からSkeletonを生成し、Jointの更新を実装する。
 #include "Skeleton.h"
 
 #include <algorithm>

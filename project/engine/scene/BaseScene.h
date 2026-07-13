@@ -1,3 +1,4 @@
+// 役割: すべてのシーンに共通する更新と描画のライフサイクルを定義する。
 #pragma once
 
 class SceneManager;
@@ -17,7 +18,7 @@ public:
 	virtual void Finalize() = 0;
 
 	// 更新
-	virtual void Update() = 0;
+	virtual void Update(float deltaTime) = 0;
 	virtual void UpdatePaused() {}
 
 	// 描画

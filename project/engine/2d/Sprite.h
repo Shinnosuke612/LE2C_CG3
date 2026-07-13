@@ -1,3 +1,4 @@
+// 役割: 2DスプライトのTransform、UV、色、描画情報を保持する。
 #pragma once
 #include "../math/Vector2.h"
 #include "../math/Vector3.h"

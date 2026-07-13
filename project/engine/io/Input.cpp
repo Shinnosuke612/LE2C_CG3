@@ -1,3 +1,4 @@
+// 役割: DirectInputとXInputから入力状態を更新する。
 #include "Input.h"
 
 #include <cmath>
@@ -118,18 +119,6 @@ bool Input::TriggerKey(BYTE keyNumber) {
 bool Input::PushMouse(MouseButton button) const {
 	const uint8_t index = static_cast<uint8_t>(button);
 	return (mouseState_.rgbButtons[index] & 0x80) != 0;
-}
-
-bool Input::TriggerMouse(MouseButton button) const {
-	const uint8_t index = static_cast<uint8_t>(button);
-	return (mouseState_.rgbButtons[index] & 0x80) != 0 &&
-		(previousMouseState_.rgbButtons[index] & 0x80) == 0;
-}
-
-bool Input::ReleaseMouse(MouseButton button) const {
-	const uint8_t index = static_cast<uint8_t>(button);
-	return (mouseState_.rgbButtons[index] & 0x80) == 0 &&
-		(previousMouseState_.rgbButtons[index] & 0x80) != 0;
 }
 
 void Input::SetCursorCapture(bool enabled) {

@@ -1,3 +1,4 @@
+// 役割: Bloom用の中間画像をガウスぼかしするピクセルシェーダー。
 #include "Bloom.hlsli"
 
 PixelShaderOutput main(VertexShaderOutput input)

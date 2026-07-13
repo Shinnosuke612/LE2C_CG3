@@ -1,10 +1,10 @@
+// 役割: 衝突形状に共通する種別、ワールド行列、ローカルオフセットを定義する。
 #pragma once
 
 #include <cstdint>
 
-#include "../math/Transform.h"
+#include "../math/Matrix4x4.h"
 #include "../math/Vector3.h"
-#include "../math/Vector4.h"
 
 class SphereCollider;
 class OBBCollider;
@@ -21,8 +21,8 @@ public:
 	virtual Type GetType() const = 0;
 	virtual bool Intersects(const Collider& other) const = 0;
 
-	void SetWorldTransform(const Transform* worldTransform) { worldTransform_ = worldTransform; }
-	const Transform* GetWorldTransform() const { return worldTransform_; }
+	void SetWorldMatrix(const Matrix4x4* worldMatrix) { worldMatrix_ = worldMatrix; }
+	const Matrix4x4* GetWorldMatrix() const { return worldMatrix_; }
 
 	void SetOffset(const Vector3& offset) { offset_ = offset; }
 	const Vector3& GetOffset() const { return offset_; }
@@ -38,10 +38,12 @@ public:
 
 	bool CanCollideWith(const Collider& other) const;
 	Vector3 GetWorldCenter() const;
-	void DrawDebug(const Vector4& color) const;
 
 protected:
-	const Transform* worldTransform_ = nullptr;
+	float GetWorldAxisScale(uint32_t axis) const;
+	float GetMaxWorldScale() const;
+
+	const Matrix4x4* worldMatrix_ = nullptr;
 	Vector3 offset_ = { 0.0f, 0.0f, 0.0f };
 	bool isActive_ = true;
 	uint32_t collisionAttribute_ = 0xffffffffu;

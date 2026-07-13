@@ -1,3 +1,4 @@
+// 役割: CameraPathPointから経路を収集し、時間に応じたカメラ姿勢を計算する。
 #include "CameraPathRuntime.h"
 
 #include "Camera.h"
@@ -5,66 +6,18 @@
 #include "../math/Matrix4x4.h"
 #include "../math/Quaternion.h"
 #include "../scene/SceneDocument.h"
+#include "../scene/SceneEntityQuery.h"
+#include "../scene/SceneTransformResolver.h"
 
 #include <algorithm>
 #include <cmath>
-#include <unordered_set>
 
 namespace {
+	using SceneEntityQuery::FindEnabledComponent;
+	using SceneTransformResolver::ResolveScene3DTransform;
+
 	constexpr float kTwoPi = 6.28318530717958647692f;
 	constexpr float kPi = 3.14159265358979323846f;
-
-	const SceneComponent* FindEnabledComponent(
-		const SceneEntity& entity,
-		const char* type
-	) {
-		const auto found = std::find_if(
-			entity.components.begin(),
-			entity.components.end(),
-			[type](const SceneComponent& component) {
-				return component.enabled && component.type == type;
-			}
-		);
-		return found == entity.components.end() ? nullptr : &(*found);
-	}
-
-	Matrix4x4 CalculateWorldMatrix(
-		const SceneDocument& document,
-		const SceneEntity& entity,
-		std::unordered_set<uint64_t>& visited
-	) {
-		const Matrix4x4 local = MakeAffineMatrix(
-			entity.transform.scale,
-			entity.transform.rotate,
-			entity.transform.translate
-		);
-		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
-			return local;
-		}
-		const SceneEntity* parent = document.FindEntity(entity.parentId);
-		if (!parent) {
-			return local;
-		}
-		return Multiply(local, CalculateWorldMatrix(document, *parent, visited));
-	}
-
-	Transform ResolveWorldTransform(
-		const SceneDocument& document,
-		const SceneEntity& entity
-	) {
-		std::unordered_set<uint64_t> visited;
-		const Matrix4x4 world = CalculateWorldMatrix(document, entity, visited);
-		Transform result = entity.transform;
-		Vector3 scale{};
-		Vector3 rotate{};
-		Vector3 translate{};
-		if (DecomposeAffineMatrix(world, scale, rotate, translate)) {
-			result.scale = scale;
-			result.rotate = rotate;
-			result.translate = translate;
-		}
-		return result;
-	}
 
 	Transform ResolveCameraWorldTransform(const Camera& camera) {
 		Transform result{};
@@ -268,7 +221,7 @@ void CameraPathRuntime::Play(
 			continue;
 		}
 		PointSample sample{};
-		sample.transform = ResolveWorldTransform(document, entity);
+		sample.transform = ResolveScene3DTransform(document, entity);
 		sample.durationToNext =
 			(std::max)(pointComponent->cameraPathPointDurationToNext, 0.0f);
 		sample.easingToNext =

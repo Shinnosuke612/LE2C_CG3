@@ -1,3 +1,4 @@
+// 役割: プレイヤーの入力移動と物理状態の同期を実装する。
 #include "Player.h"
 
 #include "../../engine/3d/Object3d.h"

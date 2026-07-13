@@ -1,3 +1,4 @@
+// 役割: メッシュ、材質、Skeleton、Animationを持つモデルリソースを定義する。
 #pragma once
 #include <string>
 #include <vector>
@@ -65,8 +66,6 @@ private://インナークラス
 		float padding2[3];
 	};
 private://非公開メンバ関数
-	// .mtlファイルの読み取り
-	static MaterialData LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename);
 	// .objファイルの読み取り
 	ModelData LoadModelFile(const std::string& directoryPath, const std::string& filename);
 
@@ -83,7 +82,6 @@ public://公開メンバ関数
 	//描画
 	void Draw(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
 	void DrawForShadow(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
-	void DrawWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& vertexBufferView);
 	void DrawWithMaterial(ID3D12Resource* materialOverride, const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView = nullptr);
 	void DrawWithMaterialAndTexture(
 		ID3D12Resource* materialOverride,
@@ -100,10 +98,6 @@ public://公開メンバ関数
 	// getter
 	const Matrix4x4& GetRootNodeLocalMatrix() const { return modelData.rootNode.localMatrix; }
 	const Node& GetRootNode() const { return modelData.rootNode; }
-	const Animation& GetAnimation() const {
-		static const Animation emptyAnimation{};
-		return animations_.empty() ? emptyAnimation : animations_.front();
-	}
 	const std::vector<Animation>& GetAnimations() const { return animations_; }
 	bool HasAnimation() const { return !animations_.empty(); }
 	bool HasSkinning() const { return modelData.hasSkinning; }

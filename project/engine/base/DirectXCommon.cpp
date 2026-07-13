@@ -1,3 +1,4 @@
+// 役割: Direct3D12の初期化、フレーム開始、フレーム終了を実装する。
 #include "DirectXCommon.h"
 #include <cassert>
 #include "../../externals/DirectXTex/d3dx12.h"
@@ -82,8 +83,6 @@ void DirectXCommon::Initialize(WinApp* winApp){
 	ScissorRectInitialize();
 	//DXCコンパイラの生成
 	DXCCompilerGenerate();
-	////ImGuiの初期化
-	//ImGuiInitialize();
 
 #ifdef _DEBUG
 	ID3D12InfoQueue* infoQueue = nullptr;
@@ -462,20 +461,6 @@ void DirectXCommon::DXCCompilerGenerate(){
 	includeHandler = nullptr;
 	hr = dxcUtils->CreateDefaultIncludeHandler(&includeHandler);
 	assert(SUCCEEDED(hr));
-}
-
-void DirectXCommon::ImGuiInitialize(){
-	//ImGuiの初期化
-	//IMGUI_CHECKVERSION();
-	//ImGui::CreateContext();
-	//ImGui::StyleColorsDark();
-	//ImGui_ImplWin32_Init(winApp_->GetHwnd());
-	//ImGui_ImplDX12_Init(*(&device),
-	//					swapChainDesc.BufferCount,
-	//					rtvDesc.Format,
-	//					*(&srvDescriptorHeap),
-	//					srvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-	//					srvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 }
 
 void DirectXCommon::ExecuteCommandListAndWait(){

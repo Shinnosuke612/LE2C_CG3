@@ -1,3 +1,4 @@
+// 役割: GPUパーティクルで共有する粒子状態とGPUリソース定義を提供する。
 #pragma once
 
 #include <cstdint>

@@ -1,3 +1,4 @@
+// 役割: パーティクルエフェクトJSONの読み書きと既定値補完を実装する。
 #include "ParticleEffectResource.h"
 
 #include <algorithm>

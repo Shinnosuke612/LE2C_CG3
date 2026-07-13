@@ -1,3 +1,4 @@
+// 役割: Quaternionの行列変換、積、補間を実装する。
 #include "Quaternion.h"
 
 #include "Math.h"

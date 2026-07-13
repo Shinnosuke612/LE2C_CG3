@@ -1,3 +1,4 @@
+// 役割: Skybox用のCubeMap描画とGPUリソース設定を実装する。
 #include "Skybox.h"
 #include "Object3dCommon.h"
 #include "Camera.h"

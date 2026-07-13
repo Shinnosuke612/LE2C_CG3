@@ -1,3 +1,4 @@
+// 役割: パーティクルエフェクトJSONを編集するImGui UIを定義する。
 #pragma once
 #include <string>
 #include <vector>

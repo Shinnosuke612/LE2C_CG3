@@ -1,3 +1,4 @@
+// 役割: モデル階層から生成したSkeletonとJoint探索を定義する。
 #pragma once
 
 #include <cstdint>

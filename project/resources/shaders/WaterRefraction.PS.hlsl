@@ -1,3 +1,4 @@
+// 役割: 水面を通した屈折による画面歪みを合成するピクセルシェーダー。
 #include "Fullscreen.hlsli"
 
 Texture2D<float4> gTexture : register(t0);

@@ -1,3 +1,4 @@
+// 役割: ShadowMap、ライト視点Camera、影描画状態を管理する。
 #pragma once
 
 #include <array>
@@ -53,8 +54,6 @@ private:
 	void CreateShadowDataResource();
 	void UpdateShadowData(const LightManager& lightManager);
 	void BeginShadowPass(uint32_t mapIndex);
-	void EndShadowPass();
-
 	Matrix4x4 MakeLookAtMatrix(const Vector3& eye, const Vector3& target, const Vector3& up) const;
 	Matrix4x4 MakeDirectionalLightViewProjection(
 		const LightManager::DirectionalLight& light,

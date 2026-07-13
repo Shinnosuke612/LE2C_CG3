@@ -1,3 +1,4 @@
+// 役割: パーティクルQuadをCamera正面へ展開する頂点シェーダー。
 #include "Particle.hlsli"
 
 struct TransformationMatrix

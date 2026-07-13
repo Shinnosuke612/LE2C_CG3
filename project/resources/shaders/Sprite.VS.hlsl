@@ -1,3 +1,4 @@
+// 役割: 2Dスプライト頂点をスクリーンのクリップ空間へ変換する頂点シェーダー。
 struct VertexShaderInput
 {
     float4 position : POSITION0;

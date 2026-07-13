@@ -1,3 +1,4 @@
+// 役割: 編集、再生、一時停止の状態とシーン複製を管理する。
 #pragma once
 
 #include <string>

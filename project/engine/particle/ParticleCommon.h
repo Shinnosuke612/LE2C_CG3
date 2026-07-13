@@ -1,3 +1,4 @@
+// 役割: CPUパーティクル描画で共有するPipelineStateとRootSignatureを管理する。
 #pragma once
 #include <d3d12.h>
 #include <d3dx12.h>

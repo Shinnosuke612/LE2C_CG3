@@ -1,3 +1,4 @@
+// 役割: 描画ターゲットと深度バッファで使う共通Formatを定義する。
 #pragma once
 
 #include <dxgiformat.h>

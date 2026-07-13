@@ -1,4 +1,4 @@
-// engine/base/ImGuiManager.h
+// 役割: エディタのDockSpace、Hierarchy、Inspector、Project、Scene Viewを管理する。
 #pragma once
 #include <cstdint>
 #include <string>

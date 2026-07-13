@@ -1,3 +1,4 @@
+// 役割: シーン描画結果を保持するRenderTargetとSRVを管理する。
 #pragma once
 
 #include <cstdint>

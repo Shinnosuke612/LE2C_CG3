@@ -1,3 +1,4 @@
+// 役割: エディタで編集可能なリソースパスの候補を定義する。
 #pragma once
 
 #include <Windows.h>

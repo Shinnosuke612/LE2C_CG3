@@ -1,3 +1,4 @@
+// 役割: シーン生成、更新、描画、遷移の実行を実装する。
 #include "SceneManager.h"
 
 #include <cassert>
@@ -35,7 +36,7 @@ SceneDocument* SceneManager::GetActiveSceneDocument() const {
 	return editorSession_ ? &editorSession_->GetActiveDocument() : nullptr;
 }
 
-void SceneManager::Update()
+void SceneManager::Update(float deltaTime)
 {
 	// 次のシーンの予約があるなら
 	if (nextScene_) {
@@ -65,7 +66,7 @@ void SceneManager::Update()
 
 	// 現在のシーンがあれば毎フレーム更新
 	if (scene_) {
-		scene_->Update();
+		scene_->Update(deltaTime);
 	}
 }
 

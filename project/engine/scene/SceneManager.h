@@ -1,3 +1,4 @@
+// 役割: 現在のシーンとSceneFactoryを管理し、シーン遷移を実行する。
 #pragma once
 
 #include <string>
@@ -12,7 +13,7 @@ class SceneManager
 public:
 	~SceneManager();
 
-	void Update();
+	void Update(float deltaTime);
 	void UpdatePaused();
 
 	void Draw();

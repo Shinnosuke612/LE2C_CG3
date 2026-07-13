@@ -1,3 +1,4 @@
+// 役割: 位置、回転、拡縮をまとめたローカルTransformを定義する。
 #pragma once
 #include "Vector3.h"
 #include "Quaternion.h"

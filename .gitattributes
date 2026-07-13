@@ -2,6 +2,8 @@
 # Set default behavior to automatically normalize line endings.
 ###############################################################################
 * text=auto
+project/application/** text eol=crlf
+project/engine/** text eol=crlf
 
 ###############################################################################
 # Set default behavior for command prompt diff.

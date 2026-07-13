@@ -1,3 +1,4 @@
+// 役割: 水面頂点を波形変形し、Cameraのクリップ空間へ変換する頂点シェーダー。
 struct VertexShaderInput
 {
     float3 position : POSITION0;

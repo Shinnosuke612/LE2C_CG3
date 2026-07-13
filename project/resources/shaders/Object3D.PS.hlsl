@@ -1,3 +1,4 @@
+// 役割: 3Dモデルへライティング、環境反射、影を適用するピクセルシェーダー。
 #include "Object3D.hlsli"
 
 Texture2D gTexture : register(t0);

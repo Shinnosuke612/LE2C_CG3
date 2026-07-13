@@ -1,3 +1,4 @@
+// 役割: 三人称カメラの追従、遮蔽回避、マウス入力反映を実装する。
 #define NOMINMAX
 #include "ThirdPersonCameraController.h"
 
