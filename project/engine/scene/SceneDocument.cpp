@@ -299,6 +299,8 @@ namespace {
 			1.0f
 		);
 		team.agentRandomSeed = (std::max)(team.agentRandomSeed, 0);
+		team.agentFlockDecisionInterval =
+			(std::max)(team.agentFlockDecisionInterval, 0.0f);
 		team.agentFlockAcceleration =
 			(std::max)(team.agentFlockAcceleration, 0.0f);
 		team.agentFlockTurnRate =
@@ -309,6 +311,8 @@ namespace {
 			(std::max)(team.agentMemberJitterStrength, 0.0f);
 		team.agentMemberJitterFrequency =
 			(std::max)(team.agentMemberJitterFrequency, 0.0f);
+		team.agentMemberJitterUpdateInterval =
+			(std::max)(team.agentMemberJitterUpdateInterval, 0.0f);
 		team.agentMemberJitterFollowSpeed =
 			(std::max)(team.agentMemberJitterFollowSpeed, 0.0f);
 		team.agentMemberSpeedVariation = std::clamp(
@@ -322,6 +326,13 @@ namespace {
 			(std::max)(team.agentMemberLeashStrength, 0.0f);
 		team.agentMemberCatchupSpeed =
 			(std::max)(team.agentMemberCatchupSpeed, 0.0f);
+		team.agentMemberSeparationUpdateInterval =
+			(std::max)(team.agentMemberSeparationUpdateInterval, 0.0f);
+		team.agentMemberSeparationBlend = std::clamp(
+			team.agentMemberSeparationBlend,
+			0.0f,
+			1.0f
+		);
 		team.agentTeamHeadingDirection = NormalizeDirectionVector(
 			team.agentTeamHeadingDirection,
 			{ 0.0f, 0.0f, 1.0f }
@@ -375,17 +386,26 @@ namespace {
 			{ "agentWanderVerticalRange", team.agentWanderVerticalRange },
 			{ "agentRandomizeSeedOnPlay", team.agentRandomizeSeedOnPlay },
 			{ "agentRandomSeed", team.agentRandomSeed },
+			{ "agentUseLeaderStartPosition", team.agentUseLeaderStartPosition },
+			{ "agentLeaderStartPosition",
+				VectorToJson(team.agentLeaderStartPosition) },
+			{ "agentFlockDecisionInterval", team.agentFlockDecisionInterval },
 			{ "agentFlockAcceleration", team.agentFlockAcceleration },
 			{ "agentFlockTurnRate", team.agentFlockTurnRate },
 			{ "agentMemberCenterFollow", team.agentMemberCenterFollow },
 			{ "agentMemberJitterStrength", team.agentMemberJitterStrength },
 			{ "agentMemberJitterFrequency", team.agentMemberJitterFrequency },
+			{ "agentMemberJitterUpdateInterval",
+				team.agentMemberJitterUpdateInterval },
 			{ "agentMemberJitterFollowSpeed",
 				team.agentMemberJitterFollowSpeed },
 			{ "agentMemberSpeedVariation", team.agentMemberSpeedVariation },
 			{ "agentMemberLeashDistance", team.agentMemberLeashDistance },
 			{ "agentMemberLeashStrength", team.agentMemberLeashStrength },
 			{ "agentMemberCatchupSpeed", team.agentMemberCatchupSpeed },
+			{ "agentMemberSeparationUpdateInterval",
+				team.agentMemberSeparationUpdateInterval },
+			{ "agentMemberSeparationBlend", team.agentMemberSeparationBlend },
 			{ "agentUseTeamHeading", team.agentUseTeamHeading },
 			{ "agentTeamHeadingFromAverage",
 				team.agentTeamHeadingFromAverage },
@@ -464,6 +484,20 @@ namespace {
 			"agentRandomSeed",
 			team.agentRandomSeed
 		);
+		team.agentUseLeaderStartPosition = source.value(
+			"agentUseLeaderStartPosition",
+			team.agentUseLeaderStartPosition
+		);
+		if (source.contains("agentLeaderStartPosition")) {
+			team.agentLeaderStartPosition = JsonToVector(
+				source.at("agentLeaderStartPosition"),
+				team.agentLeaderStartPosition
+			);
+		}
+		team.agentFlockDecisionInterval = source.value(
+			"agentFlockDecisionInterval",
+			team.agentFlockDecisionInterval
+		);
 		team.agentFlockAcceleration = source.value(
 			"agentFlockAcceleration",
 			team.agentFlockAcceleration
@@ -484,6 +518,10 @@ namespace {
 			"agentMemberJitterFrequency",
 			team.agentMemberJitterFrequency
 		);
+		team.agentMemberJitterUpdateInterval = source.value(
+			"agentMemberJitterUpdateInterval",
+			team.agentMemberJitterUpdateInterval
+		);
 		team.agentMemberJitterFollowSpeed = source.value(
 			"agentMemberJitterFollowSpeed",
 			team.agentMemberJitterFollowSpeed
@@ -503,6 +541,14 @@ namespace {
 		team.agentMemberCatchupSpeed = source.value(
 			"agentMemberCatchupSpeed",
 			team.agentMemberCatchupSpeed
+		);
+		team.agentMemberSeparationUpdateInterval = source.value(
+			"agentMemberSeparationUpdateInterval",
+			team.agentMemberSeparationUpdateInterval
+		);
+		team.agentMemberSeparationBlend = source.value(
+			"agentMemberSeparationBlend",
+			team.agentMemberSeparationBlend
 		);
 		team.agentUseTeamHeading = source.value(
 			"agentUseTeamHeading",
@@ -742,17 +788,24 @@ namespace {
 			result["wanderVerticalRange"] = component.agentWanderVerticalRange;
 			result["randomizeSeedOnPlay"] = component.agentRandomizeSeedOnPlay;
 			result["randomSeed"] = component.agentRandomSeed;
+			result["flockDecisionInterval"] = component.agentFlockDecisionInterval;
 			result["flockAcceleration"] = component.agentFlockAcceleration;
 			result["flockTurnRate"] = component.agentFlockTurnRate;
 			result["memberCenterFollow"] = component.agentMemberCenterFollow;
 			result["memberJitterStrength"] = component.agentMemberJitterStrength;
 			result["memberJitterFrequency"] = component.agentMemberJitterFrequency;
+			result["memberJitterUpdateInterval"] =
+				component.agentMemberJitterUpdateInterval;
 			result["memberJitterFollowSpeed"] =
 				component.agentMemberJitterFollowSpeed;
 			result["memberSpeedVariation"] = component.agentMemberSpeedVariation;
 			result["memberLeashDistance"] = component.agentMemberLeashDistance;
 			result["memberLeashStrength"] = component.agentMemberLeashStrength;
 			result["memberCatchupSpeed"] = component.agentMemberCatchupSpeed;
+			result["memberSeparationUpdateInterval"] =
+				component.agentMemberSeparationUpdateInterval;
+			result["memberSeparationBlend"] =
+				component.agentMemberSeparationBlend;
 			result["boundsWeight"] = component.agentBoundsWeight;
 			result["useTeamHeading"] = component.agentUseTeamHeading;
 			result["teamHeadingFromAverage"] =
@@ -1156,6 +1209,10 @@ namespace {
 					"randomSeed",
 					component.agentRandomSeed
 				);
+				component.agentFlockDecisionInterval = value.value(
+					"flockDecisionInterval",
+					component.agentFlockDecisionInterval
+				);
 				component.agentFlockAcceleration = value.value(
 					"flockAcceleration",
 					component.agentFlockAcceleration
@@ -1176,6 +1233,10 @@ namespace {
 					"memberJitterFrequency",
 					component.agentMemberJitterFrequency
 				);
+				component.agentMemberJitterUpdateInterval = value.value(
+					"memberJitterUpdateInterval",
+					component.agentMemberJitterUpdateInterval
+				);
 				component.agentMemberJitterFollowSpeed = value.value(
 					"memberJitterFollowSpeed",
 					component.agentMemberJitterFollowSpeed
@@ -1195,6 +1256,14 @@ namespace {
 				component.agentMemberCatchupSpeed = value.value(
 					"memberCatchupSpeed",
 					component.agentMemberCatchupSpeed
+				);
+				component.agentMemberSeparationUpdateInterval = value.value(
+					"memberSeparationUpdateInterval",
+					component.agentMemberSeparationUpdateInterval
+				);
+				component.agentMemberSeparationBlend = value.value(
+					"memberSeparationBlend",
+					component.agentMemberSeparationBlend
 				);
 				component.agentBoundsWeight = value.value(
 					"boundsWeight",
@@ -1559,6 +1628,8 @@ namespace {
 					);
 					component.agentRandomSeed =
 						(std::max)(component.agentRandomSeed, 0);
+					component.agentFlockDecisionInterval =
+						(std::max)(component.agentFlockDecisionInterval, 0.0f);
 					component.agentFlockAcceleration =
 						(std::max)(component.agentFlockAcceleration, 0.0f);
 					component.agentFlockTurnRate =
@@ -1569,6 +1640,8 @@ namespace {
 						(std::max)(component.agentMemberJitterStrength, 0.0f);
 					component.agentMemberJitterFrequency =
 						(std::max)(component.agentMemberJitterFrequency, 0.0f);
+					component.agentMemberJitterUpdateInterval =
+						(std::max)(component.agentMemberJitterUpdateInterval, 0.0f);
 					component.agentMemberJitterFollowSpeed =
 						(std::max)(component.agentMemberJitterFollowSpeed, 0.0f);
 					component.agentMemberSpeedVariation = std::clamp(
@@ -1582,6 +1655,16 @@ namespace {
 						(std::max)(component.agentMemberLeashStrength, 0.0f);
 					component.agentMemberCatchupSpeed =
 						(std::max)(component.agentMemberCatchupSpeed, 0.0f);
+					component.agentMemberSeparationUpdateInterval =
+						(std::max)(
+							component.agentMemberSeparationUpdateInterval,
+							0.0f
+						);
+					component.agentMemberSeparationBlend = std::clamp(
+						component.agentMemberSeparationBlend,
+						0.0f,
+						1.0f
+					);
 					component.agentBoundsWeight =
 						(std::max)(component.agentBoundsWeight, 0.0f);
 					component.agentTeamHeadingDirection =
@@ -1786,7 +1869,7 @@ bool SceneDocument::Load(const std::string& filePath) {
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 18;
+	root["version"] = 21;
 	root["sceneName"] = sceneName_;
 	root["postProcess"] = PostProcessToJson(postProcessSettings_);
 	root["teams"] = json::array();

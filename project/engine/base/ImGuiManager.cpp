@@ -2326,6 +2326,24 @@ void ImGuiManager::DrawInspectorWindow() {
 						&selectedTeam->agentRandomSeed
 					);
 					ImGui::EndDisabled();
+					teamChanged |= ImGui::Checkbox(
+						"Use Leader Start Position",
+						&selectedTeam->agentUseLeaderStartPosition
+					);
+					ImGui::BeginDisabled(!selectedTeam->agentUseLeaderStartPosition);
+					teamChanged |= ImGui::DragFloat3(
+						"Leader Start Position",
+						&selectedTeam->agentLeaderStartPosition.x,
+						0.05f
+					);
+					ImGui::EndDisabled();
+					teamChanged |= ImGui::DragFloat(
+						"Team Decision Interval",
+						&selectedTeam->agentFlockDecisionInterval,
+						0.01f,
+						0.0f,
+						5.0f
+					);
 					teamChanged |= ImGui::DragFloat(
 						"Team Acceleration",
 						&selectedTeam->agentFlockAcceleration,
@@ -2340,9 +2358,9 @@ void ImGuiManager::DrawInspectorWindow() {
 						0.0f,
 						6.283185f
 					);
-					ImGui::SeparatorText("Member Variation");
+					ImGui::SeparatorText("Member Follow");
 					teamChanged |= ImGui::DragFloat(
-						"Member Center Follow",
+						"Member Return Strength",
 						&selectedTeam->agentMemberCenterFollow,
 						0.05f,
 						0.0f,
@@ -2363,20 +2381,21 @@ void ImGuiManager::DrawInspectorWindow() {
 						10.0f
 					);
 					teamChanged |= ImGui::DragFloat(
+						"Member Jitter Update Interval",
+						&selectedTeam->agentMemberJitterUpdateInterval,
+						0.01f,
+						0.0f,
+						10.0f
+					);
+					teamChanged |= ImGui::DragFloat(
 						"Member Jitter Follow Speed",
 						&selectedTeam->agentMemberJitterFollowSpeed,
 						0.01f,
 						0.0f,
 						20.0f
 					);
-					teamChanged |= ImGui::SliderFloat(
-						"Member Speed Variation",
-						&selectedTeam->agentMemberSpeedVariation,
-						0.0f,
-						1.0f
-					);
 					teamChanged |= ImGui::DragFloat(
-						"Member Leash Distance",
+						"Member Max Distance",
 						&selectedTeam->agentMemberLeashDistance,
 						0.05f,
 						0.0f,
@@ -4030,6 +4049,13 @@ void ImGuiManager::DrawInspectorWindow() {
 				);
 				ImGui::EndDisabled();
 				agentChanged |= ImGui::DragFloat(
+					"Flock Decision Interval",
+					&component.agentFlockDecisionInterval,
+					0.01f,
+					0.0f,
+					5.0f
+				);
+				agentChanged |= ImGui::DragFloat(
 					"Flock Acceleration",
 					&component.agentFlockAcceleration,
 					0.05f,
@@ -4043,9 +4069,9 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.0f,
 					6.283185f
 				);
-				ImGui::SeparatorText("Member Variation");
+				ImGui::SeparatorText("Member Follow");
 				agentChanged |= ImGui::DragFloat(
-					"Center Follow",
+					"Return Strength",
 					&component.agentMemberCenterFollow,
 					0.05f,
 					0.0f,
@@ -4066,20 +4092,21 @@ void ImGuiManager::DrawInspectorWindow() {
 					10.0f
 				);
 				agentChanged |= ImGui::DragFloat(
+					"Jitter Update Interval",
+					&component.agentMemberJitterUpdateInterval,
+					0.01f,
+					0.0f,
+					10.0f
+				);
+				agentChanged |= ImGui::DragFloat(
 					"Jitter Follow Speed",
 					&component.agentMemberJitterFollowSpeed,
 					0.01f,
 					0.0f,
 					20.0f
 				);
-				agentChanged |= ImGui::SliderFloat(
-					"Speed Variation",
-					&component.agentMemberSpeedVariation,
-					0.0f,
-					1.0f
-				);
 				agentChanged |= ImGui::DragFloat(
-					"Leash Distance",
+					"Max Distance",
 					&component.agentMemberLeashDistance,
 					0.05f,
 					0.0f,
@@ -4098,6 +4125,19 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.05f,
 					0.0f,
 					100.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Separation Update Interval",
+					&component.agentMemberSeparationUpdateInterval,
+					0.01f,
+					0.0f,
+					5.0f
+				);
+				agentChanged |= ImGui::SliderFloat(
+					"Separation Blend",
+					&component.agentMemberSeparationBlend,
+					0.0f,
+					1.0f
 				);
 
 				ImGui::SeparatorText("Team Heading");

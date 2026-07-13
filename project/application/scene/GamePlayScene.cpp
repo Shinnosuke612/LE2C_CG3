@@ -161,17 +161,23 @@ namespace {
 		resolved.agentWanderVerticalRange = team->agentWanderVerticalRange;
 		resolved.agentRandomizeSeedOnPlay = team->agentRandomizeSeedOnPlay;
 		resolved.agentRandomSeed = team->agentRandomSeed;
+		resolved.agentFlockDecisionInterval = team->agentFlockDecisionInterval;
 		resolved.agentFlockAcceleration = team->agentFlockAcceleration;
 		resolved.agentFlockTurnRate = team->agentFlockTurnRate;
 		resolved.agentMemberCenterFollow = team->agentMemberCenterFollow;
 		resolved.agentMemberJitterStrength = team->agentMemberJitterStrength;
 		resolved.agentMemberJitterFrequency = team->agentMemberJitterFrequency;
+		resolved.agentMemberJitterUpdateInterval =
+			team->agentMemberJitterUpdateInterval;
 		resolved.agentMemberJitterFollowSpeed =
 			team->agentMemberJitterFollowSpeed;
 		resolved.agentMemberSpeedVariation = team->agentMemberSpeedVariation;
 		resolved.agentMemberLeashDistance = team->agentMemberLeashDistance;
 		resolved.agentMemberLeashStrength = team->agentMemberLeashStrength;
 		resolved.agentMemberCatchupSpeed = team->agentMemberCatchupSpeed;
+		resolved.agentMemberSeparationUpdateInterval =
+			team->agentMemberSeparationUpdateInterval;
+		resolved.agentMemberSeparationBlend = team->agentMemberSeparationBlend;
 		resolved.agentUseTeamHeading = team->agentUseTeamHeading;
 		resolved.agentTeamHeadingFromAverage =
 			team->agentTeamHeadingFromAverage;
@@ -209,6 +215,34 @@ namespace {
 		resolved.agentCohesionWeight = team->agentCohesionWeight;
 		resolved.agentVisualColor = team->agentVisualColor;
 		resolved.agentEnableLighting = team->agentEnableLighting;
+		return resolved;
+	}
+
+	SceneComponent ResolveTeamLeaderSettings(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& behavior
+	) {
+		SceneComponent resolved = behavior;
+		const SceneTeamSettings* team = document.ResolveEntityTeam(entity);
+		if (!team) {
+			return resolved;
+		}
+		resolved.agentMinSpeed = team->agentMinSpeed;
+		resolved.agentMaxSpeed = team->agentMaxSpeed;
+		resolved.agentWanderStrength = team->agentWanderStrength;
+		resolved.agentWanderChangeInterval = team->agentWanderChangeInterval;
+		resolved.agentWanderDirectionRange = team->agentWanderDirectionRange;
+		resolved.agentWanderVerticalRange = team->agentWanderVerticalRange;
+		resolved.agentRandomizeSeedOnPlay = team->agentRandomizeSeedOnPlay;
+		resolved.agentRandomSeed = team->agentRandomSeed;
+		resolved.agentFlockDecisionInterval = team->agentFlockDecisionInterval;
+		resolved.agentFlockAcceleration = team->agentFlockAcceleration;
+		resolved.agentFlockTurnRate = team->agentFlockTurnRate;
+		resolved.agentUseTeamHeading = team->agentUseTeamHeading;
+		resolved.agentTeamHeadingDirection = team->agentTeamHeadingDirection;
+		resolved.agentTeamHeadingWeight = team->agentTeamHeadingWeight;
+		resolved.agentForwardAxis = team->agentForwardAxis;
 		return resolved;
 	}
 
@@ -615,6 +649,21 @@ namespace {
 			},
 			heading
 		);
+	}
+
+	Vector3 BuildFlockMemberJitterTarget(
+		uint64_t entityId,
+		uint64_t teamSeed,
+		uint32_t step,
+		float strength
+	) {
+		const uint64_t seed = entityId ^ teamSeed;
+		const uint32_t salt = 601u + step * 5u;
+		return {
+			(Hash01(seed, salt) * 2.0f - 1.0f) * strength,
+			(Hash01(seed, salt + 1u) * 2.0f - 1.0f) * strength * 0.45f,
+			(Hash01(seed, salt + 2u) * 2.0f - 1.0f) * strength
+		};
 	}
 
 	float FollowAmount(float followSpeed, float deltaTime) {
@@ -1929,8 +1978,10 @@ void GamePlayScene::UpdateAgentBehaviors(
 	struct TeamFrameState {
 		Vector3 centerSum{};
 		SceneComponent motionBehavior{};
+		Vector3 leaderStartPosition{};
 		uint64_t seedId = 0;
 		uint32_t count = 0;
+		bool useLeaderStartPosition = false;
 		bool hasMotionBehavior = false;
 	};
 
@@ -1947,7 +1998,21 @@ void GamePlayScene::UpdateAgentBehaviors(
 			agent.transform.translate
 		);
 		if (!frame.hasMotionBehavior) {
-			frame.motionBehavior = agent.behavior;
+			const SceneComponent* sourceBehavior =
+				FindEnabledComponent(*agent.entity, "AgentBehavior");
+			frame.motionBehavior = sourceBehavior
+				? ResolveTeamLeaderSettings(
+					document,
+					*agent.entity,
+					*sourceBehavior
+				)
+				: agent.behavior;
+			if (const SceneTeamSettings* team =
+				document.ResolveEntityTeam(*agent.entity)) {
+				frame.useLeaderStartPosition =
+					team->agentUseLeaderStartPosition;
+				frame.leaderStartPosition = team->agentLeaderStartPosition;
+			}
 			frame.seedId = agent.entity->id;
 			frame.hasMotionBehavior = true;
 		}
@@ -1973,7 +2038,9 @@ void GamePlayScene::UpdateAgentBehaviors(
 		const Vector3 center = Math::Multiply(frame.centerSum, invCount);
 		TeamRuntime& runtime = agentTeamRuntimes_[teamKey];
 		if (!runtime.initialized) {
-			runtime.center = center;
+			runtime.center = frame.useLeaderStartPosition
+				? frame.leaderStartPosition
+				: center;
 			runtime.phase = Hash01(frame.seedId, 211u) * 6.28318530718f;
 			runtime.seedId = BuildFlockRuntimeSeed(
 				frame.seedId,
@@ -2011,6 +2078,9 @@ void GamePlayScene::UpdateAgentBehaviors(
 				(frame.motionBehavior.agentMinSpeed +
 					frame.motionBehavior.agentMaxSpeed) * 0.5f;
 			runtime.velocity = Math::Multiply(runtime.heading, initialSpeed);
+			runtime.desiredDirection = runtime.heading;
+			runtime.desiredSpeed = initialSpeed;
+			runtime.decisionValid = false;
 			runtime.initialized = true;
 		}
 
@@ -2019,86 +2089,88 @@ void GamePlayScene::UpdateAgentBehaviors(
 			runtime.velocity,
 			runtime.heading
 		);
-		Vector3 desired = AddScaled({}, velocityDirection, 0.65f);
-		if (behavior.agentWanderChangeInterval > 0.0f) {
-			runtime.wanderTimer -= dt;
-			if (runtime.wanderTimer <= 0.0f) {
-				++runtime.wanderStep;
-				++runtime.speedRevision;
-				runtime.wanderDirection = BuildFlockWanderDirection(
-					runtime.heading,
-					runtime.seedId,
-					runtime.wanderStep,
-					behavior.agentWanderDirectionRange,
-					behavior.agentWanderVerticalRange
-				);
-				runtime.wanderTimer =
-					behavior.agentWanderChangeInterval *
-					(0.75f + Hash01(
-						runtime.seedId,
-						331u + runtime.wanderStep * 3u
-					) * 0.5f);
-			}
-		}
-		desired = AddScaled(
-			desired,
-			runtime.wanderDirection,
-			behavior.agentWanderStrength
-		);
-		if (behavior.agentUseTeamHeading) {
-			desired = AddScaled(
-				desired,
-				SafeNormalize(
-					behavior.agentTeamHeadingDirection,
-					velocityDirection
-				),
-				behavior.agentTeamHeadingWeight
-			);
-		}
-
 		AgentBounds bounds{};
-		if (TryResolveAgentBounds(document, behavior, runtime.center, bounds)) {
-			desired = AddScaled(
-				desired,
-				ComputeBoundsSteering(runtime.center, bounds),
-				behavior.agentBoundsWeight
-			);
-		}
-		AgentAttractorTarget attractor{};
-		float speedScale = 1.0f;
-		if (
-			behavior.agentAttractorWeight > 0.0f &&
-			TryResolveAgentAttractor(document, behavior, attractor)
-		) {
-			const Vector3 toAttractor = Math::Subtract(
-				attractor.position,
-				runtime.center
-			);
-			const float distance = Math::Length(toAttractor);
-			const float radius = (std::max)(attractor.radius, 0.001f);
-			const float strength =
-				behavior.agentAttractorWeight * attractor.strength;
-			desired = AddScaled(
-				desired,
-				SafeNormalize(toAttractor, velocityDirection),
-				strength * std::clamp(distance / radius, 0.0f, 2.0f)
-			);
-			if (distance < radius) {
-				speedScale = 0.7f;
+		TryResolveAgentBounds(document, behavior, runtime.center, bounds);
+		runtime.decisionTimer -= dt;
+		if (!runtime.decisionValid || runtime.decisionTimer <= 0.0f) {
+			Vector3 desired = AddScaled({}, velocityDirection, 0.65f);
+			if (behavior.agentWanderChangeInterval > 0.0f) {
+				runtime.wanderTimer -= behavior.agentFlockDecisionInterval > 0.0f
+					? behavior.agentFlockDecisionInterval
+					: dt;
+				if (runtime.wanderTimer <= 0.0f) {
+					++runtime.wanderStep;
+					runtime.wanderDirection = BuildFlockWanderDirection(
+						runtime.heading,
+						runtime.seedId,
+						runtime.wanderStep,
+						behavior.agentWanderDirectionRange,
+						behavior.agentWanderVerticalRange
+					);
+					runtime.wanderTimer = behavior.agentWanderChangeInterval *
+						(0.75f + Hash01(
+							runtime.seedId,
+							331u + runtime.wanderStep * 3u
+						) * 0.5f);
+				}
 			}
+			desired = AddScaled(
+				desired,
+				runtime.wanderDirection,
+				behavior.agentWanderStrength
+			);
+			if (behavior.agentUseTeamHeading) {
+				desired = AddScaled(
+					desired,
+					SafeNormalize(
+						behavior.agentTeamHeadingDirection,
+						velocityDirection
+					),
+					behavior.agentTeamHeadingWeight
+				);
+			}
+			if (bounds.valid) {
+				desired = AddScaled(
+					desired,
+					ComputeBoundsSteering(runtime.center, bounds),
+					behavior.agentBoundsWeight
+				);
+			}
+			AgentAttractorTarget attractor{};
+			float speedScale = 1.0f;
+			if (
+				behavior.agentAttractorWeight > 0.0f &&
+				TryResolveAgentAttractor(document, behavior, attractor)
+			) {
+				const Vector3 toAttractor = Math::Subtract(
+					attractor.position,
+					runtime.center
+				);
+				const float distance = Math::Length(toAttractor);
+				const float radius = (std::max)(attractor.radius, 0.001f);
+				desired = AddScaled(
+					desired,
+					SafeNormalize(toAttractor, velocityDirection),
+					behavior.agentAttractorWeight * attractor.strength *
+						std::clamp(distance / radius, 0.0f, 2.0f)
+				);
+				speedScale = distance < radius ? 0.7f : 1.0f;
+			}
+			runtime.desiredDirection = SafeNormalize(desired, velocityDirection);
+			runtime.desiredSpeed =
+				(behavior.agentMinSpeed + behavior.agentMaxSpeed) * 0.5f * speedScale;
+			runtime.decisionTimer = behavior.agentFlockDecisionInterval;
+			runtime.decisionValid = true;
 		}
-		const Vector3 desiredDirection = SafeNormalize(desired, velocityDirection);
-		const float speed =
-			(behavior.agentMinSpeed + behavior.agentMaxSpeed) * 0.5f * speedScale;
 		runtime.heading = RotateDirectionToward(
 			runtime.heading,
-			desiredDirection,
+			runtime.desiredDirection,
 			behavior.agentFlockTurnRate * dt,
 			velocityDirection
 		);
 		runtime.velocity = MoveVectorToward(
 			runtime.velocity,
-			Math::Multiply(runtime.heading, speed),
+			Math::Multiply(runtime.heading, runtime.desiredSpeed),
 			behavior.agentFlockAcceleration * dt
 		);
 		runtime.center = Math::Add(
@@ -2113,7 +2185,7 @@ void GamePlayScene::UpdateAgentBehaviors(
 			behavior,
 			runtime.rotation,
 			runtime.velocity,
-			desiredDirection,
+			runtime.desiredDirection,
 			dt
 		);
 	}
@@ -2132,6 +2204,7 @@ void GamePlayScene::UpdateAgentBehaviors(
 				? nullptr
 				: &teamRuntimeIt->second;
 		if (teamRuntime) {
+			bool initializedFlockThisFrame = false;
 			if (
 				!runtime.flockInitialized ||
 				runtime.flockSeedId != teamRuntime->seedId
@@ -2141,125 +2214,125 @@ void GamePlayScene::UpdateAgentBehaviors(
 					agent.entity->id ^ teamRuntime->seedId,
 					59u
 				) * 6.28318530718f;
-				runtime.flockSpeedRevision = 0;
 				runtime.flockSeedId = teamRuntime->seedId;
 				runtime.flockInitialized = true;
-			}
-			if (runtime.flockSpeedRevision != teamRuntime->speedRevision) {
-				const float variation =
-					(Hash01(
-						agent.entity->id ^ teamRuntime->seedId,
-						397u + teamRuntime->speedRevision * 17u
-					) * 2.0f - 1.0f) * behavior.agentMemberSpeedVariation;
-				runtime.flockSpeedScale = 1.0f + variation;
-				runtime.flockSpeedRevision = teamRuntime->speedRevision;
+				initializedFlockThisFrame = true;
 			}
 			const Vector3 teamDirection = SafeNormalize(
 				teamRuntime->velocity,
 				teamRuntime->heading
 			);
-			runtime.phase += dt * behavior.agentMemberJitterFrequency;
-			const Vector3 jitterTarget = {
-				std::sin(runtime.phase * 1.37f + Hash01(agent.entity->id, 3u) * 8.0f) *
-					behavior.agentMemberJitterStrength,
-				std::sin(runtime.phase * 0.83f + Hash01(agent.entity->id, 5u) * 9.0f) *
-					behavior.agentMemberJitterStrength * 0.45f,
-				std::cos(runtime.phase * 1.11f + Hash01(agent.entity->id, 7u) * 7.0f) *
-					behavior.agentMemberJitterStrength
-			};
-			runtime.jitterOffset = LerpVector(
-				runtime.jitterOffset,
-				jitterTarget,
-				FollowAmount(behavior.agentMemberJitterFollowSpeed, dt)
+			const float teamHeadingYaw = std::atan2(
+				teamRuntime->heading.x,
+				teamRuntime->heading.z
 			);
-			Vector3 desired = teamDirection;
+			const float jitterUpdateInterval = (std::max)(
+				behavior.agentMemberJitterUpdateInterval,
+				0.0f
+			);
+			if (initializedFlockThisFrame) {
+				runtime.jitterStep = 0;
+				runtime.jitterTargetLocal = BuildFlockMemberJitterTarget(
+					agent.entity->id,
+					teamRuntime->seedId,
+					runtime.jitterStep,
+					behavior.agentMemberJitterStrength
+				);
+				runtime.jitterTimer = jitterUpdateInterval * (
+					0.2f + Hash01(agent.entity->id ^ teamRuntime->seedId, 617u) * 0.8f
+				);
+			} else {
+				runtime.jitterTimer = (std::max)(
+					runtime.jitterTimer - dt,
+					0.0f
+				);
+				if (jitterUpdateInterval <= 0.0f || runtime.jitterTimer <= 0.0f) {
+					++runtime.jitterStep;
+					runtime.jitterTargetLocal = BuildFlockMemberJitterTarget(
+						agent.entity->id,
+						teamRuntime->seedId,
+						runtime.jitterStep,
+						behavior.agentMemberJitterStrength
+					);
+					runtime.jitterTimer = jitterUpdateInterval * (
+						0.75f + Hash01(
+							agent.entity->id ^ teamRuntime->seedId,
+							631u + runtime.jitterStep
+						) * 0.5f
+					);
+				}
+			}
+			runtime.phase += dt * behavior.agentMemberJitterFrequency;
+			const Vector3 jitterDetail = {
+				std::sin(runtime.phase * 1.37f + Hash01(agent.entity->id, 3u) * 8.0f) *
+					behavior.agentMemberJitterStrength * 0.18f,
+				std::sin(runtime.phase * 0.83f + Hash01(agent.entity->id, 5u) * 9.0f) *
+					behavior.agentMemberJitterStrength * 0.08f,
+				std::cos(runtime.phase * 1.11f + Hash01(agent.entity->id, 7u) * 7.0f) *
+					behavior.agentMemberJitterStrength * 0.18f
+			};
+			const Vector3 localJitterTarget = Math::Add(
+				runtime.jitterTargetLocal,
+				jitterDetail
+			);
+			const Vector3 jitterTarget = RotateDirection(
+				localJitterTarget,
+				{ 0.0f, teamHeadingYaw, 0.0f }
+			);
+			if (initializedFlockThisFrame) {
+				runtime.jitterOffset = jitterTarget;
+			} else {
+				runtime.jitterOffset = LerpVector(
+					runtime.jitterOffset,
+					jitterTarget,
+					FollowAmount(behavior.agentMemberJitterFollowSpeed, dt)
+				);
+			}
 			const Vector3 memberTarget = Math::Add(
 				teamRuntime->center,
 				runtime.jitterOffset
 			);
-			const Vector3 toCenter = Math::Subtract(memberTarget, position);
-			const float centerDistance = Math::Length(toCenter);
-			desired = AddScaled(
-				desired,
-				toCenter,
-				behavior.agentMemberCenterFollow * 0.2f
-			);
-			const float leashError = (std::max)(
-				centerDistance - behavior.agentMemberLeashDistance,
-				0.0f
-			);
-			if (leashError > 0.0f) {
-				desired = AddScaled(
-					desired,
-					SafeNormalize(toCenter, teamDirection),
-					leashError * behavior.agentMemberLeashStrength
-				);
-			}
-
-			Vector3 separation{};
-			int neighborCount = 0;
-			for (const AgentUpdateEntry& other : agents) {
-				if (other.entity == agent.entity || other.teamKey != agent.teamKey) {
-					continue;
-				}
-				if (
-					behavior.agentNeighborLimit > 0 &&
-					neighborCount >= behavior.agentNeighborLimit
-				) {
-					break;
-				}
-				const Vector3 offset = Math::Subtract(
-					position,
-					other.transform.translate
-				);
-				const float distance = Math::Length(offset);
-				if (
-					distance > 0.0001f &&
-					distance < behavior.agentSeparationRadius
-				) {
-					const float linearRatio = 1.0f - distance / (std::max)(
-						behavior.agentSeparationRadius,
-						0.0001f
-					);
-					const float ratio =
-						linearRatio * linearRatio * (3.0f - 2.0f * linearRatio);
-					separation = AddScaled(
-						separation,
-						Math::Normalize(offset),
-						ratio
-					);
-				}
-				++neighborCount;
-			}
-			if (Math::Length(separation) > 0.0001f) {
-				desired = AddScaled(
-					desired,
-					Math::Normalize(separation),
-					behavior.agentSeparationWeight
-				);
-			}
-
-			const Vector3 desiredDirection = RotateDirectionToward(
-				SafeNormalize(runtime.velocity, teamDirection),
-				SafeNormalize(desired, teamDirection),
-				behavior.agentFlockTurnRate * dt,
-				teamDirection
-			);
-			const float catchupSpeed = (std::min)(
-				leashError * behavior.agentMemberLeashStrength,
-				behavior.agentMemberCatchupSpeed
-			);
-			const float targetSpeed = (std::max)(
-				Math::Length(teamRuntime->velocity) * runtime.flockSpeedScale +
-					catchupSpeed,
+			const Vector3 toTarget = Math::Subtract(memberTarget, position);
+			const float maxDistance = (std::max)(
+				behavior.agentMemberLeashDistance,
 				0.01f
 			);
-			runtime.velocity = MoveVectorToward(
-				runtime.velocity,
-				Math::Multiply(desiredDirection, targetSpeed),
-				behavior.agentFlockAcceleration * dt
+			const float correctionLimit = (std::max)(
+				behavior.agentMemberCatchupSpeed *
+					(1.0f + behavior.agentMemberLeashStrength),
+				0.01f
+			);
+			const Vector3 correctionVelocity = ClampVectorLength(
+				Math::Multiply(toTarget, behavior.agentMemberCenterFollow),
+				correctionLimit
+			);
+			runtime.velocity = Math::Add(
+				teamRuntime->velocity,
+				correctionVelocity
 			);
 			position = Math::Add(position, Math::Multiply(runtime.velocity, dt));
+			const Vector3 leaderOffset = Math::Subtract(
+				position,
+				teamRuntime->center
+			);
+			const float leaderDistance = Math::Length(leaderOffset);
+			if (leaderDistance > maxDistance) {
+				position = Math::Add(
+					teamRuntime->center,
+					Math::Multiply(
+						Math::Normalize(leaderOffset),
+						maxDistance
+					)
+				);
+			}
+			runtime.velocity = Math::Multiply(
+				Math::Subtract(position, transform.translate),
+				1.0f / dt
+			);
+			const Vector3 desiredDirection = SafeNormalize(
+				runtime.velocity,
+				teamDirection
+			);
 			AgentBounds bounds{};
 			if (TryResolveAgentBounds(document, behavior, position, bounds) && bounds.valid) {
 				position = ClampToBounds(position, bounds);
@@ -2279,8 +2352,14 @@ void GamePlayScene::UpdateAgentBehaviors(
 			continue;
 		}
 		runtime.flockInitialized = false;
-		runtime.flockSpeedRevision = 0;
 		runtime.flockSeedId = 0;
+		runtime.jitterOffset = {};
+		runtime.jitterTargetLocal = {};
+		runtime.jitterTimer = 0.0f;
+		runtime.jitterStep = 0;
+		runtime.separationCacheValid = false;
+		runtime.cachedSeparationSteering = {};
+		runtime.separationTimer = 0.0f;
 
 		const Vector3 velocityDirection = SafeNormalize(
 			runtime.velocity,
