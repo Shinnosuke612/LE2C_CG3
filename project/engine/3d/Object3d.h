@@ -55,6 +55,7 @@ public: //公開メンバ関数
 	void Initialize(Object3dCommon* object3dCommon);
 	//更新
 	void Update();
+	void UpdateAnimation(float deltaTime);
 	void UpdateForCamera(Camera* camera);
 	//描画
 	void Draw();
@@ -84,9 +85,32 @@ public: //公開メンバ関数
 	}
 	void SetEnvironmentMap(const std::string& textureFilePath, float coefficient);
 	void SetEnvironmentCoefficient(float coefficient);
-	void SetAnimationPlaying(bool isPlaying) { isAnimationPlaying_ = isPlaying; }
-	void SetAnimationLoop(bool isLooping) { isAnimationLooping_ = isLooping; }
-	void SetAnimationSpeed(float speed) { animationSpeed_ = speed; }
+	void SetAnimationEnabled(bool enabled) {
+		animationPlayer_.SetEnabled(enabled);
+		animationPoseDirty_ = true;
+	}
+	void SetAnimationPlaying(bool isPlaying) {
+		animationPlayer_.SetPlaying(isPlaying);
+	}
+	void SetAnimationLoop(bool isLooping) { animationPlayer_.SetLooping(isLooping); }
+	void SetAnimationSpeed(float speed) { animationPlayer_.SetSpeed(speed); }
+	void SetAnimationTime(float time) {
+		animationPlayer_.SetTime(time);
+		animationPoseDirty_ = true;
+	}
+	void SetAnimationBlendCurve(AnimationBlendCurve curve) {
+		animationPlayer_.SetBlendCurve(curve);
+		animationPoseDirty_ = true;
+	}
+	bool PlayAnimation(size_t clipIndex, float transitionDuration = 0.0f, bool restart = true) {
+		const bool played = animationPlayer_.Play(
+			clipIndex,
+			transitionDuration,
+			restart
+		);
+		animationPoseDirty_ |= played;
+		return played;
+	}
 	void ResetAnimation();
 	void SetColor(const Vector4& color);
 	void SetEnableLighting(bool enableLighting);
@@ -117,11 +141,22 @@ public: //公開メンバ関数
 	const Transform& GetTransform() const { return transform; }
 	Transform& GetTransform() { return transform; }
 	bool HasAnimation() const;
-	bool IsAnimationPlaying() const { return isAnimationPlaying_; }
-	bool IsAnimationLooping() const { return isAnimationLooping_; }
-	float GetAnimationSpeed() const { return animationSpeed_; }
-	float GetAnimationTime() const { return animationTime_; }
+	bool IsAnimationEnabled() const { return animationPlayer_.IsEnabled(); }
+	bool IsAnimationPlaying() const { return animationPlayer_.IsPlaying(); }
+	bool IsAnimationLooping() const { return animationPlayer_.IsLooping(); }
+	bool IsAnimationTransitioning() const { return animationPlayer_.IsTransitioning(); }
+	float GetAnimationSpeed() const { return animationPlayer_.GetSpeed(); }
+	float GetAnimationTime() const { return animationPlayer_.GetTime(); }
+	float GetAnimationBlendWeight() const { return animationPlayer_.GetBlendWeight(); }
 	float GetAnimationDuration() const;
+	size_t GetAnimationClipCount() const;
+	size_t GetAnimationClipIndex() const {
+		return animationPlayer_.GetCurrentClipIndex();
+	}
+	const std::string& GetAnimationClipName(size_t clipIndex) const;
+	AnimationBlendCurve GetAnimationBlendCurve() const {
+		return animationPlayer_.GetBlendCurve();
+	}
 	const Skeleton* GetSkeleton() const {
 		return skeleton_.IsValid() ? &skeleton_ : nullptr;
 	}
@@ -133,7 +168,8 @@ private: //非公開メンバ関数
 	void CreateCameraResource();
 	void CreateShadowTransformationMatrixResource();
 	void CreateMaterialResource();
-	void UpdateInternal(bool advanceAnimation);
+	void UpdateAnimationPose();
+	void UpdateInternal();
 private://メンバ変数
 	Transform transform;
 	Matrix4x4 objectWorldMatrix_ = MakeIdentity4x4();
@@ -161,10 +197,8 @@ private://メンバ変数
 	ID3D12Resource* materialResource = nullptr;
 	Material* materialData = nullptr;
 	std::string environmentTextureFilePath_;
-	float animationTime_ = 0.0f;
-	float animationSpeed_ = 1.0f;
-	bool isAnimationPlaying_ = true;
-	bool isAnimationLooping_ = true;
+	AnimationPlayer animationPlayer_;
+	bool animationPoseDirty_ = true;
 	D3D12_GPU_DESCRIPTOR_HANDLE textureOverrideHandle_{};
 	Object3dCommon::CullMode cullMode_ = Object3dCommon::CullMode::kBack;
 };

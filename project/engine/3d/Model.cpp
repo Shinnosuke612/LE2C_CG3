@@ -39,7 +39,7 @@ Matrix4x4 ConvertAssimpMatrix(const aiMatrix4x4& matrix) {
 void Model::Initialize(ModelCommon* modelCommon, const std::string& directoryPath, const std::string& filename) {
 	this->modelCommon = modelCommon;
 	modelData = LoadModelFile(directoryPath, filename);
-	animation_ = LoadAnimationFile(directoryPath, filename);
+	animations_ = LoadAnimationFiles(directoryPath, filename);
 	CreateVertexResource();
 	CreateIndexResource();
 	CreateMaterialResource();

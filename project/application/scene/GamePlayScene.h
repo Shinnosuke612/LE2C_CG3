@@ -46,6 +46,14 @@ private:
 		Object3d* object = nullptr;
 		std::string modelPath;
 		bool hasRenderer = false;
+		bool animatorInitialized = false;
+		bool hasAnimator = false;
+		bool animatorPlayOnStart = true;
+		bool animatorLoop = true;
+		float animatorSpeed = 1.0f;
+		int animatorDefaultClip = 0;
+		float animatorTransitionDuration = 0.2f;
+		std::string animatorBlendCurve = "SmoothStep";
 		OBBCollider boxCollider;
 		SphereCollider sphereCollider;
 		Collider* collider = nullptr;
@@ -142,7 +150,7 @@ public: //メンバ関数
 	}
 
 private:
-	void SyncSceneModelObjects();
+	void SyncSceneModelObjects(float deltaTime);
 	void ClearSceneModelObjects();
 	void SyncSceneSpriteObjects();
 	void ClearSceneSpriteObjects();
@@ -178,6 +186,9 @@ private:
 	Camera* GetSceneViewCamera() const;
 	void InitializePauseDebugCamera();
 	void DrawMonitorDebugWindow();
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	void DrawAnimationControls(const SceneDocument& document);
+#endif
 	bool TryStartCameraPath(SceneDocument& document);
 	void DrawCameraPathDebug(
 		const SceneDocument& document,
@@ -212,6 +223,8 @@ private:
 	bool showJointNames_ = false;
 	bool showJointAxes_ = true;
 	bool deferForegroundEffects_ = false;
+	uint64_t animationControlEntityId_ = 0;
+	float animationControlTransitionDuration_ = 0.2f;
 	float jointRadius_ = 0.018f;
 	float jointAxisLength_ = 0.06f;
 	Player* player_ = nullptr;

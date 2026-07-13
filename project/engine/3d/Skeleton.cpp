@@ -1,5 +1,6 @@
 #include "Skeleton.h"
 
+#include <algorithm>
 #include <cassert>
 
 namespace {
@@ -29,6 +30,44 @@ int32_t CreateJoint(
 	return jointIndex;
 }
 
+QuaternionTransform SampleJointTransform(
+	const Joint& joint,
+	const Animation& animation,
+	float animationTime
+) {
+	QuaternionTransform result = joint.bindTransform;
+	const auto animationIt = animation.nodeAnimations.find(joint.name);
+	if (animationIt == animation.nodeAnimations.end()) {
+		return result;
+	}
+
+	const NodeAnimation& nodeAnimation = animationIt->second;
+	result.translate = CalculateValue(
+		nodeAnimation.translate,
+		animationTime,
+		joint.bindTransform.translate
+	);
+	result.rotate = CalculateValue(
+		nodeAnimation.rotate,
+		animationTime,
+		joint.bindTransform.rotate
+	);
+	result.scale = CalculateValue(
+		nodeAnimation.scale,
+		animationTime,
+		joint.bindTransform.scale
+	);
+	return result;
+}
+
+Vector3 BlendVector3(const Vector3& start, const Vector3& end, float weight) {
+	return {
+		start.x + (end.x - start.x) * weight,
+		start.y + (end.y - start.y) * weight,
+		start.z + (end.z - start.z) * weight
+	};
+}
+
 } // namespace
 
 Skeleton CreateSkeleton(const Model::Node& rootNode) {
@@ -49,29 +88,51 @@ void ApplyAnimation(
 	float animationTime
 ) {
 	for (Joint& joint : skeleton.joints) {
+		joint.transform = SampleJointTransform(joint, animation, animationTime);
+	}
+}
+
+void ApplyAnimationBlend(
+	Skeleton& skeleton,
+	const Animation& previousAnimation,
+	float previousTime,
+	const Animation& currentAnimation,
+	float currentTime,
+	float blendWeight
+) {
+	blendWeight = std::clamp(blendWeight, 0.0f, 1.0f);
+	for (Joint& joint : skeleton.joints) {
+		const QuaternionTransform previous = SampleJointTransform(
+			joint,
+			previousAnimation,
+			previousTime
+		);
+		const QuaternionTransform current = SampleJointTransform(
+			joint,
+			currentAnimation,
+			currentTime
+		);
+		joint.transform.translate = BlendVector3(
+			previous.translate,
+			current.translate,
+			blendWeight
+		);
+		joint.transform.rotate = Slerp(
+			previous.rotate,
+			current.rotate,
+			blendWeight
+		);
+		joint.transform.scale = BlendVector3(
+			previous.scale,
+			current.scale,
+			blendWeight
+		);
+	}
+}
+
+void ResetSkeletonPose(Skeleton& skeleton) {
+	for (Joint& joint : skeleton.joints) {
 		joint.transform = joint.bindTransform;
-
-		const auto animationIt = animation.nodeAnimations.find(joint.name);
-		if (animationIt == animation.nodeAnimations.end()) {
-			continue;
-		}
-
-		const NodeAnimation& nodeAnimation = animationIt->second;
-		joint.transform.translate = CalculateValue(
-			nodeAnimation.translate,
-			animationTime,
-			joint.bindTransform.translate
-		);
-		joint.transform.rotate = CalculateValue(
-			nodeAnimation.rotate,
-			animationTime,
-			joint.bindTransform.rotate
-		);
-		joint.transform.scale = CalculateValue(
-			nodeAnimation.scale,
-			animationTime,
-			joint.bindTransform.scale
-		);
 	}
 }
 

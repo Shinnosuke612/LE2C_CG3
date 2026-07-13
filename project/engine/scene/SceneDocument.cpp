@@ -812,6 +812,14 @@ namespace {
 			result["occlusionMargin"] = component.thirdPersonOcclusionMargin;
 			result["invertYaw"] = component.thirdPersonInvertYaw;
 			result["invertPitch"] = component.thirdPersonInvertPitch;
+		} else if (component.type == "Animator") {
+			result["playOnStart"] = component.animatorPlayOnStart;
+			result["loop"] = component.animatorLoop;
+			result["speed"] = component.animatorSpeed;
+			result["defaultClip"] = component.animatorDefaultClip;
+			result["transitionDuration"] =
+				component.animatorTransitionDuration;
+			result["blendCurve"] = component.animatorBlendCurve;
 		} else if (component.type == "PhysicsBody") {
 			result["bodyType"] = component.physicsBodyType;
 			result["mass"] = component.physicsMass;
@@ -1139,6 +1147,41 @@ namespace {
 					"invertPitch",
 					component.thirdPersonInvertPitch
 				);
+				if (component.type == "Animator") {
+					component.animatorPlayOnStart = value.value(
+						"playOnStart",
+						component.animatorPlayOnStart
+					);
+					component.animatorLoop = value.value(
+						"loop",
+						component.animatorLoop
+					);
+					component.animatorSpeed = value.value(
+						"speed",
+						component.animatorSpeed
+					);
+					component.animatorDefaultClip = (std::max)(
+						value.value(
+							"defaultClip",
+							component.animatorDefaultClip
+						),
+						0
+					);
+					component.animatorTransitionDuration = (std::max)(
+						value.value(
+							"transitionDuration",
+							component.animatorTransitionDuration
+						),
+						0.0f
+					);
+					component.animatorBlendCurve = value.value(
+						"blendCurve",
+						component.animatorBlendCurve
+					);
+					if (component.animatorBlendCurve != "Linear") {
+						component.animatorBlendCurve = "SmoothStep";
+					}
+				}
 				component.physicsBodyType = value.value(
 					"bodyType",
 					component.physicsBodyType
@@ -2000,7 +2043,7 @@ bool SceneDocument::Load(const std::string& filePath) {
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 23;
+	root["version"] = 24;
 	root["sceneName"] = sceneName_;
 	root["postProcess"] = PostProcessToJson(postProcessSettings_);
 	root["debug"] = DebugSettingsToJson(debugSettings_);
@@ -3089,6 +3132,13 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.thirdPersonOcclusionMargin = 0.45f;
 		component.thirdPersonInvertYaw = false;
 		component.thirdPersonInvertPitch = false;
+	} else if (type == "Animator") {
+		component.animatorPlayOnStart = true;
+		component.animatorLoop = true;
+		component.animatorSpeed = 1.0f;
+		component.animatorDefaultClip = 0;
+		component.animatorTransitionDuration = 0.2f;
+		component.animatorBlendCurve = "SmoothStep";
 	} else if (type == "PhysicsBody") {
 		component.physicsBodyType = "Static";
 		component.physicsMass = 1.0f;

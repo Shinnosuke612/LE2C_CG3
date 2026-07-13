@@ -38,4 +38,13 @@ void ApplyAnimation(
 	const Animation& animation,
 	float animationTime
 );
+void ApplyAnimationBlend(
+	Skeleton& skeleton,
+	const Animation& previousAnimation,
+	float previousTime,
+	const Animation& currentAnimation,
+	float currentTime,
+	float blendWeight
+);
+void ResetSkeletonPose(Skeleton& skeleton);
 void UpdateSkeleton(Skeleton& skeleton);

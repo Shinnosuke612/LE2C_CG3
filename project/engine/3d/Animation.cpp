@@ -1,6 +1,8 @@
 #include "Animation.h"
 
 #include <algorithm>
+#include <cmath>
+#include <utility>
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -22,19 +24,24 @@ TValue CalculateCurveValue(
 		return keyframes.front().value;
 	}
 
-	for (size_t index = 0; index + 1 < keyframes.size(); ++index) {
-		const Keyframe<TValue>& current = keyframes[index];
-		const Keyframe<TValue>& next = keyframes[index + 1];
-		if (time <= next.time) {
-			const float duration = next.time - current.time;
-			const float t = duration > 0.0f
-				? (time - current.time) / duration
-				: 0.0f;
-			return interpolate(current.value, next.value, t);
+	const auto next = std::upper_bound(
+		keyframes.begin(),
+		keyframes.end(),
+		time,
+		[](float value, const Keyframe<TValue>& keyframe) {
+			return value < keyframe.time;
 		}
+	);
+	if (next == keyframes.end()) {
+		return keyframes.back().value;
 	}
 
-	return keyframes.back().value;
+	const Keyframe<TValue>& current = *(next - 1);
+	const float duration = next->time - current.time;
+	const float t = duration > 0.0f
+		? (time - current.time) / duration
+		: 0.0f;
+	return interpolate(current.value, next->value, t);
 }
 
 Vector3 LerpVector3(const Vector3& start, const Vector3& end, float t) {
@@ -46,34 +53,22 @@ Vector3 LerpVector3(const Vector3& start, const Vector3& end, float t) {
 	};
 }
 
-} // namespace
-
-Animation LoadAnimationFile(
-	const std::string& directoryPath,
-	const std::string& filename
-) {
+Animation ReadAnimation(const aiAnimation& source, size_t index) {
 	Animation animation{};
-	Assimp::Importer importer;
-	const std::string filePath = directoryPath + "/" + filename;
-	const aiScene* scene = importer.ReadFile(filePath.c_str(), 0);
-	if (scene == nullptr || scene->mNumAnimations == 0) {
-		return animation;
-	}
-
-	const aiAnimation* animationAssimp = scene->mAnimations[0];
-	const double ticksPerSecond =
-		animationAssimp->mTicksPerSecond != 0.0
-		? animationAssimp->mTicksPerSecond
+	animation.name = source.mName.length > 0
+		? source.mName.C_Str()
+		: "Animation " + std::to_string(index);
+	const double ticksPerSecond = source.mTicksPerSecond != 0.0
+		? source.mTicksPerSecond
 		: 1.0;
 	animation.duration = static_cast<float>(
-		animationAssimp->mDuration / ticksPerSecond
+		source.mDuration / ticksPerSecond
 	);
 
 	for (uint32_t channelIndex = 0;
-		channelIndex < animationAssimp->mNumChannels;
+		channelIndex < source.mNumChannels;
 		++channelIndex) {
-		const aiNodeAnim* nodeAnimationAssimp =
-			animationAssimp->mChannels[channelIndex];
+		const aiNodeAnim* nodeAnimationAssimp = source.mChannels[channelIndex];
 		NodeAnimation& nodeAnimation =
 			animation.nodeAnimations[nodeAnimationAssimp->mNodeName.C_Str()];
 
@@ -123,6 +118,218 @@ Animation LoadAnimationFile(
 	}
 
 	return animation;
+}
+
+} // namespace
+
+std::vector<Animation> LoadAnimationFiles(
+	const std::string& directoryPath,
+	const std::string& filename
+) {
+	std::vector<Animation> animations;
+	Assimp::Importer importer;
+	const std::string filePath = directoryPath + "/" + filename;
+	const aiScene* scene = importer.ReadFile(filePath.c_str(), 0);
+	if (scene == nullptr || scene->mNumAnimations == 0) {
+		return animations;
+	}
+
+	animations.reserve(scene->mNumAnimations);
+	for (uint32_t index = 0; index < scene->mNumAnimations; ++index) {
+		Animation animation = ReadAnimation(*scene->mAnimations[index], index);
+		if (animation.IsValid()) {
+			animations.push_back(std::move(animation));
+		}
+	}
+	return animations;
+}
+
+Animation LoadAnimationFile(
+	const std::string& directoryPath,
+	const std::string& filename
+) {
+	std::vector<Animation> animations =
+		LoadAnimationFiles(directoryPath, filename);
+	return animations.empty() ? Animation{} : std::move(animations.front());
+}
+
+void AnimationPlayer::SetAnimations(
+	const std::vector<Animation>* animations
+) {
+	animations_ = animations;
+	currentClipIndex_ = kInvalidClipIndex;
+	if (animations_) {
+		for (size_t index = 0; index < animations_->size(); ++index) {
+			if ((*animations_)[index].IsValid()) {
+				currentClipIndex_ = index;
+				break;
+			}
+		}
+	}
+	Reset();
+}
+
+bool AnimationPlayer::Play(
+	size_t clipIndex,
+	float transitionDuration,
+	bool restart
+) {
+	if (
+		!animations_ ||
+		clipIndex >= animations_->size() ||
+		!(*animations_)[clipIndex].IsValid()
+	) {
+		return false;
+	}
+
+	if (clipIndex == currentClipIndex_) {
+		if (restart) {
+			currentTime_ = 0.0f;
+		}
+		previousClipIndex_ = kInvalidClipIndex;
+		transitionTime_ = 0.0f;
+		transitionDuration_ = 0.0f;
+		playing_ = true;
+		return true;
+	}
+
+	const bool canTransition = GetCurrentAnimation() != nullptr &&
+		transitionDuration > 0.0f;
+	previousClipIndex_ = canTransition
+		? currentClipIndex_
+		: kInvalidClipIndex;
+	previousTime_ = currentTime_;
+	currentClipIndex_ = clipIndex;
+	currentTime_ = 0.0f;
+	transitionTime_ = 0.0f;
+	transitionDuration_ = canTransition
+		? transitionDuration
+		: 0.0f;
+	playing_ = true;
+	return true;
+}
+
+void AnimationPlayer::Reset() {
+	currentTime_ = 0.0f;
+	previousTime_ = 0.0f;
+	transitionTime_ = 0.0f;
+	transitionDuration_ = 0.0f;
+	previousClipIndex_ = kInvalidClipIndex;
+	playing_ = false;
+}
+
+void AnimationPlayer::Update(float deltaTime) {
+	if (!enabled_ || !playing_ || deltaTime <= 0.0f) {
+		return;
+	}
+
+	const Animation* current = GetCurrentAnimation();
+	if (!current) {
+		playing_ = false;
+		return;
+	}
+
+	AdvanceTime(currentTime_, *current, deltaTime * speed_);
+	if (const Animation* previous = GetPreviousAnimation()) {
+		AdvanceTime(previousTime_, *previous, deltaTime * speed_);
+		transitionTime_ += deltaTime;
+		if (transitionTime_ >= transitionDuration_) {
+			previousClipIndex_ = kInvalidClipIndex;
+			transitionTime_ = transitionDuration_;
+		}
+	}
+
+	if (
+		!looping_ &&
+		(
+			(speed_ >= 0.0f && currentTime_ >= current->duration) ||
+			(speed_ < 0.0f && currentTime_ <= 0.0f)
+		)
+	) {
+		playing_ = false;
+	}
+}
+
+void AnimationPlayer::SetTime(float time) {
+	const Animation* animation = GetCurrentAnimation();
+	currentTime_ = animation
+		? std::clamp(time, 0.0f, animation->duration)
+		: 0.0f;
+	previousClipIndex_ = kInvalidClipIndex;
+	transitionTime_ = 0.0f;
+	transitionDuration_ = 0.0f;
+}
+
+bool AnimationPlayer::HasAnimations() const {
+	return GetCurrentAnimation() != nullptr;
+}
+
+bool AnimationPlayer::IsTransitioning() const {
+	return GetPreviousAnimation() != nullptr &&
+		transitionDuration_ > 0.0f &&
+		transitionTime_ < transitionDuration_;
+}
+
+float AnimationPlayer::GetDuration() const {
+	const Animation* animation = GetCurrentAnimation();
+	return animation ? animation->duration : 0.0f;
+}
+
+float AnimationPlayer::GetBlendWeight() const {
+	if (!IsTransitioning()) {
+		return 1.0f;
+	}
+	float value = std::clamp(
+		transitionTime_ / transitionDuration_,
+		0.0f,
+		1.0f
+	);
+	if (blendCurve_ == AnimationBlendCurve::SmoothStep) {
+		value = value * value * (3.0f - 2.0f * value);
+	}
+	return value;
+}
+
+const Animation* AnimationPlayer::GetCurrentAnimation() const {
+	if (
+		!animations_ ||
+		currentClipIndex_ >= animations_->size() ||
+		!(*animations_)[currentClipIndex_].IsValid()
+	) {
+		return nullptr;
+	}
+	return &(*animations_)[currentClipIndex_];
+}
+
+const Animation* AnimationPlayer::GetPreviousAnimation() const {
+	if (
+		!animations_ ||
+		previousClipIndex_ >= animations_->size() ||
+		!(*animations_)[previousClipIndex_].IsValid()
+	) {
+		return nullptr;
+	}
+	return &(*animations_)[previousClipIndex_];
+}
+
+void AnimationPlayer::AdvanceTime(
+	float& time,
+	const Animation& animation,
+	float deltaTime
+) {
+	if (animation.duration <= 0.0f) {
+		time = 0.0f;
+		return;
+	}
+	time += deltaTime;
+	if (looping_) {
+		time = std::fmod(time, animation.duration);
+		if (time < 0.0f) {
+			time += animation.duration;
+		}
+	} else {
+		time = std::clamp(time, 0.0f, animation.duration);
+	}
 }
 
 Vector3 CalculateValue(

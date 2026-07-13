@@ -100,8 +100,12 @@ public://公開メンバ関数
 	// getter
 	const Matrix4x4& GetRootNodeLocalMatrix() const { return modelData.rootNode.localMatrix; }
 	const Node& GetRootNode() const { return modelData.rootNode; }
-	const Animation& GetAnimation() const { return animation_; }
-	bool HasAnimation() const { return animation_.IsValid(); }
+	const Animation& GetAnimation() const {
+		static const Animation emptyAnimation{};
+		return animations_.empty() ? emptyAnimation : animations_.front();
+	}
+	const std::vector<Animation>& GetAnimations() const { return animations_; }
+	bool HasAnimation() const { return !animations_.empty(); }
 	bool HasSkinning() const { return modelData.hasSkinning; }
 	uint32_t GetVertexCount() const {
 		return static_cast<uint32_t>(modelData.vertices.size());
@@ -133,6 +137,6 @@ private:
 	ID3D12Resource* materialResource;
 	//バッファリソース内のデータおw指すポインタ
 	Material* materialData = nullptr;
-	Animation animation_{};
+	std::vector<Animation> animations_;
 };
 

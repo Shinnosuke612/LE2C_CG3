@@ -3760,6 +3760,66 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "Animator") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool animatorChanged = false;
+				animatorChanged |= ImGui::Checkbox(
+					"Play On Start",
+					&component.animatorPlayOnStart
+				);
+				animatorChanged |= ImGui::Checkbox(
+					"Loop",
+					&component.animatorLoop
+				);
+				animatorChanged |= ImGui::DragFloat(
+					"Speed",
+					&component.animatorSpeed,
+					0.01f,
+					-8.0f,
+					8.0f
+				);
+				animatorChanged |= ImGui::DragInt(
+					"Default Clip Index",
+					&component.animatorDefaultClip,
+					1.0f,
+					0,
+					1024
+				);
+				animatorChanged |= ImGui::DragFloat(
+					"Transition Duration",
+					&component.animatorTransitionDuration,
+					0.01f,
+					0.0f,
+					10.0f
+				);
+				const char* blendCurve =
+					component.animatorBlendCurve == "Linear"
+					? "Linear"
+					: "SmoothStep";
+				if (ImGui::BeginCombo("Blend Curve", blendCurve)) {
+					for (const char* candidate : { "Linear", "SmoothStep" }) {
+						if (ImGui::Selectable(
+							candidate,
+							component.animatorBlendCurve == candidate
+						)) {
+							component.animatorBlendCurve = candidate;
+							animatorChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				component.animatorDefaultClip = (std::max)(
+					component.animatorDefaultClip,
+					0
+				);
+				component.animatorTransitionDuration = (std::max)(
+					component.animatorTransitionDuration,
+					0.0f
+				);
+				if (animatorChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			} else if (component.type == "OBBCollider") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool colliderChanged = false;

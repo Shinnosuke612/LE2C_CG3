@@ -39,6 +39,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <unordered_set>
@@ -1332,7 +1333,7 @@ namespace {
 	}
 }
 
-void GamePlayScene::SyncSceneModelObjects() {
+void GamePlayScene::SyncSceneModelObjects(float deltaTime) {
 	SceneDocument* document = sceneManager_
 		? sceneManager_->GetActiveSceneDocument()
 		: nullptr;
@@ -1371,10 +1372,6 @@ void GamePlayScene::SyncSceneModelObjects() {
 				ModelManager::GetInstance()->LoadModel(modelPath);
 				sceneObject.object->SetModel(modelPath);
 			}
-			if (HasComponent(entity, "Animator")) {
-				sceneObject.object->SetAnimationLoop(true);
-				sceneObject.object->SetAnimationSpeed(1.0f);
-			}
 			if (!environmentMapPath_.empty()) {
 				sceneObject.object->SetEnvironmentMap(
 					environmentMapPath_,
@@ -1390,6 +1387,73 @@ void GamePlayScene::SyncSceneModelObjects() {
 				entity.id,
 				std::move(sceneObject)
 			).first;
+		}
+
+		const SceneComponent* animator =
+			FindEnabledComponent(entity, "Animator");
+		SceneModelObject& runtime = found->second;
+		const bool hasAnimator = animator && runtime.object->HasAnimation();
+		const size_t clipCount = runtime.object->GetAnimationClipCount();
+		const int defaultClip = clipCount > 0
+			? std::clamp(
+				animator ? animator->animatorDefaultClip : 0,
+				0,
+				static_cast<int>(clipCount - 1)
+			)
+			: 0;
+		const AnimationBlendCurve blendCurve =
+			animator && animator->animatorBlendCurve == "Linear"
+			? AnimationBlendCurve::Linear
+			: AnimationBlendCurve::SmoothStep;
+
+		if (!runtime.animatorInitialized || runtime.hasAnimator != hasAnimator) {
+			runtime.object->SetAnimationEnabled(hasAnimator);
+			if (hasAnimator) {
+				runtime.object->SetAnimationLoop(animator->animatorLoop);
+				runtime.object->SetAnimationSpeed(animator->animatorSpeed);
+				runtime.object->SetAnimationBlendCurve(blendCurve);
+				runtime.object->PlayAnimation(
+					static_cast<size_t>(defaultClip),
+					0.0f,
+					true
+				);
+				runtime.object->SetAnimationPlaying(
+					animator->animatorPlayOnStart
+				);
+			}
+			runtime.animatorInitialized = true;
+		} else if (hasAnimator) {
+			if (runtime.animatorPlayOnStart != animator->animatorPlayOnStart) {
+				runtime.object->SetAnimationPlaying(
+					animator->animatorPlayOnStart
+				);
+			}
+			if (runtime.animatorBlendCurve != animator->animatorBlendCurve) {
+				runtime.object->SetAnimationBlendCurve(blendCurve);
+			}
+			if (runtime.animatorLoop != animator->animatorLoop) {
+				runtime.object->SetAnimationLoop(animator->animatorLoop);
+			}
+			if (runtime.animatorSpeed != animator->animatorSpeed) {
+				runtime.object->SetAnimationSpeed(animator->animatorSpeed);
+			}
+			if (runtime.animatorDefaultClip != defaultClip) {
+				runtime.object->PlayAnimation(
+					static_cast<size_t>(defaultClip),
+					(std::max)(animator->animatorTransitionDuration, 0.0f),
+					true
+				);
+			}
+		}
+		runtime.hasAnimator = hasAnimator;
+		if (animator) {
+			runtime.animatorPlayOnStart = animator->animatorPlayOnStart;
+			runtime.animatorLoop = animator->animatorLoop;
+			runtime.animatorSpeed = animator->animatorSpeed;
+			runtime.animatorDefaultClip = defaultClip;
+			runtime.animatorTransitionDuration =
+				animator->animatorTransitionDuration;
+			runtime.animatorBlendCurve = animator->animatorBlendCurve;
 		}
 
 		found->second.object->GetTransform() = entity.transform;
@@ -1586,6 +1650,7 @@ void GamePlayScene::SyncSceneModelObjects() {
 			updateEntity(entity->parentId);
 		}
 		if (IsEntityActiveInHierarchy(*document, *entity)) {
+			object->UpdateAnimation(deltaTime);
 			object->Update();
 		}
 		updatingIds.erase(entityId);
@@ -1802,6 +1867,153 @@ Object3d* GamePlayScene::FindSceneModelObjectByName(const char* name) const {
 	const auto found = sceneModelObjects_.find(entity->id);
 	return found == sceneModelObjects_.end() ? nullptr : found->second.object;
 }
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+void GamePlayScene::DrawAnimationControls(const SceneDocument& document) {
+	ImGui::SeparatorText("Animation");
+	std::vector<const SceneEntity*> animatorEntities;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (FindEnabledComponent(entity, "Animator")) {
+			animatorEntities.push_back(&entity);
+		}
+	}
+
+	if (animatorEntities.empty()) {
+		animationControlEntityId_ = 0;
+		ImGui::TextDisabled("No enabled Animator components");
+		return;
+	}
+
+	auto selected = std::find_if(
+		animatorEntities.begin(),
+		animatorEntities.end(),
+		[this](const SceneEntity* entity) {
+			return entity->id == animationControlEntityId_;
+		}
+	);
+	if (selected == animatorEntities.end()) {
+		selected = animatorEntities.begin();
+		animationControlEntityId_ = (*selected)->id;
+		const auto runtime = sceneModelObjects_.find(animationControlEntityId_);
+		if (runtime != sceneModelObjects_.end()) {
+			animationControlTransitionDuration_ =
+				runtime->second.animatorTransitionDuration;
+		}
+	}
+
+	const SceneEntity* selectedEntity = *selected;
+	if (ImGui::BeginCombo("Animator Entity", selectedEntity->name.c_str())) {
+		for (const SceneEntity* entity : animatorEntities) {
+			const std::string itemLabel = entity->name + "##" +
+				std::to_string(entity->id);
+			if (ImGui::Selectable(
+				itemLabel.c_str(),
+				entity->id == animationControlEntityId_
+			)) {
+				animationControlEntityId_ = entity->id;
+				selectedEntity = entity;
+				const auto runtime = sceneModelObjects_.find(entity->id);
+				if (runtime != sceneModelObjects_.end()) {
+					animationControlTransitionDuration_ =
+						runtime->second.animatorTransitionDuration;
+				}
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	const auto runtime = sceneModelObjects_.find(animationControlEntityId_);
+	if (
+		runtime == sceneModelObjects_.end() ||
+		!runtime->second.object ||
+		!runtime->second.object->HasAnimation()
+	) {
+		ImGui::TextDisabled("The selected model has no animation clips");
+		return;
+	}
+
+	Object3d* object = runtime->second.object;
+	size_t currentClip = object->GetAnimationClipIndex();
+	std::string currentClipName = object->GetAnimationClipName(currentClip);
+	if (currentClipName.empty()) {
+		currentClipName = "Clip " + std::to_string(currentClip);
+	}
+	if (ImGui::BeginCombo("Clip", currentClipName.c_str())) {
+		for (size_t index = 0; index < object->GetAnimationClipCount(); ++index) {
+			std::string clipName = object->GetAnimationClipName(index);
+			if (clipName.empty()) {
+				clipName = "Clip " + std::to_string(index);
+			}
+			const std::string itemLabel = clipName + "##" +
+				std::to_string(index);
+			if (ImGui::Selectable(itemLabel.c_str(), index == currentClip)) {
+				if (object->PlayAnimation(
+					index,
+					animationControlTransitionDuration_,
+					true
+				)) {
+					currentClip = index;
+				}
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	bool playing = object->IsAnimationPlaying();
+	if (ImGui::Checkbox("Playing", &playing)) {
+		object->SetAnimationPlaying(playing);
+	}
+	bool looping = object->IsAnimationLooping();
+	if (ImGui::Checkbox("Loop", &looping)) {
+		object->SetAnimationLoop(looping);
+	}
+	float speed = object->GetAnimationSpeed();
+	if (ImGui::DragFloat("Speed", &speed, 0.01f, -8.0f, 8.0f)) {
+		object->SetAnimationSpeed(speed);
+	}
+	ImGui::DragFloat(
+		"Transition Duration",
+		&animationControlTransitionDuration_,
+		0.01f,
+		0.0f,
+		10.0f
+	);
+	animationControlTransitionDuration_ = (std::max)(
+		animationControlTransitionDuration_,
+		0.0f
+	);
+
+	const char* blendCurve =
+		object->GetAnimationBlendCurve() == AnimationBlendCurve::Linear
+		? "Linear"
+		: "SmoothStep";
+	if (ImGui::BeginCombo("Blend Curve", blendCurve)) {
+		for (const char* candidate : { "Linear", "SmoothStep" }) {
+			if (ImGui::Selectable(candidate, std::strcmp(candidate, blendCurve) == 0)) {
+				object->SetAnimationBlendCurve(
+					std::strcmp(candidate, "Linear") == 0
+					? AnimationBlendCurve::Linear
+					: AnimationBlendCurve::SmoothStep
+				);
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	float time = object->GetAnimationTime();
+	const float duration = object->GetAnimationDuration();
+	if (ImGui::SliderFloat("Time", &time, 0.0f, duration)) {
+		object->SetAnimationTime(time);
+	}
+	if (ImGui::Button("Restart")) {
+		object->PlayAnimation(currentClip, 0.0f, true);
+	}
+	if (object->IsAnimationTransitioning()) {
+		ImGui::SameLine();
+		ImGui::Text("Blend %.0f%%", object->GetAnimationBlendWeight() * 100.0f);
+	}
+}
+#endif
 
 void GamePlayScene::ApplyPlayerBehaviorComponent(
 	const SceneDocument& document
@@ -4087,7 +4299,7 @@ void GamePlayScene::Initialize()
 			ParticleEffectResource::CreateEmitter(ringBurstEffect_);
 	}
 
-	SyncSceneModelObjects();
+	SyncSceneModelObjects(0.0f);
 
 	Vector3 target = GetSceneTransform(
 		sceneManager_,
@@ -4244,38 +4456,10 @@ void GamePlayScene::Update()
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	ImGui::Begin("Scene Controls");
-	Object3d* animatedCube = FindSceneModelObjectByName("Animated Cube");
-	if (animatedCube && animatedCube->HasAnimation()) {
-		bool isPlaying = animatedCube->IsAnimationPlaying();
-		if (ImGui::Checkbox("Play Animation", &isPlaying)) {
-			animatedCube->SetAnimationPlaying(isPlaying);
-		}
-
-		bool isLooping = animatedCube->IsAnimationLooping();
-		if (ImGui::Checkbox("Loop Animation", &isLooping)) {
-			animatedCube->SetAnimationLoop(isLooping);
-		}
-
-		float animationSpeed = animatedCube->GetAnimationSpeed();
-		if (ImGui::DragFloat(
-			"Animation Speed",
-			&animationSpeed,
-			0.01f,
-			-4.0f,
-			4.0f
-		)) {
-			animatedCube->SetAnimationSpeed(animationSpeed);
-		}
-
-		if (ImGui::Button("Reset Animation")) {
-			animatedCube->ResetAnimation();
-		}
-
-		const float duration = animatedCube->GetAnimationDuration();
-		const float progress = duration > 0.0f
-			? animatedCube->GetAnimationTime() / duration
-			: 0.0f;
-		ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
+	if (SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr) {
+		DrawAnimationControls(*document);
 	}
 	ImGui::SeparatorText("Debug Draw");
 	bool debugSettingsChanged = false;
@@ -4323,44 +4507,6 @@ void GamePlayScene::Update()
 	}
 	if (debugSettingsChanged) {
 		SaveSceneDebugSettings();
-	}
-	Object3d* human = FindSceneModelObjectByName("Human");
-	if (human && human->GetSkeleton()) {
-		bool isPlaying = human->IsAnimationPlaying();
-		if (ImGui::Checkbox("Play Skeleton Animation", &isPlaying)) {
-			human->SetAnimationPlaying(isPlaying);
-		}
-
-		bool isLooping = human->IsAnimationLooping();
-		if (ImGui::Checkbox("Loop Skeleton Animation", &isLooping)) {
-			human->SetAnimationLoop(isLooping);
-		}
-
-		float animationSpeed = human->GetAnimationSpeed();
-		if (ImGui::DragFloat(
-			"Skeleton Animation Speed",
-			&animationSpeed,
-			0.01f,
-			-4.0f,
-			4.0f
-		)) {
-			human->SetAnimationSpeed(animationSpeed);
-		}
-
-		if (ImGui::Button("Reset Skeleton Animation")) {
-			human->ResetAnimation();
-		}
-
-		ImGui::Text(
-			"Joints: %zu",
-			human->GetSkeleton()->joints.size()
-		);
-
-		const float duration = human->GetAnimationDuration();
-		const float progress = duration > 0.0f
-			? human->GetAnimationTime() / duration
-			: 0.0f;
-		ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f));
 	}
 	ImGui::End();
 
@@ -4438,7 +4584,7 @@ void GamePlayScene::Update()
 	if (axis) {
 		axis->Update();
 	}
-	SyncSceneModelObjects();
+	SyncSceneModelObjects(1.0f / 60.0f);
 	SyncEnvironmentComponent();
 	RebuildStaticColliders();
 	SceneDocument* activeDocument = sceneManager_
@@ -4594,8 +4740,18 @@ void GamePlayScene::Update()
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	if (showSkeletonDebug_) {
-		if (Object3d* human = FindSceneModelObjectByName("Human")) {
-			human->DrawSkeletonDebug(
+		Object3d* skeletonObject = nullptr;
+		const auto selectedAnimator =
+			sceneModelObjects_.find(animationControlEntityId_);
+		if (
+			selectedAnimator != sceneModelObjects_.end() &&
+			selectedAnimator->second.object &&
+			selectedAnimator->second.object->GetSkeleton()
+		) {
+			skeletonObject = selectedAnimator->second.object;
+		}
+		if (skeletonObject) {
+			skeletonObject->DrawSkeletonDebug(
 			showJointNames_,
 			showJointAxes_,
 			jointRadius_,
@@ -4612,6 +4768,11 @@ void GamePlayScene::UpdatePaused()
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	ImGui::Begin("Scene Controls");
 	ImGui::TextDisabled("Paused Debug View");
+	if (SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr) {
+		DrawAnimationControls(*document);
+	}
 	bool debugSettingsChanged = false;
 	debugSettingsChanged |= ImGui::Checkbox(
 		"Show Camera Direction",

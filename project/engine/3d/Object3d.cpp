@@ -70,15 +70,26 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 }
 
 void Object3d::Update(){
-	UpdateInternal(true);
+	UpdateInternal();
+}
+
+void Object3d::UpdateAnimation(float deltaTime) {
+	if (
+		deltaTime > 0.0f &&
+		animationPlayer_.IsEnabled() &&
+		animationPlayer_.IsPlaying()
+	) {
+		animationPoseDirty_ = true;
+	}
+	animationPlayer_.Update(deltaTime);
 }
 
 void Object3d::UpdateForCamera(Camera* camera) {
 	this->camera = camera;
-	UpdateInternal(false);
+	UpdateInternal();
 }
 
-void Object3d::UpdateInternal(bool advanceAnimation) {
+void Object3d::UpdateInternal() {
 	objectWorldMatrix_ = transform.useQuaternionRotation
 		? MakeAffineMatrix(
 			transform.scale,
@@ -104,36 +115,11 @@ void Object3d::UpdateInternal(bool advanceAnimation) {
 		Matrix4x4 localMatrix = model->HasSkinning()
 			? MakeIdentity4x4()
 			: model->GetRootNodeLocalMatrix();
-		const Animation& animation = model->GetAnimation();
-		if (animation.IsValid()) {
-			if (advanceAnimation && isAnimationPlaying_) {
-				animationTime_ += (1.0f / 60.0f) * animationSpeed_;
-				if (isAnimationLooping_) {
-					animationTime_ = std::fmod(animationTime_, animation.duration);
-					if (animationTime_ < 0.0f) {
-						animationTime_ += animation.duration;
-					}
-				}
-				else {
-					animationTime_ = std::clamp(
-						animationTime_,
-						0.0f,
-						animation.duration
-					);
-					if (animationTime_ >= animation.duration) {
-						isAnimationPlaying_ = false;
-					}
-				}
-			}
-
-			ApplyAnimation(skeleton_, animation, animationTime_);
+		if (animationPoseDirty_) {
+			UpdateAnimationPose();
 		}
 
 		if (skeleton_.IsValid()) {
-			UpdateSkeleton(skeleton_);
-			if (skinCluster_) {
-				skinCluster_->Update(skeleton_);
-			}
 			if (!model->HasSkinning()) {
 				localMatrix =
 					skeleton_.joints[skeleton_.root].skeletonSpaceMatrix;
@@ -161,6 +147,9 @@ void Object3d::UpdateInternal(bool advanceAnimation) {
 
 void Object3d::SetModel(Model* model) {
 	this->model = model;
+	animationPlayer_.SetAnimations(
+		model ? &model->GetAnimations() : nullptr
+	);
 	skeleton_ = model
 		? CreateSkeleton(model->GetRootNode())
 		: Skeleton{};
@@ -178,7 +167,43 @@ void Object3d::SetModel(Model* model) {
 			*model
 		);
 	}
-	ResetAnimation();
+	animationPoseDirty_ = true;
+}
+
+void Object3d::UpdateAnimationPose() {
+	if (!model || !skeleton_.IsValid()) {
+		animationPoseDirty_ = false;
+		return;
+	}
+
+	const Animation* animation = animationPlayer_.GetCurrentAnimation();
+	if (animationPlayer_.IsEnabled() && animation) {
+		if (const Animation* previous =
+			animationPlayer_.GetPreviousAnimation()) {
+			ApplyAnimationBlend(
+				skeleton_,
+				*previous,
+				animationPlayer_.GetPreviousTime(),
+				*animation,
+				animationPlayer_.GetTime(),
+				animationPlayer_.GetBlendWeight()
+			);
+		} else {
+			ApplyAnimation(
+				skeleton_,
+				*animation,
+				animationPlayer_.GetTime()
+			);
+		}
+	} else {
+		ResetSkeletonPose(skeleton_);
+	}
+
+	UpdateSkeleton(skeleton_);
+	if (skinCluster_) {
+		skinCluster_->Update(skeleton_);
+	}
+	animationPoseDirty_ = false;
 }
 
 void Object3d::SetRotateQuaternion(const Quaternion& rotate) {
@@ -372,16 +397,28 @@ void Object3d::SetModel(const std::string& filePath){
 }
 
 void Object3d::ResetAnimation() {
-	animationTime_ = 0.0f;
-	isAnimationPlaying_ = false;
+	animationPlayer_.Reset();
+	animationPoseDirty_ = true;
 }
 
 bool Object3d::HasAnimation() const {
-	return model != nullptr && model->HasAnimation();
+	return animationPlayer_.HasAnimations();
 }
 
 float Object3d::GetAnimationDuration() const {
-	return HasAnimation() ? model->GetAnimation().duration : 0.0f;
+	return animationPlayer_.GetDuration();
+}
+
+size_t Object3d::GetAnimationClipCount() const {
+	return model ? model->GetAnimations().size() : 0;
+}
+
+const std::string& Object3d::GetAnimationClipName(size_t clipIndex) const {
+	static const std::string emptyName;
+	if (!model || clipIndex >= model->GetAnimations().size()) {
+		return emptyName;
+	}
+	return model->GetAnimations()[clipIndex].name;
 }
 
 void Object3d::SetEnvironmentMap(const std::string& textureFilePath, float coefficient) {

@@ -190,6 +190,12 @@ struct SceneComponent {
 	float thirdPersonOcclusionMargin = 0.45f;
 	bool thirdPersonInvertYaw = false;
 	bool thirdPersonInvertPitch = false;
+	bool animatorPlayOnStart = true;
+	bool animatorLoop = true;
+	float animatorSpeed = 1.0f;
+	int animatorDefaultClip = 0;
+	float animatorTransitionDuration = 0.2f;
+	std::string animatorBlendCurve = "SmoothStep";
 	std::string physicsBodyType = "Static";
 	float physicsMass = 1.0f;
 	bool physicsUseGravity = true;
