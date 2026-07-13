@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <functional>
@@ -155,6 +156,11 @@ namespace {
 		resolved.agentMaxSpeed = team->agentMaxSpeed;
 		resolved.agentTurnSpeed = team->agentTurnSpeed;
 		resolved.agentWanderStrength = team->agentWanderStrength;
+		resolved.agentWanderChangeInterval = team->agentWanderChangeInterval;
+		resolved.agentWanderDirectionRange = team->agentWanderDirectionRange;
+		resolved.agentWanderVerticalRange = team->agentWanderVerticalRange;
+		resolved.agentRandomizeSeedOnPlay = team->agentRandomizeSeedOnPlay;
+		resolved.agentRandomSeed = team->agentRandomSeed;
 		resolved.agentFlockAcceleration = team->agentFlockAcceleration;
 		resolved.agentFlockTurnRate = team->agentFlockTurnRate;
 		resolved.agentMemberCenterFollow = team->agentMemberCenterFollow;
@@ -163,6 +169,9 @@ namespace {
 		resolved.agentMemberJitterFollowSpeed =
 			team->agentMemberJitterFollowSpeed;
 		resolved.agentMemberSpeedVariation = team->agentMemberSpeedVariation;
+		resolved.agentMemberLeashDistance = team->agentMemberLeashDistance;
+		resolved.agentMemberLeashStrength = team->agentMemberLeashStrength;
+		resolved.agentMemberCatchupSpeed = team->agentMemberCatchupSpeed;
 		resolved.agentUseTeamHeading = team->agentUseTeamHeading;
 		resolved.agentTeamHeadingFromAverage =
 			team->agentTeamHeadingFromAverage;
@@ -542,6 +551,23 @@ namespace {
 			static_cast<float>(0x00FFFFFFu);
 	}
 
+	uint64_t BuildFlockRuntimeSeed(
+		uint64_t stableId,
+		int configuredSeed,
+		bool randomizeOnPlay
+	) {
+		uint64_t seed = stableId ^
+			(static_cast<uint64_t>((std::max)(configuredSeed, 0)) << 32);
+		if (!randomizeOnPlay) {
+			return seed;
+		}
+		static uint64_t sequence = 0;
+		const uint64_t ticks = static_cast<uint64_t>(
+			std::chrono::high_resolution_clock::now().time_since_epoch().count()
+		);
+		return seed ^ ticks ^ (++sequence * 0x9E3779B97F4A7C15ull);
+	}
+
 	Vector3 AddScaled(Vector3 base, const Vector3& value, float scale) {
 		base.x += value.x * scale;
 		base.y += value.y * scale;
@@ -561,6 +587,34 @@ namespace {
 		return Math::Length(value) > 0.000001f
 			? Math::Normalize(value)
 			: fallback;
+	}
+
+	Vector3 BuildFlockWanderDirection(
+		const Vector3& currentHeading,
+		uint64_t seedId,
+		uint32_t step,
+		float directionRange,
+		float verticalRange
+	) {
+		const Vector3 heading = SafeNormalize(
+			currentHeading,
+			{ 0.0f, 0.0f, 1.0f }
+		);
+		const float yaw = std::atan2(heading.x, heading.z);
+		const float yawOffset =
+			(Hash01(seedId, 307u + step * 3u) * 2.0f - 1.0f) *
+			directionRange;
+		const float vertical =
+			(Hash01(seedId, 311u + step * 3u) * 2.0f - 1.0f) *
+			verticalRange;
+		return SafeNormalize(
+			{
+				std::sin(yaw + yawOffset),
+				vertical,
+				std::cos(yaw + yawOffset)
+			},
+			heading
+		);
 	}
 
 	float FollowAmount(float followSpeed, float deltaTime) {
@@ -1921,10 +1975,38 @@ void GamePlayScene::UpdateAgentBehaviors(
 		if (!runtime.initialized) {
 			runtime.center = center;
 			runtime.phase = Hash01(frame.seedId, 211u) * 6.28318530718f;
-			runtime.heading = SafeNormalize(
+			runtime.seedId = BuildFlockRuntimeSeed(
+				frame.seedId,
+				frame.motionBehavior.agentRandomSeed,
+				frame.motionBehavior.agentRandomizeSeedOnPlay
+			);
+			const Vector3 configuredHeading = SafeNormalize(
 				frame.motionBehavior.agentTeamHeadingDirection,
 				{ 0.0f, 0.0f, 1.0f }
 			);
+			runtime.heading = frame.motionBehavior.agentUseTeamHeading
+				? configuredHeading
+				: BuildFlockWanderDirection(
+					{ 0.0f, 0.0f, 1.0f },
+					runtime.seedId,
+					runtime.wanderStep,
+					3.14159265359f,
+					frame.motionBehavior.agentWanderVerticalRange
+				);
+			++runtime.wanderStep;
+			runtime.wanderDirection =
+				frame.motionBehavior.agentWanderChangeInterval > 0.0f
+					? BuildFlockWanderDirection(
+						runtime.heading,
+						runtime.seedId,
+						runtime.wanderStep,
+						frame.motionBehavior.agentWanderDirectionRange,
+						frame.motionBehavior.agentWanderVerticalRange
+					)
+					: runtime.heading;
+			runtime.wanderTimer =
+				frame.motionBehavior.agentWanderChangeInterval *
+				(0.75f + Hash01(runtime.seedId, 317u) * 0.5f);
 			const float initialSpeed =
 				(frame.motionBehavior.agentMinSpeed +
 					frame.motionBehavior.agentMaxSpeed) * 0.5f;
@@ -1938,16 +2020,31 @@ void GamePlayScene::UpdateAgentBehaviors(
 			runtime.heading
 		);
 		Vector3 desired = AddScaled({}, velocityDirection, 0.65f);
-		runtime.phase += dt * 0.9f;
-		const Vector3 wander = SafeNormalize(
-			{
-				std::sin(runtime.phase * 1.37f + Hash01(frame.seedId, 3u) * 8.0f),
-				std::sin(runtime.phase * 0.83f + Hash01(frame.seedId, 5u) * 9.0f) * 0.45f,
-				std::cos(runtime.phase * 1.11f + Hash01(frame.seedId, 7u) * 7.0f)
-			},
-			velocityDirection
+		if (behavior.agentWanderChangeInterval > 0.0f) {
+			runtime.wanderTimer -= dt;
+			if (runtime.wanderTimer <= 0.0f) {
+				++runtime.wanderStep;
+				++runtime.speedRevision;
+				runtime.wanderDirection = BuildFlockWanderDirection(
+					runtime.heading,
+					runtime.seedId,
+					runtime.wanderStep,
+					behavior.agentWanderDirectionRange,
+					behavior.agentWanderVerticalRange
+				);
+				runtime.wanderTimer =
+					behavior.agentWanderChangeInterval *
+					(0.75f + Hash01(
+						runtime.seedId,
+						331u + runtime.wanderStep * 3u
+					) * 0.5f);
+			}
+		}
+		desired = AddScaled(
+			desired,
+			runtime.wanderDirection,
+			behavior.agentWanderStrength
 		);
-		desired = AddScaled(desired, wander, behavior.agentWanderStrength);
 		if (behavior.agentUseTeamHeading) {
 			desired = AddScaled(
 				desired,
@@ -2035,9 +2132,27 @@ void GamePlayScene::UpdateAgentBehaviors(
 				? nullptr
 				: &teamRuntimeIt->second;
 		if (teamRuntime) {
-			if (!runtime.flockInitialized) {
+			if (
+				!runtime.flockInitialized ||
+				runtime.flockSeedId != teamRuntime->seedId
+			) {
 				runtime.velocity = teamRuntime->velocity;
+				runtime.phase = Hash01(
+					agent.entity->id ^ teamRuntime->seedId,
+					59u
+				) * 6.28318530718f;
+				runtime.flockSpeedRevision = 0;
+				runtime.flockSeedId = teamRuntime->seedId;
 				runtime.flockInitialized = true;
+			}
+			if (runtime.flockSpeedRevision != teamRuntime->speedRevision) {
+				const float variation =
+					(Hash01(
+						agent.entity->id ^ teamRuntime->seedId,
+						397u + teamRuntime->speedRevision * 17u
+					) * 2.0f - 1.0f) * behavior.agentMemberSpeedVariation;
+				runtime.flockSpeedScale = 1.0f + variation;
+				runtime.flockSpeedRevision = teamRuntime->speedRevision;
 			}
 			const Vector3 teamDirection = SafeNormalize(
 				teamRuntime->velocity,
@@ -2063,11 +2178,23 @@ void GamePlayScene::UpdateAgentBehaviors(
 				runtime.jitterOffset
 			);
 			const Vector3 toCenter = Math::Subtract(memberTarget, position);
+			const float centerDistance = Math::Length(toCenter);
 			desired = AddScaled(
 				desired,
 				toCenter,
 				behavior.agentMemberCenterFollow * 0.2f
 			);
+			const float leashError = (std::max)(
+				centerDistance - behavior.agentMemberLeashDistance,
+				0.0f
+			);
+			if (leashError > 0.0f) {
+				desired = AddScaled(
+					desired,
+					SafeNormalize(toCenter, teamDirection),
+					leashError * behavior.agentMemberLeashStrength
+				);
+			}
 
 			Vector3 separation{};
 			int neighborCount = 0;
@@ -2118,11 +2245,13 @@ void GamePlayScene::UpdateAgentBehaviors(
 				behavior.agentFlockTurnRate * dt,
 				teamDirection
 			);
-			const float speedVariation =
-				(Hash01(agent.entity->id, 97u) * 2.0f - 1.0f) *
-				behavior.agentMemberSpeedVariation;
+			const float catchupSpeed = (std::min)(
+				leashError * behavior.agentMemberLeashStrength,
+				behavior.agentMemberCatchupSpeed
+			);
 			const float targetSpeed = (std::max)(
-				Math::Length(teamRuntime->velocity) * (1.0f + speedVariation),
+				Math::Length(teamRuntime->velocity) * runtime.flockSpeedScale +
+					catchupSpeed,
 				0.01f
 			);
 			runtime.velocity = MoveVectorToward(
@@ -2150,6 +2279,8 @@ void GamePlayScene::UpdateAgentBehaviors(
 			continue;
 		}
 		runtime.flockInitialized = false;
+		runtime.flockSpeedRevision = 0;
+		runtime.flockSeedId = 0;
 
 		const Vector3 velocityDirection = SafeNormalize(
 			runtime.velocity,

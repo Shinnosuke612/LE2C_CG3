@@ -82,6 +82,11 @@ struct SceneTeamSettings {
 	float agentMaxSpeed = 3.0f;
 	float agentTurnSpeed = 2.5f;
 	float agentWanderStrength = 0.8f;
+	float agentWanderChangeInterval = 4.0f;
+	float agentWanderDirectionRange = 1.1f;
+	float agentWanderVerticalRange = 0.18f;
+	bool agentRandomizeSeedOnPlay = true;
+	int agentRandomSeed = 1;
 	float agentFlockAcceleration = 4.0f;
 	float agentFlockTurnRate = 1.5f;
 	float agentMemberCenterFollow = 1.5f;
@@ -89,6 +94,9 @@ struct SceneTeamSettings {
 	float agentMemberJitterFrequency = 0.9f;
 	float agentMemberJitterFollowSpeed = 2.0f;
 	float agentMemberSpeedVariation = 0.15f;
+	float agentMemberLeashDistance = 4.0f;
+	float agentMemberLeashStrength = 1.5f;
+	float agentMemberCatchupSpeed = 2.0f;
 	bool agentUseTeamHeading = false;
 	bool agentTeamHeadingFromAverage = true;
 	Vector3 agentTeamHeadingDirection = { 0.0f, 0.0f, 1.0f };
@@ -194,6 +202,11 @@ struct SceneComponent {
 	float agentMaxSpeed = 3.0f;
 	float agentTurnSpeed = 2.5f;
 	float agentWanderStrength = 0.8f;
+	float agentWanderChangeInterval = 4.0f;
+	float agentWanderDirectionRange = 1.1f;
+	float agentWanderVerticalRange = 0.18f;
+	bool agentRandomizeSeedOnPlay = true;
+	int agentRandomSeed = 1;
 	float agentFlockAcceleration = 4.0f;
 	float agentFlockTurnRate = 1.5f;
 	float agentMemberCenterFollow = 1.5f;
@@ -201,6 +214,9 @@ struct SceneComponent {
 	float agentMemberJitterFrequency = 0.9f;
 	float agentMemberJitterFollowSpeed = 2.0f;
 	float agentMemberSpeedVariation = 0.15f;
+	float agentMemberLeashDistance = 4.0f;
+	float agentMemberLeashStrength = 1.5f;
+	float agentMemberCatchupSpeed = 2.0f;
 	float agentBoundsWeight = 3.0f;
 	bool agentUseTeamHeading = false;
 	bool agentTeamHeadingFromAverage = true;

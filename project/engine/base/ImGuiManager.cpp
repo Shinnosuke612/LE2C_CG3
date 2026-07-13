@@ -2298,6 +2298,35 @@ void ImGuiManager::DrawInspectorWindow() {
 						20.0f
 					);
 					teamChanged |= ImGui::DragFloat(
+						"Team Wander Change Interval",
+						&selectedTeam->agentWanderChangeInterval,
+						0.05f,
+						0.0f,
+						60.0f
+					);
+					teamChanged |= ImGui::SliderFloat(
+						"Team Wander Direction Range",
+						&selectedTeam->agentWanderDirectionRange,
+						0.0f,
+						3.141592f
+					);
+					teamChanged |= ImGui::SliderFloat(
+						"Team Wander Vertical Range",
+						&selectedTeam->agentWanderVerticalRange,
+						0.0f,
+						1.0f
+					);
+					teamChanged |= ImGui::Checkbox(
+						"Randomize Seed On Play",
+						&selectedTeam->agentRandomizeSeedOnPlay
+					);
+					ImGui::BeginDisabled(selectedTeam->agentRandomizeSeedOnPlay);
+					teamChanged |= ImGui::InputInt(
+						"Random Seed",
+						&selectedTeam->agentRandomSeed
+					);
+					ImGui::EndDisabled();
+					teamChanged |= ImGui::DragFloat(
 						"Team Acceleration",
 						&selectedTeam->agentFlockAcceleration,
 						0.05f,
@@ -2345,6 +2374,27 @@ void ImGuiManager::DrawInspectorWindow() {
 						&selectedTeam->agentMemberSpeedVariation,
 						0.0f,
 						1.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Member Leash Distance",
+						&selectedTeam->agentMemberLeashDistance,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Member Leash Strength",
+						&selectedTeam->agentMemberLeashStrength,
+						0.05f,
+						0.0f,
+						20.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Member Catchup Speed",
+						&selectedTeam->agentMemberCatchupSpeed,
+						0.05f,
+						0.0f,
+						100.0f
 					);
 
 					ImGui::SeparatorText("Team Heading");
@@ -2694,7 +2744,6 @@ void ImGuiManager::DrawInspectorWindow() {
 							selectedTeam->agentCohesionWeight;
 					if (teamChanged) {
 						document.MarkDirty();
-						editorSession_->RequestSceneReload();
 					}
 					if (ImGui::SmallButton("Remove Team")) {
 						const std::string removeTeamName = selectedTeam->name;
@@ -3952,6 +4001,35 @@ void ImGuiManager::DrawInspectorWindow() {
 					20.0f
 				);
 				agentChanged |= ImGui::DragFloat(
+					"Wander Change Interval",
+					&component.agentWanderChangeInterval,
+					0.05f,
+					0.0f,
+					60.0f
+				);
+				agentChanged |= ImGui::SliderFloat(
+					"Wander Direction Range",
+					&component.agentWanderDirectionRange,
+					0.0f,
+					3.141592f
+				);
+				agentChanged |= ImGui::SliderFloat(
+					"Wander Vertical Range",
+					&component.agentWanderVerticalRange,
+					0.0f,
+					1.0f
+				);
+				agentChanged |= ImGui::Checkbox(
+					"Randomize Seed On Play",
+					&component.agentRandomizeSeedOnPlay
+				);
+				ImGui::BeginDisabled(component.agentRandomizeSeedOnPlay);
+				agentChanged |= ImGui::InputInt(
+					"Random Seed",
+					&component.agentRandomSeed
+				);
+				ImGui::EndDisabled();
+				agentChanged |= ImGui::DragFloat(
 					"Flock Acceleration",
 					&component.agentFlockAcceleration,
 					0.05f,
@@ -3999,6 +4077,27 @@ void ImGuiManager::DrawInspectorWindow() {
 					&component.agentMemberSpeedVariation,
 					0.0f,
 					1.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Leash Distance",
+					&component.agentMemberLeashDistance,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Leash Strength",
+					&component.agentMemberLeashStrength,
+					0.05f,
+					0.0f,
+					20.0f
+				);
+				agentChanged |= ImGui::DragFloat(
+					"Catchup Speed",
+					&component.agentMemberCatchupSpeed,
+					0.05f,
+					0.0f,
+					100.0f
 				);
 
 				ImGui::SeparatorText("Team Heading");

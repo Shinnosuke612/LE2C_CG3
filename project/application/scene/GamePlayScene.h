@@ -82,6 +82,9 @@ private:
 		Vector3 cachedSchoolingSteering{};
 		float phase = 0.0f;
 		float schoolingTimer = 0.0f;
+		float flockSpeedScale = 1.0f;
+		uint32_t flockSpeedRevision = 0;
+		uint64_t flockSeedId = 0;
 		bool initialized = false;
 		bool flockInitialized = false;
 		bool schoolingCacheValid = false;
@@ -92,8 +95,13 @@ private:
 		Vector3 velocity{};
 		Vector3 heading = { 0.0f, 0.0f, 1.0f };
 		Vector3 rotation{};
+		Vector3 wanderDirection = { 0.0f, 0.0f, 1.0f };
 		std::string forwardAxis = "+Z";
 		float phase = 0.0f;
+		float wanderTimer = 0.0f;
+		uint64_t seedId = 0;
+		uint32_t wanderStep = 0;
+		uint32_t speedRevision = 1;
 		bool initialized = false;
 	};
 
