@@ -1,5 +1,9 @@
 // 役割: XAudio2を使ったWAVデータの再生処理を実装する。
 #include "Audio.h"
+#include "../utility/EditableResourcePath.h"
+#include "../utility/StringUtility.h"
+
+#include <filesystem>
 
 Audio* Audio::instance = nullptr;
 
@@ -33,7 +37,12 @@ Audio::SoundData Audio::SoundLoadWave(const char* filename){
 
 	// 1. ファイルオープン
 	std::ifstream file;
-	file.open(filename, std::ios_base::binary);
+	file.open(
+		EditableResourcePath::ResolveResource(
+			StringUtility::ToPath(filename)
+		),
+		std::ios_base::binary
+	);
 	assert(file.is_open());
 
 	// RIFFヘッダの読み込み

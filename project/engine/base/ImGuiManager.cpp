@@ -7,7 +7,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <numbers>
 #include <limits>
 
@@ -27,6 +29,8 @@
 #include "../scene/SceneDocument.h"
 #include "../scene/SceneEntityQuery.h"
 #include "../scene/SceneTransformResolver.h"
+#include "../utility/EditableResourcePath.h"
+#include "../utility/StringUtility.h"
 #include "../utility/SystemPerformanceMonitor.h"
 
 #include "../../externals/imgui/imgui.h"
@@ -34,12 +38,75 @@
 #include "../../externals/imgui/imgui_impl_win32.h"
 #include "../../externals/imgui/imgui_impl_dx12.h"
 #include "../../externals/ImGuizmo/ImGuizmo.h"
+#include "../../externals/nlohmann/json.hpp"
 
 namespace {
+	using json = nlohmann::json;
 	using SceneEntityQuery::FindComponent;
 	using SceneEntityQuery::FindEnabledComponent;
 	using SceneEntityQuery::HasComponent;
 	using SceneTransformResolver::ResolveSceneWorldMatrix;
+
+	std::string PathToUtf8(const std::filesystem::path& path) {
+		return StringUtility::ToUtf8(path);
+	}
+
+	std::filesystem::path PathFromUtf8(const std::string& path) {
+		return StringUtility::ToPath(path);
+	}
+
+	std::filesystem::path GetProjectResourceRoot();
+
+	bool ReadBinaryFile(
+		const std::filesystem::path& path,
+		std::vector<uint8_t>& output
+	) {
+		std::ifstream input(path, std::ios::binary | std::ios::ate);
+		if (!input.is_open()) {
+			return false;
+		}
+		const std::streampos size = input.tellg();
+		if (size <= 0) {
+			return false;
+		}
+		output.resize(static_cast<size_t>(size));
+		input.seekg(0, std::ios::beg);
+		input.read(
+			reinterpret_cast<char*>(output.data()),
+			static_cast<std::streamsize>(output.size())
+		);
+		return input.gcount() == static_cast<std::streamsize>(output.size());
+	}
+
+	bool LoadFirstAvailableFont(
+		const std::vector<std::filesystem::path>& candidates,
+		std::vector<uint8_t>& output
+	) {
+		for (const std::filesystem::path& candidate : candidates) {
+			std::error_code error;
+			if (!std::filesystem::exists(candidate, error)) {
+				continue;
+			}
+			if (ReadBinaryFile(candidate, output)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	void AddProjectAssetGlyphs(ImFontGlyphRangesBuilder& builder) {
+		std::error_code error;
+		std::filesystem::recursive_directory_iterator iterator(
+			GetProjectResourceRoot(),
+			std::filesystem::directory_options::skip_permission_denied,
+			error
+		);
+		const std::filesystem::recursive_directory_iterator end;
+		while (!error && iterator != end) {
+			builder.AddText(PathToUtf8(iterator->path().filename()).c_str());
+			iterator.increment(error);
+		}
+	}
 
 	bool IsModelAssetPath(const std::filesystem::path& path) {
 		std::string extension = path.extension().string();
@@ -58,27 +125,40 @@ namespace {
 		return extension == ".png" || extension == ".dds";
 	}
 
-	std::string GetPathRelativeToResources(const std::string& fullPath) {
+	std::filesystem::path GetProjectResourceRoot() {
+		return EditableResourcePath::Resolve("resources");
+	}
+
+	constexpr char kEditorSettingsPath[] = "editor_settings.json";
+
+	std::string GetProjectResourcePath(const std::string& path) {
+		return PathToUtf8(EditableResourcePath::ToProjectRelative(
+			EditableResourcePath::ResolveResource(PathFromUtf8(path))
+		));
+	}
+
+	std::string GetModelPathRelativeToResources(const std::string& fullPath) {
+		const std::string projectPath = GetProjectResourcePath(fullPath);
 		const std::string prefix = "resources/";
-		if (fullPath.rfind(prefix, 0) == 0) {
-			return fullPath.substr(prefix.length());
+		if (projectPath.rfind(prefix, 0) == 0) {
+			return projectPath.substr(prefix.length());
 		}
-		return fullPath;
+		return projectPath;
 	}
 
 	std::vector<std::string> CollectModelAssetPaths() {
 		std::vector<std::string> paths;
 		std::error_code error;
 		std::filesystem::recursive_directory_iterator iterator(
-			"resources",
+			GetProjectResourceRoot(),
 			std::filesystem::directory_options::skip_permission_denied,
 			error
 		);
 		const std::filesystem::recursive_directory_iterator end;
 		while (!error && iterator != end) {
 			if (iterator->is_regular_file(error) && IsModelAssetPath(iterator->path())) {
-				paths.push_back(GetPathRelativeToResources(
-					iterator->path().generic_string()
+				paths.push_back(GetModelPathRelativeToResources(
+					PathToUtf8(iterator->path())
 				));
 			}
 			iterator.increment(error);
@@ -91,14 +171,16 @@ namespace {
 		std::vector<std::string> paths;
 		std::error_code error;
 		std::filesystem::recursive_directory_iterator iterator(
-			"resources",
+			GetProjectResourceRoot(),
 			std::filesystem::directory_options::skip_permission_denied,
 			error
 		);
 		const std::filesystem::recursive_directory_iterator end;
 		while (!error && iterator != end) {
 			if (iterator->is_regular_file(error) && IsTextureAssetPath(iterator->path())) {
-				paths.push_back(iterator->path().generic_string());
+				paths.push_back(GetProjectResourcePath(
+					PathToUtf8(iterator->path())
+				));
 			}
 			iterator.increment(error);
 		}
@@ -241,14 +323,13 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	LoadEditorSettings();
 
 	ImGui::StyleColorsDark();
 	ImGuiStyle& style = ImGui::GetStyle();
 	const float dpiScale =
 		static_cast<float>(GetDpiForWindow(winApp_->GetHwnd())) / 96.0f;
-	ImFontConfig fontConfig{};
-	fontConfig.SizePixels = 13.0f * dpiScale;
-	io.Fonts->AddFontDefault(&fontConfig);
+	ConfigureEditorFont(io, dpiScale);
 	style.ScaleAllSizes(dpiScale);
 	style.WindowRounding = 0.0f;
 	style.ChildRounding = 0.0f;
@@ -301,13 +382,193 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 	ImGui_ImplDX12_Init(&initInfo);
 }
 
+void ImGuiManager::ConfigureEditorFont(ImGuiIO& io, float dpiScale) {
+	const std::filesystem::path fontDirectory =
+		EditableResourcePath::Resolve("resources/fonts");
+	const std::vector<std::filesystem::path> cascadiaFontCandidates = {
+		fontDirectory / "CascadiaMono.ttf",
+		fontDirectory / "CascadiaCode.ttf",
+		L"C:\\Windows\\Fonts\\CascadiaMono.ttf",
+		L"C:\\Windows\\Fonts\\CascadiaCode.ttf"
+	};
+	const std::vector<std::filesystem::path> japaneseFontCandidates = {
+		fontDirectory / "NotoSansCJKjp-Regular.otf",
+		fontDirectory / "NotoSansJP-Regular.ttf",
+		fontDirectory / "NotoSansJP-VF.ttf",
+		L"C:\\Windows\\Fonts\\NotoSansJP-VF.ttf",
+		L"C:\\Windows\\Fonts\\YuGothM.ttc",
+		L"C:\\Windows\\Fonts\\meiryo.ttc"
+	};
+	const std::vector<std::filesystem::path> chineseFontCandidates = {
+		fontDirectory / "NotoSansCJKsc-Regular.otf",
+		fontDirectory / "NotoSansSC-Regular.ttf",
+		L"C:\\Windows\\Fonts\\msyh.ttc",
+		L"C:\\Windows\\Fonts\\msjh.ttc"
+	};
+
+	editorBaseFontData_.clear();
+	editorJapaneseFontData_.clear();
+	editorChineseFontData_.clear();
+	editorGlyphRanges_.clear();
+
+	ImFontGlyphRangesBuilder glyphBuilder;
+	glyphBuilder.AddRanges(io.Fonts->GetGlyphRangesJapanese());
+	glyphBuilder.AddRanges(io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+	AddProjectAssetGlyphs(glyphBuilder);
+	glyphBuilder.BuildRanges(&editorGlyphRanges_);
+
+	ImFontConfig fontConfig{};
+	fontConfig.SizePixels = editorFontSize_ * dpiScale;
+	fontConfig.OversampleH = 1;
+	fontConfig.OversampleV = 1;
+	fontConfig.FontDataOwnedByAtlas = false;
+
+	ImFont* editorFont = nullptr;
+	bool baseContainsJapanese = false;
+	bool baseContainsChinese = false;
+	if (editorFontPreset_ == EditorFontPreset::UnifiedCjk) {
+		if (LoadFirstAvailableFont(japaneseFontCandidates, editorBaseFontData_)) {
+			baseContainsJapanese = true;
+			editorFont = io.Fonts->AddFontFromMemoryTTF(
+				editorBaseFontData_.data(),
+				static_cast<int>(editorBaseFontData_.size()),
+				fontConfig.SizePixels,
+				&fontConfig,
+				editorGlyphRanges_.Data
+			);
+		} else if (LoadFirstAvailableFont(chineseFontCandidates, editorBaseFontData_)) {
+			baseContainsChinese = true;
+			editorFont = io.Fonts->AddFontFromMemoryTTF(
+				editorBaseFontData_.data(),
+				static_cast<int>(editorBaseFontData_.size()),
+				fontConfig.SizePixels,
+				&fontConfig,
+				editorGlyphRanges_.Data
+			);
+		}
+	} else if (editorFontPreset_ == EditorFontPreset::CascadiaMonoWithCjk &&
+		LoadFirstAvailableFont(cascadiaFontCandidates, editorBaseFontData_)) {
+		editorFont = io.Fonts->AddFontFromMemoryTTF(
+			editorBaseFontData_.data(),
+			static_cast<int>(editorBaseFontData_.size()),
+			fontConfig.SizePixels,
+			&fontConfig,
+			editorGlyphRanges_.Data
+		);
+	}
+
+	if (!editorFont) {
+		editorFont = io.Fonts->AddFontDefault(&fontConfig);
+	}
+
+	if (editorFont && !baseContainsJapanese &&
+		LoadFirstAvailableFont(japaneseFontCandidates, editorJapaneseFontData_)) {
+		ImFontConfig mergeConfig = fontConfig;
+		mergeConfig.MergeMode = true;
+		mergeConfig.DstFont = editorFont;
+		io.Fonts->AddFontFromMemoryTTF(
+			editorJapaneseFontData_.data(),
+			static_cast<int>(editorJapaneseFontData_.size()),
+			fontConfig.SizePixels,
+			&mergeConfig,
+			editorGlyphRanges_.Data
+		);
+	}
+
+	if (editorFont && !baseContainsChinese &&
+		LoadFirstAvailableFont(chineseFontCandidates, editorChineseFontData_)) {
+		ImFontConfig mergeConfig = fontConfig;
+		mergeConfig.MergeMode = true;
+		mergeConfig.DstFont = editorFont;
+		io.Fonts->AddFontFromMemoryTTF(
+			editorChineseFontData_.data(),
+			static_cast<int>(editorChineseFontData_.size()),
+			fontConfig.SizePixels,
+			&mergeConfig,
+			editorGlyphRanges_.Data
+		);
+	}
+
+	if (editorFont) {
+		io.FontDefault = editorFont;
+	}
+}
+
 void ImGuiManager::BeginFrame(){
+	ApplyPendingEditorFont();
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 	ImGuizmo::BeginFrame();
 
 	CreateDockSpace();
+}
+
+void ImGuiManager::LoadEditorSettings() {
+	std::string text;
+	if (!EditableResourcePath::ReadText(kEditorSettingsPath, text)) {
+		return;
+	}
+
+	try {
+		const json settings = json::parse(text);
+		const std::string preset = settings.value(
+			"fontPreset",
+			"originalWithCjk"
+		);
+		if (preset == "unifiedCjk") {
+			editorFontPreset_ = EditorFontPreset::UnifiedCjk;
+		} else if (preset == "cascadiaMonoWithCjk") {
+			editorFontPreset_ = EditorFontPreset::CascadiaMonoWithCjk;
+		} else {
+			editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
+		}
+		if (settings.contains("fontSize") && settings["fontSize"].is_number()) {
+			editorFontSize_ = std::clamp(
+				settings["fontSize"].get<float>(),
+				10.0f,
+				22.0f
+			);
+		}
+	} catch (const json::exception&) {
+		// 壊れたエディタ設定は無視し、既定値で起動する。
+	}
+}
+
+void ImGuiManager::SaveEditorSettings() const {
+	const char* preset = "originalWithCjk";
+	if (editorFontPreset_ == EditorFontPreset::UnifiedCjk) {
+		preset = "unifiedCjk";
+	} else if (editorFontPreset_ == EditorFontPreset::CascadiaMonoWithCjk) {
+		preset = "cascadiaMonoWithCjk";
+	}
+
+	const json settings = {
+		{ "fontPreset", preset },
+		{ "fontSize", editorFontSize_ }
+	};
+	EditableResourcePath::WriteTextAtomically(
+		kEditorSettingsPath,
+		settings.dump(2)
+	);
+}
+
+void ImGuiManager::RequestEditorFontRebuild() {
+	editorFontRebuildRequested_ = true;
+}
+
+void ImGuiManager::ApplyPendingEditorFont() {
+	if (!editorFontRebuildRequested_) {
+		return;
+	}
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.FontDefault = nullptr;
+	io.Fonts->Clear();
+	const float dpiScale =
+		static_cast<float>(GetDpiForWindow(winApp_->GetHwnd())) / 96.0f;
+	ConfigureEditorFont(io, dpiScale);
+	editorFontRebuildRequested_ = false;
 }
 
 void ImGuiManager::EndFrame(){
@@ -379,8 +640,8 @@ void ImGuiManager::DrawEditorWorkspace(
 			const char* droppedPath = static_cast<const char*>(payload->Data);
 			if (droppedPath && droppedPath[0] != '\0') {
 				SceneDocument& document = editorSession_->GetEditDocument();
-				std::filesystem::path texturePath(droppedPath);
-				std::string entityName = texturePath.stem().string();
+				const std::filesystem::path texturePath = PathFromUtf8(droppedPath);
+				std::string entityName = PathToUtf8(texturePath.stem());
 				if (entityName.empty()) {
 					entityName = "Sprite";
 				}
@@ -390,7 +651,9 @@ void ImGuiManager::DrawEditorWorkspace(
 					entityName = baseName + " " + std::to_string(suffix++);
 				}
 				SceneEntity& entity = document.CreateEntity(entityName);
-				entity.spriteTexturePath = texturePath.generic_string();
+				entity.spriteTexturePath = GetProjectResourcePath(
+					PathToUtf8(texturePath)
+				);
 				entity.components = { "SpriteRenderer" };
 				entity.components.front().texturePath = entity.spriteTexturePath;
 				const ImVec2 mouse = ImGui::GetMousePos();
@@ -424,8 +687,8 @@ void ImGuiManager::DrawEditorWorkspace(
 			const char* droppedPath = static_cast<const char*>(payload->Data);
 			if (droppedPath && droppedPath[0] != '\0') {
 				SceneDocument& document = editorSession_->GetEditDocument();
-				std::filesystem::path modelPath(droppedPath);
-				std::string entityName = modelPath.stem().string();
+				const std::filesystem::path modelPath = PathFromUtf8(droppedPath);
+				std::string entityName = PathToUtf8(modelPath.stem());
 				if (entityName.empty()) {
 					entityName = "Model";
 				}
@@ -435,7 +698,9 @@ void ImGuiManager::DrawEditorWorkspace(
 					entityName = baseName + " " + std::to_string(suffix++);
 				}
 				SceneEntity& entity = document.CreateEntity(entityName);
-				entity.modelPath = GetPathRelativeToResources(modelPath.generic_string());
+				entity.modelPath = GetModelPathRelativeToResources(
+					PathToUtf8(modelPath)
+				);
 				entity.components = { "MeshRenderer" };
 				entity.components.front().modelPath = entity.modelPath;
 				Object3dCommon* object3dCommon = Object3dCommon::GetInstance();
@@ -490,6 +755,15 @@ void ImGuiManager::DrawEditorWorkspace(
 				sceneMax.y - sceneMin.y
 			);
 		}
+	}
+	if (
+		editorSession_ &&
+		editorSession_->IsEditing() &&
+		ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+		!ImGui::GetIO().WantTextInput &&
+		ImGui::IsKeyPressed(ImGuiKey_F, false)
+	) {
+		FocusSceneCameraOnSelection();
 	}
 
 	ImGui::GetWindowDrawList()->AddText(
@@ -589,11 +863,13 @@ void ImGuiManager::RefreshProjectDirectoryCache() {
 	projectDirectoryCacheDirty_ = false;
 
 	std::error_code ec;
-	if (!std::filesystem::exists(selectedProjectFolder_, ec)) {
+	const std::filesystem::path selectedFolderPath =
+		PathFromUtf8(selectedProjectFolder_);
+	if (!std::filesystem::exists(selectedFolderPath, ec)) {
 		return;
 	}
 
-	for (const auto& entry : std::filesystem::directory_iterator(selectedProjectFolder_, ec)) {
+	for (const auto& entry : std::filesystem::directory_iterator(selectedFolderPath, ec)) {
 		const bool isDirectory = entry.is_directory(ec);
 		const bool isRegularFile = entry.is_regular_file(ec);
 		if (!isDirectory && !isRegularFile) {
@@ -601,8 +877,8 @@ void ImGuiManager::RefreshProjectDirectoryCache() {
 		}
 
 		ProjectDirectoryEntry cachedEntry{};
-		cachedEntry.fileName = entry.path().filename().string();
-		cachedEntry.filePath = entry.path().generic_string();
+		cachedEntry.fileName = PathToUtf8(entry.path().filename());
+		cachedEntry.filePath = PathToUtf8(entry.path());
 		cachedEntry.extension = entry.path().extension().string();
 		std::transform(
 			cachedEntry.extension.begin(),
@@ -632,11 +908,11 @@ ImGuiManager::ProjectDirectoryNode ImGuiManager::BuildProjectDirectoryNode(
 	const std::filesystem::path& path
 ) {
 	ProjectDirectoryNode node{};
-	node.folderName = path.filename().string();
+	node.folderName = PathToUtf8(path.filename());
 	if (node.folderName.empty()) {
-		node.folderName = path.generic_string();
+		node.folderName = PathToUtf8(path);
 	}
-	node.folderPath = path.generic_string();
+	node.folderPath = PathToUtf8(path);
 
 	std::error_code ec;
 	if (!std::filesystem::exists(path, ec)) {
@@ -659,7 +935,9 @@ ImGuiManager::ProjectDirectoryNode ImGuiManager::BuildProjectDirectoryNode(
 }
 
 void ImGuiManager::RefreshProjectTreeCache() {
-	cachedProjectTreeRoot_ = BuildProjectDirectoryNode("resources");
+	cachedProjectTreeRoot_ = BuildProjectDirectoryNode(
+		GetProjectResourceRoot()
+	);
 	projectTreeCacheDirty_ = false;
 }
 
@@ -670,9 +948,12 @@ bool ImGuiManager::GetModelPreviewRequest(
 	float& zoom
 ) const {
 	if (!selectedProjectFile_.empty()) {
-		const std::filesystem::path selectedPath(selectedProjectFile_);
+		const std::filesystem::path selectedPath =
+			PathFromUtf8(selectedProjectFile_);
 		if (IsModelAssetPath(selectedPath)) {
-			modelPath = GetPathRelativeToResources(selectedPath.generic_string());
+			modelPath = GetModelPathRelativeToResources(
+				PathToUtf8(selectedPath)
+			);
 			yaw = modelPreviewYaw_;
 			pitch = modelPreviewPitch_;
 			zoom = modelPreviewZoom_;
@@ -847,6 +1128,80 @@ bool ImGuiManager::PickSceneEntity(
 	showInspector_ = true;
 	focusInspectorRequested_ = true;
 	return true;
+}
+
+void ImGuiManager::FocusSceneCameraOnSelection() {
+	if (!editorSession_ || !editorSession_->IsEditing()) {
+		return;
+	}
+	Camera* camera = Object3dCommon::GetInstance()
+		? Object3dCommon::GetInstance()->GetDefaultCamera()
+		: nullptr;
+	if (!camera) {
+		return;
+	}
+
+	SceneDocument& document = editorSession_->GetEditDocument();
+	std::vector<uint64_t> targetIds;
+	for (uint64_t entityId : selectedEntityIds_) {
+		if (document.FindEntity(entityId)) {
+			targetIds.push_back(entityId);
+		}
+	}
+	if (targetIds.empty() && selectedEntityId_ != 0) {
+		if (document.FindEntity(selectedEntityId_)) {
+			targetIds.push_back(selectedEntityId_);
+		}
+	}
+	if (targetIds.empty()) {
+		return;
+	}
+
+	Vector3 center{};
+	std::vector<Vector3> positions;
+	positions.reserve(targetIds.size());
+	for (uint64_t entityId : targetIds) {
+		const SceneEntity* entity = document.FindEntity(entityId);
+		if (!entity) {
+			continue;
+		}
+		const Matrix4x4 worldMatrix = ResolveSceneWorldMatrix(document, *entity);
+		const Vector3 position = {
+			worldMatrix.m[3][0],
+			worldMatrix.m[3][1],
+			worldMatrix.m[3][2]
+		};
+		positions.push_back(position);
+		center = Math::Add(center, position);
+	}
+	if (positions.empty()) {
+		return;
+	}
+	center = Math::Multiply(center, 1.0f / static_cast<float>(positions.size()));
+
+	float radius = 0.0f;
+	for (const Vector3& position : positions) {
+		radius = (std::max)(
+			radius,
+			Math::Length(Math::Subtract(position, center))
+		);
+	}
+	const Vector3 currentOffset = Math::Subtract(camera->GetTranslate(), center);
+	Vector3 viewDirection = Math::Normalize(currentOffset);
+	if (Math::Length(viewDirection) < 0.0001f) {
+		viewDirection = { 0.0f, 0.35f, -1.0f };
+		viewDirection = Math::Normalize(viewDirection);
+	}
+	const float distance = (std::max)(5.0f, radius * 2.5f + 2.0f);
+	if (camera->IsOrbitMode()) {
+		camera->SetOrbitTarget(center);
+		camera->SetOrbitDistance(distance);
+	} else {
+		camera->SetLookAt(
+			Math::Add(center, Math::Multiply(viewDirection, distance)),
+			center
+		);
+	}
 }
 
 void ImGuiManager::DrawSceneGizmo(
@@ -1065,7 +1420,79 @@ void ImGuiManager::Finalize(){
 	ImGui_ImplDX12_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
+	editorBaseFontData_.clear();
+	editorJapaneseFontData_.clear();
+	editorChineseFontData_.clear();
+	editorGlyphRanges_.clear();
 	instance = nullptr;
+}
+
+void ImGuiManager::DrawSettingsMenu() {
+	if (!ImGui::BeginMenu("Settings")) {
+		return;
+	}
+
+	if (ImGui::BeginMenu("Windows")) {
+		ImGui::MenuItem("Hierarchy", nullptr, &showHierarchy_);
+		ImGui::MenuItem("Inspector", nullptr, &showInspector_);
+		ImGui::MenuItem("Project", nullptr, &showProject_);
+		ImGui::MenuItem("Console", nullptr, &showConsole_);
+		ImGui::Separator();
+		if (ImGui::MenuItem("Reset Layout")) {
+			resetLayout_ = true;
+		}
+		ImGui::EndMenu();
+	}
+
+	if (ImGui::BeginMenu("Appearance")) {
+		if (ImGui::BeginMenu("Font")) {
+			if (ImGui::MenuItem(
+				"Original + CJK",
+				nullptr,
+				editorFontPreset_ == EditorFontPreset::OriginalWithCjk
+			)) {
+				editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
+				RequestEditorFontRebuild();
+				SaveEditorSettings();
+			}
+			if (ImGui::MenuItem(
+				"Unified CJK",
+				nullptr,
+				editorFontPreset_ == EditorFontPreset::UnifiedCjk
+			)) {
+				editorFontPreset_ = EditorFontPreset::UnifiedCjk;
+				RequestEditorFontRebuild();
+				SaveEditorSettings();
+			}
+			if (ImGui::MenuItem(
+				"Cascadia Mono + CJK",
+				nullptr,
+				editorFontPreset_ == EditorFontPreset::CascadiaMonoWithCjk
+			)) {
+				editorFontPreset_ = EditorFontPreset::CascadiaMonoWithCjk;
+				RequestEditorFontRebuild();
+				SaveEditorSettings();
+			}
+			ImGui::EndMenu();
+		}
+
+		if (ImGui::DragFloat(
+			"Font Size",
+			&editorFontSize_,
+			0.25f,
+			10.0f,
+			22.0f,
+			"%.1f px"
+		)) {
+			RequestEditorFontRebuild();
+		}
+		if (ImGui::IsItemDeactivatedAfterEdit()) {
+			SaveEditorSettings();
+		}
+		ImGui::EndMenu();
+	}
+
+	ImGui::EndMenu();
 }
 
 void ImGuiManager::CreateDockSpace(){
@@ -1091,17 +1518,7 @@ void ImGuiManager::CreateDockSpace(){
 	ImGui::PopStyleVar(3);
 
 	if (ImGui::BeginMenuBar()) {
-		if (ImGui::BeginMenu("Window")) {
-			ImGui::MenuItem("Hierarchy", nullptr, &showHierarchy_);
-			ImGui::MenuItem("Inspector", nullptr, &showInspector_);
-			ImGui::MenuItem("Project", nullptr, &showProject_);
-			ImGui::MenuItem("Console", nullptr, &showConsole_);
-			ImGui::Separator();
-			if (ImGui::MenuItem("Reset Layout")) {
-				resetLayout_ = true;
-			}
-			ImGui::EndMenu();
-		}
+		DrawSettingsMenu();
 		DrawPlaybackControls();
 		ImGui::EndMenuBar();
 	}
@@ -1257,6 +1674,26 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 	ImGui::Begin("Hierarchy", &showHierarchy_);
 	if (editorSession_) {
 		SceneDocument& document = editorSession_->GetActiveDocument();
+		for (
+			auto it = selectedEntityIds_.begin();
+			it != selectedEntityIds_.end();
+		) {
+			if (!document.FindEntity(*it)) {
+				it = selectedEntityIds_.erase(it);
+			} else {
+				++it;
+			}
+		}
+		if (selectedEntityId_ == 0) {
+			selectedEntityIds_.clear();
+			hierarchySelectionAnchorId_ = 0;
+		} else if (selectedEntityId_ != hierarchyObservedEntityId_) {
+			// Scene ViewなどHierarchy外からの選択は単体選択として受け取り、表示位置を追従する。
+			selectedEntityIds_.clear();
+			selectedEntityIds_.insert(selectedEntityId_);
+			hierarchySelectionAnchorId_ = selectedEntityId_;
+			hierarchyRevealRequested_ = true;
+		}
 		ImGui::BeginDisabled(!editorSession_->IsEditing());
 		bool createRequested = false;
 		bool createFolderRequested = false;
@@ -1288,7 +1725,7 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		ImGui::SetNextItemWidth(-1.0f);
 		ImGui::InputTextWithHint(
 			"##HierarchySearch",
-			"Search entities...",
+			"Search... team:Fish type:Camera is:inactive",
 			hierarchySearchBuffer_,
 			sizeof(hierarchySearchBuffer_)
 		);
@@ -1301,6 +1738,7 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		bool reorderAfter = false;
 		uint64_t reparentId = 0;
 		uint64_t reparentTargetId = 0;
+		std::vector<uint64_t> hierarchyDroppedIds;
 		uint64_t moveId = 0;
 		int moveDirection = 0;
 		if (
@@ -1310,6 +1748,9 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			!ImGui::GetIO().WantTextInput
 		) {
 			const SceneEntity* selectedEntity = document.FindEntity(selectedEntityId_);
+			if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
+				FocusSceneCameraOnSelection();
+			}
 			if (selectedEntity && !selectedEntity->locked) {
 				if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
 					removeId = selectedEntityId_;
@@ -1353,7 +1794,23 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			return value;
 		};
 		const std::string hierarchySearch = toLower(hierarchySearchBuffer_);
-		const bool searchActive = !hierarchySearch.empty();
+		std::vector<std::string> hierarchyFilterTerms;
+		for (size_t begin = 0; begin < hierarchySearch.size();) {
+			while (
+				begin < hierarchySearch.size() &&
+				std::isspace(static_cast<unsigned char>(hierarchySearch[begin]))
+			) {
+				++begin;
+			}
+			const size_t end = hierarchySearch.find_first_of(" \t\r\n", begin);
+			if (begin < hierarchySearch.size()) {
+				hierarchyFilterTerms.push_back(
+					hierarchySearch.substr(begin, end - begin)
+				);
+			}
+			begin = end == std::string::npos ? hierarchySearch.size() : end + 1;
+		}
+		const bool searchActive = !hierarchyFilterTerms.empty();
 		uint64_t hierarchyDropTargetId = 0;
 		bool hierarchyDropAfter = false;
 		bool hierarchyDropIntoFolder = false;
@@ -1363,10 +1820,54 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			hierarchyDragActive_ = false;
 		}
 		auto entityNameMatches = [&](const SceneEntity& entity) {
-			if (!searchActive) {
-				return true;
+			for (const std::string& term : hierarchyFilterTerms) {
+				const size_t separator = term.find(':');
+				if (separator == std::string::npos) {
+					if (toLower(entity.name).find(term) == std::string::npos) {
+						return false;
+					}
+					continue;
+				}
+
+				const std::string key = term.substr(0, separator);
+				const std::string value = term.substr(separator + 1);
+				if (value.empty()) {
+					continue;
+				}
+				if (key == "team") {
+					const SceneTeamSettings* team = document.ResolveEntityTeam(entity);
+					if (!team || toLower(team->name).find(value) == std::string::npos) {
+						return false;
+					}
+				} else if (key == "type") {
+					bool typeMatches = entity.folder && value == "folder";
+					for (const SceneComponent& component : entity.components) {
+						if (toLower(component.type) == value) {
+							typeMatches = true;
+							break;
+						}
+					}
+					if (!typeMatches) {
+						return false;
+					}
+				} else if (key == "is") {
+					const bool matches =
+						(value == "active" && entity.active) ||
+						(value == "inactive" && !entity.active) ||
+						(value == "locked" && entity.locked) ||
+						(value == "unlocked" && !entity.locked) ||
+						(value == "folder" && entity.folder);
+					if (!matches) {
+						return false;
+					}
+				} else {
+					// 未対応の条件は名前検索として扱い、検索結果が空になる事故を避ける。
+					if (toLower(entity.name).find(term) == std::string::npos) {
+						return false;
+					}
+				}
 			}
-			return toLower(entity.name).find(hierarchySearch) != std::string::npos;
+			return true;
 		};
 		std::function<bool(uint64_t)> entityVisibleInFilter;
 		entityVisibleInFilter = [&](uint64_t entityId) {
@@ -1406,6 +1907,144 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			}
 			return false;
 		};
+		std::vector<uint64_t> hierarchyFilterOrder;
+		std::function<void(uint64_t)> collectFilterOrder;
+		collectFilterOrder = [&](uint64_t entityId) {
+			if (!entityVisibleInFilter(entityId)) {
+				return;
+			}
+			hierarchyFilterOrder.push_back(entityId);
+			for (const SceneEntity& child : document.GetEntities()) {
+				if (child.parentId == entityId) {
+					collectFilterOrder(child.id);
+				}
+			}
+		};
+		for (const SceneEntity& entity : document.GetEntities()) {
+			if (entity.parentId == 0) {
+				collectFilterOrder(entity.id);
+			}
+		}
+		auto isEntitySelected = [&](uint64_t entityId) {
+			return selectedEntityIds_.find(entityId) != selectedEntityIds_.end();
+		};
+		auto getSelectedRoots = [&]() {
+			std::vector<uint64_t> roots;
+			for (const SceneEntity& candidate : document.GetEntities()) {
+				if (!isEntitySelected(candidate.id)) {
+					continue;
+				}
+				bool selectedAncestor = false;
+				for (
+					const SceneEntity* parent = document.FindEntity(candidate.parentId);
+					parent;
+					parent = document.FindEntity(parent->parentId)
+				) {
+					if (isEntitySelected(parent->id)) {
+						selectedAncestor = true;
+						break;
+					}
+				}
+				if (!selectedAncestor) {
+					roots.push_back(candidate.id);
+				}
+			}
+			return roots;
+		};
+		auto getDraggedRoots = [&]() {
+			if (hierarchyDragSourceId_ == 0) {
+				return std::vector<uint64_t>{};
+			}
+			if (isEntitySelected(hierarchyDragSourceId_)) {
+				return getSelectedRoots();
+			}
+			return std::vector<uint64_t>{ hierarchyDragSourceId_ };
+		};
+		auto rootsCanBeEdited = [&](const std::vector<uint64_t>& roots) {
+			return !roots.empty() && std::all_of(
+				roots.begin(),
+				roots.end(),
+				[&](uint64_t entityId) {
+					const SceneEntity* entity = document.FindEntity(entityId);
+					return entity && !entity->locked && !entitySubtreeHasLocked(entityId);
+				}
+			);
+		};
+		auto selectEntity = [&](uint64_t entityId, bool extend, bool range) {
+			if (range && hierarchySelectionAnchorId_ != 0) {
+				const auto anchor = std::find(
+					hierarchyFilterOrder.begin(),
+					hierarchyFilterOrder.end(),
+					hierarchySelectionAnchorId_
+				);
+				const auto target = std::find(
+					hierarchyFilterOrder.begin(),
+					hierarchyFilterOrder.end(),
+					entityId
+				);
+				if (anchor != hierarchyFilterOrder.end() && target != hierarchyFilterOrder.end()) {
+					selectedEntityIds_.clear();
+					const auto first = (std::min)(anchor, target);
+					const auto last = (std::max)(anchor, target);
+					for (auto it = first; it != std::next(last); ++it) {
+						selectedEntityIds_.insert(*it);
+					}
+				} else {
+					selectedEntityIds_.clear();
+					selectedEntityIds_.insert(entityId);
+					hierarchySelectionAnchorId_ = entityId;
+				}
+			} else if (extend) {
+				if (isEntitySelected(entityId)) {
+					selectedEntityIds_.erase(entityId);
+				} else {
+					selectedEntityIds_.insert(entityId);
+					hierarchySelectionAnchorId_ = entityId;
+				}
+			} else {
+				selectedEntityIds_.clear();
+				selectedEntityIds_.insert(entityId);
+				hierarchySelectionAnchorId_ = entityId;
+			}
+			selectedEntityId_ = selectedEntityIds_.empty()
+				? 0
+				: entityId;
+			selectedProjectFile_.clear();
+			showInspector_ = true;
+			focusInspectorRequested_ = true;
+		};
+		auto setSelectedActive = [&](bool active, uint64_t clickedEntityId) {
+			const bool applyToSelection = isEntitySelected(clickedEntityId);
+			bool changed = false;
+			for (SceneEntity& candidate : document.GetEntities()) {
+				if ((applyToSelection && isEntitySelected(candidate.id)) ||
+					(!applyToSelection && candidate.id == clickedEntityId)) {
+					if (candidate.active != active) {
+						candidate.active = active;
+						changed = true;
+					}
+				}
+			}
+			if (changed) {
+				document.MarkDirty();
+			}
+		};
+		auto setSelectedLocked = [&](bool locked, uint64_t clickedEntityId) {
+			const bool applyToSelection = isEntitySelected(clickedEntityId);
+			bool changed = false;
+			for (SceneEntity& candidate : document.GetEntities()) {
+				if ((applyToSelection && isEntitySelected(candidate.id)) ||
+					(!applyToSelection && candidate.id == clickedEntityId)) {
+					if (candidate.locked != locked) {
+						candidate.locked = locked;
+						changed = true;
+					}
+				}
+			}
+			if (changed) {
+				document.MarkDirty();
+			}
+		};
 
 		std::function<void(uint64_t)> drawEntity;
 		drawEntity = [&](uint64_t entityId) {
@@ -1416,24 +2055,22 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			if (!entityVisibleInFilter(entityId)) {
 				return;
 			}
-			const bool hasChildren = std::any_of(
+			const size_t childCount = static_cast<size_t>(std::count_if(
 				document.GetEntities().begin(),
 				document.GetEntities().end(),
 				[&](const SceneEntity& candidate) {
 					return candidate.parentId == entityId &&
 						entityVisibleInFilter(candidate.id);
 				}
-			);
+			));
+			const bool hasChildren = childCount > 0;
 			const bool editable = editorSession_->IsEditing() && !entity->locked;
 
 			ImGui::PushID(static_cast<int>(entity->id));
 			ImGui::BeginDisabled(!editorSession_->IsEditing());
 			bool active = entity->active;
 			if (ImGui::SmallButton(active ? "V" : "-")) {
-				if (SceneEntity* mutableEntity = document.FindEntity(entity->id)) {
-					mutableEntity->active = !mutableEntity->active;
-					document.MarkDirty();
-				}
+				setSelectedActive(!active, entity->id);
 			}
 			if (ImGui::IsItemHovered()) {
 				ImGui::SetTooltip(active ? "Hide Entity" : "Show Entity");
@@ -1441,10 +2078,7 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			ImGui::SameLine();
 			bool locked = entity->locked;
 			if (ImGui::SmallButton(locked ? "L" : "U")) {
-				if (SceneEntity* mutableEntity = document.FindEntity(entity->id)) {
-					mutableEntity->locked = !mutableEntity->locked;
-					document.MarkDirty();
-				}
+				setSelectedLocked(!locked, entity->id);
 			}
 			if (ImGui::IsItemHovered()) {
 				ImGui::SetTooltip(locked ? "Unlock Editing" : "Lock Editing");
@@ -1458,36 +2092,102 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				flags |= ImGuiTreeNodeFlags_Leaf |
 					ImGuiTreeNodeFlags_NoTreePushOnOpen;
 			}
-			if (selectedEntityId_ == entity->id) {
+			if (isEntitySelected(entity->id)) {
 				flags |= ImGuiTreeNodeFlags_Selected;
 			}
+			const std::string folderPrefix = entity->folder
+				? "[Folder " + std::to_string(childCount) + "]  "
+				: "";
 			const std::string label = entity->locked
-				? (entity->folder ? "[Folder] " : "") + entity->name + " [locked]"
+				? folderPrefix + entity->name + " [locked]"
 				: entity->active
-					? (entity->folder ? "[Folder] " : "") + entity->name
-					: (entity->folder ? "[Folder] " : "") +
-						entity->name + " (inactive)";
+					? folderPrefix + entity->name
+					: folderPrefix + entity->name + " (inactive)";
 			const SceneTeamSettings* effectiveTeam =
 				document.ResolveEntityTeam(*entity);
 			const std::string labelWithTeam = effectiveTeam
 				? label + " {" + effectiveTeam->name + "}"
 				: label;
-			if (searchActive) {
+			const bool revealAncestor =
+				hierarchyRevealRequested_ &&
+				selectedEntityId_ != 0 &&
+				document.IsDescendantOf(selectedEntityId_, entity->id);
+			if (
+				searchActive ||
+				revealAncestor ||
+				(
+					hierarchyAutoOpenFolderId_ == entity->id &&
+					ImGui::GetTime() - hierarchyAutoOpenStartTime_ >= 0.55
+				)
+			) {
 				ImGui::SetNextItemOpen(true, ImGuiCond_Always);
 			}
+			if (entity->folder) {
+				ImGui::PushStyleVar(
+					ImGuiStyleVar_FramePadding,
+					ImVec2(ImGui::GetStyle().FramePadding.x, 5.0f)
+				);
+			}
+			const bool renaming = hierarchyRenameEntityId_ == entity->id;
 			const bool open = ImGui::TreeNodeEx(
 				"##Entity",
 				flags,
 				"%s",
-				labelWithTeam.c_str()
+				renaming ? " " : labelWithTeam.c_str()
 			);
+			if (entity->folder) {
+				ImGui::PopStyleVar();
+			}
 			const ImVec2 itemMin = ImGui::GetItemRectMin();
 			const ImVec2 itemMax = ImGui::GetItemRectMax();
-			if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
-				selectedEntityId_ = entity->id;
-				selectedProjectFile_.clear();
-				showInspector_ = true;
-				focusInspectorRequested_ = true;
+			const ImVec2 nextItemCursor = ImGui::GetCursorScreenPos();
+			const bool treeItemClicked =
+				ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen();
+			const bool treeItemDoubleClicked =
+				ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+				ImGui::IsMouseHoveringRect(itemMin, itemMax);
+			if (treeItemClicked && !renaming) {
+				selectEntity(
+					entity->id,
+					ImGui::GetIO().KeyCtrl,
+					ImGui::GetIO().KeyShift
+				);
+			}
+			if (treeItemDoubleClicked && editable && !renaming) {
+				hierarchyRenameEntityId_ = entity->id;
+				strncpy_s(hierarchyRenameBuffer_, entity->name.c_str(), _TRUNCATE);
+				hierarchyRenameFocusRequested_ = true;
+			}
+			if (renaming) {
+				const float nameStart = itemMin.x + ImGui::GetTreeNodeToLabelSpacing();
+				ImGui::SetCursorScreenPos(ImVec2(nameStart, itemMin.y));
+				ImGui::SetNextItemWidth((std::max)(itemMax.x - nameStart - 4.0f, 80.0f));
+				if (hierarchyRenameFocusRequested_) {
+					ImGui::SetKeyboardFocusHere();
+					hierarchyRenameFocusRequested_ = false;
+				}
+				const bool renameCommitted = ImGui::InputText(
+					"##RenameEntity",
+					hierarchyRenameBuffer_,
+					sizeof(hierarchyRenameBuffer_),
+					ImGuiInputTextFlags_AutoSelectAll |
+						ImGuiInputTextFlags_EnterReturnsTrue
+				);
+				const bool renameCanceled = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+				if (renameCommitted && hierarchyRenameBuffer_[0] != '\0') {
+					if (SceneEntity* mutableEntity = document.FindEntity(entity->id)) {
+						mutableEntity->name = hierarchyRenameBuffer_;
+						document.MarkDirty();
+					}
+					hierarchyRenameEntityId_ = 0;
+				} else if (renameCanceled || ImGui::IsItemDeactivated()) {
+					hierarchyRenameEntityId_ = 0;
+				}
+				ImGui::SetCursorScreenPos(nextItemCursor);
+			}
+			if (hierarchyRevealRequested_ && selectedEntityId_ == entity->id) {
+				ImGui::SetScrollHereY(0.5f);
+				hierarchyRevealRequested_ = false;
 			}
 
 			const bool rowHovered =
@@ -1495,7 +2195,11 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			if (
 				editable &&
 				!searchActive &&
-				!entitySubtreeHasLocked(entity->id) &&
+				rootsCanBeEdited(
+					isEntitySelected(entity->id)
+						? getSelectedRoots()
+						: std::vector<uint64_t>{ entity->id }
+				) &&
 				rowHovered &&
 				ImGui::IsMouseClicked(ImGuiMouseButton_Left)
 			) {
@@ -1509,28 +2213,47 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				hierarchyDragActive_ = true;
 			}
 			if (hierarchyDragActive_ && hierarchyDragSourceId_ != 0) {
-				const SceneEntity* draggedEntity =
-					document.FindEntity(hierarchyDragSourceId_);
+				const std::vector<uint64_t> draggedRoots = getDraggedRoots();
+				const bool targetIsDragged = std::find(
+					draggedRoots.begin(),
+					draggedRoots.end(),
+					entity->id
+				) != draggedRoots.end();
 				if (
-					draggedEntity &&
-					draggedEntity->id != entity->id &&
+					rootsCanBeEdited(draggedRoots) &&
+					!targetIsDragged &&
 					!entity->locked &&
 					rowHovered
 				) {
 					const float itemHeight =
 						(std::max)(itemMax.y - itemMin.y, 1.0f);
 					const float localY = ImGui::GetMousePos().y - itemMin.y;
-					const bool canDropIntoFolder =
-						entity->folder &&
-						!document.IsDescendantOf(entity->id, draggedEntity->id);
-					const bool canDropAsSibling =
-						entity->parentId == 0 ||
-						!document.IsDescendantOf(entity->parentId, draggedEntity->id);
+					const bool canDropIntoFolder = entity->folder && std::all_of(
+						draggedRoots.begin(),
+						draggedRoots.end(),
+						[&](uint64_t draggedId) {
+							return !document.IsDescendantOf(entity->id, draggedId);
+						}
+					);
+					const bool canDropAsSibling = std::all_of(
+						draggedRoots.begin(),
+						draggedRoots.end(),
+						[&](uint64_t draggedId) {
+							return entity->parentId == 0 ||
+								!document.IsDescendantOf(entity->parentId, draggedId);
+						}
+					);
 					if (
 						canDropIntoFolder &&
 						localY >= itemHeight * 0.25f &&
 						localY <= itemHeight * 0.75f
 					) {
+						if (hierarchyAutoOpenFolderId_ != entity->id) {
+							hierarchyAutoOpenFolderId_ = entity->id;
+							hierarchyAutoOpenStartTime_ = ImGui::GetTime();
+						} else if (ImGui::GetTime() - hierarchyAutoOpenStartTime_ >= 0.55) {
+							hierarchyAutoOpenFolderId_ = entity->id;
+						}
 						hierarchyDropTargetId = entity->id;
 						hierarchyDropAfter = false;
 						hierarchyDropIntoFolder = true;
@@ -1614,12 +2337,18 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		);
 		const ImVec2 rootItemMin = ImGui::GetItemRectMin();
 		const ImVec2 rootItemMax = ImGui::GetItemRectMax();
-		const SceneEntity* draggedEntity =
-			document.FindEntity(hierarchyDragSourceId_);
+		const std::vector<uint64_t> draggedRoots = getDraggedRoots();
 		if (
 			hierarchyDragActive_ &&
-			draggedEntity &&
-			draggedEntity->parentId != 0 &&
+			rootsCanBeEdited(draggedRoots) &&
+			std::any_of(
+				draggedRoots.begin(),
+				draggedRoots.end(),
+				[&](uint64_t entityId) {
+					const SceneEntity* entity = document.FindEntity(entityId);
+					return entity && entity->parentId != 0;
+				}
+			) &&
 			ImGui::IsMouseHoveringRect(rootItemMin, rootItemMax)
 		) {
 			hierarchyDropToRoot = true;
@@ -1633,6 +2362,21 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			}
 			ImGui::TreePop();
 		}
+		if (hierarchyDragActive_) {
+			const ImVec2 mouse = ImGui::GetMousePos();
+			const ImVec2 windowPos = ImGui::GetWindowPos();
+			const ImVec2 windowSize = ImGui::GetWindowSize();
+			const float edgeSize = 28.0f;
+			const float scrollStep = 420.0f * ImGui::GetIO().DeltaTime;
+			if (mouse.y < windowPos.y + edgeSize) {
+				ImGui::SetScrollY((std::max)(0.0f, ImGui::GetScrollY() - scrollStep));
+			} else if (mouse.y > windowPos.y + windowSize.y - edgeSize) {
+				ImGui::SetScrollY((std::min)(
+					ImGui::GetScrollMaxY(),
+					ImGui::GetScrollY() + scrollStep
+				));
+			}
+		}
 
 		if (
 			hierarchyDragSourceId_ != 0 &&
@@ -1642,6 +2386,7 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				hierarchyDragActive_ &&
 				(hierarchyDropTargetId != 0 || hierarchyDropToRoot)
 			) {
+				hierarchyDroppedIds = getDraggedRoots();
 				if (hierarchyDropToRoot) {
 					reparentId = hierarchyDragSourceId_;
 					reparentTargetId = 0;
@@ -1656,38 +2401,47 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			}
 			hierarchyDragSourceId_ = 0;
 			hierarchyDragActive_ = false;
+			hierarchyAutoOpenFolderId_ = 0;
+			hierarchyAutoOpenStartTime_ = 0.0;
 		}
 
 		if (reorderId != 0) {
-			const SceneEntity* reorderEntity = document.FindEntity(reorderId);
 			const SceneEntity* targetEntity = document.FindEntity(reorderTargetId);
 			if (
-				reorderEntity &&
 				targetEntity &&
-				!reorderEntity->locked &&
 				!targetEntity->locked &&
-				!entitySubtreeHasLocked(reorderId)
+				rootsCanBeEdited(hierarchyDroppedIds)
 			) {
-				document.MoveEntityToSibling(
-					reorderId,
-					reorderTargetId,
-					reorderAfter
-				);
+				if (reorderAfter) {
+					uint64_t insertAfterId = reorderTargetId;
+					for (uint64_t entityId : hierarchyDroppedIds) {
+						if (document.MoveEntityToSibling(entityId, insertAfterId, true)) {
+							insertAfterId = entityId;
+						}
+					}
+				} else {
+					uint64_t insertBeforeId = reorderTargetId;
+					for (auto it = hierarchyDroppedIds.rbegin();
+						it != hierarchyDroppedIds.rend(); ++it) {
+						if (document.MoveEntityToSibling(*it, insertBeforeId, false)) {
+							insertBeforeId = *it;
+						}
+					}
+				}
 			}
 		}
 		if (reparentId != 0) {
-			const SceneEntity* reparentEntity = document.FindEntity(reparentId);
 			const SceneEntity* targetEntity = document.FindEntity(reparentTargetId);
 			if (
-				reparentEntity &&
-				!reparentEntity->locked &&
 				(
 					reparentTargetId == 0 ||
 					(targetEntity && targetEntity->folder && !targetEntity->locked)
 				) &&
-				!entitySubtreeHasLocked(reparentId)
+				rootsCanBeEdited(hierarchyDroppedIds)
 			) {
-				document.MoveEntityToParent(reparentId, reparentTargetId);
+				for (uint64_t entityId : hierarchyDroppedIds) {
+					document.MoveEntityToParent(entityId, reparentTargetId);
+				}
 			}
 		}
 		if (moveId != 0) {
@@ -1698,34 +2452,62 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			}
 		}
 		if (removeId != 0) {
-			if (const SceneEntity* entity = document.FindEntity(removeId)) {
-				if (!entitySubtreeHasLocked(entity->id)) {
-					if (
-						selectedEntityId_ == removeId ||
-						document.IsDescendantOf(selectedEntityId_, removeId)
-					) {
-						selectedEntityId_ = 0;
-					}
-					document.RemoveEntity(removeId);
+			const std::vector<uint64_t> removeRoots =
+				isEntitySelected(removeId)
+					? getSelectedRoots()
+					: std::vector<uint64_t>{ removeId };
+			bool removedAny = false;
+			for (uint64_t entityId : removeRoots) {
+				if (document.FindEntity(entityId) && !entitySubtreeHasLocked(entityId)) {
+					document.RemoveEntity(entityId);
+					removedAny = true;
 				}
+			}
+			if (removedAny) {
+				selectedEntityIds_.clear();
+				selectedEntityId_ = 0;
+				hierarchySelectionAnchorId_ = 0;
 			}
 		}
 		if (duplicateId != 0) {
-			if (const SceneEntity* entity = document.FindEntity(duplicateId)) {
-				if (!entity->locked) {
-					selectedEntityId_ = document.DuplicateEntity(duplicateId);
+			const std::vector<uint64_t> duplicateRoots =
+				isEntitySelected(duplicateId)
+					? getSelectedRoots()
+					: std::vector<uint64_t>{ duplicateId };
+			std::vector<uint64_t> duplicates;
+			for (uint64_t entityId : duplicateRoots) {
+				if (const SceneEntity* entity = document.FindEntity(entityId)) {
+					if (!entity->locked) {
+						const uint64_t duplicateId = document.DuplicateEntity(entityId);
+						if (duplicateId != 0) {
+							duplicates.push_back(duplicateId);
+						}
+					}
 				}
+			}
+			if (!duplicates.empty()) {
+				selectedEntityIds_.clear();
+				selectedEntityIds_.insert(duplicates.begin(), duplicates.end());
+				selectedEntityId_ = duplicates.back();
+				hierarchySelectionAnchorId_ = selectedEntityId_;
+				hierarchyRevealRequested_ = true;
 			}
 		}
 		if (createRequested) {
 			SceneEntity& entity = document.CreateEntity("Entity", createParentId);
 			selectedEntityId_ = entity.id;
+			selectedEntityIds_ = { entity.id };
+			hierarchySelectionAnchorId_ = entity.id;
+			hierarchyRevealRequested_ = true;
 			selectedProjectFile_.clear();
 		}
 		if (createFolderRequested) {
 			SceneEntity& folder = document.CreateEntity("Folder", createParentId);
 			folder.folder = true;
 			selectedEntityId_ = folder.id;
+			selectedEntityIds_ = { folder.id };
+			hierarchySelectionAnchorId_ = folder.id;
+			hierarchyRevealRequested_ = true;
 			selectedProjectFile_.clear();
 		}
 		if (createCameraPathRequested) {
@@ -1739,8 +2521,12 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			const uint64_t pathEntityId = entity.id;
 			document.AddComponent(pathEntityId, "CameraPath");
 			selectedEntityId_ = pathEntityId;
+			selectedEntityIds_ = { pathEntityId };
+			hierarchySelectionAnchorId_ = pathEntityId;
+			hierarchyRevealRequested_ = true;
 			selectedProjectFile_.clear();
 		}
+		hierarchyObservedEntityId_ = selectedEntityId_;
 		ImGui::End();
 		return;
 	}
@@ -1776,7 +2562,12 @@ void ImGuiManager::DrawInspectorWindow() {
 		ImGui::SetNextWindowFocus();
 		focusInspectorRequested_ = false;
 	}
-	ImGui::Begin("Inspector", &showInspector_);
+	// コンテンツ量の境界でスクロールバーが出入りすると、幅依存のPreviewが再配置を繰り返す。
+	ImGui::Begin(
+		"Inspector",
+		&showInspector_,
+		ImGuiWindowFlags_AlwaysVerticalScrollbar
+	);
 
 	if (!selectedProjectFile_.empty()) {
 		if (ImGui::Button("Back to Hierarchy Selection")) {
@@ -1786,8 +2577,8 @@ void ImGuiManager::DrawInspectorWindow() {
 		}
 		ImGui::Separator();
 
-		std::filesystem::path path(selectedProjectFile_);
-		std::string fileName = path.filename().string();
+		const std::filesystem::path path = PathFromUtf8(selectedProjectFile_);
+		std::string fileName = PathToUtf8(path.filename());
 		std::string ext = path.extension().string();
 		std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
@@ -1810,17 +2601,24 @@ void ImGuiManager::DrawInspectorWindow() {
 		// Check for specific file types
 		if (ext == ".png" || ext == ".dds") {
 			// Texture asset inspector
-			bool isLoaded = TextureManager::GetInstance() && TextureManager::GetInstance()->HasTexture(selectedProjectFile_);
+			const std::string texturePath = GetProjectResourcePath(
+				selectedProjectFile_
+			);
+			bool isLoaded = TextureManager::GetInstance() &&
+				TextureManager::GetInstance()->HasTexture(texturePath);
 			if (isLoaded) {
 				ImGui::Text("Status: Loaded in memory");
 				
-				const auto& metadata = TextureManager::GetInstance()->GetMetaData(selectedProjectFile_);
+				const auto& metadata = TextureManager::GetInstance()->GetMetaData(
+					texturePath
+				);
 				ImGui::Text("Width: %zu px", metadata.width);
 				ImGui::Text("Height: %zu px", metadata.height);
 				ImGui::Text("Mip Levels: %zu", metadata.mipLevels);
 				
 				// Render thumbnail
-				D3D12_GPU_DESCRIPTOR_HANDLE handle = TextureManager::GetInstance()->GetSrvHandleGPU(selectedProjectFile_);
+				D3D12_GPU_DESCRIPTOR_HANDLE handle =
+					TextureManager::GetInstance()->GetSrvHandleGPU(texturePath);
 				const ImTextureID textureId = static_cast<ImTextureID>(handle.ptr);
 				
 				float aspect = static_cast<float>(metadata.width) / static_cast<float>(metadata.height);
@@ -1836,7 +2634,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::Text("Status: Not loaded");
 				if (ImGui::Button("Load Texture")) {
 					if (TextureManager::GetInstance()) {
-						TextureManager::GetInstance()->LoadTexture(selectedProjectFile_);
+						TextureManager::GetInstance()->LoadTexture(texturePath);
 					}
 				}
 			}
@@ -1844,7 +2642,7 @@ void ImGuiManager::DrawInspectorWindow() {
 			ImGui::BeginDisabled(!editorSession_ || !editorSession_->IsEditing());
 			if (ImGui::Button("Add Sprite to Scene")) {
 				SceneDocument& document = editorSession_->GetEditDocument();
-				std::string entityName = path.stem().string();
+				std::string entityName = PathToUtf8(path.stem());
 				if (entityName.empty()) {
 					entityName = "Sprite";
 				}
@@ -1854,7 +2652,9 @@ void ImGuiManager::DrawInspectorWindow() {
 					entityName = baseName + " " + std::to_string(suffix++);
 				}
 				SceneEntity& entity = document.CreateEntity(entityName);
-				entity.spriteTexturePath = path.generic_string();
+				entity.spriteTexturePath = GetProjectResourcePath(
+					PathToUtf8(path)
+				);
 				entity.components = { "SpriteRenderer" };
 				entity.components.front().texturePath = entity.spriteTexturePath;
 				entity.transform.translate = {
@@ -1880,7 +2680,9 @@ void ImGuiManager::DrawInspectorWindow() {
 		} 
 		else if (ext == ".obj" || ext == ".gltf") {
 			// Model asset inspector
-			std::string relativePath = GetPathRelativeToResources(selectedProjectFile_);
+			std::string relativePath = GetModelPathRelativeToResources(
+				selectedProjectFile_
+			);
 			Model* loadedModel = ModelManager::GetInstance()
 				? ModelManager::GetInstance()->FindModel(relativePath)
 				: nullptr;
@@ -1949,7 +2751,7 @@ void ImGuiManager::DrawInspectorWindow() {
 			);
 			if (ImGui::Button("Add Model to Scene")) {
 				SceneDocument& document = editorSession_->GetEditDocument();
-				std::string entityName = path.stem().string();
+				std::string entityName = PathToUtf8(path.stem());
 				if (entityName.empty()) {
 					entityName = "Model";
 				}
@@ -2014,6 +2816,68 @@ void ImGuiManager::DrawInspectorWindow() {
 		else {
 			ImGui::Text("Type: Unknown Asset / Plain File");
 		}
+	}
+	else if (editorSession_ && selectedEntityIds_.size() > 1) {
+		SceneDocument& document = editorSession_->GetActiveDocument();
+		std::vector<SceneEntity*> selectedEntities;
+		for (uint64_t entityId : selectedEntityIds_) {
+			if (SceneEntity* entity = document.FindEntity(entityId)) {
+				selectedEntities.push_back(entity);
+			}
+		}
+		if (selectedEntities.size() <= 1) {
+			ImGui::TextDisabled("Selection changed");
+			ImGui::End();
+			return;
+		}
+
+		ImGui::Text("%zu Entities Selected", selectedEntities.size());
+		ImGui::Separator();
+		bool allActive = std::all_of(
+			selectedEntities.begin(),
+			selectedEntities.end(),
+			[](const SceneEntity* entity) { return entity->active; }
+		);
+		bool allLocked = std::all_of(
+			selectedEntities.begin(),
+			selectedEntities.end(),
+			[](const SceneEntity* entity) { return entity->locked; }
+		);
+		const bool activeMixed = std::any_of(
+			selectedEntities.begin(),
+			selectedEntities.end(),
+			[allActive](const SceneEntity* entity) { return entity->active != allActive; }
+		);
+		const bool lockedMixed = std::any_of(
+			selectedEntities.begin(),
+			selectedEntities.end(),
+			[allLocked](const SceneEntity* entity) { return entity->locked != allLocked; }
+		);
+		if (activeMixed) {
+			ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
+		}
+		if (ImGui::Checkbox("Active", &allActive)) {
+			for (SceneEntity* entity : selectedEntities) {
+				entity->active = allActive;
+			}
+			document.MarkDirty();
+		}
+		if (activeMixed) {
+			ImGui::PopItemFlag();
+		}
+		if (lockedMixed) {
+			ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
+		}
+		if (ImGui::Checkbox("Locked", &allLocked)) {
+			for (SceneEntity* entity : selectedEntities) {
+				entity->locked = allLocked;
+			}
+			document.MarkDirty();
+		}
+		if (lockedMixed) {
+			ImGui::PopItemFlag();
+		}
+		ImGui::TextDisabled("Transform and components are edited on the active Entity.");
 	}
 	else if (editorSession_ && selectedEntityId_ != 0) {
 		SceneDocument& document = editorSession_->GetActiveDocument();
@@ -2860,7 +3724,7 @@ void ImGuiManager::DrawInspectorWindow() {
 							const char* droppedPath =
 								static_cast<const char*>(payload->Data);
 							if (droppedPath && droppedPath[0] != '\0') {
-								assignModel(GetPathRelativeToResources(droppedPath));
+								assignModel(GetModelPathRelativeToResources(droppedPath));
 							}
 						}
 						ImGui::EndDragDropTarget();
@@ -2887,7 +3751,7 @@ void ImGuiManager::DrawInspectorWindow() {
 							const char* droppedPath =
 								static_cast<const char*>(payload->Data);
 							if (droppedPath && droppedPath[0] != '\0') {
-								assignModel(GetPathRelativeToResources(droppedPath));
+								assignModel(GetModelPathRelativeToResources(droppedPath));
 							}
 						}
 						ImGui::EndDragDropTarget();
@@ -2919,10 +3783,107 @@ void ImGuiManager::DrawInspectorWindow() {
 					)) {
 						const char* droppedPath = static_cast<const char*>(payload->Data);
 						if (droppedPath && droppedPath[0] != '\0') {
-							assignModel(GetPathRelativeToResources(droppedPath));
+							assignModel(GetModelPathRelativeToResources(droppedPath));
 						}
 					}
 					ImGui::EndDragDropTarget();
+				}
+				if (!component.modelPath.empty()) {
+					ModelManager::GetInstance()->LoadModel(component.modelPath);
+					Model* model = ModelManager::GetInstance()->FindModel(
+						component.modelPath
+					);
+					if (model) {
+						const std::vector<Model::MaterialSlot>& materialSlots =
+							model->GetMaterialSlots();
+						ImGui::SeparatorText("Materials");
+						ImGui::TextDisabled(
+							"%zu meshes / %zu materials",
+							model->GetSubMeshes().size(),
+							materialSlots.size()
+						);
+						for (size_t materialIndex = 0;
+							materialIndex < materialSlots.size();
+							++materialIndex) {
+							const Model::MaterialSlot& materialSlot =
+								materialSlots[materialIndex];
+							const std::string materialLabel = materialSlot.name.empty()
+								? "Material " + std::to_string(materialIndex + 1)
+								: materialSlot.name;
+							ImGui::PushID(static_cast<int>(materialIndex));
+							if (ImGui::TreeNode(materialLabel.c_str())) {
+								auto overrideIt = std::find_if(
+									component.meshMaterialOverrides.begin(),
+									component.meshMaterialOverrides.end(),
+									[&](const SceneMeshMaterialOverride& override) {
+										return override.materialName == materialSlot.name;
+									}
+								);
+								bool overrideEnabled = overrideIt !=
+									component.meshMaterialOverrides.end() && overrideIt->enabled;
+								if (ImGui::Checkbox("Override", &overrideEnabled)) {
+									if (overrideIt == component.meshMaterialOverrides.end()) {
+										component.meshMaterialOverrides.push_back({
+											materialSlot.name,
+											true
+										});
+										overrideIt = std::prev(
+											component.meshMaterialOverrides.end()
+										);
+									} else {
+										overrideIt->enabled = overrideEnabled;
+									}
+									document.MarkDirty();
+								}
+
+								SceneMeshMaterialOverride* override = overrideIt ==
+									component.meshMaterialOverrides.end()
+									? nullptr
+									: &*overrideIt;
+								ImGui::BeginDisabled(!overrideEnabled);
+								bool materialChanged = false;
+								if (override) {
+									materialChanged |= ImGui::Checkbox(
+										"Override Color",
+										&override->colorOverrideEnabled
+									);
+									ImGui::BeginDisabled(!override->colorOverrideEnabled);
+									materialChanged |= ImGui::ColorEdit4(
+										"Color", &override->color.x
+									);
+									ImGui::EndDisabled();
+									const char* texturePath = override->texturePath.empty()
+										? "Using model texture"
+										: override->texturePath.c_str();
+									ImGui::TextWrapped("Texture: %s", texturePath);
+									if (ImGui::SmallButton("Clear Texture")) {
+										override->texturePath.clear();
+										materialChanged = true;
+									}
+									ImGui::Button("Drop Texture Here", ImVec2(-1.0f, 28.0f));
+									if (ImGui::BeginDragDropTarget()) {
+										if (const ImGuiPayload* payload =
+											ImGui::AcceptDragDropPayload("PROJECT_TEXTURE_PATH")) {
+											const char* droppedPath =
+												static_cast<const char*>(payload->Data);
+											if (droppedPath && droppedPath[0] != '\0') {
+											override->texturePath =
+													GetProjectResourcePath(droppedPath);
+												materialChanged = true;
+											}
+										}
+										ImGui::EndDragDropTarget();
+									}
+								}
+								ImGui::EndDisabled();
+								if (materialChanged) {
+									document.MarkDirty();
+								}
+								ImGui::TreePop();
+							}
+							ImGui::PopID();
+						}
+					}
 				}
 				const char* currentCullMode = component.meshCullMode.empty()
 					? "Back"
@@ -3003,7 +3964,8 @@ void ImGuiManager::DrawInspectorWindow() {
 						assignSkybox({});
 					}
 					for (const std::string& texturePath : GetCachedTextureAssetPaths()) {
-						std::filesystem::path path(texturePath);
+						const std::filesystem::path path =
+							PathFromUtf8(texturePath);
 						std::string extension = path.extension().string();
 						std::transform(
 							extension.begin(),
@@ -3031,7 +3993,8 @@ void ImGuiManager::DrawInspectorWindow() {
 						const char* droppedPath =
 							static_cast<const char*>(payload->Data);
 						if (droppedPath && droppedPath[0] != '\0') {
-							std::filesystem::path path(droppedPath);
+							const std::filesystem::path path =
+								PathFromUtf8(droppedPath);
 							std::string extension = path.extension().string();
 							std::transform(
 								extension.begin(),
@@ -3040,7 +4003,7 @@ void ImGuiManager::DrawInspectorWindow() {
 								::tolower
 							);
 							if (extension == ".dds") {
-								assignSkybox(droppedPath);
+								assignSkybox(GetProjectResourcePath(droppedPath));
 							}
 						}
 					}
@@ -3101,9 +4064,11 @@ void ImGuiManager::DrawInspectorWindow() {
 					)) {
 						const char* droppedPath = static_cast<const char*>(payload->Data);
 						if (droppedPath && droppedPath[0] != '\0') {
-							component.texturePath = droppedPath;
+							component.texturePath = GetProjectResourcePath(droppedPath);
 							entity->spriteTexturePath = component.texturePath;
-							TextureManager::GetInstance()->LoadTexture(droppedPath);
+							TextureManager::GetInstance()->LoadTexture(
+								component.texturePath
+							);
 							document.MarkDirty();
 						}
 					}
@@ -4954,6 +5919,23 @@ void ImGuiManager::DrawProjectWindow() {
 		ImGui::End();
 		return;
 	}
+	const std::filesystem::path projectResourceRoot =
+		GetProjectResourceRoot();
+	const std::string projectResourceRootPath =
+		PathToUtf8(projectResourceRoot);
+	std::error_code projectRootError;
+	if (
+		selectedProjectFolder_.empty() ||
+		!std::filesystem::exists(
+			PathFromUtf8(selectedProjectFolder_),
+			projectRootError
+		)
+	) {
+		selectedProjectFolder_ = projectResourceRootPath;
+		selectedProjectFile_.clear();
+		projectDirectoryCacheDirty_ = true;
+	}
+
 	ImGui::Columns(2, "ProjectColumns", true);
 	
 	// Left column: directory tree
@@ -4975,7 +5957,12 @@ void ImGuiManager::DrawProjectWindow() {
 	ImGui::NextColumn();
 
 	// Right column: files inside selected folder
-	ImGui::Text("Contents of: %s", selectedProjectFolder_.c_str());
+	const std::string displayFolder = PathToUtf8(
+		EditableResourcePath::ToProjectRelative(
+			PathFromUtf8(selectedProjectFolder_)
+		)
+	);
+	ImGui::Text("Contents of: %s", displayFolder.c_str());
 	ImGui::SameLine();
 	ImGui::TextDisabled("View:");
 	ImGui::SameLine();
@@ -5017,17 +6004,18 @@ void ImGuiManager::DrawProjectWindow() {
 	ImGui::Separator();
 
 	std::error_code ec;
-	if (std::filesystem::exists(selectedProjectFolder_, ec)) {
-		const std::filesystem::path currentProjectFolder(selectedProjectFolder_);
+	const std::filesystem::path currentProjectFolder =
+		PathFromUtf8(selectedProjectFolder_);
+	if (std::filesystem::exists(currentProjectFolder, ec)) {
 		if (
 			currentProjectFolder.has_parent_path() &&
-			currentProjectFolder.generic_string() != "resources"
+			currentProjectFolder != projectResourceRoot
 		) {
 			if (ImGui::SmallButton("..")) {
 				const std::filesystem::path parent = currentProjectFolder.parent_path();
 				selectedProjectFolder_ = parent.empty()
-					? std::string("resources")
-					: parent.generic_string();
+					? projectResourceRootPath
+					: PathToUtf8(parent);
 				selectedProjectFile_.clear();
 				projectDirectoryCacheDirty_ = true;
 			}
@@ -5061,6 +6049,9 @@ void ImGuiManager::DrawProjectWindow() {
 			const std::string& extension = entry.extension;
 			const bool isTexture = entry.isTexture;
 			const bool isModel = entry.isModel;
+			const std::string resourcePath = isTexture
+				? GetProjectResourcePath(filePath)
+				: std::string{};
 			const bool isSelected = selectedProjectFile_ == filePath;
 
 			if (projectGridView_) {
@@ -5078,15 +6069,19 @@ void ImGuiManager::DrawProjectWindow() {
 			float texturePreviewAspect = 1.0f;
 			D3D12_GPU_DESCRIPTOR_HANDLE textureHandle{};
 			if (isTexture && TextureManager::GetInstance()) {
-				if (TextureManager::GetInstance()->HasTexture(filePath)) {
-					const auto& metadata = TextureManager::GetInstance()->GetMetaData(filePath);
+				if (TextureManager::GetInstance()->HasTexture(resourcePath)) {
+					const auto& metadata = TextureManager::GetInstance()->GetMetaData(
+						resourcePath
+					);
 					texturePreviewAvailable = !metadata.IsCubemap();
 					if (texturePreviewAvailable) {
 						texturePreviewAspect = metadata.height > 0
 							? static_cast<float>(metadata.width) /
 								static_cast<float>(metadata.height)
 							: 1.0f;
-						textureHandle = TextureManager::GetInstance()->GetSrvHandleGPU(filePath);
+						textureHandle = TextureManager::GetInstance()->GetSrvHandleGPU(
+							resourcePath
+						);
 					}
 				}
 			}
@@ -5097,21 +6092,24 @@ void ImGuiManager::DrawProjectWindow() {
 					isTexture &&
 					extension == ".png" &&
 					TextureManager::GetInstance() &&
-					!TextureManager::GetInstance()->HasTexture(filePath) &&
+					!TextureManager::GetInstance()->HasTexture(resourcePath) &&
 					projectPreviewLoadAttempted_.size() < 96 &&
-					projectPreviewLoadAttempted_.insert(filePath).second
+					projectPreviewLoadAttempted_.insert(resourcePath).second
 				) {
-					TextureManager::GetInstance()->LoadTexture(filePath);
+					TextureManager::GetInstance()->LoadTexture(resourcePath);
 				}
 			};
 			auto drawDragSource = [&]() {
 				if (!(isModel || isTexture) || !ImGui::BeginDragDropSource()) {
 					return;
 				}
+				const std::string dragPath = isModel
+					? GetModelPathRelativeToResources(filePath)
+					: resourcePath;
 				ImGui::SetDragDropPayload(
 					isModel ? "PROJECT_MODEL_PATH" : "PROJECT_TEXTURE_PATH",
-					filePath.c_str(),
-					filePath.size() + 1
+					dragPath.c_str(),
+					dragPath.size() + 1
 				);
 				if (texturePreviewAvailable) {
 					ImGui::Image(

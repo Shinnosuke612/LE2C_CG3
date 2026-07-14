@@ -51,7 +51,24 @@ private://インナークラス
 		float dissolveNoiseScale;
 	};
 
+	struct MaterialSlotResource {
+		ID3D12Resource* resource = nullptr;
+		Material* data = nullptr;
+		Vector4 modelColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+		bool colorOverrideEnabled = false;
+		Vector4 colorOverride = { 1.0f, 1.0f, 1.0f, 1.0f };
+		D3D12_GPU_DESCRIPTOR_HANDLE textureOverride{};
+	};
+
 public: //公開メンバ関数
+	struct MaterialOverride {
+		std::string materialName;
+		bool enabled = false;
+		bool colorOverrideEnabled = false;
+		Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+		std::string texturePath;
+	};
+
 	//初期化
 	void Initialize(Object3dCommon* object3dCommon);
 	//更新
@@ -120,10 +137,9 @@ public: //公開メンバ関数
 		float edgeWidth = 0.08f,
 		float noiseScale = 6.0f
 	);
-	void SetTextureOverride(D3D12_GPU_DESCRIPTOR_HANDLE handle) {
-		textureOverrideHandle_ = handle;
-	}
-	void ClearTextureOverride() { textureOverrideHandle_ = {}; }
+	void SetMaterialOverrides(const std::vector<MaterialOverride>& overrides);
+	void SetTextureOverride(D3D12_GPU_DESCRIPTOR_HANDLE handle);
+	void ClearTextureOverride();
 	uint64_t GetTextureOverridePtr() const {
 		return textureOverrideHandle_.ptr;
 	}
@@ -168,8 +184,10 @@ private: //非公開メンバ関数
 
 	void CreateCameraResource();
 	void CreateShadowTransformationMatrixResource();
-	void CreateMaterialResource();
+	void CreateMaterialResources();
+	void UpdateMaterialResources();
 	void UpdateAnimationPose();
+	void DispatchSkinningIfNeeded();
 	void UpdateInternal();
 private://メンバ変数
 	Transform transform;
@@ -195,11 +213,21 @@ private://メンバ変数
 
 	ID3D12Resource* cameraResource;
 	CameraForGPU* cameraData = nullptr;
-	ID3D12Resource* materialResource = nullptr;
-	Material* materialData = nullptr;
+	std::vector<MaterialSlotResource> materialSlots_;
+	std::vector<ID3D12Resource*> materialResourcesForDraw_;
+	std::vector<D3D12_GPU_DESCRIPTOR_HANDLE> materialTexturesForDraw_;
+	Vector4 materialColorMultiplier_ = { 1.0f, 1.0f, 1.0f, 1.0f };
+	bool materialEnableLighting_ = true;
+	float materialEmissiveIntensity_ = 0.0f;
+	Vector4 materialEmissiveColor_ = { 1.0f, 1.0f, 1.0f, 1.0f };
+	float materialDissolveAmount_ = 0.0f;
+	float materialDissolveEdgeWidth_ = 0.08f;
+	float materialDissolveNoiseScale_ = 6.0f;
 	std::string environmentTextureFilePath_;
 	AnimationPlayer animationPlayer_;
 	bool animationPoseDirty_ = true;
+	// Skinning出力は姿勢が変化した時だけ更新し、同一フレームの各描画パスで共有する。
+	bool skinningDispatchPending_ = true;
 	D3D12_GPU_DESCRIPTOR_HANDLE textureOverrideHandle_{};
 	Object3dCommon::CullMode cullMode_ = Object3dCommon::CullMode::kBack;
 };

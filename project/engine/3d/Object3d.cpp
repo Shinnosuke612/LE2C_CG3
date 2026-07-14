@@ -17,6 +17,20 @@
 
 namespace {
 
+Vector4 MultiplyColor(const Vector4& left, const Vector4& right) {
+	return {
+		left.x * right.x,
+		left.y * right.y,
+		left.z * right.z,
+		left.w * right.w
+	};
+}
+
+bool IsSameColor(const Vector4& left, const Vector4& right) {
+	return left.x == right.x && left.y == right.y &&
+		left.z == right.z && left.w == right.w;
+}
+
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 bool ProjectSkeletonPoint(
 	const Matrix4x4& skeletonSpaceMatrix,
@@ -61,7 +75,6 @@ void Object3d::Initialize(Object3dCommon* object3dCommon){
 	CreateTransformationMatrixResource();
 	CreateCameraResource();
 	CreateShadowTransformationMatrixResource();
-	CreateMaterialResource();
 	environmentTextureFilePath_ = "resources/rostock_laage_airport_4k.dds";
 	TextureManager::GetInstance()->LoadTexture(environmentTextureFilePath_);
 
@@ -148,6 +161,7 @@ void Object3d::UpdateInternal() {
 
 void Object3d::SetModel(Model* model) {
 	this->model = model;
+	CreateMaterialResources();
 	animationPlayer_.SetAnimations(
 		model ? &model->GetAnimations() : nullptr
 	);
@@ -169,6 +183,7 @@ void Object3d::SetModel(Model* model) {
 		);
 	}
 	animationPoseDirty_ = true;
+	skinningDispatchPending_ = true;
 }
 
 void Object3d::UpdateAnimationPose() {
@@ -203,8 +218,21 @@ void Object3d::UpdateAnimationPose() {
 	UpdateSkeleton(skeleton_);
 	if (skinCluster_) {
 		skinCluster_->Update(skeleton_);
+		skinningDispatchPending_ = true;
 	}
 	animationPoseDirty_ = false;
+}
+
+void Object3d::DispatchSkinningIfNeeded() {
+	if (
+		!skinningDispatchPending_ ||
+		!skinCluster_ ||
+		!skinCluster_->IsValid()
+	) {
+		return;
+	}
+	object3dCommon->DispatchSkinning(*skinCluster_);
+	skinningDispatchPending_ = false;
 }
 
 void Object3d::SetRotateQuaternion(const Quaternion& rotate) {
@@ -219,7 +247,7 @@ void Object3d::Draw(){
 
 	auto* commandList = object3dCommon->GetDxCommon()->GetCommandList();
 	if (skinCluster_ && skinCluster_->IsValid()) {
-		object3dCommon->DispatchSkinning(*skinCluster_);
+		DispatchSkinningIfNeeded();
 		object3dCommon->SetCommonRenderState(cullMode_);
 	}
 	else {
@@ -237,16 +265,16 @@ void Object3d::Draw(){
 	);
 
 	if (skinCluster_ && skinCluster_->IsValid()) {
-		model->DrawWithVertexBufferAndMaterial(
+		model->DrawWithVertexBufferAndMaterialSlots(
 			skinCluster_->GetSkinnedVertexBufferView(),
-			materialResource,
-			textureOverrideHandle_
+			materialResourcesForDraw_,
+			materialTexturesForDraw_
 		);
 	}
 	else {
-		model->DrawWithMaterialAndTexture(
-			materialResource,
-			textureOverrideHandle_
+		model->DrawWithMaterialSlots(
+			materialResourcesForDraw_,
+			materialTexturesForDraw_
 		);
 	}
 }
@@ -255,7 +283,7 @@ void Object3d::DrawShadow(const Matrix4x4& lightViewProjection) {
 	if (!model) {
 		return;
 	}
-	if (materialData && materialData->dissolveAmount >= 0.98f) {
+	if (materialDissolveAmount_ >= 0.98f) {
 		return;
 	}
 
@@ -263,7 +291,7 @@ void Object3d::DrawShadow(const Matrix4x4& lightViewProjection) {
 
 	auto* commandList = object3dCommon->GetDxCommon()->GetCommandList();
 	if (skinCluster_ && skinCluster_->IsValid()) {
-		object3dCommon->DispatchSkinning(*skinCluster_);
+		DispatchSkinningIfNeeded();
 		object3dCommon->SetShadowRenderState();
 	}
 	else {
@@ -430,22 +458,30 @@ void Object3d::SetEnvironmentCoefficient(float coefficient) {
 }
 
 void Object3d::SetColor(const Vector4& color) {
-	if (materialData) {
-		materialData->color = color;
+	if (IsSameColor(materialColorMultiplier_, color)) {
+		return;
 	}
+	materialColorMultiplier_ = color;
+	UpdateMaterialResources();
 }
 
 void Object3d::SetEnableLighting(bool enableLighting) {
-	if (materialData) {
-		materialData->enableLighting = enableLighting ? 1 : 0;
+	if (materialEnableLighting_ == enableLighting) {
+		return;
 	}
+	materialEnableLighting_ = enableLighting;
+	UpdateMaterialResources();
 }
 
 void Object3d::SetEmissive(float intensity, const Vector4& color) {
-	if (materialData) {
-		materialData->emissiveIntensity = (std::max)(0.0f, intensity);
-		materialData->emissiveColor = color;
+	const float clampedIntensity = (std::max)(0.0f, intensity);
+	if (materialEmissiveIntensity_ == clampedIntensity &&
+		IsSameColor(materialEmissiveColor_, color)) {
+		return;
 	}
+	materialEmissiveIntensity_ = clampedIntensity;
+	materialEmissiveColor_ = color;
+	UpdateMaterialResources();
 }
 
 void Object3d::SetDissolve(
@@ -453,11 +489,18 @@ void Object3d::SetDissolve(
 	float edgeWidth,
 	float noiseScale
 ) {
-	if (materialData) {
-		materialData->dissolveAmount = std::clamp(amount, 0.0f, 1.0f);
-		materialData->dissolveEdgeWidth = (std::max)(edgeWidth, 0.0f);
-		materialData->dissolveNoiseScale = (std::max)(noiseScale, 0.001f);
+	const float clampedAmount = std::clamp(amount, 0.0f, 1.0f);
+	const float clampedEdgeWidth = (std::max)(edgeWidth, 0.0f);
+	const float clampedNoiseScale = (std::max)(noiseScale, 0.001f);
+	if (materialDissolveAmount_ == clampedAmount &&
+		materialDissolveEdgeWidth_ == clampedEdgeWidth &&
+		materialDissolveNoiseScale_ == clampedNoiseScale) {
+		return;
 	}
+	materialDissolveAmount_ = clampedAmount;
+	materialDissolveEdgeWidth_ = clampedEdgeWidth;
+	materialDissolveNoiseScale_ = clampedNoiseScale;
+	UpdateMaterialResources();
 }
 
 void Object3d::CreateTransformationMatrixResource(){
@@ -483,16 +526,99 @@ void Object3d::CreateCameraResource() {
 	cameraData->environmentCoefficient = 0.0f;
 }
 
-void Object3d::CreateMaterialResource() {
-	materialResource = *&object3dCommon->GetDxCommon()->CreateBufferResource(sizeof(Material));
-	materialResource->Map(0, nullptr, reinterpret_cast<void**>(&materialData));
-	materialData->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
-	materialData->enableLighting = 1;
-	materialData->emissiveIntensity = 0.0f;
-	materialData->uvTransform = MakeIdentity4x4();
-	materialData->emissiveColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
-	materialData->shininess = 40.0f;
-	materialData->dissolveAmount = 0.0f;
-	materialData->dissolveEdgeWidth = 0.08f;
-	materialData->dissolveNoiseScale = 6.0f;
+void Object3d::SetMaterialOverrides(
+	const std::vector<MaterialOverride>& overrides
+) {
+	for (MaterialSlotResource& materialSlot : materialSlots_) {
+		materialSlot.colorOverrideEnabled = false;
+		materialSlot.textureOverride = {};
+		for (const MaterialOverride& override : overrides) {
+			if (!override.enabled || override.materialName.empty()) {
+				continue;
+			}
+			const size_t materialIndex = &materialSlot - materialSlots_.data();
+			if (!model || materialIndex >= model->GetMaterialSlots().size() ||
+				model->GetMaterialSlots()[materialIndex].name != override.materialName) {
+				continue;
+			}
+			materialSlot.colorOverrideEnabled = override.colorOverrideEnabled;
+			materialSlot.colorOverride = override.color;
+			if (!override.texturePath.empty() &&
+				TextureManager::GetInstance()->LoadTexture(override.texturePath)) {
+				materialSlot.textureOverride =
+					TextureManager::GetInstance()->GetSrvHandleGPU(override.texturePath);
+			}
+			break;
+		}
+	}
+	UpdateMaterialResources();
+}
+
+void Object3d::SetTextureOverride(D3D12_GPU_DESCRIPTOR_HANDLE handle) {
+	if (textureOverrideHandle_.ptr == handle.ptr) {
+		return;
+	}
+	textureOverrideHandle_ = handle;
+	UpdateMaterialResources();
+}
+
+void Object3d::ClearTextureOverride() {
+	if (textureOverrideHandle_.ptr == 0) {
+		return;
+	}
+	textureOverrideHandle_ = {};
+	UpdateMaterialResources();
+}
+
+void Object3d::CreateMaterialResources() {
+	materialSlots_.clear();
+	materialResourcesForDraw_.clear();
+	materialTexturesForDraw_.clear();
+	if (!model) {
+		return;
+	}
+
+	const std::vector<Model::MaterialSlot>& modelMaterials =
+		model->GetMaterialSlots();
+	materialSlots_.resize(modelMaterials.size());
+	for (size_t index = 0; index < modelMaterials.size(); ++index) {
+		MaterialSlotResource& materialSlot = materialSlots_[index];
+		materialSlot.resource = *&object3dCommon->GetDxCommon()
+			->CreateBufferResource(sizeof(Material));
+		materialSlot.resource->Map(
+			0, nullptr, reinterpret_cast<void**>(&materialSlot.data)
+		);
+		materialSlot.modelColor = modelMaterials[index].baseColor;
+	}
+	UpdateMaterialResources();
+}
+
+void Object3d::UpdateMaterialResources() {
+	materialResourcesForDraw_.resize(materialSlots_.size());
+	materialTexturesForDraw_.resize(materialSlots_.size());
+	for (size_t index = 0; index < materialSlots_.size(); ++index) {
+		MaterialSlotResource& materialSlot = materialSlots_[index];
+		if (!materialSlot.data) {
+			continue;
+		}
+		const Vector4 baseColor = materialSlot.colorOverrideEnabled
+			? materialSlot.colorOverride
+			: materialSlot.modelColor;
+		materialSlot.data->color = MultiplyColor(
+			baseColor,
+			materialColorMultiplier_
+		);
+		materialSlot.data->enableLighting = materialEnableLighting_ ? 1 : 0;
+		materialSlot.data->emissiveIntensity = materialEmissiveIntensity_;
+		materialSlot.data->uvTransform = MakeIdentity4x4();
+		materialSlot.data->emissiveColor = materialEmissiveColor_;
+		materialSlot.data->shininess = 40.0f;
+		materialSlot.data->dissolveAmount = materialDissolveAmount_;
+		materialSlot.data->dissolveEdgeWidth = materialDissolveEdgeWidth_;
+		materialSlot.data->dissolveNoiseScale = materialDissolveNoiseScale_;
+		materialResourcesForDraw_[index] = materialSlot.resource;
+		materialTexturesForDraw_[index] = textureOverrideHandle_.ptr != 0
+			? textureOverrideHandle_
+			: materialSlot.textureOverride;
+	}
 }

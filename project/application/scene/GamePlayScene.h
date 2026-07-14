@@ -39,9 +39,11 @@ private:
 	struct SceneModelObject {
 		Object3d* object = nullptr;
 		std::string modelPath;
+		std::string materialOverrideSignature;
 		bool hasRenderer = false;
 		bool animatorInitialized = false;
 		bool hasAnimator = false;
+		bool animatorAutoPlayAllowed = false;
 		bool animatorPlayOnStart = true;
 		bool animatorLoop = true;
 		float animatorSpeed = 1.0f;

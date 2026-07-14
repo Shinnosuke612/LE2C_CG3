@@ -1,6 +1,7 @@
 // 役割: glTFアニメーションのキー情報と補間結果を定義する。
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -89,8 +90,7 @@ private:
 };
 
 std::vector<Animation> LoadAnimationFiles(
-	const std::string& directoryPath,
-	const std::string& filename
+	const std::filesystem::path& modelFilePath
 );
 
 Vector3 CalculateValue(

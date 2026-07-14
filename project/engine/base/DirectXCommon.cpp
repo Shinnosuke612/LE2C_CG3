@@ -1,5 +1,6 @@
 // 役割: Direct3D12の初期化、フレーム開始、フレーム終了を実装する。
 #include "DirectXCommon.h"
+#include "../utility/EditableResourcePath.h"
 #include <cassert>
 #include "../../externals/DirectXTex/d3dx12.h"
 #pragma comment(lib,"d3d12.lib")
@@ -13,42 +14,9 @@ using namespace Logger;
 
 namespace {
 std::wstring ResolveRuntimePath(const std::wstring& filePath) {
-	namespace fs = std::filesystem;
-
-	const fs::path sourcePath(filePath);
-	std::error_code error;
-	if (fs::exists(sourcePath, error)) {
-		return sourcePath.wstring();
-	}
-
-	auto searchParents = [&](fs::path base) -> std::wstring {
-		base = fs::absolute(base, error);
-		while (!base.empty()) {
-			const fs::path candidate = base / sourcePath;
-			if (fs::exists(candidate, error)) {
-				return candidate.wstring();
-			}
-			const fs::path parent = base.parent_path();
-			if (parent == base) {
-				break;
-			}
-			base = parent;
-		}
-		return {};
-	};
-
-	if (std::wstring resolved = searchParents(fs::current_path(error)); !resolved.empty()) {
-		return resolved;
-	}
-
-	wchar_t modulePath[MAX_PATH]{};
-	if (GetModuleFileNameW(nullptr, modulePath, MAX_PATH) != 0) {
-		if (std::wstring resolved = searchParents(fs::path(modulePath).parent_path()); !resolved.empty()) {
-			return resolved;
-		}
-	}
-
-	return filePath;
+	return EditableResourcePath::ResolveResource(
+		std::filesystem::path(filePath)
+	).wstring();
 }
 }
 

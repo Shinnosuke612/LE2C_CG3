@@ -71,6 +71,15 @@ struct SceneTeamSettings {
 	bool agentEnableLighting = true;
 };
 
+// MeshRendererが持つ、モデル標準材質へのEntity単位の上書き設定。
+struct SceneMeshMaterialOverride {
+	std::string materialName;
+	bool enabled = false;
+	bool colorOverrideEnabled = false;
+	Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	std::string texturePath;
+};
+
 struct SceneComponent {
 	SceneComponent() = default;
 	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
@@ -83,6 +92,7 @@ struct SceneComponent {
 	std::string meshCullMode = "Back";
 	bool meshEnvironmentReflectionOverride = false;
 	float meshEnvironmentReflectionIntensity = 0.3f;
+	std::vector<SceneMeshMaterialOverride> meshMaterialOverrides;
 	std::string texturePath;
 	bool environmentSkyboxEnabled = true;
 	std::string environmentSkyboxPath;

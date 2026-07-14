@@ -4,6 +4,7 @@
 #include "../3d/SrvManager.h"
 #include "../utility/StringUtility.h"
 #include "../utility/Logger.h"
+#include "../utility/EditableResourcePath.h"
 #include <cassert>
 #include <algorithm>
 #include <filesystem>
@@ -11,7 +12,7 @@
 namespace {
 
 	bool IsDDSFile(const std::string& filePath) {
-		std::string extension = std::filesystem::path(filePath).extension().string();
+		std::string extension = StringUtility::ToPath(filePath).extension().string();
 
 		std::transform(
 			extension.begin(),
@@ -40,7 +41,9 @@ bool TextureManager::LoadTexture(const std::string& filePath) {
 
 	DirectX::ScratchImage loadedImage{};
 	DirectX::TexMetadata metadata{};
-	std::wstring filePathW = StringUtility::ConvertString(filePath);
+	const std::filesystem::path resolvedPath =
+		EditableResourcePath::ResolveResource(StringUtility::ToPath(filePath));
+	std::wstring filePathW = resolvedPath.wstring();
 
 	HRESULT hr = S_OK;
 

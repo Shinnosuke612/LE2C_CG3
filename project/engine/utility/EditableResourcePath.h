@@ -82,6 +82,53 @@ inline std::filesystem::path Resolve(const std::filesystem::path& requestedPath)
 	return std::filesystem::absolute(requestedPath, error).lexically_normal();
 }
 
+// resources配下の論理パスを、開発中はプロジェクト側、配布時は実行側へ解決する。
+inline std::filesystem::path ResolveResource(
+	const std::filesystem::path& requestedPath
+) {
+	if (requestedPath.is_absolute()) {
+		return Resolve(requestedPath);
+	}
+
+	const std::filesystem::path normalized = requestedPath.lexically_normal();
+	auto component = normalized.begin();
+	if (
+		component != normalized.end() &&
+		(*component).generic_string() == "resources"
+	) {
+		return Resolve(normalized);
+	}
+	return Resolve(std::filesystem::path("resources") / normalized);
+}
+
+// 狭い文字列でパスを受け取る外部ライブラリ向けに、日本語を含む親ディレクトリを相対化する。
+inline std::filesystem::path ToWorkingDirectoryRelative(
+	const std::filesystem::path& requestedPath
+) {
+	std::error_code error;
+	const std::filesystem::path absolutePath = requestedPath.is_absolute()
+		? requestedPath
+		: std::filesystem::absolute(requestedPath, error);
+	if (error) {
+		return requestedPath.lexically_normal();
+	}
+
+	const std::filesystem::path workingDirectory =
+		std::filesystem::current_path(error);
+	if (error) {
+		return requestedPath.lexically_normal();
+	}
+
+	const std::filesystem::path relativePath = std::filesystem::relative(
+		absolutePath,
+		workingDirectory,
+		error
+	);
+	return error || relativePath.empty()
+		? requestedPath.lexically_normal()
+		: relativePath.lexically_normal();
+}
+
 inline std::filesystem::path ToProjectRelative(const std::filesystem::path& path) {
 	const std::filesystem::path root = FindProjectRoot();
 	if (root.empty()) {

@@ -25,6 +25,8 @@
 #include "../engine/particle/ParticleManager.h"
 #include "../engine/particle/ParticleEmitter.h"
 #include "../engine/debug/DebugRenderer.h"
+#include "../engine/utility/EditableResourcePath.h"
+#include "../engine/utility/StringUtility.h"
 #include "../externals/imgui/imgui.h"
 
 #include <Windows.h>
@@ -46,67 +48,7 @@ namespace {
 #endif
 
 	std::string ResolveProjectResourcePath(const std::filesystem::path& relativePath) {
-		auto findFrom = [&](std::filesystem::path start) -> std::filesystem::path {
-			std::error_code error;
-			start = std::filesystem::absolute(start, error);
-			for (std::filesystem::path cursor = start; !cursor.empty(); cursor = cursor.parent_path()) {
-				const std::filesystem::path projectRootCandidate =
-					cursor / "project";
-				if (
-					std::filesystem::exists(
-						projectRootCandidate / "CG2_2025_04_14.vcxproj"
-					) &&
-					std::filesystem::exists(projectRootCandidate / relativePath)
-				) {
-					return projectRootCandidate / relativePath;
-				}
-
-				if (
-					std::filesystem::exists(cursor / "CG2_2025_04_14.vcxproj") &&
-					std::filesystem::exists(cursor / relativePath)
-				) {
-					return cursor / relativePath;
-				}
-
-				if (cursor == cursor.parent_path()) {
-					break;
-				}
-			}
-			return {};
-		};
-
-		if (const std::filesystem::path projectPath =
-			findFrom(std::filesystem::current_path()); !projectPath.empty()) {
-			return projectPath.generic_string();
-		}
-
-		wchar_t modulePath[MAX_PATH]{};
-		if (GetModuleFileNameW(nullptr, modulePath, MAX_PATH) != 0) {
-			if (const std::filesystem::path projectPath =
-				findFrom(std::filesystem::path(modulePath).parent_path());
-				!projectPath.empty()) {
-				return projectPath.generic_string();
-			}
-		}
-
-		std::filesystem::path current = std::filesystem::current_path();
-		for (std::filesystem::path cursor = current; !cursor.empty(); cursor = cursor.parent_path()) {
-			const std::filesystem::path projectCandidate =
-				cursor / "project" / relativePath;
-			if (std::filesystem::exists(projectCandidate)) {
-				return projectCandidate.generic_string();
-			}
-
-			const std::filesystem::path candidate = cursor / relativePath;
-			if (std::filesystem::exists(candidate)) {
-				return candidate.generic_string();
-			}
-
-			if (cursor == cursor.parent_path()) {
-				break;
-			}
-		}
-		return relativePath.generic_string();
+		return StringUtility::ToUtf8(EditableResourcePath::Resolve(relativePath));
 	}
 
 	bool NearlyEqual(float a, float b) {

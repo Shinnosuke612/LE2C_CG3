@@ -196,7 +196,13 @@
           "type": "MeshRenderer"
         },
         {
+          "blendCurve": "SmoothStep",
+          "defaultClip": 0,
           "enabled": true,
+          "loop": true,
+          "playOnStart": true,
+          "speed": 1.0,
+          "transitionDuration": 0.20000000298023224,
           "type": "Animator"
         }
       ],
@@ -257,7 +263,13 @@
           "type": "MeshRenderer"
         },
         {
+          "blendCurve": "SmoothStep",
+          "defaultClip": 0,
           "enabled": true,
+          "loop": true,
+          "playOnStart": true,
+          "speed": 1.0,
+          "transitionDuration": 0.20000000298023224,
           "type": "Animator"
         }
       ],
@@ -334,17 +346,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         },
         {
@@ -463,17 +480,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -838,17 +860,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -915,17 +942,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -992,17 +1024,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1069,17 +1106,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1146,17 +1188,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1223,17 +1270,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1300,17 +1352,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1377,17 +1434,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1454,17 +1516,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1531,17 +1598,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1608,17 +1680,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1685,17 +1762,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1762,17 +1844,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1839,17 +1926,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1916,17 +2008,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -1993,17 +2090,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -3856,17 +3958,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -3933,17 +4040,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -4010,17 +4122,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -4087,17 +4204,22 @@
             0.699999988079071,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
           "enabled": true,
           "offset": [
             0.0,
             0.0,
             0.0
           ],
+          "shape": "Box",
           "sizeMultiplier": [
             1.0,
             1.0,
             1.0
           ],
+          "sphereRadius": 0.5,
           "type": "OBBCollider"
         }
       ],
@@ -4810,6 +4932,73 @@
           8.199999809265137
         ]
       }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "modelPath": "simpleSkin/simpleSkin.gltf",
+          "type": "MeshRenderer"
+        },
+        {
+          "blendCurve": "SmoothStep",
+          "defaultClip": 0,
+          "enabled": true,
+          "loop": true,
+          "playOnStart": true,
+          "speed": 1.0,
+          "transitionDuration": 0.20000000298023224,
+          "type": "Animator"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 79,
+      "locked": false,
+      "modelPath": "simpleSkin/simpleSkin.gltf",
+      "name": "simpleSkin",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -3.2775347232818604,
+          0.9809643030166626,
+          -14.490060806274414
+        ]
+      }
     }
   ],
   "postProcess": {
@@ -4974,5 +5163,5 @@
       "name": "School Fish"
     }
   ],
-  "version": 22
+  "version": 24
 }

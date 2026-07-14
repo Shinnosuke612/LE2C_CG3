@@ -23,6 +23,7 @@
 #include "../externals/nlohmann/json.hpp"
 #include "../utility/EditableResourcePath.h"
 #include "../utility/Logger.h"
+#include "../utility/StringUtility.h"
 #include "ParticleEffectResource.h"
 
 using json = nlohmann::json;
@@ -462,13 +463,17 @@ void CollectEffectFiles(std::vector<std::string>& paths, std::vector<std::string
 			continue;
 		}
 		paths.push_back(
-			EditableResourcePath::ToProjectRelative(entry.path()).generic_string()
+			StringUtility::ToUtf8(
+				EditableResourcePath::ToProjectRelative(entry.path())
+			)
 		);
 	}
 
 	std::sort(paths.begin(), paths.end());
 	for (const std::string& path : paths) {
-		names.push_back(std::filesystem::path(path).filename().string());
+		names.push_back(
+			StringUtility::ToUtf8(StringUtility::ToPath(path).filename())
+		);
 	}
 }
 
@@ -848,8 +853,8 @@ void ParticleManager::RefreshPlacementAssetsForEffect(const std::string& effectF
 	for (auto& [assetName, asset] : particlePlacementAssets_) {
 		bool assetChanged = false;
 		for (SceneParticlePlacement& placement : asset.placements) {
-			if (std::filesystem::path(placement.effectFilePath).lexically_normal() !=
-				std::filesystem::path(effectFilePath).lexically_normal()) {
+			if (StringUtility::ToPath(placement.effectFilePath).lexically_normal() !=
+				StringUtility::ToPath(effectFilePath).lexically_normal()) {
 				continue;
 			}
 			assetChanged |= LoadPlacementEmitterSettings(placement);
@@ -1174,8 +1179,9 @@ void ParticleManager::DrawSceneParticleImGui(
 							placement.label = label;
 							changed = true;
 						}
-						const std::string effectLabel = std::filesystem::path(
-							placement.effectFilePath).filename().string();
+						const std::string effectLabel = StringUtility::ToUtf8(
+							StringUtility::ToPath(placement.effectFilePath).filename()
+						);
 						if (ImGui::BeginCombo("Effect", effectLabel.c_str())) {
 							for (int effectIndex = 0; effectIndex < static_cast<int>(effectPaths.size()); ++effectIndex) {
 								const bool selected = placement.effectFilePath == effectPaths[effectIndex];

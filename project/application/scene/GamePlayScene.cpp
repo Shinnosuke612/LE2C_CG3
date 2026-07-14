@@ -34,6 +34,7 @@
 #include "../../engine/effect/WaterSurfaceRenderer.h"
 #include "../player/Player.h"
 #include "../../engine/utility/EditableResourcePath.h"
+#include "../../engine/utility/StringUtility.h"
 #include "../../engine/math/Math.h"
 #include "../../engine/math/Matrix4x4.h"
 #include "../../engine/math/Vector2.h"
@@ -46,9 +47,25 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <sstream>
 #include <unordered_set>
 
 namespace {
+
+std::string BuildMaterialOverrideSignature(
+	const std::vector<SceneMeshMaterialOverride>& overrides
+) {
+	std::ostringstream stream;
+	for (const SceneMeshMaterialOverride& override : overrides) {
+		stream << override.materialName << '|'
+			<< override.enabled << '|'
+			<< override.colorOverrideEnabled << '|'
+			<< override.color.x << ',' << override.color.y << ','
+			<< override.color.z << ',' << override.color.w << '|'
+			<< override.texturePath << ';';
+	}
+	return stream.str();
+}
 	using AgentSettingsResolver::ResolveAgentBehaviorSettings;
 	using AgentSettingsResolver::ResolveTeamLeaderSettings;
 	using AgentSteering::AddScaled;
@@ -786,6 +803,11 @@ void GamePlayScene::SyncSceneModelObjects(float deltaTime) {
 		ClearSceneModelObjects();
 		return;
 	}
+	const EditorSession* editorSession = sceneManager_
+		? sceneManager_->GetEditorSession()
+		: nullptr;
+	const bool allowAnimatorAutoPlay =
+		!editorSession || !editorSession->IsEditing();
 
 	std::unordered_set<uint64_t> requiredIds;
 	for (const SceneEntity& entity : document->GetEntities()) {
@@ -851,7 +873,11 @@ void GamePlayScene::SyncSceneModelObjects(float deltaTime) {
 			? AnimationBlendCurve::Linear
 			: AnimationBlendCurve::SmoothStep;
 
-		if (!runtime.animatorInitialized || runtime.hasAnimator != hasAnimator) {
+		if (
+			!runtime.animatorInitialized ||
+			runtime.hasAnimator != hasAnimator ||
+			runtime.animatorAutoPlayAllowed != allowAnimatorAutoPlay
+		) {
 			runtime.object->SetAnimationEnabled(hasAnimator);
 			if (hasAnimator) {
 				runtime.object->SetAnimationLoop(animator->animatorLoop);
@@ -863,14 +889,15 @@ void GamePlayScene::SyncSceneModelObjects(float deltaTime) {
 					true
 				);
 				runtime.object->SetAnimationPlaying(
-					animator->animatorPlayOnStart
+					allowAnimatorAutoPlay && animator->animatorPlayOnStart
 				);
 			}
 			runtime.animatorInitialized = true;
+			runtime.animatorAutoPlayAllowed = allowAnimatorAutoPlay;
 		} else if (hasAnimator) {
 			if (runtime.animatorPlayOnStart != animator->animatorPlayOnStart) {
 				runtime.object->SetAnimationPlaying(
-					animator->animatorPlayOnStart
+					allowAnimatorAutoPlay && animator->animatorPlayOnStart
 				);
 			}
 			if (runtime.animatorBlendCurve != animator->animatorBlendCurve) {
@@ -957,6 +984,28 @@ void GamePlayScene::SyncSceneModelObjects(float deltaTime) {
 			found->second.object->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 			found->second.object->SetEnableLighting(true);
 			found->second.object->SetEmissive(0.0f);
+		}
+		const std::vector<SceneMeshMaterialOverride> emptyMaterialOverrides;
+		const std::vector<SceneMeshMaterialOverride>& materialOverrides =
+			meshRenderer
+				? meshRenderer->meshMaterialOverrides
+				: emptyMaterialOverrides;
+		const std::string materialOverrideSignature =
+			BuildMaterialOverrideSignature(materialOverrides);
+		if (found->second.materialOverrideSignature != materialOverrideSignature) {
+			std::vector<Object3d::MaterialOverride> objectOverrides;
+			objectOverrides.reserve(materialOverrides.size());
+			for (const SceneMeshMaterialOverride& override : materialOverrides) {
+				objectOverrides.push_back({
+					override.materialName,
+					override.enabled,
+					override.colorOverrideEnabled,
+					override.color,
+					override.texturePath
+				});
+			}
+			found->second.object->SetMaterialOverrides(objectOverrides);
+			found->second.materialOverrideSignature = materialOverrideSignature;
 		}
 		if (HasComponent(entity, "PlayerBehavior")) {
 			found->second.object->SetDissolve(0.0f);
@@ -1234,9 +1283,12 @@ void GamePlayScene::SyncEnvironmentComponent() {
 
 	std::string texturePath;
 	if (skyboxEnabled && !requestedPath.empty()) {
-		std::filesystem::path requestedFilePath(requestedPath);
+		const std::filesystem::path requestedFilePath =
+			StringUtility::ToPath(requestedPath);
 		texturePath = requestedFilePath.is_absolute()
-			? EditableResourcePath::ToProjectRelative(requestedFilePath).generic_string()
+			? StringUtility::ToUtf8(
+				EditableResourcePath::ToProjectRelative(requestedFilePath)
+			)
 			: requestedPath;
 	}
 
@@ -3662,9 +3714,9 @@ void GamePlayScene::Update(float deltaTime)
 				}
 				targetEnvironment->environmentSkyboxEnabled = true;
 				targetEnvironment->environmentSkyboxPath =
-					EditableResourcePath::ToProjectRelative(
-						std::filesystem::path(*generatedSkybox)
-					).generic_string();
+					StringUtility::ToUtf8(EditableResourcePath::ToProjectRelative(
+						StringUtility::ToPath(*generatedSkybox)
+					));
 				document->MarkDirty();
 			}
 			SyncEnvironmentComponent();

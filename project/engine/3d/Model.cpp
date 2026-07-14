@@ -1,17 +1,23 @@
 // 役割: モデルのメッシュ描画、材質設定、Skinning描画を実装する。
 #include "Model.h"
 #include "ModelCommon.h"
+#include "AssimpUnicodeIO.h"
 #include "../base/DirectXCommon.h"
 #include "../2d/TextureManager.h"
+#include "../utility/Logger.h"
+#include "../utility/StringUtility.h"
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 #include <filesystem>
 #include <cstdlib>
 #include <algorithm>
+#include <cctype>
 #include <limits>
 
 namespace {
+
+constexpr const char* kDefaultModelTexture = "resources/human/white.png";
 
 Matrix4x4 ConvertAssimpMatrix(const aiMatrix4x4& matrix) {
 	// Keep the inverse bind pose exact while converting RH/column-vector data.
@@ -37,25 +43,39 @@ Matrix4x4 ConvertAssimpMatrix(const aiMatrix4x4& matrix) {
 
 } // namespace
 
-void Model::Initialize(ModelCommon* modelCommon, const std::string& directoryPath, const std::string& filename) {
+bool Model::Initialize(
+	ModelCommon* modelCommon,
+	const std::filesystem::path& modelFilePath
+) {
 	this->modelCommon = modelCommon;
-	modelData = LoadModelFile(directoryPath, filename);
-	animations_ = LoadAnimationFiles(directoryPath, filename);
+	if (!LoadModelFile(modelFilePath, modelData)) {
+		return false;
+	}
+	animations_ = LoadAnimationFiles(modelFilePath);
 	CreateVertexResource();
 	CreateIndexResource();
 	CreateMaterialResource();
 
 	TextureManager* textureManager = TextureManager::GetInstance();
-	if (
-		modelData.material.textureFilePath.empty() ||
-		!textureManager->LoadTexture(modelData.material.textureFilePath)
-	) {
-		modelData.material.textureFilePath = "resources/uvChecker.png";
-		textureManager->LoadTexture(modelData.material.textureFilePath);
+	for (MaterialSlot& material : modelData.materials) {
+		if (
+			!material.textureFilePath.empty() &&
+			textureManager->LoadTexture(material.textureFilePath)
+		) {
+			continue;
+		}
+
+		// テクスチャ未指定は材質色をそのまま使える白画像へ、読込失敗はUVチェッカーへ退避する。
+		const bool hasSpecifiedTexture = !material.textureFilePath.empty();
+		material.textureFilePath = hasSpecifiedTexture
+			? "resources/uvChecker.png"
+			: kDefaultModelTexture;
+		textureManager->LoadTexture(material.textureFilePath);
 	}
+	return true;
 }
 void Model::Draw(const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView) {
-	DrawWithMaterial(materialResource, influenceBufferView);
+	DrawWithMaterial(nullptr, influenceBufferView);
 }
 
 bool Model::GetLocalBounds(Vector3& boundsMin, Vector3& boundsMax) const {
@@ -107,23 +127,74 @@ void Model::DrawWithMaterialAndTexture(
 
 	// マテリアルCBufferの場所を設定
 	ID3D12Resource* materialToBind =
-		materialOverride ? materialOverride : materialResource;
-	commandList->SetGraphicsRootConstantBufferView(0, materialToBind->GetGPUVirtualAddress());
+		materialOverride ? materialOverride : nullptr;
+	for (const SubMesh& subMesh : modelData.subMeshes) {
+		const uint32_t materialIndex = (std::min)(
+			subMesh.materialIndex,
+			static_cast<uint32_t>(materialResources.size() - 1)
+		);
+		ID3D12Resource* subMeshMaterial = materialToBind
+			? materialToBind
+			: materialResources[materialIndex];
+		commandList->SetGraphicsRootConstantBufferView(
+			0,
+			subMeshMaterial->GetGPUVirtualAddress()
+		);
+		const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle = textureOverride.ptr != 0
+			? textureOverride
+			: TextureManager::GetInstance()->GetSrvHandleGPU(
+				modelData.materials[materialIndex].textureFilePath
+			);
+		commandList->SetGraphicsRootDescriptorTable(2, textureHandle);
+		commandList->DrawIndexedInstanced(
+			subMesh.indexCount, 1, subMesh.firstIndex, 0, 0
+		);
+	}
+}
 
-	// SRVのDescriptorTableの先頭を設定（TextureManagerから取得）
-	const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle = textureOverride.ptr != 0
-		? textureOverride
-		: TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureFilePath);
-	commandList->SetGraphicsRootDescriptorTable(2, textureHandle);
+void Model::DrawWithMaterialSlots(
+	const std::vector<ID3D12Resource*>& materialOverrides,
+	const std::vector<D3D12_GPU_DESCRIPTOR_HANDLE>& textureOverrides,
+	const D3D12_VERTEX_BUFFER_VIEW* influenceBufferView
+) {
+	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
+	if (influenceBufferView) {
+		const D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[] = {
+			vertexBufferView, *influenceBufferView
+		};
+		commandList->IASetVertexBuffers(0, 2, vertexBufferViews);
+	} else {
+		commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+	}
+	commandList->IASetIndexBuffer(&indexBufferView);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	// 描画！
-	commandList->DrawIndexedInstanced(
-		static_cast<UINT>(modelData.indices.size()),
-		1,
-		0,
-		0,
-		0
-	);
+	for (const SubMesh& subMesh : modelData.subMeshes) {
+		const uint32_t materialIndex = (std::min)(
+			subMesh.materialIndex,
+			static_cast<uint32_t>(materialResources.size() - 1)
+		);
+		ID3D12Resource* material = materialIndex < materialOverrides.size() &&
+			materialOverrides[materialIndex]
+			? materialOverrides[materialIndex]
+			: materialResources[materialIndex];
+		const D3D12_GPU_DESCRIPTOR_HANDLE textureOverride =
+			materialIndex < textureOverrides.size()
+				? textureOverrides[materialIndex]
+				: D3D12_GPU_DESCRIPTOR_HANDLE{};
+		const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle = textureOverride.ptr != 0
+			? textureOverride
+			: TextureManager::GetInstance()->GetSrvHandleGPU(
+				modelData.materials[materialIndex].textureFilePath
+			);
+		commandList->SetGraphicsRootConstantBufferView(
+			0, material->GetGPUVirtualAddress()
+		);
+		commandList->SetGraphicsRootDescriptorTable(2, textureHandle);
+		commandList->DrawIndexedInstanced(
+			subMesh.indexCount, 1, subMesh.firstIndex, 0, 0
+		);
+	}
 }
 
 void Model::DrawForShadow(
@@ -142,13 +213,11 @@ void Model::DrawForShadow(
 	}
 	commandList->IASetIndexBuffer(&indexBufferView);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	commandList->DrawIndexedInstanced(
-		static_cast<UINT>(modelData.indices.size()),
-		1,
-		0,
-		0,
-		0
-	);
+	for (const SubMesh& subMesh : modelData.subMeshes) {
+		commandList->DrawIndexedInstanced(
+			subMesh.indexCount, 1, subMesh.firstIndex, 0, 0
+		);
+	}
 }
 
 void Model::DrawWithVertexBufferAndMaterial(
@@ -161,20 +230,64 @@ void Model::DrawWithVertexBufferAndMaterial(
 	commandList->IASetIndexBuffer(&indexBufferView);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	ID3D12Resource* materialToBind =
-		materialOverride ? materialOverride : materialResource;
-	commandList->SetGraphicsRootConstantBufferView(0, materialToBind->GetGPUVirtualAddress());
-	const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle = textureOverride.ptr != 0
-		? textureOverride
-		: TextureManager::GetInstance()->GetSrvHandleGPU(modelData.material.textureFilePath);
-	commandList->SetGraphicsRootDescriptorTable(2, textureHandle);
-	commandList->DrawIndexedInstanced(
-		static_cast<UINT>(modelData.indices.size()),
-		1,
-		0,
-		0,
-		0
-	);
+	for (const SubMesh& subMesh : modelData.subMeshes) {
+		const uint32_t materialIndex = (std::min)(
+			subMesh.materialIndex,
+			static_cast<uint32_t>(materialResources.size() - 1)
+		);
+		ID3D12Resource* materialToBind = materialOverride
+			? materialOverride
+			: materialResources[materialIndex];
+		const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle = textureOverride.ptr != 0
+			? textureOverride
+			: TextureManager::GetInstance()->GetSrvHandleGPU(
+				modelData.materials[materialIndex].textureFilePath
+			);
+		commandList->SetGraphicsRootConstantBufferView(
+			0, materialToBind->GetGPUVirtualAddress()
+		);
+		commandList->SetGraphicsRootDescriptorTable(2, textureHandle);
+		commandList->DrawIndexedInstanced(
+			subMesh.indexCount, 1, subMesh.firstIndex, 0, 0
+		);
+	}
+}
+
+void Model::DrawWithVertexBufferAndMaterialSlots(
+	const D3D12_VERTEX_BUFFER_VIEW& customVertexBufferView,
+	const std::vector<ID3D12Resource*>& materialOverrides,
+	const std::vector<D3D12_GPU_DESCRIPTOR_HANDLE>& textureOverrides
+) {
+	auto* commandList = modelCommon->GetDxCommon()->GetCommandList();
+	commandList->IASetVertexBuffers(0, 1, &customVertexBufferView);
+	commandList->IASetIndexBuffer(&indexBufferView);
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	for (const SubMesh& subMesh : modelData.subMeshes) {
+		const uint32_t materialIndex = (std::min)(
+			subMesh.materialIndex,
+			static_cast<uint32_t>(materialResources.size() - 1)
+		);
+		ID3D12Resource* material = materialIndex < materialOverrides.size() &&
+			materialOverrides[materialIndex]
+			? materialOverrides[materialIndex]
+			: materialResources[materialIndex];
+		const D3D12_GPU_DESCRIPTOR_HANDLE textureOverride =
+			materialIndex < textureOverrides.size()
+				? textureOverrides[materialIndex]
+				: D3D12_GPU_DESCRIPTOR_HANDLE{};
+		const D3D12_GPU_DESCRIPTOR_HANDLE textureHandle = textureOverride.ptr != 0
+			? textureOverride
+			: TextureManager::GetInstance()->GetSrvHandleGPU(
+				modelData.materials[materialIndex].textureFilePath
+			);
+		commandList->SetGraphicsRootConstantBufferView(
+			0, material->GetGPUVirtualAddress()
+		);
+		commandList->SetGraphicsRootDescriptorTable(2, textureHandle);
+		commandList->DrawIndexedInstanced(
+			subMesh.indexCount, 1, subMesh.firstIndex, 0, 0
+		);
+	}
 }
 
 void Model::DrawForShadowWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& customVertexBufferView) {
@@ -182,31 +295,119 @@ void Model::DrawForShadowWithVertexBuffer(const D3D12_VERTEX_BUFFER_VIEW& custom
 	commandList->IASetVertexBuffers(0, 1, &customVertexBufferView);
 	commandList->IASetIndexBuffer(&indexBufferView);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	commandList->DrawIndexedInstanced(
-		static_cast<UINT>(modelData.indices.size()),
-		1,
-		0,
-		0,
-		0
-	);
+	for (const SubMesh& subMesh : modelData.subMeshes) {
+		commandList->DrawIndexedInstanced(
+			subMesh.indexCount, 1, subMesh.firstIndex, 0, 0
+		);
+	}
 }
 
-Model::ModelData Model::LoadModelFile(const std::string& directoryPath, const std::string& filename) {
+bool Model::LoadModelFile(
+	const std::filesystem::path& requestedModelFilePath,
+	ModelData& result
+) {
 
 	Assimp::Importer importer;
-	std::string filePath = directoryPath + "/" + filename;
-	const std::filesystem::path modelDirectory =
-		std::filesystem::path(filePath).parent_path();
-	const aiScene* scene = importer.ReadFile(filePath.c_str(), aiProcess_FlipWindingOrder | aiProcess_FlipUVs);
-	assert(scene->HasMeshes());
+	const std::filesystem::path modelFilePath =
+		requestedModelFilePath.lexically_normal();
+	const std::string filePath = StringUtility::ToUtf8(modelFilePath);
+	const std::filesystem::path modelDirectory = modelFilePath.parent_path();
+	importer.SetIOHandler(new AssimpUnicodeIOSystem(modelDirectory));
+	const aiScene* scene = importer.ReadFile(
+		filePath.c_str(),
+		aiProcess_FlipWindingOrder | aiProcess_FlipUVs
+	);
+	if (!scene) {
+		Logger::Log(
+			"Failed to load model: " + filePath +
+			"\nAssimp: " + importer.GetErrorString() + "\n"
+		);
+		return false;
+	}
+	if (!scene->HasMeshes() || !scene->mRootNode) {
+		Logger::Log("Model contains no mesh or root node: " + filePath + "\n");
+		return false;
+	}
 
 	ModelData modelData; //構築するModelData
 	modelData.rootNode = ReadNode(scene->mRootNode);
+	modelData.materials.reserve(scene->mNumMaterials);
+	for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex) {
+		aiMaterial* sourceMaterial = scene->mMaterials[materialIndex];
+		MaterialSlot material{};
+		aiString materialName;
+		if (sourceMaterial->Get(AI_MATKEY_NAME, materialName) == AI_SUCCESS) {
+			material.name = materialName.C_Str();
+		}
+		if (material.name.empty()) {
+			material.name = "Material " + std::to_string(materialIndex + 1);
+		}
+		aiColor4D diffuseColor{};
+		if (sourceMaterial->Get(AI_MATKEY_COLOR_DIFFUSE, diffuseColor) == AI_SUCCESS) {
+			material.baseColor = {
+				diffuseColor.r, diffuseColor.g, diffuseColor.b, diffuseColor.a
+			};
+		}
+
+		const aiTextureType textureTypes[] = {
+			aiTextureType_BASE_COLOR,
+			aiTextureType_DIFFUSE
+		};
+		for (aiTextureType textureType : textureTypes) {
+			if (sourceMaterial->GetTextureCount(textureType) == 0) {
+				continue;
+			}
+			aiString textureFilePath;
+			sourceMaterial->GetTexture(textureType, 0, &textureFilePath);
+			const std::string texturePath = textureFilePath.C_Str();
+			if (!texturePath.empty() && texturePath.front() == '*') {
+				const uint32_t textureIndex = static_cast<uint32_t>(
+					std::strtoul(texturePath.c_str() + 1, nullptr, 10)
+				);
+				if (textureIndex < scene->mNumTextures) {
+					const aiTexture* embeddedTexture = scene->mTextures[textureIndex];
+					const std::string textureKey =
+						filePath + "#embedded" + std::to_string(textureIndex);
+					bool loaded = false;
+					if (embeddedTexture->mHeight == 0) {
+						std::string formatHint = embeddedTexture->achFormatHint;
+						std::transform(
+							formatHint.begin(), formatHint.end(), formatHint.begin(),
+							[](unsigned char c) { return static_cast<char>(std::tolower(c)); }
+						);
+						loaded = TextureManager::GetInstance()->LoadTextureFromMemory(
+							textureKey,
+							reinterpret_cast<const uint8_t*>(embeddedTexture->pcData),
+							static_cast<size_t>(embeddedTexture->mWidth),
+							formatHint == "dds"
+						);
+					}
+					if (loaded) {
+						material.textureFilePath = textureKey;
+					}
+				}
+			} else {
+				material.textureFilePath = StringUtility::ToUtf8(
+					(modelDirectory / StringUtility::ToPath(texturePath))
+						.lexically_normal()
+				);
+			}
+			break;
+		}
+		modelData.materials.push_back(std::move(material));
+	}
+	if (modelData.materials.empty()) {
+		modelData.materials.push_back({});
+	}
 
 	for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
 		aiMesh* mesh = scene->mMeshes[meshIndex];
-		assert(mesh->HasNormals());
-		assert(mesh->HasTextureCoords(0));
+		const aiVector3D* normals = mesh->HasNormals()
+			? mesh->mNormals
+			: nullptr;
+		const aiVector3D* textureCoordinates = mesh->HasTextureCoords(0)
+			? mesh->mTextureCoords[0]
+			: nullptr;
 		modelData.hasSkinning =
 			modelData.hasSkinning || mesh->HasBones();
 
@@ -219,9 +420,13 @@ Model::ModelData Model::LoadModelFile(const std::string& directoryPath, const st
 			vertexIndex < mesh->mNumVertices;
 			++vertexIndex) {
 			const aiVector3D& position = mesh->mVertices[vertexIndex];
-			const aiVector3D& normal = mesh->mNormals[vertexIndex];
-			const aiVector3D& texcoord =
-				mesh->mTextureCoords[0][vertexIndex];
+			const aiVector3D normal = normals
+				? normals[vertexIndex]
+				: aiVector3D{ 0.0f, 1.0f, 0.0f };
+			// glTFではUVが任意なので、未設定メッシュは原点UVとして扱う。
+			const aiVector3D texcoord = textureCoordinates
+				? textureCoordinates[vertexIndex]
+				: aiVector3D{};
 			VertexData& vertex =
 				modelData.vertices[vertexOffset + vertexIndex];
 			vertex.position = {
@@ -238,6 +443,12 @@ Model::ModelData Model::LoadModelFile(const std::string& directoryPath, const st
 			vertex.texcoord = { texcoord.x, texcoord.y };
 		}
 
+		SubMesh subMesh{};
+		subMesh.name = mesh->mName.C_Str();
+		subMesh.firstIndex = static_cast<uint32_t>(modelData.indices.size());
+		subMesh.materialIndex = mesh->mMaterialIndex < modelData.materials.size()
+			? mesh->mMaterialIndex
+			: 0;
 		for (uint32_t faceIndex = 0; faceIndex < mesh->mNumFaces; ++faceIndex) {
 			aiFace& face = mesh->mFaces[faceIndex];
 			assert(face.mNumIndices == 3); // 三角形以外は非対応
@@ -247,6 +458,9 @@ Model::ModelData Model::LoadModelFile(const std::string& directoryPath, const st
 				);
 			}
 		}
+		subMesh.indexCount = static_cast<uint32_t>(modelData.indices.size()) -
+			subMesh.firstIndex;
+		modelData.subMeshes.push_back(std::move(subMesh));
 
 		for (uint32_t boneIndex = 0;
 			boneIndex < mesh->mNumBones;
@@ -272,52 +486,12 @@ Model::ModelData Model::LoadModelFile(const std::string& directoryPath, const st
 		}
 	}
 
-	for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex) {
-		aiMaterial* material = scene->mMaterials[materialIndex];
-		if (material->GetTextureCount(aiTextureType_DIFFUSE) != 0) {
-			aiString textureFilePath;
-			material->GetTexture(aiTextureType_DIFFUSE, 0, &textureFilePath);
-			const std::string texturePath = textureFilePath.C_Str();
-			if (!texturePath.empty() && texturePath.front() == '*') {
-				const uint32_t textureIndex = static_cast<uint32_t>(
-					std::strtoul(texturePath.c_str() + 1, nullptr, 10)
-				);
-				if (textureIndex < scene->mNumTextures) {
-					const aiTexture* embeddedTexture = scene->mTextures[textureIndex];
-					const std::string textureKey =
-						filePath + "#embedded" + std::to_string(textureIndex);
-					bool loaded = false;
-					if (embeddedTexture->mHeight == 0) {
-						std::string formatHint = embeddedTexture->achFormatHint;
-						std::transform(
-							formatHint.begin(),
-							formatHint.end(),
-							formatHint.begin(),
-							[](unsigned char c) {
-								return static_cast<char>(std::tolower(c));
-							}
-						);
-						loaded = TextureManager::GetInstance()->LoadTextureFromMemory(
-							textureKey,
-							reinterpret_cast<const uint8_t*>(embeddedTexture->pcData),
-							static_cast<size_t>(embeddedTexture->mWidth),
-							formatHint == "dds"
-						);
-					}
-					if (loaded) {
-						modelData.material.textureFilePath = textureKey;
-					}
-				}
-			}
-			else {
-				modelData.material.textureFilePath =
-					(modelDirectory / texturePath)
-						.lexically_normal()
-						.generic_string();
-			}
-		}
+	if (modelData.vertices.empty() || modelData.indices.empty()) {
+		Logger::Log("Model contains no drawable geometry: " + filePath + "\n");
+		return false;
 	}
-	return modelData;
+	result = std::move(modelData);
+	return true;
 }
 
 void Model::CreateVertexResource() {
@@ -355,20 +529,25 @@ void Model::CreateIndexResource() {
 }
 
 void Model::CreateMaterialResource() {
-	//マテリアル用のリソースを作る。今回はカラー1つ分のサイズを用意する
-	materialResource = *&modelCommon->GetDxCommon()->CreateBufferResource(sizeof(Material));
-	//書き込むためのアドレスを取得
-	materialResource->Map(0, nullptr, reinterpret_cast<void**>(&materialData));
-	//今回は赤を書き込んでる
-	materialData->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
-	//ライティングの有無
-	materialData->enableLighting = true;
-	materialData->emissiveIntensity = 0.0f;
-	//uvTransform行列を単位行列で初期化
-	materialData->uvTransform = MakeIdentity4x4();
-	materialData->emissiveColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
-
-	materialData->shininess = 40.0f;
+	materialResources.resize(modelData.materials.size());
+	materialDataList.resize(modelData.materials.size());
+	for (size_t materialIndex = 0; materialIndex < modelData.materials.size(); ++materialIndex) {
+		materialResources[materialIndex] = *&modelCommon->GetDxCommon()
+			->CreateBufferResource(sizeof(Material));
+		materialResources[materialIndex]->Map(
+			0, nullptr, reinterpret_cast<void**>(&materialDataList[materialIndex])
+		);
+		Material* material = materialDataList[materialIndex];
+		material->color = modelData.materials[materialIndex].baseColor;
+		material->enableLighting = true;
+		material->emissiveIntensity = 0.0f;
+		material->uvTransform = MakeIdentity4x4();
+		material->emissiveColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+		material->shininess = 40.0f;
+		material->dissolveAmount = 0.0f;
+		material->dissolveEdgeWidth = 0.08f;
+		material->dissolveNoiseScale = 6.0f;
+	}
 }
 
 Model::Node Model::ReadNode(aiNode* aiNode)

@@ -153,6 +153,7 @@
     <ClInclude Include="engine\3d\Object3d.h" />
     <ClInclude Include="engine\3d\Model.h" />
     <ClInclude Include="engine\3d\Animation.h" />
+    <ClInclude Include="engine\3d\AssimpUnicodeIO.h" />
     <ClInclude Include="engine\3d\Skeleton.h" />
     <ClInclude Include="engine\3d\SkinCluster.h" />
     <ClInclude Include="engine\3d\ModelCommon.h" />

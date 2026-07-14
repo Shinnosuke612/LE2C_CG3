@@ -8,6 +8,7 @@
 #include "../Audio/Audio.h"
 
 #include <d3d12.h>
+#include "../../externals/imgui/imgui.h"
 
 class WinApp;
 class DirectXCommon;
@@ -95,6 +96,7 @@ private:
 		float width,
 		float height
 	);
+	void FocusSceneCameraOnSelection();
 	const std::vector<std::string>& GetCachedModelAssetPaths();
 	const std::vector<std::string>& GetCachedTextureAssetPaths();
 	void RefreshAssetPathCache();
@@ -119,6 +121,18 @@ private:
 	void RefreshProjectTreeCache();
 	const std::vector<ProjectDirectoryEntry>& GetCachedProjectDirectoryEntries();
 	void RefreshProjectDirectoryCache();
+	// エディタ固有の外観設定を管理する。シーンデータには保存しない。
+	enum class EditorFontPreset {
+		OriginalWithCjk,
+		UnifiedCjk,
+		CascadiaMonoWithCjk
+	};
+	void DrawSettingsMenu();
+	void LoadEditorSettings();
+	void SaveEditorSettings() const;
+	void RequestEditorFontRebuild();
+	void ApplyPendingEditorFont();
+	void ConfigureEditorFont(ImGuiIO& io, float dpiScale);
 
 	WinApp* winApp_ = nullptr;
 	DirectXCommon* dxCommon_ = nullptr;
@@ -134,10 +148,23 @@ private:
 	bool showInspector_ = true;
 	bool showProject_ = true;
 	bool showConsole_ = true;
+	EditorFontPreset editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
+	float editorFontSize_ = 13.0f;
+	bool editorFontRebuildRequested_ = false;
 	int selectedHierarchyItem_ = 0;
 	uint64_t selectedEntityId_ = 0;
+	// Hierarchyの複数選択と表示状態を保持する。selectedEntityId_はInspector/Gizmo用の基準Entity。
+	std::unordered_set<uint64_t> selectedEntityIds_;
+	uint64_t hierarchySelectionAnchorId_ = 0;
+	uint64_t hierarchyObservedEntityId_ = 0;
+	uint64_t hierarchyRenameEntityId_ = 0;
+	char hierarchyRenameBuffer_[128] = {};
+	bool hierarchyRenameFocusRequested_ = false;
+	bool hierarchyRevealRequested_ = false;
 	uint64_t hierarchyDragSourceId_ = 0;
 	bool hierarchyDragActive_ = false;
+	uint64_t hierarchyAutoOpenFolderId_ = 0;
+	double hierarchyAutoOpenStartTime_ = 0.0;
 	char hierarchySearchBuffer_[128] = {};
 	bool focusInspectorRequested_ = false;
 	EditorSession* editorSession_ = nullptr;
@@ -154,7 +181,7 @@ private:
 	static ImGuiManager* instance;
 
 	// Dynamic asset browser state
-	std::string selectedProjectFolder_ = "resources";
+	std::string selectedProjectFolder_;
 	std::string selectedProjectFile_ = "";
 	bool projectGridView_ = true;
 	float projectThumbnailSize_ = 80.0f;
@@ -175,6 +202,11 @@ private:
 	float modelPreviewYaw_ = 0.65f;
 	float modelPreviewPitch_ = 0.25f;
 	float modelPreviewZoom_ = 1.0f;
+	// ImGui 1.92以降はフォントデータをAtlasの寿命まで保持する必要がある。
+	std::vector<uint8_t> editorBaseFontData_;
+	std::vector<uint8_t> editorJapaneseFontData_;
+	std::vector<uint8_t> editorChineseFontData_;
+	ImVector<ImWchar> editorGlyphRanges_;
 
 	// Particle loading request
 	bool requestLoadParticle_ = false;

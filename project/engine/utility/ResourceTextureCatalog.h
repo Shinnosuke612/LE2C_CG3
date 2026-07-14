@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "EditableResourcePath.h"
+#include "StringUtility.h"
 
 namespace ResourceTextureCatalog {
 
@@ -35,7 +36,9 @@ inline std::vector<std::string> Collect() {
 			continue;
 		}
 		paths.push_back(
-			EditableResourcePath::ToProjectRelative(iterator->path()).generic_string()
+			StringUtility::ToUtf8(
+				EditableResourcePath::ToProjectRelative(iterator->path())
+			)
 		);
 	}
 	std::sort(paths.begin(), paths.end());

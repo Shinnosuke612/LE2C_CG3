@@ -8,6 +8,7 @@
 #include "../externals/imgui/imgui.h"
 #include "../utility/EditableResourcePath.h"
 #include "../utility/ResourceTextureCatalog.h"
+#include "../utility/StringUtility.h"
 #include "ParticleEmitter.h"
 #include "ParticleManager.h"
 
@@ -206,7 +207,7 @@ void ParticleEffectEditor::RefreshEffectFiles() {
 	effectFileNames_.clear();
 	selectedEffectIndex_ = -1;
 
-	std::filesystem::path currentPath(filePath_);
+	const std::filesystem::path currentPath = StringUtility::ToPath(filePath_);
 	std::filesystem::path directory = currentPath.parent_path();
 	if (directory.empty()) {
 		directory = "resources/particles";
@@ -228,14 +229,17 @@ void ParticleEffectEditor::RefreshEffectFiles() {
 		}
 
 		effectFilePaths_.push_back(
-			EditableResourcePath::ToProjectRelative(entry.path()).generic_string()
+			StringUtility::ToUtf8(
+				EditableResourcePath::ToProjectRelative(entry.path())
+			)
 		);
 	}
 
 	std::sort(effectFilePaths_.begin(), effectFilePaths_.end());
 	for (size_t index = 0; index < effectFilePaths_.size(); ++index) {
-		const std::filesystem::path path(effectFilePaths_[index]);
-		effectFileNames_.push_back(path.filename().string());
+		const std::filesystem::path path =
+			StringUtility::ToPath(effectFilePaths_[index]);
+		effectFileNames_.push_back(StringUtility::ToUtf8(path.filename()));
 
 		if (path.lexically_normal() == currentPath.lexically_normal()) {
 			selectedEffectIndex_ = static_cast<int>(index);
@@ -929,7 +933,9 @@ bool ParticleEffectEditor::DrawImGui(
 
 	ImGui::TextDisabled(
 		"Project file: %s",
-		EditableResourcePath::Resolve(filePath_).generic_string().c_str()
+		StringUtility::ToUtf8(
+			EditableResourcePath::Resolve(StringUtility::ToPath(filePath_))
+		).c_str()
 	);
 	if (!persistenceMessage_.empty()) {
 		ImGui::TextWrapped("%s", persistenceMessage_.c_str());

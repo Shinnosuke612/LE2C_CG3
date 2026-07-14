@@ -3,6 +3,7 @@
 #include "SceneEntityQuery.h"
 #include "SceneTransformResolver.h"
 #include "../math/Matrix4x4.h"
+#include "../utility/StringUtility.h"
 
 #include <algorithm>
 #include <cmath>
@@ -778,6 +779,18 @@ namespace {
 				component.meshEnvironmentReflectionOverride;
 			result["environmentReflectionIntensity"] =
 				component.meshEnvironmentReflectionIntensity;
+			json materialOverrides = json::array();
+			for (const SceneMeshMaterialOverride& override :
+				component.meshMaterialOverrides) {
+				materialOverrides.push_back({
+					{ "materialName", override.materialName },
+					{ "enabled", override.enabled },
+					{ "colorOverrideEnabled", override.colorOverrideEnabled },
+					{ "color", VectorToJson(override.color) },
+					{ "texturePath", override.texturePath }
+				});
+			}
+			result["materialOverrides"] = std::move(materialOverrides);
 		} else if (component.type == "Environment") {
 			result["skyboxEnabled"] = component.environmentSkyboxEnabled;
 			result["skyboxPath"] = component.environmentSkyboxPath;
@@ -1029,6 +1042,35 @@ namespace {
 					"environmentReflectionIntensity",
 					component.meshEnvironmentReflectionIntensity
 				);
+				if (const auto overrides = value.find("materialOverrides");
+					overrides != value.end() && overrides->is_array()) {
+					for (const json& item : *overrides) {
+						if (!item.is_object()) {
+							continue;
+						}
+						SceneMeshMaterialOverride override{};
+						override.materialName = item.value(
+							"materialName", std::string{}
+						);
+						override.enabled = item.value("enabled", false);
+						override.colorOverrideEnabled = item.value(
+							"colorOverrideEnabled", false
+						);
+						override.texturePath = item.value(
+							"texturePath", std::string{}
+						);
+						if (item.contains("color")) {
+							override.color = JsonToVector(
+								item.at("color"), override.color
+							);
+						}
+						if (!override.materialName.empty()) {
+							component.meshMaterialOverrides.push_back(
+								std::move(override)
+							);
+						}
+					}
+				}
 				component.environmentSkyboxEnabled = value.value(
 					"skyboxEnabled",
 					component.environmentSkyboxEnabled
@@ -2055,9 +2097,11 @@ bool SceneDocument::Save(const std::string& filePath) {
 		});
 	}
 
-	const std::filesystem::path target(filePath);
-	const std::filesystem::path temporary = target.string() + ".tmp";
-	const std::filesystem::path backup = target.string() + ".bak";
+	const std::filesystem::path target = StringUtility::ToPath(filePath);
+	std::filesystem::path temporary = target;
+	temporary += L".tmp";
+	std::filesystem::path backup = target;
+	backup += L".bak";
 	std::error_code error;
 	if (!target.parent_path().empty()) {
 		std::filesystem::create_directories(target.parent_path(), error);
@@ -3277,7 +3321,7 @@ const SceneEntity* SceneDocument::FindEntityByName(const std::string& name) cons
 }
 
 bool SceneDocument::LoadInternal(const std::string& filePath) {
-	std::ifstream input(filePath, std::ios::binary);
+	std::ifstream input(StringUtility::ToPath(filePath), std::ios::binary);
 	if (!input.is_open()) {
 		return false;
 	}

@@ -13,6 +13,7 @@
 #include <system_error>
 
 #include "../utility/EditableResourcePath.h"
+#include "../utility/StringUtility.h"
 #include "imgui.h"
 
 namespace {
@@ -369,7 +370,9 @@ bool StarFieldGenerator::GenerateAndSave(
 		return false;
 	}
 
-	status_ = "Saved BC6H: " + EditableResourcePath::ToProjectRelative(target).generic_string();
+	status_ = "Saved BC6H: " + StringUtility::ToUtf8(
+		EditableResourcePath::ToProjectRelative(target)
+	);
 	setProgress(1.0f, 5);
 	return true;
 }
@@ -392,7 +395,9 @@ void StarFieldGenerator::RefreshSkyboxFiles() {
 			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 		if (extension != ".dds") continue;
 		skyboxFiles_.push_back(
-			EditableResourcePath::ToProjectRelative(entry.path()).generic_string()
+			StringUtility::ToUtf8(
+				EditableResourcePath::ToProjectRelative(entry.path())
+			)
 		);
 	}
 	std::sort(skyboxFiles_.begin(), skyboxFiles_.end());
@@ -418,7 +423,11 @@ std::optional<std::string> StarFieldGenerator::DrawImGui(const char* windowTitle
 		generationProgress_.reset();
 		status_ = std::move(result.status);
 		if (result.succeeded) {
-			appliedPath = EditableResourcePath::Resolve(result.requestedPath).generic_string();
+			appliedPath = StringUtility::ToUtf8(
+				EditableResourcePath::Resolve(
+					StringUtility::ToPath(result.requestedPath)
+				)
+			);
 			skyboxFiles_.clear();
 			selectedSkyboxIndex_ = -1;
 			RefreshSkyboxFiles();
@@ -479,7 +488,11 @@ std::optional<std::string> StarFieldGenerator::DrawImGui(const char* windowTitle
 			}
 			if (ImGui::Button("Apply Skybox") && selectedSkyboxIndex_ >= 0) {
 				const std::string selectedPath = skyboxFiles_[selectedSkyboxIndex_];
-				appliedPath = EditableResourcePath::Resolve(selectedPath).generic_string();
+				appliedPath = StringUtility::ToUtf8(
+					EditableResourcePath::Resolve(
+						StringUtility::ToPath(selectedPath)
+					)
+				);
 				status_ = "Applied: " + selectedPath;
 			}
 			ImGui::SameLine();

@@ -28,3 +28,11 @@ std::string StringUtility::ConvertString(const std::wstring& str){
 	WideCharToMultiByte(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), result.data(), sizeNeeded, NULL, NULL);
 	return result;
 }
+
+std::filesystem::path StringUtility::ToPath(const std::string& utf8Path) {
+	return std::filesystem::path(ConvertString(utf8Path));
+}
+
+std::string StringUtility::ToUtf8(const std::filesystem::path& path) {
+	return ConvertString(path.generic_wstring());
+}

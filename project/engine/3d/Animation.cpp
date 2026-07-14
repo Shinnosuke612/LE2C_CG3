@@ -1,8 +1,12 @@
 // 役割: アニメーションキー補間とノードTransform適用を実装する。
 #include "Animation.h"
+#include "AssimpUnicodeIO.h"
+#include "../utility/Logger.h"
+#include "../utility/StringUtility.h"
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <utility>
 
 #include <assimp/Importer.hpp>
@@ -124,14 +128,23 @@ Animation ReadAnimation(const aiAnimation& source, size_t index) {
 } // namespace
 
 std::vector<Animation> LoadAnimationFiles(
-	const std::string& directoryPath,
-	const std::string& filename
+	const std::filesystem::path& requestedModelFilePath
 ) {
 	std::vector<Animation> animations;
 	Assimp::Importer importer;
-	const std::string filePath = directoryPath + "/" + filename;
+	const std::filesystem::path modelFilePath =
+		requestedModelFilePath.lexically_normal();
+	const std::string filePath = StringUtility::ToUtf8(modelFilePath);
+	importer.SetIOHandler(new AssimpUnicodeIOSystem(modelFilePath.parent_path()));
 	const aiScene* scene = importer.ReadFile(filePath.c_str(), 0);
-	if (scene == nullptr || scene->mNumAnimations == 0) {
+	if (!scene) {
+		Logger::Log(
+			"Failed to load model animations: " + filePath +
+			"\nAssimp: " + importer.GetErrorString() + "\n"
+		);
+		return animations;
+	}
+	if (scene->mNumAnimations == 0) {
 		return animations;
 	}
 
