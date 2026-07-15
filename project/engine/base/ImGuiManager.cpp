@@ -17,8 +17,10 @@
 #include "DirectXCommon.h"
 #include "../3d/SrvManager.h"
 #include "../2d/TextureManager.h"
+#include "../2d/TextureFormat.h"
 #include "../3d/ModelManager.h"
 #include "../3d/Model.h"
+#include "../3d/ModelFormat.h"
 #include "../3d/Object3dCommon.h"
 #include "../3d/Camera.h"
 #include "../math/Matrix4x4.h"
@@ -109,20 +111,11 @@ namespace {
 	}
 
 	bool IsModelAssetPath(const std::filesystem::path& path) {
-		std::string extension = path.extension().string();
-		std::transform(
-			extension.begin(),
-			extension.end(),
-			extension.begin(),
-			::tolower
-		);
-		return extension == ".obj" || extension == ".gltf";
+		return ModelFormat::IsBasicModelPath(path);
 	}
 
 	bool IsTextureAssetPath(const std::filesystem::path& path) {
-		std::string extension = path.extension().string();
-		std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
-		return extension == ".png" || extension == ".dds";
+		return TextureFormat::IsSupportedTexturePath(path);
 	}
 
 	std::filesystem::path GetProjectResourceRoot() {
@@ -2011,7 +2004,6 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				: entityId;
 			selectedProjectFile_.clear();
 			showInspector_ = true;
-			focusInspectorRequested_ = true;
 		};
 		auto setSelectedActive = [&](bool active, uint64_t clickedEntityId) {
 			const bool applyToSelection = isEntitySelected(clickedEntityId);
@@ -2599,7 +2591,7 @@ void ImGuiManager::DrawInspectorWindow() {
 		ImGui::Separator();
 
 		// Check for specific file types
-		if (ext == ".png" || ext == ".dds") {
+		if (TextureFormat::IsSupportedTexturePath(path)) {
 			// Texture asset inspector
 			const std::string texturePath = GetProjectResourcePath(
 				selectedProjectFile_
@@ -2678,11 +2670,15 @@ void ImGuiManager::DrawInspectorWindow() {
 			}
 			ImGui::EndDisabled();
 		} 
-		else if (ext == ".obj" || ext == ".gltf") {
+		else if (ModelFormat::IsBasicModelPath(path)) {
 			// Model asset inspector
 			std::string relativePath = GetModelPathRelativeToResources(
 				selectedProjectFile_
 			);
+			if (const ModelFormat::Descriptor* format =
+				ModelFormat::FindByPath(path)) {
+				ImGui::Text("Format: %s", format->displayName.data());
+			}
 			Model* loadedModel = ModelManager::GetInstance()
 				? ModelManager::GetInstance()->FindModel(relativePath)
 				: nullptr;
@@ -5989,6 +5985,8 @@ void ImGuiManager::DrawProjectWindow() {
 	if (ImGui::SmallButton("Refresh")) {
 		InvalidateProjectCache();
 		projectPreviewLoadAttempted_.clear();
+		TextureManager::GetInstance()->ClearFailedTextureCache();
+		ModelManager::GetInstance()->ClearFailedModelCache();
 	}
 	if (projectGridView_) {
 		ImGui::SameLine();
@@ -6090,7 +6088,6 @@ void ImGuiManager::DrawProjectWindow() {
 			auto loadHoveredTexturePreview = [&]() {
 				if (
 					isTexture &&
-					extension == ".png" &&
 					TextureManager::GetInstance() &&
 					!TextureManager::GetInstance()->HasTexture(resourcePath) &&
 					projectPreviewLoadAttempted_.size() < 96 &&

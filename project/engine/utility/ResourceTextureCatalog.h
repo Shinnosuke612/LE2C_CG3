@@ -2,22 +2,18 @@
 #pragma once
 
 #include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <string>
 #include <vector>
 
 #include "EditableResourcePath.h"
 #include "StringUtility.h"
+#include "../2d/TextureFormat.h"
 
 namespace ResourceTextureCatalog {
 
 inline bool IsSupportedExtension(std::string extension) {
-	std::transform(extension.begin(), extension.end(), extension.begin(),
-		[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	return extension == ".png" || extension == ".jpg" || extension == ".jpeg" ||
-		extension == ".bmp" || extension == ".tif" || extension == ".tiff" ||
-		extension == ".dds";
+	return TextureFormat::FindByExtension(extension) != nullptr;
 }
 
 inline std::vector<std::string> Collect() {

@@ -160,6 +160,62 @@ void GamePlayScene::DrawAnimationControls(const SceneDocument& document) {
 		ImGui::Text("Blend %.0f%%", object->GetAnimationBlendWeight() * 100.0f);
 	}
 }
+
+void GamePlayScene::DrawSkeletonDebugControls(bool& settingsChanged) {
+	ImGui::SeparatorText("Skeleton");
+	settingsChanged |= ImGui::Checkbox("Show Skeleton", &showSkeletonDebug_);
+	if (!showSkeletonDebug_) {
+		return;
+	}
+
+	settingsChanged |= ImGui::Checkbox("Show Joint Names", &showJointNames_);
+	settingsChanged |= ImGui::Checkbox("Show Joint Axes", &showJointAxes_);
+	settingsChanged |= ImGui::DragFloat(
+		"Joint Radius",
+		&jointRadius_,
+		0.001f,
+		0.002f,
+		0.1f
+	);
+	settingsChanged |= ImGui::DragFloat(
+		"Joint Axis Length",
+		&jointAxisLength_,
+		0.002f,
+		0.01f,
+		0.5f
+	);
+}
+
+void GamePlayScene::AddSkeletonDebugDraw() {
+	if (!showSkeletonDebug_) {
+		return;
+	}
+
+	SceneDocument* document = sceneManager_
+		? sceneManager_->GetActiveSceneDocument()
+		: nullptr;
+	if (!document) {
+		return;
+	}
+
+	for (const SceneEntity& entity : document->GetEntities()) {
+		if (!IsEntityActiveInHierarchy(*document, entity)) {
+			continue;
+		}
+		const auto modelObject = sceneModelObjects_.find(entity.id);
+		if (modelObject == sceneModelObjects_.end() ||
+			!modelObject->second.object ||
+			!modelObject->second.object->GetSkeleton()) {
+			continue;
+		}
+		modelObject->second.object->DrawSkeletonDebug(
+			showJointNames_,
+			showJointAxes_,
+			jointRadius_,
+			jointAxisLength_
+		);
+	}
+}
 #endif
 
 void GamePlayScene::DrawColliderDebug() const {

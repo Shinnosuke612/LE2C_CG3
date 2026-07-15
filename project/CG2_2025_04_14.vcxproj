@@ -184,6 +184,7 @@
     </ClCompile>
     <ClCompile Include="engine\math\Math.cpp" />
     <ClCompile Include="engine\3d\Model.cpp" />
+	<ClCompile Include="engine\3d\PmxLoader.cpp" />
     <ClCompile Include="engine\3d\Animation.cpp" />
     <ClCompile Include="engine\3d\Skeleton.cpp" />
     <ClCompile Include="engine\3d\SkinCluster.cpp" />
@@ -322,6 +323,8 @@
     <ClInclude Include="engine\utility\SystemPerformanceMonitor.h" />
     <ClInclude Include="engine\math\Math.h" />
     <ClInclude Include="engine\3d\Model.h" />
+	<ClInclude Include="engine\3d\ModelFormat.h" />
+	<ClInclude Include="engine\3d\PmxLoader.h" />
     <ClInclude Include="engine\3d\Animation.h" />
     <ClInclude Include="engine\3d\AssimpUnicodeIO.h" />
     <ClInclude Include="engine\3d\Skeleton.h" />
@@ -335,6 +338,7 @@
     <ClInclude Include="engine\3d\SrvManager.h" />
     <ClInclude Include="engine\utility\StringUtility.h" />
     <ClInclude Include="engine\2d\TextureManager.h" />
+	<ClInclude Include="engine\2d\TextureFormat.h" />
     <ClInclude Include="engine\math\Transform.h" />
     <ClInclude Include="engine\particle\GpuParticle.h" />
     <ClInclude Include="engine\particle\ParticleCommon.h" />

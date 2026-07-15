@@ -51,6 +51,7 @@
     <ClCompile Include="engine\3d\Object3dCommon.cpp" />
     <ClCompile Include="engine\3d\Object3d.cpp" />
     <ClCompile Include="engine\3d\Model.cpp" />
+	<ClCompile Include="engine\3d\PmxLoader.cpp" />
     <ClCompile Include="engine\3d\Animation.cpp" />
     <ClCompile Include="engine\3d\Skeleton.cpp" />
     <ClCompile Include="engine\3d\SkinCluster.cpp" />
@@ -147,11 +148,14 @@
     <ClInclude Include="engine\2d\SpriteCommon.h" />
     <ClInclude Include="engine\utility\StringUtility.h" />
     <ClInclude Include="engine\2d\TextureManager.h" />
+	<ClInclude Include="engine\2d\TextureFormat.h" />
     <ClInclude Include="engine\math\Transform.h" />
     <ClInclude Include="engine\base\WinApp.h" />
     <ClInclude Include="engine\3d\Object3dCommon.h" />
     <ClInclude Include="engine\3d\Object3d.h" />
     <ClInclude Include="engine\3d\Model.h" />
+	<ClInclude Include="engine\3d\ModelFormat.h" />
+	<ClInclude Include="engine\3d\PmxLoader.h" />
     <ClInclude Include="engine\3d\Animation.h" />
     <ClInclude Include="engine\3d\AssimpUnicodeIO.h" />
     <ClInclude Include="engine\3d\Skeleton.h" />

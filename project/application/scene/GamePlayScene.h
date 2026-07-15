@@ -184,6 +184,8 @@ private:
 	void DrawMonitorDebugWindow();
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	void DrawAnimationControls(const SceneDocument& document);
+	void DrawSkeletonDebugControls(bool& settingsChanged);
+	void AddSkeletonDebugDraw();
 #endif
 	bool TryStartCameraPath(SceneDocument& document);
 	void DrawCameraPathDebug(

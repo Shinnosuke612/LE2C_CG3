@@ -82,7 +82,7 @@ private://インナークラス
 		float dissolveNoiseScale;
 	};
 private://非公開メンバ関数
-	// .objファイルの読み取り
+	// 内蔵PMXローダーまたはAssimp経由で基本モデルを読み取る。
 	bool LoadModelFile(
 		const std::filesystem::path& modelFilePath,
 		ModelData& result

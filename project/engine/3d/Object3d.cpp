@@ -328,17 +328,7 @@ void Object3d::DrawSkeletonDebug(
 	const Vector4 jointColor = { 0.2f, 0.85f, 1.0f, 1.0f };
 	const Vector4 rootColor = { 1.0f, 0.95f, 0.35f, 1.0f };
 	const Matrix4x4& viewProjection = camera->GetViewProjectionMatrix();
-	const Matrix4x4 objectWorldMatrix = transform.useQuaternionRotation
-		? MakeAffineMatrix(
-			transform.scale,
-			transform.quaternionRotate,
-			transform.translate
-		)
-		: MakeAffineMatrix(
-			transform.scale,
-			transform.rotate,
-			transform.translate
-		);
+	const Matrix4x4& objectWorldMatrix = objectWorldMatrix_;
 
 	std::vector<Matrix4x4> jointWorldMatrices(skeleton_.joints.size());
 	for (const Joint& joint : skeleton_.joints) {

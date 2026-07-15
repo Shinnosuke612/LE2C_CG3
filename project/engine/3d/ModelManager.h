@@ -3,6 +3,7 @@
 #include <map>
 #include <string>
 #include <memory>
+#include <unordered_set>
 
 class Model;
 class ModelCommon;
@@ -32,6 +33,7 @@ public:
 	/// </summary>
 	/// <param name="filePath">モデルファイルのパス</param>
 	void LoadModel(const std::string& filePath);
+	void ClearFailedModelCache();
 
 	/// <summary>
 	/// モデルの検索
@@ -41,9 +43,10 @@ public:
 	Model* FindModel(const std::string& filePath);
 
 private:
-private:
 	//モデルデータ
 	std::map < std::string, std::unique_ptr<Model> > models;
+	// 未対応形式や破損ファイルの毎フレーム再読み込みを防ぐ
+	std::unordered_set<std::string> failedModels;
 	//モデル共通部
 	ModelCommon* modelCommon = nullptr;
 };

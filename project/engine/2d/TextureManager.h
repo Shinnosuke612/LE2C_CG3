@@ -5,6 +5,7 @@
 #include <wrl.h>  
 #include "d3dx12.h"
 #include <unordered_map>
+#include <unordered_set>
 
 class DirectXCommon;
 class SrvManager;
@@ -28,6 +29,12 @@ private:
 	TextureManager& operator=(TextureManager&) = delete;
 
 public:
+	enum class TextureColorSpace {
+		Automatic,
+		Srgb,
+		Linear
+	};
+
 	//初期化
 	void Initialize(DirectXCommon* directXCommon,SrvManager* srvManager);
 	//シングルトンインスタンスの取得
@@ -46,15 +53,23 @@ public:
 	/// <summary>
 /// テクスチャファイルの読み込み
 /// </summary>
-	bool LoadTexture(const std::string& filePath);
-	bool ReloadTexture(const std::string& filePath);
+	bool LoadTexture(
+		const std::string& filePath,
+		TextureColorSpace colorSpace = TextureColorSpace::Automatic
+	);
+	bool ReloadTexture(
+		const std::string& filePath,
+		TextureColorSpace colorSpace = TextureColorSpace::Automatic
+	);
 	bool HasTexture(const std::string& textureKey) const;
 	bool LoadTextureFromMemory(
 		const std::string& textureKey,
 		const uint8_t* data,
 		size_t dataSize,
-		bool isDDS
+		const std::string& formatHint,
+		TextureColorSpace colorSpace = TextureColorSpace::Automatic
 	);
+	void ClearFailedTextureCache();
 private:
 	bool RegisterTexture(
 		const std::string& textureKey,
@@ -70,5 +85,7 @@ private:
 	static uint32_t kSRVIndexTop;
 	//テクスチャデータ
 	std::unordered_map<std::string, TextureData> textureDatas;
+	// 読み込み失敗を毎フレーム繰り返さないための負のキャッシュ
+	std::unordered_set<std::string> failedTextureKeys;
 };
 

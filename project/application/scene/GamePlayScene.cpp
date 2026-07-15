@@ -3651,32 +3651,7 @@ void GamePlayScene::Update(float deltaTime)
 		"Show CameraPath Point Camera Direction",
 		&showCameraPathPointCameraDebug_
 	);
-	ImGui::SeparatorText("Skeleton");
-	debugSettingsChanged |= ImGui::Checkbox("Show Skeleton", &showSkeletonDebug_);
-	if (showSkeletonDebug_) {
-		debugSettingsChanged |= ImGui::Checkbox(
-			"Show Joint Names",
-			&showJointNames_
-		);
-		debugSettingsChanged |= ImGui::Checkbox(
-			"Show Joint Axes",
-			&showJointAxes_
-		);
-		debugSettingsChanged |= ImGui::DragFloat(
-			"Joint Radius",
-			&jointRadius_,
-			0.001f,
-			0.002f,
-			0.1f
-		);
-		debugSettingsChanged |= ImGui::DragFloat(
-			"Joint Axis Length",
-			&jointAxisLength_,
-			0.002f,
-			0.01f,
-			0.5f
-		);
-	}
+	DrawSkeletonDebugControls(debugSettingsChanged);
 	if (debugSettingsChanged) {
 		SaveSceneDebugSettings();
 	}
@@ -3896,26 +3871,7 @@ void GamePlayScene::Update(float deltaTime)
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	if (showSkeletonDebug_) {
-		Object3d* skeletonObject = nullptr;
-		const auto selectedAnimator =
-			sceneModelObjects_.find(animationControlEntityId_);
-		if (
-			selectedAnimator != sceneModelObjects_.end() &&
-			selectedAnimator->second.object &&
-			selectedAnimator->second.object->GetSkeleton()
-		) {
-			skeletonObject = selectedAnimator->second.object;
-		}
-		if (skeletonObject) {
-			skeletonObject->DrawSkeletonDebug(
-			showJointNames_,
-			showJointAxes_,
-			jointRadius_,
-			jointAxisLength_
-			);
-		}
-	}
+	AddSkeletonDebugDraw();
 #endif
 }
 
@@ -3947,6 +3903,7 @@ void GamePlayScene::UpdatePaused()
 		"Show CameraPath Point Camera Direction",
 		&showCameraPathPointCameraDebug_
 	);
+	DrawSkeletonDebugControls(debugSettingsChanged);
 	if (debugSettingsChanged) {
 		SaveSceneDebugSettings();
 	}
@@ -4016,6 +3973,7 @@ void GamePlayScene::UpdatePaused()
 	if (showColliderDebug_) {
 		DrawColliderDebug();
 	}
+	AddSkeletonDebugDraw();
 #endif
 }
 

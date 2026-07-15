@@ -50,7 +50,7 @@ void ModelManager::Finalize(){
 void ModelManager::LoadModel(const std::string& filePath){
 	const std::string modelKey = NormalizeModelKey(filePath);
 //読み込み済みモデルを検索
-	if(models.contains(modelKey)){
+	if(models.contains(modelKey) || failedModels.contains(modelKey)){
 		//読み込み済みなら早期return
 		return;
 	}
@@ -62,11 +62,17 @@ void ModelManager::LoadModel(const std::string& filePath){
 		modelCommon,
 		modelFilePath
 	)) {
+		failedModels.insert(modelKey);
 		return;
 	}
 
 	//モデルをmapコンテナに格納する
+	failedModels.erase(modelKey);
 	models.insert(std::make_pair(modelKey, std::move(model)));
+}
+
+void ModelManager::ClearFailedModelCache() {
+	failedModels.clear();
 }
 
 Model* ModelManager::FindModel(const std::string& filePath){

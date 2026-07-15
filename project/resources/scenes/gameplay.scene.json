@@ -135,6 +135,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "terrain.obj",
           "type": "MeshRenderer"
         }
@@ -192,6 +193,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "AnimatedCube/AnimatedCube.gltf",
           "type": "MeshRenderer"
         },
@@ -259,6 +261,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "human/walk.gltf",
           "type": "MeshRenderer"
         },
@@ -271,6 +274,31 @@
           "speed": 1.0,
           "transitionDuration": 0.20000000298023224,
           "type": "Animator"
+        },
+        {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "offset": [
+            0.0,
+            0.8399999737739563,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            0.38999998569488525,
+            0.8199999928474426,
+            0.3199999928474426
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
         }
       ],
       "folder": false,
@@ -326,6 +354,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -470,6 +499,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -850,6 +880,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -932,6 +963,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1014,6 +1046,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1096,6 +1129,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1178,6 +1212,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1260,6 +1295,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1342,6 +1378,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1424,6 +1461,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1506,6 +1544,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1588,6 +1627,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1670,6 +1710,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1752,6 +1793,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1834,6 +1876,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1916,6 +1959,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -1998,6 +2042,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -2080,6 +2125,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -2162,6 +2208,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -2295,6 +2342,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -2428,6 +2476,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -2561,6 +2610,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -2694,6 +2744,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -2827,6 +2878,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -2960,6 +3012,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -3093,6 +3146,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -3226,6 +3280,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -3359,6 +3414,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -3492,6 +3548,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -3564,6 +3621,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -3636,6 +3694,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -3708,6 +3767,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -3780,6 +3840,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -3948,6 +4009,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -4030,6 +4092,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -4112,6 +4175,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -4194,6 +4258,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -4276,6 +4341,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -4409,6 +4475,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -4542,6 +4609,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -4675,6 +4743,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -4808,6 +4877,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
         },
@@ -4941,6 +5011,7 @@
           "enabled": true,
           "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "materialOverrides": [],
           "modelPath": "simpleSkin/simpleSkin.gltf",
           "type": "MeshRenderer"
         },

@@ -1,6 +1,8 @@
 // 役割: モデルのメッシュ描画、材質設定、Skinning描画を実装する。
 #include "Model.h"
 #include "ModelCommon.h"
+#include "ModelFormat.h"
+#include "PmxLoader.h"
 #include "AssimpUnicodeIO.h"
 #include "../base/DirectXCommon.h"
 #include "../2d/TextureManager.h"
@@ -13,6 +15,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <limits>
 
 namespace {
@@ -51,7 +54,12 @@ bool Model::Initialize(
 	if (!LoadModelFile(modelFilePath, modelData)) {
 		return false;
 	}
-	animations_ = LoadAnimationFiles(modelFilePath);
+	const bool isBasicPmx = ModelFormat::NormalizeExtension(
+		modelFilePath.extension().string()
+	) == ".pmx";
+	animations_ = isBasicPmx
+		? std::vector<Animation>{}
+		: LoadAnimationFiles(modelFilePath);
 	CreateVertexResource();
 	CreateIndexResource();
 	CreateMaterialResource();
@@ -306,16 +314,141 @@ bool Model::LoadModelFile(
 	const std::filesystem::path& requestedModelFilePath,
 	ModelData& result
 ) {
-
-	Assimp::Importer importer;
 	const std::filesystem::path modelFilePath =
 		requestedModelFilePath.lexically_normal();
 	const std::string filePath = StringUtility::ToUtf8(modelFilePath);
+	const std::string extension = ModelFormat::NormalizeExtension(
+		modelFilePath.extension().string()
+	);
+	if (ModelFormat::FindByExtension(extension) == nullptr) {
+		Logger::Log("Unsupported model format: " + filePath + "\n");
+		return false;
+	}
 	const std::filesystem::path modelDirectory = modelFilePath.parent_path();
+	if (extension == ".pmx") {
+		PmxLoader::ModelData pmxData;
+		std::string errorMessage;
+		if (!PmxLoader::LoadBasic(modelFilePath, pmxData, errorMessage)) {
+			Logger::Log(
+				"Failed to load PMX model: " + filePath +
+				"\nPMX: " + errorMessage + "\n"
+			);
+			return false;
+		}
+
+		ModelData modelData;
+		modelData.rootNode.name = pmxData.name.empty()
+			? StringUtility::ToUtf8(modelFilePath.stem())
+			: pmxData.name;
+		modelData.rootNode.localMatrix = MakeIdentity4x4();
+
+		// PMXの絶対座標ボーンを、既存Skeletonが扱う親相対Nodeへ変換する。
+		std::vector<std::vector<size_t>> boneChildren(pmxData.bones.size());
+		std::vector<size_t> rootBones;
+		for (size_t boneIndex = 0; boneIndex < pmxData.bones.size(); ++boneIndex) {
+			const int32_t parentIndex = pmxData.bones[boneIndex].parentIndex;
+			if (parentIndex >= 0) {
+				boneChildren[static_cast<size_t>(parentIndex)].push_back(boneIndex);
+			}
+			else {
+				rootBones.push_back(boneIndex);
+			}
+		}
+
+		std::function<Node(size_t)> buildBoneNode = [&](size_t boneIndex) {
+			const PmxLoader::Bone& sourceBone = pmxData.bones[boneIndex];
+			Node node{};
+			node.name = sourceBone.name;
+			node.transform.translate = sourceBone.position;
+			if (sourceBone.parentIndex >= 0) {
+				const Vector3& parentPosition =
+					pmxData.bones[static_cast<size_t>(sourceBone.parentIndex)].position;
+				node.transform.translate = {
+					sourceBone.position.x - parentPosition.x,
+					sourceBone.position.y - parentPosition.y,
+					sourceBone.position.z - parentPosition.z
+				};
+			}
+			node.localMatrix = MakeAffineMatrix(
+				node.transform.scale,
+				node.transform.rotate,
+				node.transform.translate
+			);
+			node.children.reserve(boneChildren[boneIndex].size());
+			for (const size_t childIndex : boneChildren[boneIndex]) {
+				node.children.push_back(buildBoneNode(childIndex));
+			}
+			return node;
+		};
+
+		modelData.rootNode.children.reserve(rootBones.size());
+		for (const size_t rootBoneIndex : rootBones) {
+			modelData.rootNode.children.push_back(buildBoneNode(rootBoneIndex));
+		}
+
+		modelData.vertices.reserve(pmxData.vertices.size());
+		for (const PmxLoader::Vertex& sourceVertex : pmxData.vertices) {
+			modelData.vertices.push_back({
+				{
+					sourceVertex.position.x,
+					sourceVertex.position.y,
+					sourceVertex.position.z,
+					1.0f
+				},
+				sourceVertex.texcoord,
+				sourceVertex.normal
+			});
+		}
+		modelData.indices = std::move(pmxData.indices);
+		modelData.materials.reserve(pmxData.materials.size());
+		modelData.subMeshes.reserve(pmxData.materials.size());
+		uint32_t firstIndex = 0;
+		for (size_t materialIndex = 0;
+			materialIndex < pmxData.materials.size();
+			++materialIndex) {
+			const PmxLoader::Material& sourceMaterial =
+				pmxData.materials[materialIndex];
+			MaterialSlot material{};
+			material.name = sourceMaterial.name;
+			material.baseColor = sourceMaterial.baseColor;
+			if (!sourceMaterial.texturePath.empty()) {
+				const std::filesystem::path texturePath =
+					StringUtility::ToPath(sourceMaterial.texturePath);
+				material.textureFilePath = StringUtility::ToUtf8(
+					(texturePath.is_absolute()
+						? texturePath
+						: modelDirectory / texturePath).lexically_normal()
+				);
+			}
+			modelData.materials.push_back(std::move(material));
+
+			SubMesh subMesh{};
+			subMesh.name = sourceMaterial.name;
+			subMesh.firstIndex = firstIndex;
+			subMesh.indexCount = sourceMaterial.indexCount;
+			subMesh.materialIndex = static_cast<uint32_t>(materialIndex);
+			modelData.subMeshes.push_back(std::move(subMesh));
+			firstIndex += sourceMaterial.indexCount;
+		}
+		result = std::move(modelData);
+		return true;
+	}
+
+	Assimp::Importer importer;
+	if (!importer.IsExtensionSupported(extension.c_str())) {
+		Logger::Log(
+			"Assimp does not support this model format in the current build: " +
+			filePath + "\n"
+		);
+		return false;
+	}
 	importer.SetIOHandler(new AssimpUnicodeIOSystem(modelDirectory));
 	const aiScene* scene = importer.ReadFile(
 		filePath.c_str(),
-		aiProcess_FlipWindingOrder | aiProcess_FlipUVs
+		aiProcess_FlipWindingOrder |
+		aiProcess_FlipUVs |
+		aiProcess_Triangulate |
+		aiProcess_GenSmoothNormals
 	);
 	if (!scene) {
 		Logger::Log(
@@ -379,7 +512,7 @@ bool Model::LoadModelFile(
 							textureKey,
 							reinterpret_cast<const uint8_t*>(embeddedTexture->pcData),
 							static_cast<size_t>(embeddedTexture->mWidth),
-							formatHint == "dds"
+							formatHint
 						);
 					}
 					if (loaded) {
@@ -451,7 +584,13 @@ bool Model::LoadModelFile(
 			: 0;
 		for (uint32_t faceIndex = 0; faceIndex < mesh->mNumFaces; ++faceIndex) {
 			aiFace& face = mesh->mFaces[faceIndex];
-			assert(face.mNumIndices == 3); // 三角形以外は非対応
+			if (face.mNumIndices != 3) {
+				Logger::Log(
+					"Skipped a non-triangulated face while loading model: " +
+					filePath + "\n"
+				);
+				continue;
+			}
 			for (uint32_t element = 0; element < face.mNumIndices; ++element) {
 				modelData.indices.push_back(
 					vertexOffset + face.mIndices[element]

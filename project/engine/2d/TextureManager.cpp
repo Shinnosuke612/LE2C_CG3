@@ -1,27 +1,77 @@
 // 役割: DirectXTexを使ったテクスチャ読み込みとGPUリソース生成を実装する。
 #include "TextureManager.h"
+#include "TextureFormat.h"
 #include "../base/DirectXCommon.h"
 #include "../3d/SrvManager.h"
 #include "../utility/StringUtility.h"
 #include "../utility/Logger.h"
 #include "../utility/EditableResourcePath.h"
 #include <cassert>
-#include <algorithm>
 #include <filesystem>
+#include <iomanip>
+#include <sstream>
 
 namespace {
 
-	bool IsDDSFile(const std::string& filePath) {
-		std::string extension = StringUtility::ToPath(filePath).extension().string();
+	DirectX::TGA_FLAGS GetTgaFlags(
+		TextureManager::TextureColorSpace colorSpace,
+		TextureFormat::DefaultColorSpace defaultColorSpace
+	) {
+		if (colorSpace == TextureManager::TextureColorSpace::Srgb) {
+			return DirectX::TGA_FLAGS_FORCE_SRGB;
+		}
+		if (colorSpace == TextureManager::TextureColorSpace::Linear) {
+			return DirectX::TGA_FLAGS_FORCE_LINEAR;
+		}
+		return defaultColorSpace == TextureFormat::DefaultColorSpace::Srgb
+			? DirectX::TGA_FLAGS_DEFAULT_SRGB
+			: DirectX::TGA_FLAGS_NONE;
+	}
 
-		std::transform(
-			extension.begin(),
-			extension.end(),
-			extension.begin(),
-			[](unsigned char c) { return static_cast<char>(std::tolower(c)); }
-		);
+	DirectX::WIC_FLAGS GetWicFlags(
+		TextureManager::TextureColorSpace colorSpace,
+		TextureFormat::DefaultColorSpace defaultColorSpace
+	) {
+		if (colorSpace == TextureManager::TextureColorSpace::Srgb) {
+			return DirectX::WIC_FLAGS_FORCE_SRGB;
+		}
+		if (colorSpace == TextureManager::TextureColorSpace::Linear) {
+			return DirectX::WIC_FLAGS_FORCE_LINEAR;
+		}
+		return defaultColorSpace == TextureFormat::DefaultColorSpace::Srgb
+			? DirectX::WIC_FLAGS_DEFAULT_SRGB
+			: DirectX::WIC_FLAGS_NONE;
+	}
 
-		return extension == ".dds";
+	void ApplyColorSpace(
+		DirectX::ScratchImage& image,
+		DirectX::TexMetadata& metadata,
+		TextureManager::TextureColorSpace colorSpace,
+		TextureFormat::DefaultColorSpace defaultColorSpace
+	) {
+		const bool useSrgb = colorSpace == TextureManager::TextureColorSpace::Srgb ||
+			(colorSpace == TextureManager::TextureColorSpace::Automatic &&
+			 defaultColorSpace == TextureFormat::DefaultColorSpace::Srgb);
+		const bool useLinear = colorSpace == TextureManager::TextureColorSpace::Linear ||
+			(colorSpace == TextureManager::TextureColorSpace::Automatic &&
+			 defaultColorSpace == TextureFormat::DefaultColorSpace::Linear);
+		if (!useSrgb && !useLinear) {
+			return;
+		}
+
+		const DXGI_FORMAT targetFormat = useSrgb
+			? DirectX::MakeSRGB(metadata.format)
+			: DirectX::MakeLinear(metadata.format);
+		if (targetFormat != metadata.format && image.OverrideFormat(targetFormat)) {
+			metadata = image.GetMetadata();
+		}
+	}
+
+	std::string FormatHResult(HRESULT result) {
+		std::ostringstream stream;
+		stream << "0x" << std::uppercase << std::hex
+			<< static_cast<unsigned long>(result);
+		return stream.str();
 	}
 
 }
@@ -30,71 +80,131 @@ TextureManager* TextureManager::instance = nullptr;
 
 uint32_t TextureManager::kSRVIndexTop = 1;
 
-bool TextureManager::LoadTexture(const std::string& filePath) {
+bool TextureManager::LoadTexture(
+	const std::string& filePath,
+	TextureColorSpace colorSpace
+) {
 
 	// 読み込み済みテクスチャを検索
 	if (textureDatas.contains(filePath)) {
 		return true;
 	}
-
-	assert(srvManager->CanAllocate());
+	if (failedTextureKeys.contains(filePath)) {
+		return false;
+	}
 
 	DirectX::ScratchImage loadedImage{};
 	DirectX::TexMetadata metadata{};
+	const TextureFormat::Descriptor* format = TextureFormat::FindByPath(
+		StringUtility::ToPath(filePath)
+	);
+	if (format == nullptr) {
+		Logger::Log("Unsupported texture format: " + filePath + "\n");
+		failedTextureKeys.insert(filePath);
+		return false;
+	}
+
 	const std::filesystem::path resolvedPath =
 		EditableResourcePath::ResolveResource(StringUtility::ToPath(filePath));
-	std::wstring filePathW = resolvedPath.wstring();
+	const std::wstring filePathW = resolvedPath.wstring();
 
 	HRESULT hr = S_OK;
-
-	if (IsDDSFile(filePath)) {
+	switch (format->decoder) {
+	case TextureFormat::Decoder::Dds:
 		hr = DirectX::LoadFromDDSFile(
 			filePathW.c_str(),
 			DirectX::DDS_FLAGS_NONE,
 			&metadata,
 			loadedImage
 		);
-	}
-	else {
-		hr = DirectX::LoadFromWICFile(
+		break;
+	case TextureFormat::Decoder::Tga:
+		hr = DirectX::LoadFromTGAFile(
 			filePathW.c_str(),
-			DirectX::WIC_FLAGS_FORCE_SRGB,
+			GetTgaFlags(colorSpace, format->colorSpace),
 			&metadata,
 			loadedImage
 		);
+		break;
+	case TextureFormat::Decoder::Hdr:
+		hr = DirectX::LoadFromHDRFile(
+			filePathW.c_str(),
+			&metadata,
+			loadedImage
+		);
+		break;
+	case TextureFormat::Decoder::Wic:
+		hr = DirectX::LoadFromWICFile(
+			filePathW.c_str(),
+			GetWicFlags(colorSpace, format->colorSpace),
+			&metadata,
+			loadedImage
+		);
+		break;
 	}
 
 	if (FAILED(hr)) {
-		Logger::Log("Failed to load texture: " + filePath + "\n");
+		Logger::Log(
+			"Failed to load texture: " + filePath +
+			" (HRESULT " + FormatHResult(hr) + ")\n"
+		);
+		failedTextureKeys.insert(filePath);
 		return false;
 	}
 
-	return RegisterTexture(filePath, loadedImage, metadata);
+	ApplyColorSpace(loadedImage, metadata, colorSpace, format->colorSpace);
+	const bool registered = RegisterTexture(filePath, loadedImage, metadata);
+	if (registered) {
+		failedTextureKeys.erase(filePath);
+	}
+	else {
+		failedTextureKeys.insert(filePath);
+	}
+	return registered;
 }
 
-bool TextureManager::ReloadTexture(const std::string& filePath) {
+bool TextureManager::ReloadTexture(
+	const std::string& filePath,
+	TextureColorSpace colorSpace
+) {
 	textureDatas.erase(filePath);
-	return LoadTexture(filePath);
+	failedTextureKeys.erase(filePath);
+	return LoadTexture(filePath, colorSpace);
 }
 
 bool TextureManager::LoadTextureFromMemory(
 	const std::string& textureKey,
 	const uint8_t* data,
 	size_t dataSize,
-	bool isDDS
+	const std::string& formatHint,
+	TextureColorSpace colorSpace
 ) {
 	if (textureDatas.contains(textureKey)) {
 		return true;
 	}
-	if (data == nullptr || dataSize == 0) {
-		Logger::Log("Embedded texture data is empty: " + textureKey + "\n");
+	if (failedTextureKeys.contains(textureKey)) {
 		return false;
 	}
+	if (data == nullptr || dataSize == 0) {
+		Logger::Log("Embedded texture data is empty: " + textureKey + "\n");
+		failedTextureKeys.insert(textureKey);
+		return false;
+	}
+
+	const TextureFormat::Descriptor* format =
+		TextureFormat::FindByExtension(formatHint);
+	const TextureFormat::Decoder decoder = format != nullptr
+		? format->decoder
+		: TextureFormat::Decoder::Wic;
+	const TextureFormat::DefaultColorSpace defaultColorSpace = format != nullptr
+		? format->colorSpace
+		: TextureFormat::DefaultColorSpace::Srgb;
 
 	DirectX::ScratchImage loadedImage{};
 	DirectX::TexMetadata metadata{};
 	HRESULT hr = S_OK;
-	if (isDDS) {
+	switch (decoder) {
+	case TextureFormat::Decoder::Dds:
 		hr = DirectX::LoadFromDDSMemory(
 			data,
 			dataSize,
@@ -102,23 +212,53 @@ bool TextureManager::LoadTextureFromMemory(
 			&metadata,
 			loadedImage
 		);
-	}
-	else {
-		hr = DirectX::LoadFromWICMemory(
+		break;
+	case TextureFormat::Decoder::Tga:
+		hr = DirectX::LoadFromTGAMemory(
 			data,
 			dataSize,
-			DirectX::WIC_FLAGS_FORCE_SRGB,
+			GetTgaFlags(colorSpace, defaultColorSpace),
 			&metadata,
 			loadedImage
 		);
+		break;
+	case TextureFormat::Decoder::Hdr:
+		hr = DirectX::LoadFromHDRMemory(
+			data,
+			dataSize,
+			&metadata,
+			loadedImage
+		);
+		break;
+	case TextureFormat::Decoder::Wic:
+		hr = DirectX::LoadFromWICMemory(
+			data,
+			dataSize,
+			GetWicFlags(colorSpace, defaultColorSpace),
+			&metadata,
+			loadedImage
+		);
+		break;
 	}
 
 	if (FAILED(hr)) {
-		Logger::Log("Failed to load embedded texture: " + textureKey + "\n");
+		Logger::Log(
+			"Failed to load embedded texture: " + textureKey +
+			" (HRESULT " + FormatHResult(hr) + ")\n"
+		);
+		failedTextureKeys.insert(textureKey);
 		return false;
 	}
 
-	return RegisterTexture(textureKey, loadedImage, metadata);
+	ApplyColorSpace(loadedImage, metadata, colorSpace, defaultColorSpace);
+	const bool registered = RegisterTexture(textureKey, loadedImage, metadata);
+	if (registered) {
+		failedTextureKeys.erase(textureKey);
+	}
+	else {
+		failedTextureKeys.insert(textureKey);
+	}
+	return registered;
 }
 
 bool TextureManager::RegisterTexture(
@@ -139,11 +279,14 @@ bool TextureManager::RegisterTexture(
 
 	// 圧縮フォーマットは DirectXTex の GenerateMipMaps が直接扱えないことがある
 	if (!DirectX::IsCompressed(metadata.format) && metadata.mipLevels <= 1) {
+		const DirectX::TEX_FILTER_FLAGS filter = DirectX::IsSRGB(metadata.format)
+			? DirectX::TEX_FILTER_SRGB
+			: DirectX::TEX_FILTER_DEFAULT;
 		hr = DirectX::GenerateMipMaps(
 			loadedImage.GetImages(),
 			loadedImage.GetImageCount(),
 			loadedImage.GetMetadata(),
-			DirectX::TEX_FILTER_SRGB,
+			filter,
 			0,
 			mipImages
 		);
@@ -199,6 +342,10 @@ bool TextureManager::RegisterTexture(
 
 bool TextureManager::HasTexture(const std::string& textureKey) const {
 	return textureDatas.contains(textureKey);
+}
+
+void TextureManager::ClearFailedTextureCache() {
+	failedTextureKeys.clear();
 }
 
 const DirectX::TexMetadata& TextureManager::GetMetaData(const std::string& filePath){
