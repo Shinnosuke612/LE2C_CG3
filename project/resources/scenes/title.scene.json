@@ -1,0 +1,705 @@
+{
+  "debug": {
+    "jointAxisLength": 0.05999999865889549,
+    "jointRadius": 0.017999999225139618,
+    "showCameraDirection": false,
+    "showCameraPath": true,
+    "showCameraPathPointCameraDirection": true,
+    "showColliders": true,
+    "showJointAxes": true,
+    "showJointNames": false,
+    "showSkeleton": false
+  },
+  "entities": [
+    {
+      "active": true,
+      "components": [
+        {
+          "enabled": true,
+          "farClip": 1000.0,
+          "fovY": 0.44999998807907104,
+          "invertPitch": false,
+          "invertYaw": false,
+          "isMain": true,
+          "nearClip": 0.10000000149011612,
+          "type": "Camera"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 1,
+      "locked": false,
+      "modelPath": "",
+      "name": "Main Camera",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.4640648365020752,
+          0.1160789206624031,
+          -0.04886619374155998,
+          0.8768019676208496
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -3.7576286792755127,
+          17.474258422851563,
+          -13.871315002441406
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "enabled": true,
+          "targetSceneId": "gameplay",
+          "triggerKey": "ENTER",
+          "triggerType": "Key",
+          "type": "SceneTransition"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 2,
+      "locked": false,
+      "modelPath": "",
+      "name": "Start Game",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "materialOverrides": [],
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 5,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "Entity",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          100.0,
+          1.0,
+          100.0
+        ],
+        "translate": [
+          0.0,
+          -1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [],
+      "folder": true,
+      "folderTeamEnabled": false,
+      "id": 3,
+      "locked": false,
+      "modelPath": "",
+      "name": "Light",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "castsShadow": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "decay": 1.0,
+          "enabled": true,
+          "innerAngle": 25.0,
+          "intensity": 2.0,
+          "lightType": "Directional",
+          "outerAngle": 35.0,
+          "range": 8.0,
+          "shadow": {
+            "bias": 0.0024999999441206455,
+            "distance": 45.0,
+            "farClip": 120.0,
+            "nearClip": 0.10000000149011612,
+            "normalBias": 0.019999999552965164,
+            "orthographicSize": 40.0,
+            "strength": 0.550000011920929,
+            "texelSnap": true
+          },
+          "type": "Light"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 4,
+      "locked": false,
+      "modelPath": "",
+      "name": "DirectinalLight",
+      "parentId": 3,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          -0.23023536801338196,
+          -0.33910974860191345,
+          0.3668355345726013,
+          0.8351215124130249
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          24.192241668701172,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "castsShadow": false,
+          "color": [
+            1.0,
+            0.8500000238418579,
+            0.6499999761581421,
+            1.0
+          ],
+          "decay": 0.0,
+          "enabled": true,
+          "innerAngle": 42.5,
+          "intensity": 2.1500000953674316,
+          "lightType": "Spot",
+          "outerAngle": 60.0,
+          "range": 99.80000305175781,
+          "shadow": {
+            "bias": 0.0024999999441206455,
+            "distance": 45.0,
+            "farClip": 120.0,
+            "nearClip": 0.10000000149011612,
+            "normalBias": 0.019999999552965164,
+            "orthographicSize": 40.0,
+            "strength": 0.550000011920929,
+            "texelSnap": true
+          },
+          "type": "Light"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 6,
+      "locked": false,
+      "modelPath": "",
+      "name": "Entity",
+      "parentId": 3,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.7205850481987,
+          0.0,
+          0.0,
+          0.6933665871620178
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          49.79214859008789,
+          1.8310965299606323
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "offset": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "materialOverrides": [
+            {
+              "color": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "colorOverrideEnabled": false,
+              "enabled": false,
+              "materialName": "颜2",
+              "texturePath": ""
+            }
+          ],
+          "modelPath": "9y5Huh14gN/艾莲.pmx",
+          "type": "MeshRenderer"
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "Agent",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-Z",
+          "groupName": "",
+          "maxSpeed": 3.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 1.0,
+          "neighborLimit": 0,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 1,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": false,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": false,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": false,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "bodyType": "Dynamic",
+          "drag": 0.0,
+          "enabled": true,
+          "freezePositionX": false,
+          "freezePositionY": false,
+          "freezePositionZ": false,
+          "friction": 0.0,
+          "gravityScale": 1.0,
+          "mass": 1.0,
+          "maxFallSpeed": 100.0,
+          "restitution": 0.0,
+          "type": "PhysicsBody",
+          "useGravity": true,
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 7,
+      "locked": false,
+      "modelPath": "9y5Huh14gN/艾莲.pmx",
+      "name": "Entity",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "lighting": {
+    "shadowMapSize": 1024
+  },
+  "postProcess": {
+    "baseExposure": 1.0,
+    "bloomBlurIterations": 3,
+    "bloomBlurRadius": 1.0,
+    "bloomDownsampleScale": 2,
+    "bloomEnabled": true,
+    "bloomIntensity": 0.7279999852180481,
+    "bloomSoftKnee": 0.5,
+    "bloomThreshold": 1.0,
+    "boxBlurEnabled": false,
+    "boxBlurKernelSize": 3,
+    "boxBlurStrength": 1.0,
+    "depthOfFieldBlurStrength": 0.3449999988079071,
+    "depthOfFieldEnabled": false,
+    "depthOfFieldFarStrength": 1.9670000076293945,
+    "depthOfFieldFocusDistance": 64.28900146484375,
+    "depthOfFieldFocusRange": 53.638999938964844,
+    "depthOfFieldMaxRadius": 4.0,
+    "depthOfFieldNearStrength": 0.0,
+    "dissolveEdgeColor": [
+      1.0,
+      0.4000000059604645,
+      0.30000001192092896,
+      1.0
+    ],
+    "dissolveEdgeWidth": 0.029999999329447746,
+    "dissolveEnabled": false,
+    "dissolveMaskIndex": 0,
+    "dissolveThreshold": 0.0,
+    "gaussianBlurEnabled": false,
+    "gaussianBlurKernelSize": 3,
+    "gaussianBlurSigma": 1.0,
+    "gaussianBlurStrength": 1.0,
+    "grayscaleEnabled": false,
+    "noiseAmount": 0.25,
+    "noiseAnimate": true,
+    "noiseEnabled": false,
+    "noiseScale": 1.0,
+    "noiseSeed": 0.0,
+    "noiseSpeed": 1.0,
+    "outlineColor": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "outlineDepthEnabled": true,
+    "outlineDepthWeight": 1.0,
+    "outlineEnabled": false,
+    "outlineLuminanceEnabled": false,
+    "outlineLuminanceWeight": 1.0,
+    "outlineSoftness": 0.05000000074505806,
+    "outlineThickness": 1.0,
+    "outlineThreshold": 0.10000000149011612,
+    "radialBlurCenter": [
+      0.5,
+      0.5
+    ],
+    "radialBlurEnabled": false,
+    "radialBlurSamples": 10,
+    "radialBlurWidth": 0.009999999776482582,
+    "toneMapMode": 0,
+    "underwaterDistortion": 0.003800000064074993,
+    "underwaterEnabled": true,
+    "underwaterFogDensity": 0.03500000014901161,
+    "underwaterIntensity": 0.6499999761581421,
+    "underwaterTintColor": [
+      0.019999999552965164,
+      0.44999998807907104,
+      0.6800000071525574,
+      1.0
+    ],
+    "vignetteEnabled": false,
+    "vignetteIntensity": 1.0,
+    "vignettePower": 0.800000011920929,
+    "vignetteScale": 16.0,
+    "waterRefractionEdgeSoftness": 0.07999999821186066,
+    "waterRefractionEnabled": true,
+    "waterRefractionStrength": 0.00419999985024333,
+    "waterRefractionTintColor": [
+      0.019999999552965164,
+      0.550000011920929,
+      0.8199999928474426,
+      1.0
+    ],
+    "waterRefractionTintStrength": 0.11999999731779099
+  },
+  "sceneName": "TITLE",
+  "teams": [],
+  "version": 27
+}

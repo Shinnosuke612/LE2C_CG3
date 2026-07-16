@@ -174,7 +174,7 @@
     ]
   },
   "scenes": {
-    "GAMEPLAY": [
+    "gameplay": [
       {
         "assetName": "rainAsset",
         "enabled": false,
@@ -196,7 +196,7 @@
         ]
       }
     ],
-    "TITLE": [
+    "title": [
       {
         "assetName": "Legacy_TITLE",
         "enabled": true,

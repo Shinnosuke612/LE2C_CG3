@@ -213,6 +213,68 @@ bool DecomposeAffineMatrix(
 	return true;
 }
 
+bool DecomposeAffineMatrix(
+	const Matrix4x4& matrix,
+	Vector3& scale,
+	Quaternion& rotate,
+	Vector3& translate
+) {
+	translate = { matrix.m[3][0], matrix.m[3][1], matrix.m[3][2] };
+	scale = {
+		std::sqrt(
+			matrix.m[0][0] * matrix.m[0][0] +
+			matrix.m[0][1] * matrix.m[0][1] +
+			matrix.m[0][2] * matrix.m[0][2]
+		),
+		std::sqrt(
+			matrix.m[1][0] * matrix.m[1][0] +
+			matrix.m[1][1] * matrix.m[1][1] +
+			matrix.m[1][2] * matrix.m[1][2]
+		),
+		std::sqrt(
+			matrix.m[2][0] * matrix.m[2][0] +
+			matrix.m[2][1] * matrix.m[2][1] +
+			matrix.m[2][2] * matrix.m[2][2]
+		)
+	};
+	constexpr float epsilon = 0.000001f;
+	if (scale.x < epsilon || scale.y < epsilon || scale.z < epsilon) {
+		return false;
+	}
+
+	const float determinant3x3 =
+		matrix.m[0][0] * (
+			matrix.m[1][1] * matrix.m[2][2] -
+			matrix.m[1][2] * matrix.m[2][1]
+		) -
+		matrix.m[0][1] * (
+			matrix.m[1][0] * matrix.m[2][2] -
+			matrix.m[1][2] * matrix.m[2][0]
+		) +
+		matrix.m[0][2] * (
+			matrix.m[1][0] * matrix.m[2][1] -
+			matrix.m[1][1] * matrix.m[2][0]
+		);
+	if (determinant3x3 < 0.0f) {
+		scale.x = -scale.x;
+	}
+
+	Matrix4x4 rotationMatrix = MakeIdentity4x4();
+	const float inverseScale[3] = {
+		1.0f / scale.x,
+		1.0f / scale.y,
+		1.0f / scale.z
+	};
+	for (int row = 0; row < 3; ++row) {
+		for (int column = 0; column < 3; ++column) {
+			rotationMatrix.m[row][column] =
+				matrix.m[row][column] * inverseScale[row];
+		}
+	}
+	rotate = MakeQuaternionFromRotationMatrix(rotationMatrix);
+	return true;
+}
+
 Matrix4x4 MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearClip, float farClip) {
 	Matrix4x4 result;
 

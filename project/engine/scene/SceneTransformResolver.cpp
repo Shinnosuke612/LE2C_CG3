@@ -14,7 +14,10 @@ namespace {
 		const SceneEntity& entity,
 		std::unordered_set<uint64_t>& visited
 	) {
-		Transform result = entity.transform;
+		Transform result{};
+		result.scale = entity.transform.scale;
+		result.rotate = MakeEulerFromQuaternion(entity.transform.rotate);
+		result.translate = entity.transform.translate;
 		if (entity.parentId == 0 || !visited.insert(entity.id).second) {
 			return result;
 		}
@@ -90,14 +93,20 @@ namespace SceneTransformResolver {
 		const SceneEntity& entity
 	) {
 		const Matrix4x4 world = ResolveSceneWorldMatrix(document, entity);
-		Transform result = entity.transform;
+		Transform result{};
+		result.scale = entity.transform.scale;
+		result.rotate = MakeEulerFromQuaternion(entity.transform.rotate);
+		result.translate = entity.transform.translate;
+		result.useQuaternionRotation = true;
+		result.quaternionRotate = entity.transform.rotate;
 		Vector3 scale{};
-		Vector3 rotate{};
+		Quaternion rotate = MakeIdentityQuaternion();
 		Vector3 translate{};
 		if (DecomposeAffineMatrix(world, scale, rotate, translate)) {
 			result.scale = scale;
-			result.rotate = rotate;
+			result.rotate = MakeEulerFromQuaternion(rotate);
 			result.translate = translate;
+			result.quaternionRotate = rotate;
 		}
 		return result;
 	}

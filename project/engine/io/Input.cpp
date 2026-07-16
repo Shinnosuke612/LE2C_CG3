@@ -153,11 +153,20 @@ void Input::SetCursorCaptureRect(
 	float maxX,
 	float maxY
 ) {
+	constexpr LONG kCaptureInset = 2;
+	const LONG rawLeft = static_cast<LONG>(std::ceil(minX));
+	const LONG rawTop = static_cast<LONG>(std::ceil(minY));
+	const LONG rawRight = static_cast<LONG>(std::floor(maxX));
+	const LONG rawBottom = static_cast<LONG>(std::floor(maxY));
+	const LONG horizontalInset =
+		rawRight - rawLeft > kCaptureInset * 2 ? kCaptureInset : 0;
+	const LONG verticalInset =
+		rawBottom - rawTop > kCaptureInset * 2 ? kCaptureInset : 0;
 	const RECT newRect = {
-		static_cast<LONG>(std::floor(minX)),
-		static_cast<LONG>(std::floor(minY)),
-		static_cast<LONG>(std::ceil(maxX)),
-		static_cast<LONG>(std::ceil(maxY))
+		rawLeft + horizontalInset,
+		rawTop + verticalInset,
+		rawRight - horizontalInset,
+		rawBottom - verticalInset
 	};
 	const bool sameRect =
 		hasCursorCaptureRect_ &&

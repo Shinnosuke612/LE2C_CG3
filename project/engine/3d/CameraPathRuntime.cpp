@@ -16,17 +16,18 @@ namespace {
 	using SceneEntityQuery::FindEnabledComponent;
 	using SceneTransformResolver::ResolveScene3DTransform;
 
-	constexpr float kTwoPi = 6.28318530717958647692f;
-	constexpr float kPi = 3.14159265358979323846f;
-
 	Transform ResolveCameraWorldTransform(const Camera& camera) {
 		Transform result{};
 		result.scale = { 1.0f, 1.0f, 1.0f };
 		result.translate = camera.GetTranslate();
 		result.rotate = camera.GetRotate();
+		result.useQuaternionRotation = true;
+		result.quaternionRotate = camera.UsesQuaternionRotation()
+			? camera.GetRotateQuaternion()
+			: MakeQuaternionFromEuler(camera.GetRotate());
 
 		Vector3 scale{};
-		Vector3 rotate{};
+		Quaternion rotate = MakeIdentityQuaternion();
 		Vector3 translate{};
 		if (DecomposeAffineMatrix(
 			camera.GetWorldMatrix(),
@@ -35,8 +36,9 @@ namespace {
 			translate
 		)) {
 			result.scale = { 1.0f, 1.0f, 1.0f };
-			result.rotate = rotate;
+			result.rotate = MakeEulerFromQuaternion(rotate);
 			result.translate = translate;
+			result.quaternionRotate = rotate;
 		}
 		return result;
 	}
@@ -65,92 +67,6 @@ namespace {
 		return a + (b - a) * t;
 	}
 
-	float NormalizeAngle(float angle) {
-		while (angle > kPi) {
-			angle -= kTwoPi;
-		}
-		while (angle < -kPi) {
-			angle += kTwoPi;
-		}
-		return angle;
-	}
-
-	float LerpAngle(float a, float b, float t) {
-		return a + NormalizeAngle(b - a) * t;
-	}
-
-	Quaternion QuaternionFromRotationMatrix(const Matrix4x4& matrix) {
-		const float trace =
-			matrix.m[0][0] + matrix.m[1][1] + matrix.m[2][2];
-		Quaternion result{};
-		if (trace > 0.0f) {
-			const float s = std::sqrt(trace + 1.0f) * 2.0f;
-			result.w = 0.25f * s;
-			result.x = (matrix.m[1][2] - matrix.m[2][1]) / s;
-			result.y = (matrix.m[2][0] - matrix.m[0][2]) / s;
-			result.z = (matrix.m[0][1] - matrix.m[1][0]) / s;
-		} else if (
-			matrix.m[0][0] > matrix.m[1][1] &&
-			matrix.m[0][0] > matrix.m[2][2]
-		) {
-			const float s = std::sqrt(
-				1.0f + matrix.m[0][0] - matrix.m[1][1] -
-				matrix.m[2][2]
-			) * 2.0f;
-			result.w = (matrix.m[1][2] - matrix.m[2][1]) / s;
-			result.x = 0.25f * s;
-			result.y = (matrix.m[0][1] + matrix.m[1][0]) / s;
-			result.z = (matrix.m[2][0] + matrix.m[0][2]) / s;
-		} else if (matrix.m[1][1] > matrix.m[2][2]) {
-			const float s = std::sqrt(
-				1.0f + matrix.m[1][1] - matrix.m[0][0] -
-				matrix.m[2][2]
-			) * 2.0f;
-			result.w = (matrix.m[2][0] - matrix.m[0][2]) / s;
-			result.x = (matrix.m[0][1] + matrix.m[1][0]) / s;
-			result.y = 0.25f * s;
-			result.z = (matrix.m[1][2] + matrix.m[2][1]) / s;
-		} else {
-			const float s = std::sqrt(
-				1.0f + matrix.m[2][2] - matrix.m[0][0] -
-				matrix.m[1][1]
-			) * 2.0f;
-			result.w = (matrix.m[0][1] - matrix.m[1][0]) / s;
-			result.x = (matrix.m[2][0] + matrix.m[0][2]) / s;
-			result.y = (matrix.m[1][2] + matrix.m[2][1]) / s;
-			result.z = 0.25f * s;
-		}
-		return Normalize(result);
-	}
-
-	Quaternion EulerToQuaternion(const Vector3& rotate) {
-		const Matrix4x4 matrix = MakeAffineMatrix(
-			{ 1.0f, 1.0f, 1.0f },
-			rotate,
-			{ 0.0f, 0.0f, 0.0f }
-		);
-		return QuaternionFromRotationMatrix(matrix);
-	}
-
-	Vector3 QuaternionToEuler(const Quaternion& quaternion) {
-		const Matrix4x4 matrix = MakeRotateMatrix(quaternion);
-		Vector3 scale{};
-		Vector3 rotate{};
-		Vector3 translate{};
-		if (DecomposeAffineMatrix(matrix, scale, rotate, translate)) {
-			return rotate;
-		}
-		return {};
-	}
-
-	Vector3 SlerpEuler(const Vector3& a, const Vector3& b, float t) {
-		return QuaternionToEuler(Slerp(
-			EulerToQuaternion(a),
-			EulerToQuaternion(b),
-			t
-		));
-	}
-
 	Transform LerpTransform(
 		const Transform& a,
 		const Transform& b,
@@ -162,7 +78,15 @@ namespace {
 			Lerp(a.translate.y, b.translate.y, t),
 			Lerp(a.translate.z, b.translate.z, t)
 		};
-		result.rotate = SlerpEuler(a.rotate, b.rotate, t);
+		const Quaternion aRotate = a.useQuaternionRotation
+			? a.quaternionRotate
+			: MakeQuaternionFromEuler(a.rotate);
+		const Quaternion bRotate = b.useQuaternionRotation
+			? b.quaternionRotate
+			: MakeQuaternionFromEuler(b.rotate);
+		result.quaternionRotate = Slerp(aRotate, bRotate, t);
+		result.useQuaternionRotation = true;
+		result.rotate = MakeEulerFromQuaternion(result.quaternionRotate);
 		result.scale = {
 			Lerp(a.scale.x, b.scale.x, t),
 			Lerp(a.scale.y, b.scale.y, t),
@@ -336,7 +260,11 @@ void CameraPathRuntime::ApplyTransform(
 ) {
 	camera.SetOrbitMode(false);
 	camera.SetTranslate(transform.translate);
-	camera.SetRotate(transform.rotate);
+	if (transform.useQuaternionRotation) {
+		camera.SetRotateQuaternion(transform.quaternionRotate);
+	} else {
+		camera.SetRotate(transform.rotate);
+	}
 	camera.UpdatePreviewMatrices();
 }
 

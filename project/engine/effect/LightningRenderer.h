@@ -36,7 +36,6 @@ public:
 	void Finalize();
 	void Update(float deltaTime);
 	void Draw(const Camera* camera);
-	void DrawImGui(const char* label);
 	void Trigger(const Settings& settings);
 
 	Settings& GetSettings() { return settings_; }

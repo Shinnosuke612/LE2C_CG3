@@ -1,7 +1,9 @@
 // 役割: SceneDocumentのJSON入出力、Hierarchy操作、Component検証を実装する。
 #include "SceneDocument.h"
+#include "SceneDocumentMigrator.h"
 #include "SceneEntityQuery.h"
 #include "SceneTransformResolver.h"
+#include "SceneValidator.h"
 #include "../math/Matrix4x4.h"
 #include "../utility/StringUtility.h"
 
@@ -32,6 +34,10 @@ namespace {
 	}
 
 	json VectorToJson(const Vector4& value) {
+		return json::array({ value.x, value.y, value.z, value.w });
+	}
+
+	json QuaternionToJson(const Quaternion& value) {
 		return json::array({ value.x, value.y, value.z, value.w });
 	}
 
@@ -310,6 +316,44 @@ namespace {
 			source.value("jointAxisLength", settings.jointAxisLength),
 			0.001f
 		);
+		return settings;
+	}
+
+	Quaternion JsonToQuaternion(
+		const json& value,
+		const Quaternion& fallback
+	) {
+		if (!value.is_array() || value.size() != 4) {
+			return fallback;
+		}
+		return Normalize({
+			value[0].get<float>(), value[1].get<float>(),
+			value[2].get<float>(), value[3].get<float>()
+		});
+	}
+
+	json LightingSettingsToJson(const SceneLightingSettings& settings) {
+		return {
+			{ "shadowMapSize", settings.shadowMapSize }
+		};
+	}
+
+	SceneLightingSettings LightingSettingsFromJson(
+		const json& source,
+		const SceneLightingSettings& fallback
+	) {
+		if (!source.is_object()) {
+			return fallback;
+		}
+
+		SceneLightingSettings settings = fallback;
+		const uint32_t requested = source.value(
+			"shadowMapSize",
+			settings.shadowMapSize
+		);
+		settings.shadowMapSize = requested <= 1024
+			? 1024
+			: requested <= 2048 ? 2048 : 4096;
 		return settings;
 	}
 
@@ -811,6 +855,25 @@ namespace {
 			result["farClip"] = component.cameraFarClip;
 			result["invertYaw"] = component.cameraInvertYaw;
 			result["invertPitch"] = component.cameraInvertPitch;
+		} else if (component.type == "Light") {
+			result["lightType"] = component.lightType;
+			result["color"] = VectorToJson(component.lightColor);
+			result["intensity"] = component.lightIntensity;
+			result["range"] = component.lightRange;
+			result["decay"] = component.lightDecay;
+			result["innerAngle"] = component.lightSpotInnerAngle;
+			result["outerAngle"] = component.lightSpotOuterAngle;
+			result["castsShadow"] = component.lightCastsShadow;
+			result["shadow"] = {
+				{ "bias", component.lightShadowBias },
+				{ "normalBias", component.lightShadowNormalBias },
+				{ "strength", component.lightShadowStrength },
+				{ "distance", component.lightShadowDistance },
+				{ "orthographicSize", component.lightShadowOrthographicSize },
+				{ "nearClip", component.lightShadowNearClip },
+				{ "farClip", component.lightShadowFarClip },
+				{ "texelSnap", component.lightShadowTexelSnap }
+			};
 		} else if (component.type == "MonitorRenderer") {
 			result["cameraEntityId"] = component.monitorCameraEntityId;
 			result["cameraName"] = component.monitorCameraName;
@@ -994,6 +1057,18 @@ namespace {
 			result["drag"] = component.waterDrag;
 			result["maxFallSpeed"] = component.waterMaxFallSpeed;
 			result["swimUpSpeed"] = component.waterSwimUpSpeed;
+		} else if (component.type == "EntityReference") {
+			result["referenceName"] = component.entityReferenceName;
+			result["target"] = {
+				{ "sceneId", component.entityReferenceTarget.sceneId },
+				{ "instanceKey", component.entityReferenceTarget.instanceKey },
+				{ "entityId", component.entityReferenceTarget.entityId }
+			};
+		} else if (component.type == "SceneTransition") {
+			result["targetSceneId"] =
+				component.sceneTransitionTargetSceneId;
+			result["triggerType"] = component.sceneTransitionTriggerType;
+			result["triggerKey"] = component.sceneTransitionTriggerKey;
 		} else if (component.type == "CameraPath") {
 			result["targetCameraName"] = component.cameraPathTargetCameraName;
 			result["triggerType"] = component.cameraPathTriggerType;
@@ -1126,6 +1201,113 @@ namespace {
 					"invertPitch",
 					component.cameraInvertPitch
 				);
+				if (component.type == "Light") {
+					component.lightType = value.value(
+						"lightType",
+						component.lightType
+					);
+					if (value.contains("color")) {
+						component.lightColor = JsonToVector(
+							value.at("color"),
+							component.lightColor
+						);
+					}
+					component.lightColor.x = std::clamp(
+						component.lightColor.x,
+						0.0f,
+						1.0f
+					);
+					component.lightColor.y = std::clamp(
+						component.lightColor.y,
+						0.0f,
+						1.0f
+					);
+					component.lightColor.z = std::clamp(
+						component.lightColor.z,
+						0.0f,
+						1.0f
+					);
+					component.lightColor.w = std::clamp(
+						component.lightColor.w,
+						0.0f,
+						1.0f
+					);
+					component.lightIntensity = (std::max)(
+						value.value("intensity", component.lightIntensity),
+						0.0f
+					);
+					component.lightRange = (std::max)(
+						value.value("range", component.lightRange),
+						0.1f
+					);
+					component.lightDecay = (std::max)(
+						value.value("decay", component.lightDecay),
+						0.0f
+					);
+					component.lightSpotOuterAngle = std::clamp(
+						value.value("outerAngle", component.lightSpotOuterAngle),
+						1.0f,
+						89.0f
+					);
+					component.lightSpotInnerAngle = std::clamp(
+						value.value("innerAngle", component.lightSpotInnerAngle),
+						0.0f,
+						component.lightSpotOuterAngle
+					);
+					component.lightCastsShadow = value.value(
+						"castsShadow",
+						component.lightCastsShadow
+					);
+					if (value.contains("shadow") && value.at("shadow").is_object()) {
+						const json& shadow = value.at("shadow");
+						component.lightShadowBias = (std::max)(
+							shadow.value("bias", component.lightShadowBias),
+							0.0f
+						);
+						component.lightShadowNormalBias = (std::max)(
+							shadow.value("normalBias", component.lightShadowNormalBias),
+							0.0f
+						);
+						component.lightShadowStrength = std::clamp(
+							shadow.value("strength", component.lightShadowStrength),
+							0.0f,
+							1.0f
+						);
+						component.lightShadowDistance = (std::max)(
+							shadow.value("distance", component.lightShadowDistance),
+							1.0f
+						);
+						component.lightShadowOrthographicSize = (std::max)(
+							shadow.value(
+								"orthographicSize",
+								component.lightShadowOrthographicSize
+							),
+							1.0f
+						);
+						component.lightShadowNearClip = (std::max)(
+							shadow.value("nearClip", component.lightShadowNearClip),
+							0.001f
+						);
+						component.lightShadowFarClip = (std::max)(
+							shadow.value("farClip", component.lightShadowFarClip),
+							component.lightShadowNearClip + 0.001f
+						);
+						component.lightShadowTexelSnap = shadow.value(
+							"texelSnap",
+							component.lightShadowTexelSnap
+						);
+					}
+					if (
+						component.lightType != "Directional" &&
+						component.lightType != "Point" &&
+						component.lightType != "Spot"
+					) {
+						component.lightType = "Point";
+					}
+					if (component.lightType == "Point") {
+						component.lightCastsShadow = false;
+					}
+				}
 				component.monitorCameraName = value.value(
 					"cameraName",
 					component.monitorCameraName
@@ -1757,6 +1939,39 @@ namespace {
 					"swimUpSpeed",
 					component.waterSwimUpSpeed
 				);
+				component.entityReferenceName = value.value(
+					"referenceName",
+					component.entityReferenceName
+				);
+				if (
+					const auto target = value.find("target");
+					target != value.end() && target->is_object()
+				) {
+					component.entityReferenceTarget.sceneId = target->value(
+						"sceneId",
+						component.entityReferenceTarget.sceneId
+					);
+					component.entityReferenceTarget.instanceKey = target->value(
+						"instanceKey",
+						component.entityReferenceTarget.instanceKey
+					);
+					component.entityReferenceTarget.entityId = target->value(
+						"entityId",
+						component.entityReferenceTarget.entityId
+					);
+				}
+				component.sceneTransitionTargetSceneId = value.value(
+					"targetSceneId",
+					component.sceneTransitionTargetSceneId
+				);
+				component.sceneTransitionTriggerType = value.value(
+					"triggerType",
+					component.sceneTransitionTriggerType
+				);
+				component.sceneTransitionTriggerKey = value.value(
+					"triggerKey",
+					component.sceneTransitionTriggerKey
+				);
 				component.cameraPathTargetCameraName = value.value(
 					"targetCameraName",
 					component.cameraPathTargetCameraName
@@ -1819,6 +2034,13 @@ namespace {
 						0.0f,
 						1.0f
 					);
+				} else if (component.type == "SceneTransition") {
+					if (component.sceneTransitionTriggerType != "Key") {
+						component.sceneTransitionTriggerType = "Key";
+					}
+					if (component.sceneTransitionTriggerKey.empty()) {
+						component.sceneTransitionTriggerKey = "ENTER";
+					}
 				} else if (component.type == "AgentBehavior") {
 					if (component.agentBehaviorName.empty()) {
 						component.agentBehaviorName = "Agent";
@@ -2009,31 +2231,39 @@ void SceneDocument::Clear(const std::string& sceneName) {
 	sceneName_ = sceneName;
 	entities_.clear();
 	teams_.clear();
+	lightingSettings_ = {};
 	postProcessSettings_ = {};
 	debugSettings_ = {};
 	nextId_ = 1;
 	dirty_ = false;
 	revision_ = 0;
+	lastLoadError_.clear();
 }
 
 bool SceneDocument::Load(const std::string& filePath) {
+	lastLoadError_.clear();
 	if (LoadInternal(filePath)) {
 		return true;
 	}
 
+	const std::string primaryError = lastLoadError_;
 	const std::string backupPath = filePath + ".bak";
 	if (!LoadInternal(backupPath)) {
+		lastLoadError_ =
+			"Primary: " + primaryError + " | Backup: " + lastLoadError_;
 		return false;
 	}
 
 	MarkDirty();
+	lastLoadError_ = "Recovered from backup: " + backupPath;
 	return true;
 }
 
 bool SceneDocument::Save(const std::string& filePath) {
 	json root;
-	root["version"] = 24;
+	root["version"] = SceneDocumentMigrator::kCurrentVersion;
 	root["sceneName"] = sceneName_;
+	root["lighting"] = LightingSettingsToJson(lightingSettings_);
 	root["postProcess"] = PostProcessToJson(postProcessSettings_);
 	root["debug"] = DebugSettingsToJson(debugSettings_);
 	root["teams"] = json::array();
@@ -2081,7 +2311,7 @@ bool SceneDocument::Save(const std::string& filePath) {
 			{ "team", entity.teamName },
 			{ "transform", {
 				{ "scale", VectorToJson(entity.transform.scale) },
-				{ "rotate", VectorToJson(entity.transform.rotate) },
+				{ "rotation", QuaternionToJson(entity.transform.rotate) },
 				{ "translate", VectorToJson(entity.transform.translate) }
 			} },
 			{ "modelPath", modelPath },
@@ -2284,7 +2514,7 @@ bool SceneDocument::SetParent(uint64_t id, uint64_t parentId) {
 		);
 	}
 	Vector3 localScale{};
-	Vector3 localRotate{};
+	Quaternion localRotate = MakeIdentityQuaternion();
 	Vector3 localTranslate{};
 	if (!DecomposeAffineMatrix(
 		localMatrix,
@@ -2671,6 +2901,57 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 			}
 			if (found->cameraFarClip <= found->cameraNearClip) {
 				found->cameraFarClip = 1000.0f;
+				changed = true;
+			}
+		} else if (type == "Light") {
+			if (
+				found->lightType != "Directional" &&
+				found->lightType != "Point" &&
+				found->lightType != "Spot"
+			) {
+				found->lightType = "Point";
+				changed = true;
+			}
+			const float range = (std::max)(found->lightRange, 0.1f);
+			const float decay = (std::max)(found->lightDecay, 0.0f);
+			const float intensity = (std::max)(found->lightIntensity, 0.0f);
+			const Vector4 color{
+				std::clamp(found->lightColor.x, 0.0f, 1.0f),
+				std::clamp(found->lightColor.y, 0.0f, 1.0f),
+				std::clamp(found->lightColor.z, 0.0f, 1.0f),
+				std::clamp(found->lightColor.w, 0.0f, 1.0f)
+			};
+			const float outerAngle = std::clamp(
+				found->lightSpotOuterAngle,
+				1.0f,
+				89.0f
+			);
+			const float innerAngle = std::clamp(
+				found->lightSpotInnerAngle,
+				0.0f,
+				outerAngle
+			);
+			if (
+				found->lightRange != range ||
+				found->lightDecay != decay ||
+				found->lightIntensity != intensity ||
+				found->lightSpotOuterAngle != outerAngle ||
+				found->lightSpotInnerAngle != innerAngle ||
+				found->lightColor.x != color.x ||
+				found->lightColor.y != color.y ||
+				found->lightColor.z != color.z ||
+				found->lightColor.w != color.w
+			) {
+				found->lightColor = color;
+				found->lightRange = range;
+				found->lightDecay = decay;
+				found->lightIntensity = intensity;
+				found->lightSpotOuterAngle = outerAngle;
+				found->lightSpotInnerAngle = innerAngle;
+				changed = true;
+			}
+			if (found->lightType == "Point" && found->lightCastsShadow) {
+				found->lightCastsShadow = false;
 				changed = true;
 			}
 		} else if (type == "MonitorRenderer") {
@@ -3106,6 +3387,15 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.cameraFarClip = 1000.0f;
 		component.cameraInvertYaw = false;
 		component.cameraInvertPitch = false;
+	} else if (type == "Light") {
+		component.lightType = "Point";
+		component.lightColor = { 1.0f, 0.85f, 0.65f, 1.0f };
+		component.lightIntensity = 2.0f;
+		component.lightRange = 8.0f;
+		component.lightDecay = 1.0f;
+		component.lightSpotInnerAngle = 25.0f;
+		component.lightSpotOuterAngle = 35.0f;
+		component.lightCastsShadow = false;
 	} else if (type == "MonitorRenderer") {
 		component.monitorCameraEntityId = 0;
 		component.monitorCameraName = "";
@@ -3206,6 +3496,13 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.waterDrag = 4.0f;
 		component.waterMaxFallSpeed = 5.0f;
 		component.waterSwimUpSpeed = 12.0f;
+	} else if (type == "EntityReference") {
+		component.entityReferenceName = "Target";
+		component.entityReferenceTarget = {};
+	} else if (type == "SceneTransition") {
+		component.sceneTransitionTargetSceneId = "gameplay";
+		component.sceneTransitionTriggerType = "Key";
+		component.sceneTransitionTriggerKey = "ENTER";
 	} else if (type == "CameraPath") {
 		component.cameraPathTargetCameraName = "";
 		component.cameraPathTriggerType = "Key";
@@ -3323,18 +3620,69 @@ const SceneEntity* SceneDocument::FindEntityByName(const std::string& name) cons
 bool SceneDocument::LoadInternal(const std::string& filePath) {
 	std::ifstream input(StringUtility::ToPath(filePath), std::ios::binary);
 	if (!input.is_open()) {
+		lastLoadError_ = "Scene file could not be opened: " + filePath;
 		return false;
 	}
 
+	bool migrated = false;
 	try {
-		const json root = json::parse(input);
-		if (!root.is_object() || !root.contains("entities")) {
+		json root = json::parse(input);
+		std::string migrationError;
+		if (!SceneDocumentMigrator::Migrate(
+			root,
+			migrated,
+			migrationError
+		)) {
+			lastLoadError_ = migrationError;
 			return false;
+		}
+		if (!root.contains("entities") || !root.at("entities").is_array()) {
+			lastLoadError_ = "Scene JSON must contain an entities array";
+			return false;
+		}
+		if (root.contains("lighting") && !root.at("lighting").is_object()) {
+			lastLoadError_ = "Scene lighting settings must be an object";
+			return false;
+		}
+		if (root.contains("postProcess") && !root.at("postProcess").is_object()) {
+			lastLoadError_ = "Scene postProcess must be an object";
+			return false;
+		}
+		if (root.contains("debug") && !root.at("debug").is_object()) {
+			lastLoadError_ = "Scene debug settings must be an object";
+			return false;
+		}
+		if (root.contains("teams") && !root.at("teams").is_array()) {
+			lastLoadError_ = "Scene teams must be an array";
+			return false;
+		}
+		if (root.contains("teams")) {
+			std::unordered_set<std::string> teamNames;
+			for (const json& team : root.at("teams")) {
+				if (!team.is_object()) {
+					lastLoadError_ = "Scene contains an invalid Team entry";
+					return false;
+				}
+				if (!team.contains("name") || !team.at("name").is_string() ||
+					team.at("name").get<std::string>().empty()) {
+					lastLoadError_ = "Scene Team requires a name";
+					return false;
+				}
+				const std::string teamName = team.at("name").get<std::string>();
+				if (!teamNames.insert(teamName).second) {
+					lastLoadError_ = "Duplicate Scene Team name: " + teamName;
+					return false;
+				}
+			}
 		}
 
 		sceneName_ = root.value("sceneName", std::string{});
 		entities_.clear();
 		teams_.clear();
+		lightingSettings_ = LightingSettingsFromJson(
+			root.value("lighting", json::object()),
+			SceneLightingSettings{}
+		);
 		postProcessSettings_ = PostProcessFromJson(
 			root.value("postProcess", json::object()),
 			ScenePostProcessSettings{}
@@ -3351,6 +3699,35 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 			}
 		}
 		for (const json& source : root.at("entities")) {
+			if (!source.is_object()) {
+				lastLoadError_ = "Scene contains an invalid Entity entry";
+				return false;
+			}
+			if (source.contains("transform") &&
+				!source.at("transform").is_object()) {
+				lastLoadError_ = "Entity transform must be an object";
+				return false;
+			}
+			if (source.contains("sprite") && !source.at("sprite").is_object()) {
+				lastLoadError_ = "Entity sprite must be an object";
+				return false;
+			}
+			if (source.contains("components")) {
+				if (!source.at("components").is_array()) {
+					lastLoadError_ = "Entity components must be an array";
+					return false;
+				}
+				for (const json& component : source.at("components")) {
+					if (!component.is_object() ||
+						!component.contains("type") ||
+						!component.at("type").is_string() ||
+						component.at("type").get<std::string>().empty()) {
+						lastLoadError_ =
+							"Entity contains an invalid Component entry";
+						return false;
+					}
+				}
+			}
 			SceneEntity entity{};
 			entity.id = source.value("id", uint64_t{});
 			entity.parentId = source.value("parentId", uint64_t{});
@@ -3393,10 +3770,14 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 						entity.transform.scale
 					);
 				}
-				if (transform.contains("rotate")) {
-					entity.transform.rotate = JsonToVector(
-						transform.at("rotate"),
+				if (transform.contains("rotation")) {
+					entity.transform.rotate = JsonToQuaternion(
+						transform.at("rotation"),
 						entity.transform.rotate
+					);
+				} else if (transform.contains("rotate")) {
+					entity.transform.rotate = MakeQuaternionFromEuler(
+						JsonToVector(transform.at("rotate"), Vector3{})
 					);
 				}
 				if (transform.contains("translate")) {
@@ -3406,21 +3787,38 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 					);
 				}
 			}
-			if (entity.id != 0) {
-				SynchronizeLegacyRendererFields(entity);
-				entities_.push_back(std::move(entity));
-			}
+			SynchronizeLegacyRendererFields(entity);
+			entities_.push_back(std::move(entity));
 		}
 	}
-	catch (...) {
+	catch (const json::exception& exception) {
+		entities_.clear();
+		teams_.clear();
+		lastLoadError_ = "Scene JSON is invalid: ";
+		lastLoadError_ += exception.what();
+		return false;
+	}
+
+	std::vector<SceneValidationIssue> issues;
+	if (!SceneValidator::ValidateDocument(
+		*this,
+		nullptr,
+		{},
+		filePath,
+		issues
+	)) {
+		lastLoadError_ = SceneValidator::FormatIssues(issues);
 		entities_.clear();
 		teams_.clear();
 		return false;
 	}
-
 	RebuildNextId();
 	ValidateHierarchy();
-	dirty_ = false;
+	dirty_ = migrated;
+	if (migrated) {
+		++revision_;
+	}
+	lastLoadError_.clear();
 	return true;
 }
 

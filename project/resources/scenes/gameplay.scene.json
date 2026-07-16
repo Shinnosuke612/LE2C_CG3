@@ -5070,8 +5070,191 @@
           -14.490060806274414
         ]
       }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "enabled": true,
+          "targetSceneId": "title",
+          "triggerKey": "ENTER",
+          "triggerType": "Key",
+          "type": "SceneTransition"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 80,
+      "locked": false,
+      "modelPath": "",
+      "name": "Entity",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [],
+      "folder": true,
+      "folderTeamEnabled": false,
+      "id": 81,
+      "locked": false,
+      "modelPath": "",
+      "name": "Lighting",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotate": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "castsShadow": true,
+          "color": [
+            1.0,
+            0.7854783535003662,
+            0.5635592937469482,
+            1.0
+          ],
+          "decay": 1.0,
+          "enabled": true,
+          "innerAngle": 25.0,
+          "intensity": 1.100000023841858,
+          "lightType": "Directional",
+          "outerAngle": 35.0,
+          "range": 8.0,
+          "shadow": {
+            "bias": 0.0024999999441206455,
+            "distance": 326.5,
+            "farClip": 700.0,
+            "nearClip": 0.10000000149011612,
+            "normalBias": 0.019999999552965164,
+            "orthographicSize": 306.5,
+            "strength": 0.550000011920929,
+            "texelSnap": true
+          },
+          "type": "Light"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 82,
+      "locked": false,
+      "modelPath": "",
+      "name": "Sun",
+      "parentId": 81,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotate": [
+          0.42198678851127625,
+          -0.6191548109054565,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
     }
   ],
+  "lighting": {
+    "shadowMapSize": 4096
+  },
   "postProcess": {
     "baseExposure": 1.0,
     "bloomBlurIterations": 3,
@@ -5234,5 +5417,5 @@
       "name": "School Fish"
     }
   ],
-  "version": 24
+  "version": 26
 }

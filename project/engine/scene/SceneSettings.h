@@ -1,10 +1,16 @@
 // 役割: EntityのHierarchyとは独立して保存するシーン全体設定を定義する。
 #pragma once
 
+#include <cstdint>
+
 #include "../math/Vector2.h"
 #include "../math/Vector4.h"
 
 // Scene-wide settings that are serialized independently of the entity hierarchy.
+struct SceneLightingSettings {
+	uint32_t shadowMapSize = 4096;
+};
+
 struct ScenePostProcessSettings {
 	bool bloomEnabled = true;
 	float baseExposure = 1.0f;

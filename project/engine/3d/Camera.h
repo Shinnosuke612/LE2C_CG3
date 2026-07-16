@@ -40,6 +40,12 @@ public://メンバ関数
 	void SetRotate(const Vector3& rotate){
 		usesLookAtMatrix_ = false;
 		transform.rotate = rotate;
+		transform.useQuaternionRotation = false;
+	}
+	void SetRotateQuaternion(const Quaternion& rotate) {
+		usesLookAtMatrix_ = false;
+		transform.quaternionRotate = Normalize(rotate);
+		transform.useQuaternionRotation = true;
 	}
 	void SetTranslate(const Vector3& translate){
 		usesLookAtMatrix_ = false;
@@ -59,6 +65,12 @@ public://メンバ関数
 	const Matrix4x4& GetViewProjectionMatrix() const{ return viewProjectionMatrix; }
 
 	const Vector3& GetRotate() const{ return transform.rotate; }
+	const Quaternion& GetRotateQuaternion() const {
+		return transform.quaternionRotate;
+	}
+	bool UsesQuaternionRotation() const {
+		return transform.useQuaternionRotation;
+	}
 	const Vector3& GetTranslate() const{ return transform.translate; }
 	const Vector3& GetOrbitTarget() const { return orbitTarget_; }
 	float GetOrbitDistance() const { return orbitDistance_; }

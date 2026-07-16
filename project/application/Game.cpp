@@ -1,9 +1,17 @@
 // 役割: ゲーム全体の更新、描画、ポストプロセスとエディタ再生制御を実装する。
 #include "Game.h"
+#include "scene/EditorBootstrap.h"
+#include "scene/RuntimeBootstrap.h"
 #include "scene/SceneFactory.h"
+#include "scene/SceneStartupErrorScreen.h"
 #include "../engine/scene/EditorSession.h"
+#include "../engine/scene/SceneAssetService.h"
+#include "../engine/scene/SceneCatalog.h"
 #include "../engine/scene/SceneEntityQuery.h"
+#include "../engine/scene/SceneExecutionContext.h"
+#include "../engine/scene/SceneTemplateRegistry.h"
 #include "../engine/scene/SceneTransformResolver.h"
+#include "../engine/scene/SceneValidator.h"
 
 #include "../engine/base/DirectXCommon.h"
 #include "../engine/base/BloomRenderer.h"
@@ -26,6 +34,7 @@
 #include "../engine/particle/ParticleEmitter.h"
 #include "../engine/debug/DebugRenderer.h"
 #include "../engine/utility/EditableResourcePath.h"
+#include "../engine/utility/Logger.h"
 #include "../engine/utility/StringUtility.h"
 #include "../externals/imgui/imgui.h"
 
@@ -41,11 +50,15 @@ namespace {
 	using SceneEntityQuery::IsEntityActiveInHierarchy;
 	using SceneTransformResolver::ResolveScene3DTransform;
 
-#if defined(NDEBUG) && !defined(DEVELOPMENT)
-	constexpr bool kStartInPlayMode = true;
+	constexpr SceneBuildConfiguration GetCurrentBuildConfiguration() {
+#if defined(_DEBUG)
+		return SceneBuildConfiguration::Debug;
+#elif defined(DEVELOPMENT)
+		return SceneBuildConfiguration::Development;
 #else
-	constexpr bool kStartInPlayMode = false;
+		return SceneBuildConfiguration::Release;
 #endif
+	}
 
 	std::string ResolveProjectResourcePath(const std::filesystem::path& relativePath) {
 		return StringUtility::ToUtf8(EditableResourcePath::Resolve(relativePath));
@@ -152,114 +165,106 @@ void Game::Initialize() {
 	// 基底クラスの初期化処理
 	Framework::Initialize();
 
-	editorSession_ = new EditorSession();
-	const bool sceneLoaded = editorSession_->Initialize(
-		"GAMEPLAY",
-		ResolveProjectResourcePath("resources/scenes/gameplay.scene.json")
-	);
-	if (!sceneLoaded) {
-		SceneDocument& document = editorSession_->GetEditDocument();
-		auto addEntity = [&document](
-			const char* name,
-			const char* modelPath,
-			const Transform& transform,
-			std::vector<SceneComponent> components
-		) {
-			SceneEntity& entity = document.CreateEntity(name);
-			entity.modelPath = modelPath ? modelPath : "";
-			entity.transform = transform;
-			entity.components = std::move(components);
-			for (SceneComponent& component : entity.components) {
-				if (component.type == "MeshRenderer") {
-					component.modelPath = entity.modelPath;
-				} else if (component.type == "Camera") {
-					component.cameraIsMain = true;
-				} else if (component.type == "Environment") {
-					component.environmentSkyboxEnabled = true;
-					component.environmentSkyboxPath =
-						"resources/rostock_laage_airport_4k.dds";
-					component.environmentSkyboxIntensity = 1.0f;
-					component.environmentReflectionIntensity = 0.3f;
-				}
-			}
-		};
-		addEntity(
-			"Main Camera",
-			"",
-			Transform{
-				{ 1.0f, 1.0f, 1.0f },
-				{ 0.0f, 0.0f, 0.0f },
-				{ 0.0f, 2.0f, -10.0f }
-			},
-			{ "Camera" }
+	const std::string sceneCatalogFilePath =
+		ResolveProjectResourcePath("resources/scenes/scenes.json");
+	auto showSceneStartupError = [this, &sceneCatalogFilePath](
+		SceneStartupErrorKind errorKind,
+		const std::string& detail
+	) {
+		Logger::Log(detail + "\n");
+		startupErrorScreen_ = new SceneStartupErrorScreen();
+		startupErrorScreen_->Show(
+			winApp_->GetHwnd(),
+			errorKind,
+			detail,
+			sceneCatalogFilePath
 		);
-		addEntity(
-			"Environment",
-			"",
-			Transform{},
-			{ "Environment" }
-		);
-		addEntity(
-			"Terrain",
-			"terrain.obj",
-			Transform{
-				{ 10.0f, 10.0f, 10.0f },
-				{ 0.0f, 0.0f, 0.0f },
-				{ 0.0f, -5.0f, 0.0f }
-			},
-			{ "MeshRenderer" }
-		);
-		addEntity(
-			"Animated Cube",
-			"AnimatedCube/AnimatedCube.gltf",
-			Transform{
-				{ 0.65f, 0.65f, 0.65f },
-				{ 0.0f, 0.0f, 0.0f },
-				{ 3.0f, 10.5f, -2.0f }
-			},
-			{ "MeshRenderer", "Animator" }
-		);
-		addEntity(
-			"Human",
-			"human/walk.gltf",
-			Transform{
-				{ 1.0f, 1.0f, 1.0f },
-				{ 0.0f, 0.0f, 0.0f },
-				{ -2.0f, 0.0f, -2.0f }
-			},
-			{ "MeshRenderer", "Animator" }
-		);
-		addEntity(
-			"Player",
-			"Cube.obj",
-			Transform{
-				{ 1.0f, 1.0f, 1.0f },
-				{ 0.0f, 0.0f, 0.0f },
-				{ 0.0f, 1.0f, -4.0f }
-			},
-			{
-				"MeshRenderer",
-				"PlayerBehavior",
-				"OBBCollider",
-				"Camera",
-				"ThirdPersonCamera",
-				"PhysicsBody"
-			}
-		);
-		editorSession_->Save();
-	}
+	};
 
-	sceneManager_ = new SceneManager();
-	sceneManager_->SetEditorSession(editorSession_);
+	sceneCatalog_ = new SceneCatalog();
+	std::string sceneCatalogError;
+	const bool sceneCatalogLoaded = sceneCatalog_->Load(
+		sceneCatalogFilePath,
+		sceneCatalogError
+	);
+	if (!sceneCatalogLoaded) {
+		showSceneStartupError(
+			SceneStartupErrorKind::CatalogLoad,
+			sceneCatalogError
+		);
+		return;
+	}
+	std::vector<SceneValidationIssue> sceneValidationIssues;
+	if (!SceneValidator::ValidateCatalog(
+		*sceneCatalog_,
+		sceneValidationIssues
+	)) {
+		showSceneStartupError(
+			SceneStartupErrorKind::CatalogValidation,
+			SceneValidator::FormatIssues(sceneValidationIssues)
+		);
+		return;
+	}
+	if (!sceneValidationIssues.empty()) {
+		Logger::Log(SceneValidator::FormatIssues(sceneValidationIssues) + "\n");
+	}
+	const SceneDescriptor* startScene = sceneCatalog_->GetStartScene();
+	if (!startScene) {
+		showSceneStartupError(
+			SceneStartupErrorKind::StartScene,
+			"startScene does not reference a registered Scene"
+		);
+		return;
+	}
 	sceneFactory_ = new SceneFactory();
-	sceneManager_->SetSceneFactory(sceneFactory_);
-	sceneManager_->ChangeScene("GAMEPLAY");
-	if (kStartInPlayMode) {
-		editorSession_->Play();
+	std::string bootstrapError;
+	const SceneStartupMode startupMode =
+		sceneCatalog_->GetStartupMode(GetCurrentBuildConfiguration());
+	if (startupMode == SceneStartupMode::Editor) {
+		editorBootstrap_ = new EditorBootstrap();
+		if (!editorBootstrap_->Initialize(
+			sceneCatalog_,
+			sceneFactory_,
+			*startScene,
+			bootstrapError
+		)) {
+			showSceneStartupError(
+				SceneStartupErrorKind::EditorStartup,
+				bootstrapError
+			);
+			return;
+		}
+		sceneManager_ = editorBootstrap_->GetSceneManager();
+		editorSession_ = editorBootstrap_->GetEditorSession();
+		executionContext_ = editorSession_;
+		sceneAssetService_ = editorBootstrap_->GetSceneAssetService();
+		sceneTemplateRegistry_ =
+			editorBootstrap_->GetSceneTemplateRegistry();
+	} else {
+		runtimeBootstrap_ = new RuntimeBootstrap();
+		if (!runtimeBootstrap_->Initialize(
+			sceneCatalog_,
+			sceneFactory_,
+			*startScene,
+			bootstrapError
+		)) {
+			showSceneStartupError(
+				SceneStartupErrorKind::RuntimeStartup,
+				bootstrapError
+			);
+			return;
+		}
+		sceneManager_ = runtimeBootstrap_->GetSceneManager();
+		executionContext_ = sceneManager_->GetExecutionContext();
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	imguiManager_->SetEditorSession(editorSession_);
+	if (editorSession_) {
+		imguiManager_->SetEditorSession(editorSession_);
+		imguiManager_->SetSceneCatalog(sceneCatalog_);
+		imguiManager_->SetSceneManager(sceneManager_);
+		imguiManager_->SetSceneTemplateRegistry(sceneTemplateRegistry_);
+	}
 #endif
 
 	sceneRenderTarget_ = new SceneRenderTarget();
@@ -307,32 +312,34 @@ void Game::Initialize() {
 	bloomRenderer_->Initialize(dxCommon_, srvManager_);
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	modelPreviewRenderTarget_ = new SceneRenderTarget();
-	SceneRenderTarget::Desc modelPreviewDesc{};
-	modelPreviewDesc.width = 512;
-	modelPreviewDesc.height = 512;
-	modelPreviewDesc.format = RenderFormats::kSceneHdrFormat;
-	modelPreviewDesc.createDepth = true;
-	modelPreviewDesc.clearColor[0] = 0.035f;
-	modelPreviewDesc.clearColor[1] = 0.04f;
-	modelPreviewDesc.clearColor[2] = 0.05f;
-	modelPreviewDesc.clearColor[3] = 1.0f;
-	modelPreviewRenderTarget_->Initialize(
-		dxCommon_,
-		srvManager_,
-		modelPreviewDesc
-	);
-	modelPreviewCamera_ = new Camera();
-	modelPreviewCamera_->SetOrbitMode(true);
-	modelPreviewCamera_->SetFovY(0.7f);
-	modelPreviewCamera_->SetAspectRatio(1.0f);
-	modelPreviewCamera_->SetNearClip(0.01f);
-	modelPreviewCamera_->SetFarClip(10000.0f);
-	modelPreviewObject_ = new Object3d();
-	modelPreviewObject_->Initialize(Object3dCommon::GetInstance());
-	modelPreviewObject_->SetCamera(modelPreviewCamera_);
-	// Asset previews must not depend on the active scene's light bindings.
-	modelPreviewObject_->SetEnableLighting(false);
+	if (editorSession_) {
+		modelPreviewRenderTarget_ = new SceneRenderTarget();
+		SceneRenderTarget::Desc modelPreviewDesc{};
+		modelPreviewDesc.width = 512;
+		modelPreviewDesc.height = 512;
+		modelPreviewDesc.format = RenderFormats::kSceneHdrFormat;
+		modelPreviewDesc.createDepth = true;
+		modelPreviewDesc.clearColor[0] = 0.035f;
+		modelPreviewDesc.clearColor[1] = 0.04f;
+		modelPreviewDesc.clearColor[2] = 0.05f;
+		modelPreviewDesc.clearColor[3] = 1.0f;
+		modelPreviewRenderTarget_->Initialize(
+			dxCommon_,
+			srvManager_,
+			modelPreviewDesc
+		);
+		modelPreviewCamera_ = new Camera();
+		modelPreviewCamera_->SetOrbitMode(true);
+		modelPreviewCamera_->SetFovY(0.7f);
+		modelPreviewCamera_->SetAspectRatio(1.0f);
+		modelPreviewCamera_->SetNearClip(0.01f);
+		modelPreviewCamera_->SetFarClip(10000.0f);
+		modelPreviewObject_ = new Object3d();
+		modelPreviewObject_->Initialize(Object3dCommon::GetInstance());
+		modelPreviewObject_->SetCamera(modelPreviewCamera_);
+		// Asset previews must not depend on the active scene's light bindings.
+		modelPreviewObject_->SetEnableLighting(false);
+	}
 #endif
 	baseExposure_ = bloomParameters_.exposure;
 	currentExposure_ = baseExposure_;
@@ -340,10 +347,13 @@ void Game::Initialize() {
 	TextureManager::GetInstance()->LoadTexture("resources/noise0.png");
 	TextureManager::GetInstance()->LoadTexture("resources/noise1.png");
 
-	if (editorSession_) {
-		const SceneDocument& document = editorSession_->GetActiveDocument();
-		ApplyPostProcessSettings(document.GetPostProcessSettings());
-		appliedPostProcessRevision_ = document.GetRevision();
+	if (executionContext_) {
+		const SceneDocument* document = sceneManager_
+			? sceneManager_->GetActiveSceneDocument()
+			: &executionContext_->GetActiveDocument();
+		ApplyPostProcessSettings(document->GetPostProcessSettings());
+		appliedPostProcessRevision_ = document->GetRevision();
+		appliedPostProcessSourceKey_ = GetActivePostProcessSourceKey();
 	}
 }
 
@@ -351,6 +361,12 @@ void Game::Update() {
 	// 基底クラスの更新処理
 	Framework::Update();
 
+	if (startupErrorScreen_) {
+		if (startupErrorScreen_->IsCloseRequested()) {
+			endRequest_ = true;
+		}
+		return;
+	}
 	if (IsEndRequest()) {
 		return;
 	}
@@ -360,20 +376,28 @@ void Game::Update() {
 		noiseTime_ += deltaTime * noiseSpeed_;
 	}
 
-	if (editorSession_) {
-		const SceneDocument& document = editorSession_->GetActiveDocument();
-		if (document.GetRevision() != appliedPostProcessRevision_) {
+	if (executionContext_) {
+		const SceneDocument* document = sceneManager_
+			? sceneManager_->GetActiveSceneDocument()
+			: &executionContext_->GetActiveDocument();
+		const std::string sourceKey = GetActivePostProcessSourceKey();
+		if (
+			sourceKey != appliedPostProcessSourceKey_ ||
+			document->GetRevision() != appliedPostProcessRevision_
+		) {
 			const ScenePostProcessSettings& settings =
-				document.GetPostProcessSettings();
+				document->GetPostProcessSettings();
 			if (!EqualPostProcessSettings(CapturePostProcessSettings(), settings)) {
 				ApplyPostProcessSettings(settings);
 			}
-			appliedPostProcessRevision_ = document.GetRevision();
+			appliedPostProcessRevision_ = document->GetRevision();
+			appliedPostProcessSourceKey_ = sourceKey;
 		}
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	if (Input* input = Input::GetInstance()) {
+	if (editorSession_) {
+		Input* input = Input::GetInstance();
 		if (input->TriggerKey(DIK_F1)) {
 			if (editorSession_->IsEditing()) {
 				editorSession_->Play();
@@ -391,7 +415,8 @@ void Game::Update() {
 	}
 #endif
 
-	const bool isEditingAtFrameStart = editorSession_->IsEditing();
+	const bool isEditingAtFrameStart =
+		executionContext_ && executionContext_->IsEditing();
 	const bool continuedEditing = isEditingAtFrameStart && editorWasEditingLastFrame_;
 	if (continuedEditing) {
 		editorCameraSnapshot_ = CaptureCameraSnapshot();
@@ -399,6 +424,7 @@ void Game::Update() {
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	DebugRenderer::GetInstance()->Clear();
+	if (editorSession_) {
 
 	ImGui::Begin("Post Process Stack");
 	ImGui::Text("Active: %d", GetEnabledPostEffectCount());
@@ -814,11 +840,56 @@ void Game::Update() {
 			static_cast<float>(imguiManager_->GetSceneViewHeight())
 		);
 	}
+	}
 #endif
 
-	const bool reloadRequested = editorSession_->ConsumeReloadRequest();
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	ProcessSceneAssetRequests();
+	ProcessSceneInstanceRequests();
+	ProcessProjectSettingsRequests();
+
+	std::string requestedSceneId;
+	bool discardUnsavedChanges = false;
+	if (
+		editorSession_ &&
+		imguiManager_ &&
+		imguiManager_->ConsumeOpenSceneRequest(
+			requestedSceneId,
+			discardUnsavedChanges
+		)
+	) {
+		const SceneDescriptor* requestedScene = sceneCatalog_
+			? sceneCatalog_->Find(requestedSceneId)
+			: nullptr;
+		if (!requestedScene) {
+			Logger::Log(
+				"Requested Edit Scene is not registered: " +
+				requestedSceneId + "\n"
+			);
+		} else if (!editorSession_->OpenEditScene(
+			requestedScene->id,
+			requestedScene->displayName,
+			requestedScene->filePath,
+			discardUnsavedChanges
+		)) {
+			Logger::Log(
+				"Edit Scene could not be opened: " +
+				requestedScene->filePath + "\n"
+			);
+		} else {
+			imguiManager_->NotifyEditSceneOpened();
+		}
+	}
+#endif
+
+	const bool reloadRequested =
+		editorSession_ && editorSession_->ConsumeReloadRequest();
+	const bool switchingEditScene =
+		editorSession_ && editorSession_->IsEditing() &&
+		sceneManager_->GetCurrentSceneId() != editorSession_->GetEditSceneId();
 	const bool preserveEditorCamera =
-		editorSession_->IsEditing() && reloadRequested;
+		editorSession_ && editorSession_->IsEditing() &&
+		reloadRequested && !switchingEditScene;
 	const CameraSnapshot editorCameraSnapshot = preserveEditorCamera
 		? (
 			continuedEditing
@@ -832,9 +903,12 @@ void Game::Update() {
 	if (Input* input = Input::GetInstance()) {
 		const bool altHeld =
 			input->PushKey(DIK_LMENU) || input->PushKey(DIK_RMENU);
+		const bool playing =
+			executionContext_ && executionContext_->IsPlaying();
 		if (
+			editorSession_ &&
 			imguiManager_ &&
-			editorSession_->IsPlaying() &&
+			playing &&
 			!altHeld
 		) {
 			input->SetCursorCaptureRect(
@@ -844,18 +918,20 @@ void Game::Update() {
 				imguiManager_->GetSceneViewMaxY()
 			);
 		}
-		input->SetCursorCapture(editorSession_->IsPlaying() && !altHeld);
+		input->SetCursorCapture(playing && !altHeld);
 	}
+	const bool paused =
+		executionContext_ && executionContext_->IsPaused();
 	const bool pauseStarted =
-		editorSession_->IsPaused() && !wasPausedLastFrame_;
+		paused && !wasPausedLastFrame_;
 	const bool pauseEnded =
-		!editorSession_->IsPaused() && wasPausedLastFrame_;
+		!paused && wasPausedLastFrame_;
 	if (pauseStarted) {
 		BeginPauseDebugCamera();
 	} else if (pauseEnded) {
 		EndPauseDebugCamera();
 	}
-	if (!editorSession_->IsPaused()) {
+	if (!paused) {
 		sceneManager_->Update(deltaTime);
 	} else {
 		sceneManager_->UpdatePaused();
@@ -863,8 +939,9 @@ void Game::Update() {
 	if (preserveEditorCamera) {
 		RestoreCameraSnapshot(editorCameraSnapshot);
 	}
-	editorWasEditingLastFrame_ = editorSession_->IsEditing();
-	wasPausedLastFrame_ = editorSession_->IsPaused();
+	editorWasEditingLastFrame_ =
+		executionContext_ && executionContext_->IsEditing();
+	wasPausedLastFrame_ = paused;
 
 	ParticleManager::ExposureFlashEvent exposureFlash{};
 	while (ParticleManager::GetInstance()->ConsumeExposureFlashEvent(exposureFlash)) {
@@ -885,44 +962,255 @@ void Game::Update() {
 
 }
 
+void Game::ProcessSceneAssetRequests() {
+	if (!imguiManager_ || !sceneAssetService_ || !editorSession_ ||
+		!sceneCatalog_) {
+		return;
+	}
+	SceneAssetRequest request{};
+	if (!imguiManager_->ConsumeSceneAssetRequest(request)) {
+		return;
+	}
+
+	std::string errorMessage;
+	bool succeeded = false;
+	if (!editorSession_->IsEditing()) {
+		errorMessage = "Scene assets can only be managed in Edit Mode";
+	} else if (editorSession_->GetEditDocument().IsDirty()) {
+		errorMessage = "Save the active Scene before managing Scene assets";
+	} else {
+		switch (request.operation) {
+		case SceneAssetOperation::Create:
+			succeeded = sceneAssetService_->CreateScene(
+				request.sceneId,
+				request.displayName,
+				request.assetPath,
+				request.templateId,
+				errorMessage
+			);
+			break;
+		case SceneAssetOperation::Duplicate:
+			succeeded = sceneAssetService_->DuplicateScene(
+				request.sourceSceneId,
+				request.sceneId,
+				request.displayName,
+				request.assetPath,
+				errorMessage
+			);
+			break;
+		case SceneAssetOperation::Rename:
+			if (request.sceneId != editorSession_->GetEditSceneId()) {
+				errorMessage = "Only the active Scene can be renamed";
+				break;
+			}
+			succeeded = sceneAssetService_->RenameScene(
+				request.sceneId,
+				request.displayName,
+				request.assetPath,
+				errorMessage
+			);
+			break;
+		case SceneAssetOperation::Delete:
+			if (request.sceneId == editorSession_->GetEditSceneId()) {
+				errorMessage = "The active Scene cannot be deleted";
+				break;
+			}
+			succeeded = sceneAssetService_->DeleteScene(
+				request.sceneId,
+				errorMessage
+			);
+			break;
+		default:
+			errorMessage = "Unknown Scene asset operation";
+			break;
+		}
+	}
+
+	const bool assetChanged = succeeded;
+	if (succeeded && request.operation != SceneAssetOperation::Delete) {
+		if (!OpenRegisteredEditScene(request.sceneId, true, errorMessage)) {
+			succeeded = false;
+			if (errorMessage.empty()) {
+				errorMessage =
+					"Scene asset was updated but could not be opened";
+			}
+		}
+	}
+	if (!succeeded && !errorMessage.empty()) {
+		Logger::Log(errorMessage + "\n");
+	}
+	if (assetChanged) {
+		imguiManager_->NotifySceneAssetOperationResult(true, {});
+	}
+	if (!succeeded) {
+		imguiManager_->NotifySceneAssetOperationResult(false, errorMessage);
+	}
+}
+
+void Game::ProcessSceneInstanceRequests() {
+	if (!imguiManager_ || !sceneManager_ || !editorSession_) {
+		return;
+	}
+	SceneInstanceRequest request{};
+	if (!imguiManager_->ConsumeSceneInstanceRequest(request)) {
+		return;
+	}
+
+	bool succeeded = false;
+	std::string message;
+	if (editorSession_->IsEditing()) {
+		message = "Scene Instance operations are available in Play Mode only";
+	} else {
+		switch (request.operation) {
+		case SceneInstanceOperation::LoadAdditive:
+			succeeded = sceneManager_->LoadSceneAdditive(
+				request.sceneId,
+				request.instanceKey
+			) != kInvalidSceneInstanceId;
+			message = succeeded
+				? "Additive Scene load queued."
+				: "Additive Scene could not be queued.";
+			break;
+		case SceneInstanceOperation::Unload:
+			succeeded = sceneManager_->UnloadScene(request.instanceId);
+			message = succeeded
+				? "Scene unload queued."
+				: "Scene Instance could not be unloaded.";
+			break;
+		case SceneInstanceOperation::SetActive:
+			succeeded = sceneManager_->SetActiveScene(request.instanceId);
+			message = succeeded
+				? "Active Scene changed."
+				: "Active Scene could not be changed.";
+			break;
+		case SceneInstanceOperation::SetPersistent:
+			succeeded = sceneManager_->SetScenePersistent(
+				request.instanceId,
+				request.persistent
+			);
+			message = succeeded
+				? "Persistent setting changed."
+				: "Persistent setting could not be changed.";
+			break;
+		default:
+			message = "Unknown Scene Instance operation.";
+			break;
+		}
+	}
+	if (!succeeded) {
+		Logger::Log(message + "\n");
+	}
+	imguiManager_->NotifySceneInstanceOperationResult(succeeded, message);
+}
+
+void Game::ProcessProjectSettingsRequests() {
+	if (!imguiManager_ || !sceneCatalog_) {
+		return;
+	}
+	std::string requestedStartSceneId;
+	if (imguiManager_->ConsumeStartSceneRequest(requestedStartSceneId)) {
+		const SceneCatalog catalogSnapshot = *sceneCatalog_;
+		std::string errorMessage;
+		const bool succeeded = sceneCatalog_->SetStartScene(
+			requestedStartSceneId,
+			errorMessage
+		) && sceneCatalog_->Save(errorMessage);
+		if (!succeeded) {
+			*sceneCatalog_ = catalogSnapshot;
+			if (!errorMessage.empty()) {
+				Logger::Log(errorMessage + "\n");
+			}
+		}
+		imguiManager_->NotifyProjectSettingsResult(
+			succeeded,
+			errorMessage
+		);
+	}
+
+	SceneBuildConfiguration configuration{};
+	SceneStartupMode mode{};
+	if (imguiManager_->ConsumeStartupModeRequest(configuration, mode)) {
+		const SceneCatalog catalogSnapshot = *sceneCatalog_;
+		std::string errorMessage;
+		const bool succeeded = sceneCatalog_->SetStartupMode(
+			configuration,
+			mode,
+			errorMessage
+		) && sceneCatalog_->Save(errorMessage);
+		if (!succeeded) {
+			*sceneCatalog_ = catalogSnapshot;
+			if (!errorMessage.empty()) {
+				Logger::Log(errorMessage + "\n");
+			}
+		}
+		imguiManager_->NotifyProjectSettingsResult(
+			succeeded,
+			errorMessage
+		);
+	}
+}
+
+bool Game::OpenRegisteredEditScene(
+	const std::string& sceneId,
+	bool discardUnsavedChanges,
+	std::string& errorMessage
+) {
+	const SceneDescriptor* scene = sceneCatalog_
+		? sceneCatalog_->Find(sceneId)
+		: nullptr;
+	if (!scene) {
+		errorMessage = "Scene is not registered: " + sceneId;
+		return false;
+	}
+	if (!editorSession_ || !editorSession_->OpenEditScene(
+		scene->id,
+		scene->displayName,
+		scene->filePath,
+		discardUnsavedChanges
+	)) {
+		errorMessage = "Edit Scene could not be opened: " + scene->filePath;
+		return false;
+	}
+	if (imguiManager_) {
+		imguiManager_->NotifyEditSceneOpened();
+	}
+	errorMessage.clear();
+	return true;
+}
+
 void Game::Draw() {
+	if (startupErrorScreen_) {
+		dxCommon_->PreDraw();
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+		srvManager_->PreDraw();
+		imguiManager_->EndFrame();
+#endif
+		dxCommon_->PostDraw();
+		return;
+	}
+
 	// 影描画でもスキニングパレットSRVを使うので先に必要
 	srvManager_->PreDraw();
 
 	sceneManager_->DrawShadow();
 	sceneManager_->DrawOffscreenViews();
 
+	uint32_t renderWidth = dxCommon_->GetClientWidth();
+	uint32_t renderHeight = dxCommon_->GetClientHeight();
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	sceneRenderTarget_->Resize(
-		imguiManager_->GetSceneViewWidth(),
-		imguiManager_->GetSceneViewHeight()
-	);
-	for (SceneRenderTarget* renderTarget : postProcessRenderTargets_) {
-		renderTarget->Resize(
-			imguiManager_->GetSceneViewWidth(),
-			imguiManager_->GetSceneViewHeight()
-		);
+	if (editorSession_ && imguiManager_) {
+		renderWidth = imguiManager_->GetSceneViewWidth();
+		renderHeight = imguiManager_->GetSceneViewHeight();
 	}
-	foregroundComposeRenderTarget_->Resize(
-		imguiManager_->GetSceneViewWidth(),
-		imguiManager_->GetSceneViewHeight()
-	);
-#else
-	sceneRenderTarget_->Resize(
-		dxCommon_->GetClientWidth(),
-		dxCommon_->GetClientHeight()
-	);
-	for (SceneRenderTarget* renderTarget : postProcessRenderTargets_) {
-		renderTarget->Resize(
-			dxCommon_->GetClientWidth(),
-			dxCommon_->GetClientHeight()
-		);
-	}
-	foregroundComposeRenderTarget_->Resize(
-		dxCommon_->GetClientWidth(),
-		dxCommon_->GetClientHeight()
-	);
 #endif
+	sceneRenderTarget_->Resize(renderWidth, renderHeight);
+	for (SceneRenderTarget* renderTarget : postProcessRenderTargets_) {
+		renderTarget->Resize(renderWidth, renderHeight);
+	}
+	foregroundComposeRenderTarget_->Resize(
+		renderWidth,
+		renderHeight
+	);
 
 	const bool deferForegroundEffects = waterRefractionEnabled_;
 	sceneManager_->SetDeferForegroundEffects(deferForegroundEffects);
@@ -1266,12 +1554,14 @@ void Game::Draw() {
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	imguiManager_->DrawEditorWorkspace(
-		sourceHandle,
-		GetPostProcessOutputTarget()->GetWidth(),
-		GetPostProcessOutputTarget()->GetHeight(),
-		sceneManager_->GetCurrentSceneName().c_str()
-	);
+	if (editorSession_) {
+		imguiManager_->DrawEditorWorkspace(
+			sourceHandle,
+			GetPostProcessOutputTarget()->GetWidth(),
+			GetPostProcessOutputTarget()->GetHeight(),
+			sceneManager_->GetCurrentSceneName().c_str()
+		);
+	}
 #endif
 
 	dxCommon_->PreDraw();
@@ -1350,14 +1640,32 @@ Game::WaterPostEffectState Game::ResolveWaterPostEffectState(
 		return state;
 	}
 
-	const SceneDocument* document =
+	std::vector<const SceneDocument*> documents;
+	const SceneDocument* activeDocument =
 		sceneManager_->GetActiveSceneDocument();
-	if (!document) {
+	if (activeDocument) {
+		documents.push_back(activeDocument);
+	}
+	for (const SceneInstance* instance :
+		sceneManager_->GetLoadedSceneInstances()) {
+		const SceneDocument* document = instance
+			? instance->GetDocument()
+			: nullptr;
+		if (
+			document &&
+			std::find(documents.begin(), documents.end(), document) ==
+				documents.end()
+		) {
+			documents.push_back(document);
+		}
+	}
+	if (documents.empty()) {
 		return state;
 	}
 
 	const Vector3 cameraPosition = camera->GetTranslate();
 	WaterPostEffectState firstVolume{};
+	for (const SceneDocument* document : documents) {
 	for (const SceneEntity& entity : document->GetEntities()) {
 		if (!IsEntityActiveInHierarchy(*document, entity)) {
 			continue;
@@ -1424,6 +1732,7 @@ Game::WaterPostEffectState Game::ResolveWaterPostEffectState(
 		if (candidate.cameraInside) {
 			return candidate;
 		}
+	}
 	}
 
 	return firstVolume;
@@ -1607,14 +1916,40 @@ void Game::StorePostProcessSettingsToDocument() {
 	}
 
 	SceneDocument& document = editorSession_->GetEditDocument();
+	const std::string sourceKey = GetActivePostProcessSourceKey();
+	if (sourceKey != appliedPostProcessSourceKey_) {
+		ApplyPostProcessSettings(document.GetPostProcessSettings());
+		appliedPostProcessRevision_ = document.GetRevision();
+		appliedPostProcessSourceKey_ = sourceKey;
+		return;
+	}
 	const ScenePostProcessSettings settings = CapturePostProcessSettings();
 	if (EqualPostProcessSettings(settings, document.GetPostProcessSettings())) {
 		appliedPostProcessRevision_ = document.GetRevision();
+		appliedPostProcessSourceKey_ = sourceKey;
 		return;
 	}
 
 	document.SetPostProcessSettings(settings);
 	appliedPostProcessRevision_ = document.GetRevision();
+	appliedPostProcessSourceKey_ = sourceKey;
+}
+
+std::string Game::GetActivePostProcessSourceKey() const {
+	if (!executionContext_) {
+		return {};
+	}
+	if (executionContext_->IsEditing()) {
+		return "edit:" + executionContext_->GetActiveSceneId();
+	}
+	if (sceneManager_) {
+		const SceneInstanceId instanceId =
+			sceneManager_->GetActiveSceneInstanceId();
+		if (instanceId != kInvalidSceneInstanceId) {
+			return "runtime-instance:" + std::to_string(instanceId);
+		}
+	}
+	return "runtime:" + executionContext_->GetActiveSceneId();
 }
 
 void Game::DrawModelPreview() {
@@ -1709,10 +2044,15 @@ void Game::Finalize() {
 	if (Input* input = Input::GetInstance()) {
 		input->SetCursorCapture(false);
 	}
+	delete startupErrorScreen_;
+	startupErrorScreen_ = nullptr;
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	if (imguiManager_) {
 		imguiManager_->SetEditorSession(nullptr);
+		imguiManager_->SetSceneCatalog(nullptr);
+		imguiManager_->SetSceneManager(nullptr);
+		imguiManager_->SetSceneTemplateRegistry(nullptr);
 	}
 #endif
 	delete modelPreviewObject_;
@@ -1738,13 +2078,17 @@ void Game::Finalize() {
 	delete foregroundComposeRenderTarget_;
 	foregroundComposeRenderTarget_ = nullptr;
 
-	if (sceneManager_) {
-		delete sceneManager_;
-		sceneManager_ = nullptr;
-	}
-
-	delete editorSession_;
+	sceneManager_ = nullptr;
+	executionContext_ = nullptr;
 	editorSession_ = nullptr;
+	sceneAssetService_ = nullptr;
+	sceneTemplateRegistry_ = nullptr;
+	delete editorBootstrap_;
+	editorBootstrap_ = nullptr;
+	delete runtimeBootstrap_;
+	runtimeBootstrap_ = nullptr;
+	delete sceneCatalog_;
+	sceneCatalog_ = nullptr;
 
 	// 基底クラスの終了処理
 	Framework::Finalize();

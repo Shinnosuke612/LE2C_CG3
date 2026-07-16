@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "SceneSettings.h"
+#include "SceneEntityReference.h"
 #include "../math/Transform.h"
 #include "../math/Vector2.h"
 #include "../math/Vector4.h"
@@ -109,6 +110,22 @@ struct SceneComponent {
 	float cameraFarClip = 1000.0f;
 	bool cameraInvertYaw = false;
 	bool cameraInvertPitch = false;
+	std::string lightType = "Point";
+	Vector4 lightColor = { 1.0f, 0.85f, 0.65f, 1.0f };
+	float lightIntensity = 2.0f;
+	float lightRange = 8.0f;
+	float lightDecay = 1.0f;
+	float lightSpotInnerAngle = 25.0f;
+	float lightSpotOuterAngle = 35.0f;
+	bool lightCastsShadow = false;
+	float lightShadowBias = 0.0025f;
+	float lightShadowNormalBias = 0.02f;
+	float lightShadowStrength = 0.55f;
+	float lightShadowDistance = 45.0f;
+	float lightShadowOrthographicSize = 40.0f;
+	float lightShadowNearClip = 0.1f;
+	float lightShadowFarClip = 120.0f;
+	bool lightShadowTexelSnap = true;
 	uint64_t monitorCameraEntityId = 0;
 	std::string monitorCameraName;
 	std::string monitorResolutionPreset = "Square 512";
@@ -252,6 +269,11 @@ struct SceneComponent {
 	float waterDrag = 4.0f;
 	float waterMaxFallSpeed = 5.0f;
 	float waterSwimUpSpeed = 12.0f;
+	std::string entityReferenceName = "Target";
+	SceneEntityReference entityReferenceTarget{};
+	std::string sceneTransitionTargetSceneId = "gameplay";
+	std::string sceneTransitionTriggerType = "Key";
+	std::string sceneTransitionTriggerKey = "ENTER";
 	std::string cameraPathTargetCameraName;
 	std::string cameraPathTriggerType = "Key";
 	std::string cameraPathTriggerKey = "C";
@@ -275,7 +297,7 @@ struct SceneEntity {
 	bool active = true;
 	bool locked = false;
 	std::string teamName;
-	Transform transform{};
+	QuaternionTransform transform{};
 	std::string modelPath;
 	std::string spriteTexturePath;
 	Vector2 spriteSize = { 100.0f, 100.0f };
@@ -324,6 +346,13 @@ public:
 	const std::vector<SceneEntity>& GetEntities() const { return entities_; }
 	std::vector<SceneTeamSettings>& GetTeams() { return teams_; }
 	const std::vector<SceneTeamSettings>& GetTeams() const { return teams_; }
+	const SceneLightingSettings& GetLightingSettings() const {
+		return lightingSettings_;
+	}
+	void SetLightingSettings(const SceneLightingSettings& settings) {
+		lightingSettings_ = settings;
+		MarkDirty();
+	}
 	ScenePostProcessSettings& GetPostProcessSettings() {
 		return postProcessSettings_;
 	}
@@ -342,6 +371,7 @@ public:
 		MarkDirty();
 	}
 	bool IsDirty() const { return dirty_; }
+	const std::string& GetLastLoadError() const { return lastLoadError_; }
 	uint64_t GetRevision() const { return revision_; }
 	void MarkDirty() {
 		dirty_ = true;
@@ -357,9 +387,11 @@ private:
 	std::string sceneName_;
 	std::vector<SceneEntity> entities_;
 	std::vector<SceneTeamSettings> teams_;
+	SceneLightingSettings lightingSettings_{};
 	ScenePostProcessSettings postProcessSettings_{};
 	SceneDebugSettings debugSettings_{};
 	uint64_t nextId_ = 1;
 	bool dirty_ = false;
 	uint64_t revision_ = 0;
+	std::string lastLoadError_;
 };

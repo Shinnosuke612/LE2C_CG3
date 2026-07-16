@@ -1,0 +1,23 @@
+{
+  "scenes": [
+    {
+      "id": "title",
+      "name": "TITLE",
+      "path": "resources/scenes/title.scene.json",
+      "runtimeProfile": "RUNTIME"
+    },
+    {
+      "id": "gameplay",
+      "name": "GAMEPLAY",
+      "path": "resources/scenes/gameplay.scene.json",
+      "runtimeProfile": "RUNTIME"
+    }
+  ],
+  "startScene": "title",
+  "startup": {
+    "debug": "EDITOR",
+    "development": "EDITOR",
+    "release": "RUNTIME"
+  },
+  "version": 1
+}

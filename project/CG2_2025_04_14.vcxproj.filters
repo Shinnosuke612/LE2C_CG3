@@ -71,11 +71,41 @@
       <Filter>Application</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\Framework.cpp" />
-    <ClCompile Include="application\scene\GamePlayScene.cpp">
+    <ClCompile Include="application\scene\RuntimeScene.cpp">
       <Filter>Application\Scene</Filter>
     </ClCompile>
-    <ClCompile Include="application\scene\GamePlaySceneDebug.cpp">
-      <Filter>Application\Scene</Filter>
+    <ClCompile Include="application\scene\system\SceneAgentSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneCameraSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneDebugSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneEffectRenderSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneEnvironmentSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneLightingSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneMonitorSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneObjectSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneParticleSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\ScenePhysicsSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneTransitionSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\BaseScene.cpp">
       <Filter>Engine\Scene</Filter>
@@ -83,7 +113,13 @@
     <ClCompile Include="application\scene\SceneFactory.cpp">
       <Filter>Application\Scene</Filter>
     </ClCompile>
-    <ClCompile Include="application\scene\TitleScene.cpp">
+    <ClCompile Include="application\scene\EditorBootstrap.cpp">
+      <Filter>Application\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\RuntimeBootstrap.cpp">
+      <Filter>Application\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\SceneStartupErrorScreen.cpp">
       <Filter>Application\Scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\agent\AgentSettingsResolver.cpp">
@@ -93,6 +129,27 @@
       <Filter>Engine\Agent</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\SceneManager.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\SceneInstance.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\RuntimeSession.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\SceneDocumentMigrator.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\SceneValidator.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\SceneCatalog.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\SceneAssetService.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\SceneTemplateRegistry.cpp">
       <Filter>Engine\Scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\SceneDocument.cpp">
@@ -181,8 +238,44 @@
       <Filter>Application</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\Framework.h" />
-    <ClInclude Include="application\scene\GamePlayScene.h">
+    <ClInclude Include="application\scene\RuntimeScene.h">
       <Filter>Application\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\SceneRuntimeObjectBinding.h">
+      <Filter>Application\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneAgentSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneCameraSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneDebugSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneEffectRenderSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneEnvironmentSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneLightingSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneMonitorSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneObjectSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneParticleSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\ScenePhysicsSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneTransitionSystem.h">
+      <Filter>Application\Scene\System</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\BaseScene.h">
       <Filter>Engine\Scene</Filter>
@@ -193,7 +286,13 @@
     <ClInclude Include="application\scene\SceneFactory.h">
       <Filter>Application\Scene</Filter>
     </ClInclude>
-    <ClInclude Include="application\scene\TitleScene.h">
+    <ClInclude Include="application\scene\EditorBootstrap.h">
+      <Filter>Application\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\RuntimeBootstrap.h">
+      <Filter>Application\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\SceneStartupErrorScreen.h">
       <Filter>Application\Scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\agent\AgentSettingsResolver.h">
@@ -203,6 +302,33 @@
       <Filter>Engine\Agent</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\SceneManager.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneInstance.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneEntityReference.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneExecutionContext.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\RuntimeSession.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneDocumentMigrator.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneValidator.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneCatalog.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneAssetService.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\SceneTemplateRegistry.h">
       <Filter>Engine\Scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\SceneDocument.h">
@@ -264,6 +390,9 @@
     </Filter>
     <Filter Include="Application\Scene">
       <UniqueIdentifier>{FB70A086-2C87-43F4-A0B6-515D38DC2FB1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Application\Scene\System">
+      <UniqueIdentifier>{9300C74C-1B4D-4D56-90B4-7D8B0FDC40AB}</UniqueIdentifier>
     </Filter>
     <Filter Include="Application\Player">
       <UniqueIdentifier>{B036426C-18BA-46FA-AF76-09C613290F87}</UniqueIdentifier>

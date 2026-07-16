@@ -52,6 +52,13 @@ bool DecomposeAffineMatrix(
 	Vector3& translate
 );
 
+bool DecomposeAffineMatrix(
+	const Matrix4x4& matrix,
+	Vector3& scale,
+	Quaternion& rotate,
+	Vector3& translate
+);
+
 Matrix4x4 MakeBillboardMatrix(
 	const Matrix4x4& cameraWorldMatrix,
 	const Vector3& scale,

@@ -1,0 +1,95 @@
+// 役割: Scene内で使用するカメラを選択し、追従・経路・Pause状態を更新する。
+#pragma once
+
+#include <vector>
+
+#include "../SceneRuntimeObjectBinding.h"
+#include "../../../engine/3d/CameraPathRuntime.h"
+#include "../../camera/ThirdPersonCameraController.h"
+
+class Camera;
+class Player;
+class SceneDocument;
+struct SceneComponent;
+struct SceneEntity;
+
+// Camera・Player・Objectは所有しない。Player/Physics更新の前後で追従処理を分ける。
+class SceneCameraSystem {
+public:
+	void Reset();
+	// 入力とCameraPathを先に評価し、Playerが参照する向きを確定する。
+	void UpdateBeforeSimulation(
+		SceneDocument& document,
+		Camera* camera,
+		Player* player,
+		const std::vector<SceneRuntimeObjectBinding>& bindings,
+		float deltaTime,
+		bool runtimeActive,
+		bool playing
+	);
+	// 移動後のPlayer座標へ追従Cameraを合わせ、最終行列を更新する。
+	void UpdateAfterSimulation(
+		SceneDocument& document,
+		Camera* camera,
+		Player* player,
+		const std::vector<SceneRuntimeObjectBinding>& bindings,
+		bool runtimeActive,
+		bool playing
+	);
+	void UpdatePaused(Camera* camera, Camera* debugCamera);
+
+	Camera* SelectSceneViewCamera(
+		Camera* camera,
+		Camera* debugCamera,
+		bool paused
+	) const;
+	bool ApplyComponentToCamera(
+		const SceneDocument& document,
+		const SceneEntity& cameraEntity,
+		const SceneComponent& cameraComponent,
+		Camera* camera,
+		float aspectRatio
+	) const;
+
+	bool IsFirstPersonMode() const {
+		return playerCameraController_.IsFirstPersonMode();
+	}
+	bool IsPathPlaying() const { return cameraPathRuntime_.IsPlaying(); }
+	bool HasCurrentPathTransform() const {
+		return cameraPathRuntime_.HasCurrentTransform();
+	}
+	const Transform& GetCurrentPathTransform() const {
+		return cameraPathRuntime_.GetCurrentTransform();
+	}
+
+private:
+	void ApplyMainCamera(
+		const SceneDocument& document,
+		Camera* camera
+	) const;
+	bool UpdateThirdPersonCamera(
+		SceneDocument& document,
+		Camera* camera,
+		Player* player,
+		const std::vector<SceneRuntimeObjectBinding>& bindings,
+		bool playing
+	);
+	void ApplyPlayerDissolve(
+		const std::vector<SceneRuntimeObjectBinding>& bindings
+	) const;
+	bool TryStartCameraPath(
+		SceneDocument& document,
+		Camera* camera
+	);
+	void SyncPlayerController(
+		const SceneDocument& document,
+		Camera* camera,
+		Player* player
+	);
+	void InitializePauseDebugCamera(Camera* camera, Camera* debugCamera);
+
+	ThirdPersonCameraController playerCameraController_;
+	CameraPathRuntime cameraPathRuntime_;
+	bool playerCameraInitialized_ = false;
+	bool debugCameraInitialized_ = false;
+};

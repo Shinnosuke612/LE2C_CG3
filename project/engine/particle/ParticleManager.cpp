@@ -9,6 +9,7 @@
 
 #include <cassert>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <chrono>
 #include <cstring>
@@ -31,6 +32,19 @@ using json = nlohmann::json;
 ParticleManager* ParticleManager::instance_ = nullptr;
 
 namespace {
+	std::string NormalizeSceneParticleKey(const std::string& sceneId) {
+		std::string normalized = sceneId;
+		std::transform(
+			normalized.begin(),
+			normalized.end(),
+			normalized.begin(),
+			[](unsigned char character) {
+				return static_cast<char>(std::tolower(character));
+			}
+		);
+		return normalized;
+	}
+
 	bool IntersectsSegmentAabb(
 		const Vector3& start,
 		const Vector3& end,
@@ -825,10 +839,14 @@ void ParticleManager::SyncSceneGpuParticle(const std::string& sceneName) {
 		}
 	}
 
+	const std::string sceneKeyPrefix = "scene|" + sceneName + "|";
 	for (auto it = sceneGpuParticleKeys_.begin();
 		it != sceneGpuParticleKeys_.end();) {
 		const std::string key = *it;
-		if (!desiredSceneKeys.contains(key)) {
+		if (
+			key.rfind(sceneKeyPrefix, 0) == 0 &&
+			!desiredSceneKeys.contains(key)
+		) {
 			gpuParticles_.erase(key);
 			it = sceneGpuParticleKeys_.erase(it);
 		}
@@ -943,7 +961,9 @@ bool ParticleManager::LoadSceneParticleLayout(
 					if (instanceJson.contains("translate")) {
 						instance.translate = ReadVector3(instanceJson.at("translate"), instance.translate);
 					}
-					loadedScenes[it.key()].push_back(std::move(instance));
+					loadedScenes[NormalizeSceneParticleKey(it.key())].push_back(
+						std::move(instance)
+					);
 				}
 			}
 		} else {
@@ -960,7 +980,9 @@ bool ParticleManager::LoadSceneParticleLayout(
 				SceneParticleAssetInstance instance{};
 				instance.assetName = assetName;
 				instance.label = assetName;
-				loadedScenes[it.key()].push_back(std::move(instance));
+				loadedScenes[NormalizeSceneParticleKey(it.key())].push_back(
+					std::move(instance)
+				);
 			}
 		}
 	} catch (...) {
@@ -975,8 +997,6 @@ bool ParticleManager::LoadSceneParticleLayout(
 			ReleasePlacements(instance.runtimePlacements);
 		}
 	}
-	loadedScenes["TITLE"];
-	loadedScenes["GAMEPLAY"];
 	particlePlacementAssets_ = std::move(loadedAssets);
 	sceneParticleAssetInstances_ = std::move(loadedScenes);
 	sceneParticleAssetCycleSteps_.clear();
@@ -1056,6 +1076,20 @@ void ParticleManager::UpdateSceneParticles(const std::string& sceneName) {
 		if (!instance.enabled) continue;
 		for (SceneParticlePlacement& placement : instance.runtimePlacements) {
 			if (placement.enabled && placement.emitter) placement.emitter->Update();
+		}
+	}
+}
+
+void ParticleManager::ReleaseSceneParticles(const std::string& sceneName) {
+	const std::string sceneKeyPrefix = "scene|" + sceneName + "|";
+	for (auto it = sceneGpuParticleKeys_.begin();
+		it != sceneGpuParticleKeys_.end();) {
+		const std::string& key = *it;
+		if (key.rfind(sceneKeyPrefix, 0) == 0) {
+			gpuParticles_.erase(key);
+			it = sceneGpuParticleKeys_.erase(it);
+		} else {
+			++it;
 		}
 	}
 }
@@ -1224,12 +1258,28 @@ void ParticleManager::DrawSceneParticleImGui(
 		}
 
 		if (ImGui::BeginTabItem("Scenes")) {
-			const char* sceneNames[] = { "TITLE", "GAMEPLAY" };
+			std::vector<std::string> sceneNames;
+			sceneNames.reserve(sceneParticleAssetInstances_.size() + 1);
+			for (const auto& [sceneName, instances] :
+				sceneParticleAssetInstances_) {
+				(void)instances;
+				sceneNames.push_back(sceneName);
+			}
+			const std::string currentSceneKey =
+				NormalizeSceneParticleKey(currentSceneName);
+			if (std::find(
+				sceneNames.begin(),
+				sceneNames.end(),
+				currentSceneKey
+			) == sceneNames.end()) {
+				sceneNames.push_back(currentSceneKey);
+			}
+			std::sort(sceneNames.begin(), sceneNames.end());
 			if (ImGui::BeginTabBar("ParticleSceneTabs")) {
-				for (const char* sceneName : sceneNames) {
-					const ImGuiTabItemFlags flags = currentSceneName == sceneName
+				for (const std::string& sceneName : sceneNames) {
+					const ImGuiTabItemFlags flags = currentSceneKey == sceneName
 						? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-					if (!ImGui::BeginTabItem(sceneName, nullptr, flags)) continue;
+					if (!ImGui::BeginTabItem(sceneName.c_str(), nullptr, flags)) continue;
 					auto& instances = sceneParticleAssetInstances_[sceneName];
 					const char* assetLabel = assetNames.empty() ? "(no assets)" : assetNames[assetToAddIndex].c_str();
 					if (ImGui::BeginCombo("Asset to Add", assetLabel)) {

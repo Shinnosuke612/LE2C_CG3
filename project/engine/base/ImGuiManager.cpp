@@ -10,8 +10,8 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
-#include <numbers>
 #include <limits>
+#include <utility>
 
 #include "WinApp.h"
 #include "DirectXCommon.h"
@@ -23,13 +23,17 @@
 #include "../3d/ModelFormat.h"
 #include "../3d/Object3dCommon.h"
 #include "../3d/Camera.h"
+#include "../io/Input.h"
 #include "../math/Matrix4x4.h"
 #include "../math/Math.h"
 #include "../particle/ParticleEffectResource.h"
 #include "../particle/ParticleManager.h"
 #include "../scene/EditorSession.h"
+#include "../scene/SceneCatalog.h"
 #include "../scene/SceneDocument.h"
 #include "../scene/SceneEntityQuery.h"
+#include "../scene/SceneManager.h"
+#include "../scene/SceneTemplateRegistry.h"
 #include "../scene/SceneTransformResolver.h"
 #include "../utility/EditableResourcePath.h"
 #include "../utility/StringUtility.h"
@@ -49,12 +53,69 @@ namespace {
 	using SceneEntityQuery::HasComponent;
 	using SceneTransformResolver::ResolveSceneWorldMatrix;
 
+	bool IsSameRotation(const Quaternion& left, const Quaternion& right) {
+		const Quaternion normalizedLeft = Normalize(left);
+		const Quaternion normalizedRight = Normalize(right);
+		const float dot =
+			normalizedLeft.x * normalizedRight.x +
+			normalizedLeft.y * normalizedRight.y +
+			normalizedLeft.z * normalizedRight.z +
+			normalizedLeft.w * normalizedRight.w;
+		return std::abs(dot) >= 0.999999f;
+	}
+
+	bool HasNonUniformScale(const Matrix4x4& matrix) {
+		Vector3 scale{};
+		Quaternion rotate = MakeIdentityQuaternion();
+		Vector3 translate{};
+		if (!DecomposeAffineMatrix(matrix, scale, rotate, translate)) {
+			return true;
+		}
+		const Vector3 absoluteScale{
+			std::abs(scale.x), std::abs(scale.y), std::abs(scale.z)
+		};
+		constexpr float epsilon = 0.0001f;
+		return
+			std::abs(absoluteScale.x - absoluteScale.y) > epsilon ||
+			std::abs(absoluteScale.y - absoluteScale.z) > epsilon;
+	}
+
 	std::string PathToUtf8(const std::filesystem::path& path) {
 		return StringUtility::ToUtf8(path);
 	}
 
 	std::filesystem::path PathFromUtf8(const std::string& path) {
 		return StringUtility::ToPath(path);
+	}
+
+	void CopyTextBuffer(
+		char* destination,
+		size_t destinationSize,
+		const std::string& source
+	) {
+		strncpy_s(destination, destinationSize, source.c_str(), _TRUNCATE);
+	}
+
+	std::string SceneAssetFileStem(const SceneDescriptor& descriptor) {
+		const std::string path = descriptor.assetPath.empty()
+			? descriptor.filePath
+			: descriptor.assetPath;
+		std::string fileName = StringUtility::ToUtf8(
+			StringUtility::ToPath(path).filename()
+		);
+		constexpr const char* suffix = ".scene.json";
+		if (fileName.ends_with(suffix)) {
+			fileName.erase(fileName.size() - std::strlen(suffix));
+		}
+		return fileName;
+	}
+
+	std::string BuildSceneAssetPath(const char* fileStem) {
+		std::string fileName = fileStem;
+		if (!fileName.ends_with(".scene.json")) {
+			fileName += ".scene.json";
+		}
+		return "resources/scenes/" + fileName;
 	}
 
 	std::filesystem::path GetProjectResourceRoot();
@@ -296,6 +357,108 @@ ImGuiManager* ImGuiManager::GetInstance() {
 	return instance;
 }
 
+bool ImGuiManager::ConsumeOpenSceneRequest(
+	std::string& sceneId,
+	bool& discardUnsavedChanges
+) {
+	if (requestedSceneId_.empty()) {
+		return false;
+	}
+	sceneId = std::move(requestedSceneId_);
+	requestedSceneId_.clear();
+	discardUnsavedChanges = requestedSceneDiscardUnsavedChanges_;
+	requestedSceneDiscardUnsavedChanges_ = false;
+	return true;
+}
+
+bool ImGuiManager::ConsumeSceneAssetRequest(SceneAssetRequest& request) {
+	if (!sceneAssetRequestPending_) {
+		return false;
+	}
+	request = std::move(requestedSceneAsset_);
+	requestedSceneAsset_ = {};
+	sceneAssetRequestPending_ = false;
+	return true;
+}
+
+bool ImGuiManager::ConsumeSceneInstanceRequest(SceneInstanceRequest& request) {
+	if (!sceneInstanceRequestPending_) {
+		return false;
+	}
+	request = std::move(requestedSceneInstance_);
+	requestedSceneInstance_ = {};
+	sceneInstanceRequestPending_ = false;
+	return true;
+}
+
+bool ImGuiManager::ConsumeStartSceneRequest(std::string& sceneId) {
+	if (!startSceneRequestPending_) {
+		return false;
+	}
+	sceneId = std::move(requestedStartSceneId_);
+	requestedStartSceneId_.clear();
+	startSceneRequestPending_ = false;
+	return true;
+}
+
+bool ImGuiManager::ConsumeStartupModeRequest(
+	SceneBuildConfiguration& configuration,
+	SceneStartupMode& mode
+) {
+	if (!startupModeRequestPending_) {
+		return false;
+	}
+	configuration = requestedStartupConfiguration_;
+	mode = requestedStartupMode_;
+	startupModeRequestPending_ = false;
+	return true;
+}
+
+void ImGuiManager::NotifySceneAssetOperationResult(
+	bool success,
+	const std::string& message
+) {
+	if (success) {
+		InvalidateProjectCache();
+		return;
+	}
+	sceneAssetErrorMessage_ = message.empty()
+		? "Scene asset operation failed."
+		: message;
+	sceneAssetErrorPopupRequested_ = true;
+}
+
+void ImGuiManager::NotifySceneInstanceOperationResult(
+	bool success,
+	const std::string& message
+) {
+	sceneInstanceOperationSucceeded_ = success;
+	sceneInstanceStatusMessage_ = message;
+}
+
+void ImGuiManager::NotifyProjectSettingsResult(
+	bool success,
+	const std::string& message
+) {
+	if (success) {
+		return;
+	}
+	projectSettingsErrorMessage_ = message.empty()
+		? "Project Settings could not be saved."
+		: message;
+	projectSettingsErrorPopupRequested_ = true;
+}
+
+void ImGuiManager::NotifyEditSceneOpened() {
+	selectedEntityId_ = 0;
+	selectedEntityIds_.clear();
+	hierarchySelectionAnchorId_ = 0;
+	hierarchyObservedEntityId_ = 0;
+	hierarchyRenameEntityId_ = 0;
+	hierarchyRevealRequested_ = false;
+	revealInspectorRequested_ = false;
+}
+
 bool ImGuiManager::sceneViewInputActive_ = false;
 
 void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManager* srvManager){
@@ -488,6 +651,19 @@ void ImGuiManager::ConfigureEditorFont(ImGuiIO& io, float dpiScale) {
 }
 
 void ImGuiManager::BeginFrame(){
+	ImGuiIO& io = ImGui::GetIO();
+	Input* input = Input::GetInstance();
+	const bool altHeld = input &&
+		(input->PushKey(DIK_LMENU) || input->PushKey(DIK_RMENU));
+	const bool blockEditorMouse =
+		editorSession_ && editorSession_->IsPlaying() && !altHeld;
+	if (blockEditorMouse) {
+		io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
+		io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+	} else {
+		io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+		io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+	}
 	ApplyPendingEditorFont();
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
@@ -785,6 +961,9 @@ void ImGuiManager::DrawEditorWorkspace(
 	if (showConsole_) {
 		DrawConsoleWindow();
 	}
+	if (showLoadedScenes_) {
+		DrawLoadedScenesWindow();
+	}
 
 	if (editorSession_) {
 		const bool editingInteractionActive =
@@ -882,6 +1061,8 @@ void ImGuiManager::RefreshProjectDirectoryCache() {
 		cachedEntry.isDirectory = isDirectory;
 		cachedEntry.isTexture = !isDirectory && IsTextureAssetPath(entry.path());
 		cachedEntry.isModel = !isDirectory && IsModelAssetPath(entry.path());
+		cachedEntry.isScene = !isDirectory && sceneCatalog_ &&
+			sceneCatalog_->FindByFilePath(cachedEntry.filePath);
 		cachedProjectEntries_.push_back(cachedEntry);
 	}
 
@@ -1119,7 +1300,7 @@ bool ImGuiManager::PickSceneEntity(
 	selectedEntityId_ = bestEntityId;
 	selectedProjectFile_.clear();
 	showInspector_ = true;
-	focusInspectorRequested_ = true;
+	revealInspectorRequested_ = true;
 	return true;
 }
 
@@ -1300,10 +1481,16 @@ void ImGuiManager::DrawSceneGizmo(
 	const SceneComponent* spriteRenderer =
 		FindEnabledComponent(*entity, "SpriteRenderer");
 	const bool isSprite = spriteRenderer != nullptr;
+	const SceneEntity* parentEntity = document.FindEntity(entity->parentId);
+	const Matrix4x4 parentWorld = parentEntity
+		? ResolveSceneWorldMatrix(document, *parentEntity)
+		: MakeIdentity4x4();
 	Matrix4x4 worldMatrix{};
 	Matrix4x4 viewMatrix{};
 	Matrix4x4 projectionMatrix{};
 	if (isSprite) {
+		const Vector3 spriteRotate =
+			MakeEulerFromQuaternion(entity->transform.rotate);
 		const Vector3 spriteScale = {
 			spriteRenderer->spriteSize.x * entity->transform.scale.x,
 			spriteRenderer->spriteSize.y * entity->transform.scale.y,
@@ -1311,17 +1498,17 @@ void ImGuiManager::DrawSceneGizmo(
 		};
 		worldMatrix = MakeAffineMatrix(
 			spriteScale,
-			Vector3{ 0.0f, 0.0f, entity->transform.rotate.z },
+			Vector3{ 0.0f, 0.0f, spriteRotate.z },
 			Vector3{
 				entity->transform.translate.x,
 				entity->transform.translate.y,
 				0.0f
 			}
 		);
-		if (const SceneEntity* parent = document.FindEntity(entity->parentId)) {
+		if (parentEntity) {
 			worldMatrix = Multiply(
 				worldMatrix,
-				ResolveSceneWorldMatrix(document, *parent)
+				parentWorld
 			);
 		}
 		viewMatrix = MakeIdentity4x4();
@@ -1347,6 +1534,19 @@ void ImGuiManager::DrawSceneGizmo(
 	const ImGuizmo::MODE mode = gizmoLocalMode_
 		? ImGuizmo::LOCAL
 		: ImGuizmo::WORLD;
+	if (
+		!gizmoLocalMode_ &&
+		gizmoOperation_ != 0 &&
+		parentEntity &&
+		HasNonUniformScale(parentWorld)
+	) {
+		ImGui::GetWindowDrawList()->AddText(
+			ImVec2(x + 8.0f, y + 38.0f),
+			IM_COL32(255, 190, 80, 255),
+			"World Rotate/Scale requires a uniformly scaled parent."
+		);
+		return;
+	}
 	const float snapValue = gizmoOperation_ == 0
 		? gizmoTranslationSnap_
 		: gizmoOperation_ == 1
@@ -1371,37 +1571,44 @@ void ImGuiManager::DrawSceneGizmo(
 	}
 
 	Matrix4x4 localMatrix = worldMatrix;
-	if (const SceneEntity* parent = document.FindEntity(entity->parentId)) {
-		const Matrix4x4 parentWorld = ResolveSceneWorldMatrix(document, *parent);
+	if (parentEntity) {
 		localMatrix = Multiply(worldMatrix, Inverse(parentWorld));
 	}
 
-	float translation[3]{};
-	float rotationDegrees[3]{};
-	float scale[3]{};
-	ImGuizmo::DecomposeMatrixToComponents(
-		&localMatrix.m[0][0],
-		translation,
-		rotationDegrees,
-		scale
-	);
-	constexpr float degreesToRadians = std::numbers::pi_v<float> / 180.0f;
+	Vector3 localScale{};
+	Quaternion localRotate = MakeIdentityQuaternion();
+	Vector3 localTranslate{};
+	if (!DecomposeAffineMatrix(
+		localMatrix,
+		localScale,
+		localRotate,
+		localTranslate
+	)) {
+		return;
+	}
 	if (isSprite) {
-		entity->transform.translate.x = translation[0];
-		entity->transform.translate.y = translation[1];
-		entity->transform.rotate.z = rotationDegrees[2] * degreesToRadians;
-		entity->transform.scale.x = scale[0] / (std::max)(spriteRenderer->spriteSize.x, 0.001f);
-		entity->transform.scale.y = scale[1] / (std::max)(spriteRenderer->spriteSize.y, 0.001f);
+		if (gizmoOperation_ == 0) {
+			entity->transform.translate.x = localTranslate.x;
+			entity->transform.translate.y = localTranslate.y;
+		} else if (gizmoOperation_ == 1) {
+			const Vector3 localEuler = MakeEulerFromQuaternion(localRotate);
+			entity->transform.rotate = MakeQuaternionFromEuler({
+				0.0f, 0.0f, localEuler.z
+			});
+		} else {
+			entity->transform.scale.x = localScale.x /
+				(std::max)(spriteRenderer->spriteSize.x, 0.001f);
+			entity->transform.scale.y = localScale.y /
+				(std::max)(spriteRenderer->spriteSize.y, 0.001f);
+		}
 	} else {
-		entity->transform.translate = {
-			translation[0], translation[1], translation[2]
-		};
-		entity->transform.rotate = {
-			rotationDegrees[0] * degreesToRadians,
-			rotationDegrees[1] * degreesToRadians,
-			rotationDegrees[2] * degreesToRadians
-		};
-		entity->transform.scale = { scale[0], scale[1], scale[2] };
+		if (gizmoOperation_ == 0) {
+			entity->transform.translate = localTranslate;
+		} else if (gizmoOperation_ == 1) {
+			entity->transform.rotate = localRotate;
+		} else {
+			entity->transform.scale = localScale;
+		}
 	}
 	document.MarkDirty();
 }
@@ -1420,16 +1627,526 @@ void ImGuiManager::Finalize(){
 	instance = nullptr;
 }
 
+void ImGuiManager::RequestOpenScene(const std::string& sceneId) {
+	if (!editorSession_ || !editorSession_->IsEditing() || sceneId.empty() ||
+		sceneId == editorSession_->GetEditSceneId()) {
+		return;
+	}
+
+	sceneSaveFailed_ = false;
+	if (editorSession_->GetEditDocument().IsDirty()) {
+		pendingSceneId_ = sceneId;
+		sceneSwitchPopupRequested_ = true;
+		return;
+	}
+
+	requestedSceneId_ = sceneId;
+	requestedSceneDiscardUnsavedChanges_ = false;
+}
+
+void ImGuiManager::QueueSceneAssetRequest(
+	const SceneAssetRequest& request
+) {
+	if (sceneAssetRequestPending_) {
+		return;
+	}
+	requestedSceneAsset_ = request;
+	sceneAssetRequestPending_ = true;
+}
+
+void ImGuiManager::QueueSceneInstanceRequest(
+	const SceneInstanceRequest& request
+) {
+	if (sceneInstanceRequestPending_) {
+		return;
+	}
+	requestedSceneInstance_ = request;
+	sceneInstanceRequestPending_ = true;
+}
+
+void ImGuiManager::DrawSceneMenu() {
+	if (!ImGui::BeginMenu("Scene")) {
+		return;
+	}
+
+	const bool canOpenScene =
+		editorSession_ && editorSession_->IsEditing() && sceneCatalog_;
+	const bool currentSceneClean = canOpenScene &&
+		!editorSession_->GetEditDocument().IsDirty();
+	const SceneDescriptor* currentScene = canOpenScene
+		? sceneCatalog_->Find(editorSession_->GetEditSceneId())
+		: nullptr;
+	const bool canManageScene = currentSceneClean && currentScene &&
+		!sceneAssetRequestPending_;
+
+	if (ImGui::MenuItem("New Scene...", nullptr, false, canManageScene)) {
+		CopyTextBuffer(
+			sceneAssetNameBuffer_,
+			sizeof(sceneAssetNameBuffer_),
+			"New Scene"
+		);
+		CopyTextBuffer(
+			sceneAssetIdBuffer_,
+			sizeof(sceneAssetIdBuffer_),
+			"new_scene"
+		);
+		CopyTextBuffer(
+			sceneAssetFileBuffer_,
+			sizeof(sceneAssetFileBuffer_),
+			"new_scene"
+		);
+		sceneTemplateIndex_ = 0;
+		createScenePopupRequested_ = true;
+	}
+	if (ImGui::MenuItem(
+		"Duplicate Active Scene...",
+		nullptr,
+		false,
+		canManageScene
+	)) {
+		const std::string duplicateId = currentScene->id + "_copy";
+		CopyTextBuffer(
+			sceneAssetNameBuffer_,
+			sizeof(sceneAssetNameBuffer_),
+			currentScene->displayName + " Copy"
+		);
+		CopyTextBuffer(
+			sceneAssetIdBuffer_,
+			sizeof(sceneAssetIdBuffer_),
+			duplicateId
+		);
+		CopyTextBuffer(
+			sceneAssetFileBuffer_,
+			sizeof(sceneAssetFileBuffer_),
+			duplicateId
+		);
+		sceneAssetTargetId_ = currentScene->id;
+		duplicateScenePopupRequested_ = true;
+	}
+	if (ImGui::MenuItem(
+		"Rename Active Scene...",
+		nullptr,
+		false,
+		canManageScene
+	)) {
+		CopyTextBuffer(
+			sceneAssetNameBuffer_,
+			sizeof(sceneAssetNameBuffer_),
+			currentScene->displayName
+		);
+		CopyTextBuffer(
+			sceneAssetFileBuffer_,
+			sizeof(sceneAssetFileBuffer_),
+			SceneAssetFileStem(*currentScene)
+		);
+		sceneAssetTargetId_ = currentScene->id;
+		renameScenePopupRequested_ = true;
+	}
+
+	if (ImGui::BeginMenu("Delete Scene", canManageScene)) {
+		bool hasDeleteCandidate = false;
+		for (const SceneDescriptor& scene : sceneCatalog_->GetScenes()) {
+			if (scene.id == currentScene->id ||
+				scene.id == sceneCatalog_->GetStartSceneId()) {
+				continue;
+			}
+			hasDeleteCandidate = true;
+			const std::string label = scene.displayName + "##delete_" + scene.id;
+			if (ImGui::MenuItem(label.c_str())) {
+				sceneAssetTargetId_ = scene.id;
+				deleteScenePopupRequested_ = true;
+			}
+		}
+		if (!hasDeleteCandidate) {
+			ImGui::TextDisabled("No deletable Scene");
+		}
+		ImGui::EndMenu();
+	}
+	if (canOpenScene && !currentSceneClean) {
+		ImGui::TextDisabled("Save the active Scene to manage Scene assets.");
+	}
+
+	ImGui::Separator();
+	ImGui::MenuItem("Loaded Scenes", nullptr, &showLoadedScenes_);
+
+	ImGui::Separator();
+	ImGui::TextDisabled("Open Scene");
+	ImGui::BeginDisabled(!canOpenScene);
+	if (sceneCatalog_ && editorSession_) {
+		for (const SceneDescriptor& scene : sceneCatalog_->GetScenes()) {
+			const std::string label = scene.displayName + "##" + scene.id;
+			if (ImGui::MenuItem(
+				label.c_str(),
+				nullptr,
+				editorSession_->GetEditSceneId() == scene.id
+			)) {
+				RequestOpenScene(scene.id);
+			}
+		}
+	}
+	ImGui::EndDisabled();
+	ImGui::EndMenu();
+}
+
+void ImGuiManager::DrawSceneSwitchConfirmation() {
+	if (sceneSwitchPopupRequested_) {
+		ImGui::OpenPopup("Unsaved Scene");
+		sceneSwitchPopupRequested_ = false;
+	}
+	if (!ImGui::BeginPopupModal(
+		"Unsaved Scene",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		return;
+	}
+
+	const SceneDescriptor* pendingScene = sceneCatalog_
+		? sceneCatalog_->Find(pendingSceneId_)
+		: nullptr;
+	ImGui::TextUnformatted("The current Scene has unsaved changes.");
+	if (pendingScene) {
+		ImGui::Text("Open: %s", pendingScene->displayName.c_str());
+	}
+	if (sceneSaveFailed_) {
+		ImGui::TextColored(
+			ImVec4(0.95f, 0.35f, 0.25f, 1.0f),
+			"The current Scene could not be saved."
+		);
+	}
+	ImGui::Separator();
+
+	if (ImGui::Button("Save and Open")) {
+		if (editorSession_ && editorSession_->Save()) {
+			requestedSceneId_ = pendingSceneId_;
+			requestedSceneDiscardUnsavedChanges_ = false;
+			pendingSceneId_.clear();
+			sceneSaveFailed_ = false;
+			ImGui::CloseCurrentPopup();
+		} else {
+			sceneSaveFailed_ = true;
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Discard")) {
+		requestedSceneId_ = pendingSceneId_;
+		requestedSceneDiscardUnsavedChanges_ = true;
+		pendingSceneId_.clear();
+		sceneSaveFailed_ = false;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Cancel")) {
+		pendingSceneId_.clear();
+		sceneSaveFailed_ = false;
+		ImGui::CloseCurrentPopup();
+	}
+
+	ImGui::EndPopup();
+}
+
+void ImGuiManager::DrawSceneAssetDialogs() {
+	if (createScenePopupRequested_) {
+		ImGui::OpenPopup("Create Scene");
+		createScenePopupRequested_ = false;
+	}
+	if (ImGui::BeginPopupModal(
+		"Create Scene",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		ImGui::InputText(
+			"Name",
+			sceneAssetNameBuffer_,
+			sizeof(sceneAssetNameBuffer_)
+		);
+		ImGui::InputText(
+			"Scene ID",
+			sceneAssetIdBuffer_,
+			sizeof(sceneAssetIdBuffer_)
+		);
+		ImGui::InputText(
+			"File Name",
+			sceneAssetFileBuffer_,
+			sizeof(sceneAssetFileBuffer_)
+		);
+		ImGui::TextDisabled("Saved under resources/scenes as .scene.json");
+
+		const std::vector<SceneTemplateDescriptor>* templates =
+			sceneTemplateRegistry_
+				? &sceneTemplateRegistry_->GetTemplates()
+				: nullptr;
+		if (templates && !templates->empty()) {
+			sceneTemplateIndex_ = std::clamp(
+				sceneTemplateIndex_,
+				0,
+				static_cast<int>(templates->size()) - 1
+			);
+			const char* preview =
+				(*templates)[sceneTemplateIndex_].displayName.c_str();
+			if (ImGui::BeginCombo("Template", preview)) {
+				for (int index = 0; index < static_cast<int>(templates->size()); ++index) {
+					if (ImGui::Selectable(
+						(*templates)[index].displayName.c_str(),
+						sceneTemplateIndex_ == index
+					)) {
+						sceneTemplateIndex_ = index;
+					}
+				}
+				ImGui::EndCombo();
+			}
+		} else {
+			ImGui::TextDisabled("No Scene templates are available.");
+		}
+
+		const bool canSubmit = templates && !templates->empty() &&
+			sceneAssetNameBuffer_[0] != '\0' &&
+			sceneAssetIdBuffer_[0] != '\0' &&
+			sceneAssetFileBuffer_[0] != '\0';
+		ImGui::BeginDisabled(!canSubmit);
+		if (ImGui::Button("Create")) {
+			SceneAssetRequest request{};
+			request.operation = SceneAssetOperation::Create;
+			request.sceneId = sceneAssetIdBuffer_;
+			request.displayName = sceneAssetNameBuffer_;
+			request.assetPath = BuildSceneAssetPath(sceneAssetFileBuffer_);
+			request.templateId = (*templates)[sceneTemplateIndex_].id;
+			QueueSceneAssetRequest(request);
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel")) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	if (duplicateScenePopupRequested_) {
+		ImGui::OpenPopup("Duplicate Scene");
+		duplicateScenePopupRequested_ = false;
+	}
+	if (ImGui::BeginPopupModal(
+		"Duplicate Scene",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		const SceneDescriptor* source = sceneCatalog_
+			? sceneCatalog_->Find(sceneAssetTargetId_)
+			: nullptr;
+		if (source) {
+			ImGui::Text("Source: %s", source->displayName.c_str());
+		}
+		ImGui::InputText(
+			"Name",
+			sceneAssetNameBuffer_,
+			sizeof(sceneAssetNameBuffer_)
+		);
+		ImGui::InputText(
+			"Scene ID",
+			sceneAssetIdBuffer_,
+			sizeof(sceneAssetIdBuffer_)
+		);
+		ImGui::InputText(
+			"File Name",
+			sceneAssetFileBuffer_,
+			sizeof(sceneAssetFileBuffer_)
+		);
+		const bool canSubmit = source && sceneAssetNameBuffer_[0] != '\0' &&
+			sceneAssetIdBuffer_[0] != '\0' &&
+			sceneAssetFileBuffer_[0] != '\0';
+		ImGui::BeginDisabled(!canSubmit);
+		if (ImGui::Button("Duplicate")) {
+			SceneAssetRequest request{};
+			request.operation = SceneAssetOperation::Duplicate;
+			request.sourceSceneId = sceneAssetTargetId_;
+			request.sceneId = sceneAssetIdBuffer_;
+			request.displayName = sceneAssetNameBuffer_;
+			request.assetPath = BuildSceneAssetPath(sceneAssetFileBuffer_);
+			QueueSceneAssetRequest(request);
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel")) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	if (renameScenePopupRequested_) {
+		ImGui::OpenPopup("Rename Scene");
+		renameScenePopupRequested_ = false;
+	}
+	if (ImGui::BeginPopupModal(
+		"Rename Scene",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		ImGui::Text("Scene ID: %s", sceneAssetTargetId_.c_str());
+		ImGui::TextDisabled("Scene ID remains stable so references do not change.");
+		ImGui::InputText(
+			"Name",
+			sceneAssetNameBuffer_,
+			sizeof(sceneAssetNameBuffer_)
+		);
+		ImGui::InputText(
+			"File Name",
+			sceneAssetFileBuffer_,
+			sizeof(sceneAssetFileBuffer_)
+		);
+		const bool canSubmit = !sceneAssetTargetId_.empty() &&
+			sceneAssetNameBuffer_[0] != '\0' &&
+			sceneAssetFileBuffer_[0] != '\0';
+		ImGui::BeginDisabled(!canSubmit);
+		if (ImGui::Button("Rename")) {
+			SceneAssetRequest request{};
+			request.operation = SceneAssetOperation::Rename;
+			request.sceneId = sceneAssetTargetId_;
+			request.displayName = sceneAssetNameBuffer_;
+			request.assetPath = BuildSceneAssetPath(sceneAssetFileBuffer_);
+			QueueSceneAssetRequest(request);
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel")) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	if (deleteScenePopupRequested_) {
+		ImGui::OpenPopup("Delete Scene");
+		deleteScenePopupRequested_ = false;
+	}
+	if (ImGui::BeginPopupModal(
+		"Delete Scene",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		const SceneDescriptor* target = sceneCatalog_
+			? sceneCatalog_->Find(sceneAssetTargetId_)
+			: nullptr;
+		ImGui::TextUnformatted("Delete the Scene asset and remove it from the Catalog?");
+		if (target) {
+			ImGui::Text("Scene: %s", target->displayName.c_str());
+			ImGui::Text("Path: %s", target->assetPath.c_str());
+		}
+		ImGui::TextDisabled("Deletion is rejected when another Scene references it.");
+		ImGui::BeginDisabled(!target);
+		if (ImGui::Button("Delete")) {
+			SceneAssetRequest request{};
+			request.operation = SceneAssetOperation::Delete;
+			request.sceneId = sceneAssetTargetId_;
+			QueueSceneAssetRequest(request);
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel")) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	if (sceneAssetErrorPopupRequested_) {
+		ImGui::OpenPopup("Scene Asset Error");
+		sceneAssetErrorPopupRequested_ = false;
+	}
+	if (ImGui::BeginPopupModal(
+		"Scene Asset Error",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		ImGui::TextWrapped("%s", sceneAssetErrorMessage_.c_str());
+		if (ImGui::Button("OK")) {
+			sceneAssetErrorMessage_.clear();
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+}
+
 void ImGuiManager::DrawSettingsMenu() {
 	if (!ImGui::BeginMenu("Settings")) {
 		return;
 	}
+	if (ImGui::BeginMenu("Project", sceneCatalog_ != nullptr)) {
+		if (ImGui::BeginMenu("Startup Scene")) {
+			for (const SceneDescriptor& scene : sceneCatalog_->GetScenes()) {
+				const bool selected =
+					scene.id == sceneCatalog_->GetStartSceneId();
+				const std::string label = scene.displayName + "##startup_" + scene.id;
+				if (ImGui::MenuItem(
+					label.c_str(),
+					nullptr,
+					selected,
+					!startSceneRequestPending_
+				) && !selected) {
+					requestedStartSceneId_ = scene.id;
+					startSceneRequestPending_ = true;
+				}
+			}
+			ImGui::Separator();
+			ImGui::TextDisabled("Saved in resources/scenes/scenes.json");
+			ImGui::EndMenu();
+		}
+		if (ImGui::BeginMenu("Startup Mode")) {
+			struct StartupModeEntry {
+				const char* label;
+				SceneBuildConfiguration configuration;
+			};
+			const StartupModeEntry entries[] = {
+				{ "Debug", SceneBuildConfiguration::Debug },
+				{ "Development", SceneBuildConfiguration::Development },
+				{ "Release", SceneBuildConfiguration::Release }
+			};
+			for (const StartupModeEntry& entry : entries) {
+				if (!ImGui::BeginMenu(entry.label)) {
+					continue;
+				}
+				const SceneStartupMode currentMode =
+					sceneCatalog_->GetStartupMode(entry.configuration);
+				const bool editorAllowed =
+					entry.configuration != SceneBuildConfiguration::Release;
+				if (ImGui::MenuItem(
+					"Editor",
+					nullptr,
+					currentMode == SceneStartupMode::Editor,
+					editorAllowed && !startupModeRequestPending_
+				)) {
+					requestedStartupConfiguration_ = entry.configuration;
+					requestedStartupMode_ = SceneStartupMode::Editor;
+					startupModeRequestPending_ = true;
+				}
+				if (ImGui::MenuItem(
+					"Runtime",
+					nullptr,
+					currentMode == SceneStartupMode::Runtime,
+					!startupModeRequestPending_
+				)) {
+					requestedStartupConfiguration_ = entry.configuration;
+					requestedStartupMode_ = SceneStartupMode::Runtime;
+					startupModeRequestPending_ = true;
+				}
+				ImGui::EndMenu();
+			}
+			ImGui::Separator();
+			ImGui::TextDisabled("Release supports Runtime startup only.");
+			ImGui::EndMenu();
+		}
+		ImGui::EndMenu();
+	}
+
+	ImGui::Separator();
 
 	if (ImGui::BeginMenu("Windows")) {
 		ImGui::MenuItem("Hierarchy", nullptr, &showHierarchy_);
 		ImGui::MenuItem("Inspector", nullptr, &showInspector_);
 		ImGui::MenuItem("Project", nullptr, &showProject_);
 		ImGui::MenuItem("Console", nullptr, &showConsole_);
+		ImGui::MenuItem("Loaded Scenes", nullptr, &showLoadedScenes_);
 		ImGui::Separator();
 		if (ImGui::MenuItem("Reset Layout")) {
 			resetLayout_ = true;
@@ -1488,6 +2205,25 @@ void ImGuiManager::DrawSettingsMenu() {
 	ImGui::EndMenu();
 }
 
+void ImGuiManager::DrawProjectSettingsDialogs() {
+	if (projectSettingsErrorPopupRequested_) {
+		ImGui::OpenPopup("Project Settings Error");
+		projectSettingsErrorPopupRequested_ = false;
+	}
+	if (ImGui::BeginPopupModal(
+		"Project Settings Error",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		ImGui::TextWrapped("%s", projectSettingsErrorMessage_.c_str());
+		if (ImGui::Button("OK")) {
+			projectSettingsErrorMessage_.clear();
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+}
+
 void ImGuiManager::CreateDockSpace(){
 	const ImGuiViewport* viewport = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -1511,10 +2247,14 @@ void ImGuiManager::CreateDockSpace(){
 	ImGui::PopStyleVar(3);
 
 	if (ImGui::BeginMenuBar()) {
+		DrawSceneMenu();
 		DrawSettingsMenu();
 		DrawPlaybackControls();
 		ImGui::EndMenuBar();
 	}
+	DrawSceneSwitchConfirmation();
+	DrawSceneAssetDialogs();
+	DrawProjectSettingsDialogs();
 
 	const ImGuiID dockSpaceId = ImGui::GetID("UnityEditorDockSpaceV2");
 	if (
@@ -1627,21 +2367,21 @@ void ImGuiManager::BuildDefaultLayout() {
 	const ImGuiID leftId = ImGui::DockBuilderSplitNode(
 		centerId,
 		ImGuiDir_Left,
-		0.18f,
+		0.22f,
 		nullptr,
 		&centerId
 	);
 	const ImGuiID rightId = ImGui::DockBuilderSplitNode(
 		centerId,
 		ImGuiDir_Right,
-		0.22f,
+		0.51f,
 		nullptr,
 		&centerId
 	);
 	const ImGuiID bottomId = ImGui::DockBuilderSplitNode(
 		centerId,
 		ImGuiDir_Down,
-		0.26f,
+		0.42f,
 		nullptr,
 		&centerId
 	);
@@ -1651,16 +2391,156 @@ void ImGuiManager::BuildDefaultLayout() {
 	ImGui::DockBuilderDockWindow("Inspector", rightId);
 	ImGui::DockBuilderDockWindow("Scene Controls", rightId);
 	ImGui::DockBuilderDockWindow("Title Scene", rightId);
-	ImGui::DockBuilderDockWindow("Light Manager", rightId);
 	ImGui::DockBuilderDockWindow("Particle Effect Editor", rightId);
 	ImGui::DockBuilderDockWindow("Environment", rightId);
 	ImGui::DockBuilderDockWindow("Post Process Stack", rightId);
-	ImGui::DockBuilderDockWindow("Lightning", rightId);
 	ImGui::DockBuilderDockWindow("Scene Particles", rightId);
 	ImGui::DockBuilderDockWindow("Monitor Debug", bottomId);
 	ImGui::DockBuilderDockWindow("Project", bottomId);
 	ImGui::DockBuilderDockWindow("Console", bottomId);
+	ImGui::DockBuilderDockWindow("Loaded Scenes", bottomId);
 	ImGui::DockBuilderFinish(dockSpaceId);
+}
+
+void ImGuiManager::DrawLoadedScenesWindow() {
+	ImGui::Begin("Loaded Scenes", &showLoadedScenes_);
+
+	const bool runtimeMode = editorSession_ && !editorSession_->IsEditing();
+	if (!sceneManager_ || !sceneCatalog_) {
+		ImGui::TextDisabled("Scene runtime is not available.");
+		ImGui::End();
+		return;
+	}
+	if (!runtimeMode) {
+		ImGui::TextDisabled("Additive Scene operations are available in Play Mode.");
+	}
+
+	const std::vector<const SceneInstance*> loadedScenes =
+		sceneManager_->GetLoadedSceneInstances();
+	const SceneInstanceId activeInstanceId =
+		sceneManager_->GetActiveSceneInstanceId();
+
+	if (ImGui::BeginTable(
+		"LoadedSceneInstances",
+		5,
+		ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+		ImGuiTableFlags_SizingStretchProp
+	)) {
+		ImGui::TableSetupColumn("Scene");
+		ImGui::TableSetupColumn("Instance Key");
+		ImGui::TableSetupColumn("Active");
+		ImGui::TableSetupColumn("Persistent");
+		ImGui::TableSetupColumn("Actions");
+		ImGui::TableHeadersRow();
+
+		for (const SceneInstance* instance : loadedScenes) {
+			if (!instance) {
+				continue;
+			}
+			const SceneInstanceId instanceId = instance->GetId();
+			ImGui::PushID(static_cast<int>(instanceId));
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(instance->GetSceneId().c_str());
+			ImGui::TextDisabled(
+				"ID: %llu",
+				static_cast<unsigned long long>(instanceId)
+			);
+
+			ImGui::TableSetColumnIndex(1);
+			ImGui::TextUnformatted(instance->GetInstanceKey().c_str());
+
+			ImGui::TableSetColumnIndex(2);
+			const bool isActive = instanceId == activeInstanceId;
+			if (isActive) {
+				ImGui::TextUnformatted("Active");
+			} else {
+				ImGui::BeginDisabled(!runtimeMode || sceneInstanceRequestPending_);
+				if (ImGui::SmallButton("Set Active")) {
+					SceneInstanceRequest request{};
+					request.operation = SceneInstanceOperation::SetActive;
+					request.instanceId = instanceId;
+					QueueSceneInstanceRequest(request);
+				}
+				ImGui::EndDisabled();
+			}
+
+			ImGui::TableSetColumnIndex(3);
+			bool persistent = instance->IsPersistent();
+			ImGui::BeginDisabled(!runtimeMode || sceneInstanceRequestPending_);
+			if (ImGui::Checkbox("##Persistent", &persistent)) {
+				SceneInstanceRequest request{};
+				request.operation = SceneInstanceOperation::SetPersistent;
+				request.instanceId = instanceId;
+				request.persistent = persistent;
+				QueueSceneInstanceRequest(request);
+			}
+			ImGui::EndDisabled();
+
+			ImGui::TableSetColumnIndex(4);
+			const bool canUnload = runtimeMode && loadedScenes.size() > 1 &&
+				!sceneInstanceRequestPending_;
+			ImGui::BeginDisabled(!canUnload);
+			if (ImGui::SmallButton("Unload")) {
+				SceneInstanceRequest request{};
+				request.operation = SceneInstanceOperation::Unload;
+				request.instanceId = instanceId;
+				QueueSceneInstanceRequest(request);
+			}
+			ImGui::EndDisabled();
+			ImGui::PopID();
+		}
+		ImGui::EndTable();
+	}
+
+	ImGui::SeparatorText("Additive Load");
+	const std::vector<SceneDescriptor>& catalogScenes = sceneCatalog_->GetScenes();
+	static int selectedSceneIndex = 0;
+	if (selectedSceneIndex >= static_cast<int>(catalogScenes.size())) {
+		selectedSceneIndex = 0;
+	}
+	const char* selectedLabel = catalogScenes.empty()
+		? "No registered Scenes"
+		: catalogScenes[selectedSceneIndex].displayName.c_str();
+	ImGui::BeginDisabled(!runtimeMode || catalogScenes.empty() ||
+		sceneInstanceRequestPending_);
+	if (ImGui::BeginCombo("Scene", selectedLabel)) {
+		for (int index = 0; index < static_cast<int>(catalogScenes.size()); ++index) {
+			const bool selected = index == selectedSceneIndex;
+			if (ImGui::Selectable(
+				catalogScenes[index].displayName.c_str(),
+				selected
+			)) {
+				selectedSceneIndex = index;
+			}
+			if (selected) {
+				ImGui::SetItemDefaultFocus();
+			}
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::InputText(
+		"Instance Key (optional)",
+		additiveInstanceKeyBuffer_,
+		sizeof(additiveInstanceKeyBuffer_)
+	);
+	if (ImGui::Button("Load Additive") && !catalogScenes.empty()) {
+		SceneInstanceRequest request{};
+		request.operation = SceneInstanceOperation::LoadAdditive;
+		request.sceneId = catalogScenes[selectedSceneIndex].id;
+		request.instanceKey = additiveInstanceKeyBuffer_;
+		QueueSceneInstanceRequest(request);
+	}
+	ImGui::EndDisabled();
+
+	if (!sceneInstanceStatusMessage_.empty()) {
+		const ImVec4 color = sceneInstanceOperationSucceeded_
+			? ImVec4(0.45f, 0.85f, 0.50f, 1.0f)
+			: ImVec4(0.95f, 0.40f, 0.35f, 1.0f);
+		ImGui::TextColored(color, "%s", sceneInstanceStatusMessage_.c_str());
+	}
+
+	ImGui::End();
 }
 
 void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
@@ -1963,7 +2843,7 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				}
 			);
 		};
-		auto selectEntity = [&](uint64_t entityId, bool extend, bool range) {
+			auto selectEntity = [&](uint64_t entityId, bool extend, bool range) {
 			if (range && hierarchySelectionAnchorId_ != 0) {
 				const auto anchor = std::find(
 					hierarchyFilterOrder.begin(),
@@ -2004,6 +2884,7 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				: entityId;
 			selectedProjectFile_.clear();
 			showInspector_ = true;
+			revealInspectorRequested_ = true;
 		};
 		auto setSelectedActive = [&](bool active, uint64_t clickedEntityId) {
 			const bool applyToSelection = isEntitySelected(clickedEntityId);
@@ -2550,9 +3431,16 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 }
 
 void ImGuiManager::DrawInspectorWindow() {
-	if (focusInspectorRequested_) {
-		ImGui::SetNextWindowFocus();
-		focusInspectorRequested_ = false;
+	if (revealInspectorRequested_) {
+		if (ImGuiWindow* inspectorWindow = ImGui::FindWindowByName("Inspector")) {
+			if (ImGuiDockNode* dockNode = inspectorWindow->DockNode) {
+				dockNode->SelectedTabId = inspectorWindow->TabId;
+				if (dockNode->TabBar) {
+					dockNode->TabBar->SelectedTabId = inspectorWindow->TabId;
+				}
+			}
+		}
+		revealInspectorRequested_ = false;
 	}
 	// コンテンツ量の境界でスクロールバーが出入りすると、幅依存のPreviewが再配置を繰り返す。
 	ImGui::Begin(
@@ -3606,11 +4494,18 @@ void ImGuiManager::DrawInspectorWindow() {
 				&entity->transform.translate.x,
 				0.5f
 			);
-			transformChanged |= ImGui::DragFloat(
+			Vector3 spriteEuler =
+				MakeEulerFromQuaternion(entity->transform.rotate);
+			if (ImGui::DragFloat(
 				"Rotation",
-				&entity->transform.rotate.z,
+				&spriteEuler.z,
 				0.01f
-			);
+			)) {
+				entity->transform.rotate = MakeQuaternionFromEuler({
+					0.0f, 0.0f, spriteEuler.z
+				});
+				transformChanged = true;
+			}
 			transformChanged |= ImGui::DragFloat2(
 				"Scale",
 				&entity->transform.scale.x,
@@ -3624,11 +4519,28 @@ void ImGuiManager::DrawInspectorWindow() {
 				&entity->transform.translate.x,
 				0.05f
 			);
-			transformChanged |= ImGui::DragFloat3(
+			if (
+				inspectorRotationEntityId_ != entity->id ||
+				!IsSameRotation(
+					inspectorRotationSource_,
+					entity->transform.rotate
+				)
+			) {
+				inspectorRotationEntityId_ = entity->id;
+				inspectorRotationEuler_ =
+					MakeEulerFromQuaternion(entity->transform.rotate);
+				inspectorRotationSource_ = entity->transform.rotate;
+			}
+			if (ImGui::DragFloat3(
 				"Rotation",
-				&entity->transform.rotate.x,
+				&inspectorRotationEuler_.x,
 				0.01f
-			);
+			)) {
+				entity->transform.rotate =
+					MakeQuaternionFromEuler(inspectorRotationEuler_);
+				inspectorRotationSource_ = entity->transform.rotate;
+				transformChanged = true;
+			}
 			transformChanged |= ImGui::DragFloat3(
 				"Scale",
 				&entity->transform.scale.x,
@@ -4098,6 +5010,246 @@ void ImGuiManager::DrawInspectorWindow() {
 					entity->spriteColor = component.spriteColor;
 					entity->spriteFlipX = component.spriteFlipX;
 					entity->spriteFlipY = component.spriteFlipY;
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "Light") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool lightChanged = false;
+				const char* lightTypes[] = {
+					"Directional",
+					"Point",
+					"Spot"
+				};
+				int lightTypeIndex = component.lightType == "Directional"
+					? 0
+					: component.lightType == "Spot" ? 2 : 1;
+				if (ImGui::Combo(
+					"Light Type",
+					&lightTypeIndex,
+					lightTypes,
+					IM_ARRAYSIZE(lightTypes)
+				)) {
+					component.lightType = lightTypes[lightTypeIndex];
+					if (component.lightType == "Point") {
+						component.lightCastsShadow = false;
+					}
+					lightChanged = true;
+				}
+				lightChanged |= ImGui::ColorEdit4(
+					"Color",
+					&component.lightColor.x,
+					ImGuiColorEditFlags_Float
+				);
+				lightChanged |= ImGui::DragFloat(
+					"Intensity",
+					&component.lightIntensity,
+					0.05f,
+					0.0f,
+					30.0f
+				);
+
+				if (component.lightType == "Point" || component.lightType == "Spot") {
+					lightChanged |= ImGui::DragFloat(
+						"Range",
+						&component.lightRange,
+						0.1f,
+						0.1f,
+						1000.0f
+					);
+					lightChanged |= ImGui::DragFloat(
+						"Decay",
+						&component.lightDecay,
+						0.05f,
+						0.0f,
+						10.0f
+					);
+				}
+				if (component.lightType == "Spot") {
+					lightChanged |= ImGui::DragFloat(
+						"Inner Angle",
+						&component.lightSpotInnerAngle,
+						0.25f,
+						0.0f,
+						component.lightSpotOuterAngle,
+						"%.1f deg"
+					);
+					lightChanged |= ImGui::DragFloat(
+						"Outer Angle",
+						&component.lightSpotOuterAngle,
+						0.25f,
+						1.0f,
+						89.0f,
+						"%.1f deg"
+					);
+					component.lightSpotOuterAngle = std::clamp(
+						component.lightSpotOuterAngle,
+						1.0f,
+						89.0f
+					);
+					component.lightSpotInnerAngle = std::clamp(
+						component.lightSpotInnerAngle,
+						0.0f,
+						component.lightSpotOuterAngle
+					);
+				}
+
+				if (component.lightType == "Directional") {
+					const Matrix4x4 localRotation =
+						MakeRotateMatrix(entity->transform.rotate);
+					Vector3 localDirection{
+						localRotation.m[2][0],
+						localRotation.m[2][1],
+						localRotation.m[2][2]
+					};
+					if (ImGui::DragFloat3(
+						"Direction",
+						&localDirection.x,
+						0.01f,
+						-1.0f,
+						1.0f,
+						"%.3f"
+					)) {
+						if (Math::Length(localDirection) <= 0.000001f) {
+							localDirection = { 0.0f, 0.0f, 1.0f };
+						} else {
+							localDirection = Math::Normalize(localDirection);
+						}
+						Vector3 localUp{
+							localRotation.m[1][0],
+							localRotation.m[1][1],
+							localRotation.m[1][2]
+						};
+						entity->transform.rotate =
+							MakeLookRotationQuaternion(localDirection, localUp);
+						lightChanged = true;
+					}
+					ImGui::TextDisabled(
+						"Local direction; parent rotation is applied. Position is the shadow focus."
+					);
+				} else if (component.lightType == "Spot") {
+					ImGui::TextDisabled("Transform +Z is the light direction.");
+				}
+
+				if (component.lightType != "Point") {
+					ImGui::SeparatorText("Shadow");
+					lightChanged |= ImGui::Checkbox(
+						"Cast Shadow",
+						&component.lightCastsShadow
+					);
+					if (component.lightCastsShadow) {
+						lightChanged |= ImGui::DragFloat(
+							"Shadow Bias",
+							&component.lightShadowBias,
+							0.0001f,
+							0.0f,
+							0.05f,
+							"%.5f"
+						);
+						lightChanged |= ImGui::DragFloat(
+							"Normal Bias",
+							&component.lightShadowNormalBias,
+							0.001f,
+							0.0f,
+							0.2f,
+							"%.4f"
+						);
+						lightChanged |= ImGui::DragFloat(
+							"Shadow Strength",
+							&component.lightShadowStrength,
+							0.01f,
+							0.0f,
+							1.0f
+						);
+						if (component.lightType == "Directional") {
+							lightChanged |= ImGui::DragFloat(
+								"Shadow Distance",
+								&component.lightShadowDistance,
+								0.5f,
+								1.0f,
+								1000.0f
+							);
+							lightChanged |= ImGui::DragFloat(
+								"Orthographic Size",
+								&component.lightShadowOrthographicSize,
+								0.5f,
+								1.0f,
+								1000.0f
+							);
+							lightChanged |= ImGui::DragFloat(
+								"Shadow Near Clip",
+								&component.lightShadowNearClip,
+								0.01f,
+								0.001f,
+								1000.0f
+							);
+							lightChanged |= ImGui::DragFloat(
+								"Shadow Far Clip",
+								&component.lightShadowFarClip,
+								0.5f,
+								1.0f,
+								5000.0f
+							);
+							lightChanged |= ImGui::Checkbox(
+								"Texel Snap",
+								&component.lightShadowTexelSnap
+							);
+						}
+					}
+				}
+
+				ImGui::SeparatorText("Scene Lighting");
+				const char* shadowMapLabels[] = { "1024", "2048", "4096" };
+				SceneLightingSettings lightingSettings =
+					document.GetLightingSettings();
+				int shadowMapIndex = lightingSettings.shadowMapSize <= 1024
+					? 0
+					: lightingSettings.shadowMapSize <= 2048 ? 1 : 2;
+				if (ImGui::Combo(
+					"Shadow Map Size",
+					&shadowMapIndex,
+					shadowMapLabels,
+					IM_ARRAYSIZE(shadowMapLabels)
+				)) {
+					const uint32_t sizes[] = { 1024, 2048, 4096 };
+					lightingSettings.shadowMapSize = sizes[shadowMapIndex];
+					document.SetLightingSettings(lightingSettings);
+				}
+				if (lightChanged) {
+					component.lightColor.x = std::clamp(
+						component.lightColor.x,
+						0.0f,
+						1.0f
+					);
+					component.lightColor.y = std::clamp(
+						component.lightColor.y,
+						0.0f,
+						1.0f
+					);
+					component.lightColor.z = std::clamp(
+						component.lightColor.z,
+						0.0f,
+						1.0f
+					);
+					component.lightColor.w = std::clamp(
+						component.lightColor.w,
+						0.0f,
+						1.0f
+					);
+					component.lightIntensity = (std::max)(
+						component.lightIntensity,
+						0.0f
+					);
+					component.lightRange = (std::max)(component.lightRange, 0.1f);
+					component.lightDecay = (std::max)(component.lightDecay, 0.0f);
+					component.lightShadowNearClip = (std::max)(
+						component.lightShadowNearClip,
+						0.001f
+					);
+					component.lightShadowFarClip = (std::max)(
+						component.lightShadowFarClip,
+						component.lightShadowNearClip + 0.001f
+					);
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
@@ -4658,6 +5810,121 @@ void ImGuiManager::DrawInspectorWindow() {
 					pointChanged = true;
 				}
 				if (pointChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "EntityReference") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool referenceChanged = false;
+				char referenceNameBuffer[64]{};
+				CopyTextBuffer(
+					referenceNameBuffer,
+					sizeof(referenceNameBuffer),
+					component.entityReferenceName
+				);
+				if (ImGui::InputText(
+					"Reference Name",
+					referenceNameBuffer,
+					sizeof(referenceNameBuffer)
+				)) {
+					component.entityReferenceName = referenceNameBuffer;
+					referenceChanged = true;
+				}
+				char targetSceneIdBuffer[128]{};
+				CopyTextBuffer(
+					targetSceneIdBuffer,
+					sizeof(targetSceneIdBuffer),
+					component.entityReferenceTarget.sceneId
+				);
+				if (ImGui::InputText(
+					"Target Scene Id",
+					targetSceneIdBuffer,
+					sizeof(targetSceneIdBuffer)
+				)) {
+					component.entityReferenceTarget.sceneId = targetSceneIdBuffer;
+					referenceChanged = true;
+				}
+				if (component.entityReferenceTarget.sceneId.empty()) {
+					ImGui::TextDisabled("Empty Scene Id targets this Scene Instance.");
+				}
+				char instanceKeyBuffer[128]{};
+				CopyTextBuffer(
+					instanceKeyBuffer,
+					sizeof(instanceKeyBuffer),
+					component.entityReferenceTarget.instanceKey
+				);
+				if (ImGui::InputText(
+					"Target Instance Key",
+					instanceKeyBuffer,
+					sizeof(instanceKeyBuffer)
+				)) {
+					component.entityReferenceTarget.instanceKey = instanceKeyBuffer;
+					referenceChanged = true;
+				}
+				referenceChanged |= ImGui::InputScalar(
+					"Target Entity Id",
+					ImGuiDataType_U64,
+					&component.entityReferenceTarget.entityId
+				);
+				if (referenceChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "SceneTransition") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool transitionChanged = false;
+				const SceneDescriptor* targetScene = sceneCatalog_
+					? sceneCatalog_->Find(
+						component.sceneTransitionTargetSceneId
+					)
+					: nullptr;
+				const char* targetLabel = targetScene
+					? targetScene->displayName.c_str()
+					: "Select...";
+				if (ImGui::BeginCombo("Target Scene", targetLabel)) {
+					if (sceneCatalog_) {
+						for (const SceneDescriptor& scene :
+							sceneCatalog_->GetScenes()) {
+							const std::string sceneLabel =
+								scene.displayName + "##" + scene.id;
+							if (ImGui::Selectable(
+								sceneLabel.c_str(),
+								component.sceneTransitionTargetSceneId ==
+									scene.id
+							)) {
+								component.sceneTransitionTargetSceneId = scene.id;
+								transitionChanged = true;
+							}
+						}
+					}
+					ImGui::EndCombo();
+				}
+
+				const char* triggerKeys[] = {
+					"ENTER", "SPACE", "ESCAPE", "TAB",
+					"A", "B", "C", "D", "E", "F", "G", "H",
+					"I", "J", "K", "L", "M", "N", "O", "P",
+					"Q", "R", "S", "T", "U", "V", "W", "X",
+					"Y", "Z"
+				};
+				const char* triggerKey =
+					component.sceneTransitionTriggerKey.empty()
+						? "ENTER"
+						: component.sceneTransitionTriggerKey.c_str();
+				if (ImGui::BeginCombo("Trigger Key", triggerKey)) {
+					for (const char* key : triggerKeys) {
+						if (ImGui::Selectable(
+							key,
+							component.sceneTransitionTriggerKey == key
+						)) {
+							component.sceneTransitionTriggerType = "Key";
+							component.sceneTransitionTriggerKey = key;
+							transitionChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				if (transitionChanged) {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
@@ -5865,8 +7132,11 @@ void ImGuiManager::DrawInspectorWindow() {
 				"Environment",
 				"SpriteRenderer",
 				"Camera",
+				"Light",
 				"MonitorRenderer",
 				"ThirdPersonCamera",
+				"EntityReference",
+				"SceneTransition",
 				"CameraPath",
 				"CameraPathPoint",
 				"PhysicsBody",
@@ -6047,6 +7317,7 @@ void ImGuiManager::DrawProjectWindow() {
 			const std::string& extension = entry.extension;
 			const bool isTexture = entry.isTexture;
 			const bool isModel = entry.isModel;
+			const bool isScene = entry.isScene;
 			const std::string resourcePath = isTexture
 				? GetProjectResourcePath(filePath)
 				: std::string{};
@@ -6085,6 +7356,7 @@ void ImGuiManager::DrawProjectWindow() {
 			}
 
 			bool clicked = false;
+			bool openSceneRequested = false;
 			auto loadHoveredTexturePreview = [&]() {
 				if (
 					isTexture &&
@@ -6166,6 +7438,7 @@ void ImGuiManager::DrawProjectWindow() {
 					drawDragSource();
 				} else {
 					const char* typeLabel = isDirectory ? "DIR" :
+						isScene ? "SCENE" :
 						isModel ? "3D" :
 						isTexture ? "DDS" :
 						extension == ".wav" ? "AUDIO" :
@@ -6175,6 +7448,8 @@ void ImGuiManager::DrawProjectWindow() {
 						typeLabel,
 						ImVec2(projectThumbnailSize_, projectThumbnailSize_)
 					);
+					openSceneRequested = isScene && ImGui::IsItemHovered() &&
+						ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 					if (ImGui::IsItemHovered()) {
 						loadHoveredTexturePreview();
 					}
@@ -6185,6 +7460,7 @@ void ImGuiManager::DrawProjectWindow() {
 				ImGui::PopTextWrapPos();
 			} else {
 				const char* prefix = isDirectory ? "[Folder]" :
+					isScene ? "[Scene]" :
 					isTexture ? "[Tex]" :
 					isModel ? "[Model]" :
 					extension == ".wav" ? "[Audio]" :
@@ -6195,6 +7471,8 @@ void ImGuiManager::DrawProjectWindow() {
 					label.c_str(),
 					isDirectory ? selectedProjectFolder_ == filePath : isSelected
 				);
+				openSceneRequested = isScene && ImGui::IsItemHovered() &&
+					ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 				if (ImGui::IsItemHovered()) {
 					loadHoveredTexturePreview();
 				}
@@ -6204,7 +7482,7 @@ void ImGuiManager::DrawProjectWindow() {
 			if (isSelected || selectedProjectFolder_ == filePath) {
 				ImGui::PopStyleColor();
 			}
-			if (clicked) {
+			if (clicked || openSceneRequested) {
 				if (isDirectory) {
 					selectedProjectFolder_ = filePath;
 					selectedProjectFile_.clear();
@@ -6218,6 +7496,13 @@ void ImGuiManager::DrawProjectWindow() {
 					selectedEntityId_ = 0;
 					if (previewSoundData_.pBuffer && Audio::GetInstance()) {
 						Audio::GetInstance()->SoundUnload(&previewSoundData_);
+					}
+					if (openSceneRequested && sceneCatalog_) {
+						const SceneDescriptor* scene =
+							sceneCatalog_->FindByFilePath(filePath);
+						if (scene) {
+							RequestOpenScene(scene->id);
+						}
 					}
 				}
 			}

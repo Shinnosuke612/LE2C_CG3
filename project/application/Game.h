@@ -10,7 +10,14 @@
 
 class SceneRenderTarget;
 class FullscreenCopy;
+class EditorBootstrap;
 class EditorSession;
+class RuntimeBootstrap;
+class SceneCatalog;
+class SceneAssetService;
+class SceneExecutionContext;
+class SceneStartupErrorScreen;
+class SceneTemplateRegistry;
 class Camera;
 class Object3d;
 
@@ -60,6 +67,7 @@ private:
 	SceneRenderTarget* GetPostProcessOutputTarget() const;
 	ScenePostProcessSettings CapturePostProcessSettings() const;
 	void ApplyPostProcessSettings(const ScenePostProcessSettings& settings);
+	std::string GetActivePostProcessSourceKey() const;
 	void StorePostProcessSettingsToDocument();
 	WaterPostEffectState ResolveWaterPostEffectState(const Camera* camera) const;
 	void DrawModelPreview();
@@ -67,9 +75,24 @@ private:
 	void RestoreCameraSnapshot(const CameraSnapshot& snapshot) const;
 	void BeginPauseDebugCamera();
 	void EndPauseDebugCamera();
+	void ProcessSceneAssetRequests();
+	void ProcessSceneInstanceRequests();
+	void ProcessProjectSettingsRequests();
+	bool OpenRegisteredEditScene(
+		const std::string& sceneId,
+		bool discardUnsavedChanges,
+		std::string& errorMessage
+	);
 
 	SceneManager* sceneManager_ = nullptr;
+	SceneExecutionContext* executionContext_ = nullptr;
 	EditorSession* editorSession_ = nullptr;
+	EditorBootstrap* editorBootstrap_ = nullptr;
+	RuntimeBootstrap* runtimeBootstrap_ = nullptr;
+	SceneCatalog* sceneCatalog_ = nullptr;
+	SceneAssetService* sceneAssetService_ = nullptr;
+	SceneStartupErrorScreen* startupErrorScreen_ = nullptr;
+	SceneTemplateRegistry* sceneTemplateRegistry_ = nullptr;
 	SceneRenderTarget* sceneRenderTarget_ = nullptr;
 	SceneRenderTarget* postProcessRenderTargets_[2]{};
 	SceneRenderTarget* foregroundComposeRenderTarget_ = nullptr;
@@ -83,6 +106,7 @@ private:
 	bool editorWasEditingLastFrame_ = true;
 	bool wasPausedLastFrame_ = false;
 	uint64_t appliedPostProcessRevision_ = static_cast<uint64_t>(-1);
+	std::string appliedPostProcessSourceKey_;
 	std::string modelPreviewPath_;
 	float modelPreviewFitDistance_ = 5.0f;
 	BloomRenderer::Parameters bloomParameters_{};

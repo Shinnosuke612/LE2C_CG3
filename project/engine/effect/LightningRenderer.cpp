@@ -11,7 +11,6 @@
 #include "../3d/Camera.h"
 #include "../base/DirectXCommon.h"
 #include "../base/RenderFormats.h"
-#include "../externals/imgui/imgui.h"
 #include "../math/Math.h"
 #include "../math/Matrix4x4.h"
 #include "../utility/Logger.h"
@@ -86,44 +85,6 @@ void LightningRenderer::Trigger(const Settings& settings) {
 	settings_.enabled = true;
 	settings_.previewContinuous = false;
 	activeTime_ = (std::max)(settings_.duration, 0.01f);
-}
-
-void LightningRenderer::DrawImGui(const char* label) {
-#if defined(_DEBUG) || defined(DEVELOPMENT)
-	if (!ImGui::Begin(label)) {
-		ImGui::End();
-		return;
-	}
-
-	ImGui::Checkbox("Enabled", &settings_.enabled);
-	ImGui::Checkbox("Preview Continuous", &settings_.previewContinuous);
-	ImGui::DragFloat3("Start", &settings_.start.x, 0.05f);
-	ImGui::DragFloat3("End", &settings_.end.x, 0.05f);
-	ImGui::ColorEdit4("Core Color", &settings_.coreColor.x, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
-	ImGui::ColorEdit4("Branch Color", &settings_.branchColor.x, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
-	ImGui::DragFloat("Jitter", &settings_.jitter, 0.01f, 0.0f, 3.0f);
-	ImGui::DragFloat("Branch Length", &settings_.branchLength, 0.01f, 0.0f, 3.0f);
-	ImGui::SliderFloat("Branch Probability", &settings_.branchProbability, 0.0f, 1.0f);
-	ImGui::DragFloat("Thickness", &settings_.thickness, 0.001f, 0.001f, 1.0f, "%.3f");
-	ImGui::DragFloat("Duration", &settings_.duration, 0.01f, 0.01f, 5.0f);
-	int segments = static_cast<int>(settings_.segmentCount);
-	if (ImGui::SliderInt("Segments", &segments, 1, 64)) {
-		settings_.segmentCount = static_cast<uint32_t>(segments);
-	}
-	int seed = static_cast<int>(settings_.seed);
-	if (ImGui::DragInt("Seed", &seed, 1.0f, 0, 999999)) {
-		settings_.seed = static_cast<uint32_t>((std::max)(seed, 0));
-	}
-	if (ImGui::Button("Trigger")) {
-		Settings triggerSettings = settings_;
-		triggerSettings.previewContinuous = false;
-		Trigger(triggerSettings);
-	}
-
-	ImGui::End();
-#else
-	(void)label;
-#endif
 }
 
 void LightningRenderer::CreateRootSignature() {

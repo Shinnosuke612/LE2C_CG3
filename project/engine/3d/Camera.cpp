@@ -20,7 +20,17 @@ void Camera::Update() {
 		viewMatrix = Inverse(worldMatrix);
 	}
 	else {
-		worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
+		worldMatrix = transform.useQuaternionRotation
+			? MakeAffineMatrix(
+				transform.scale,
+				transform.quaternionRotate,
+				transform.translate
+			)
+			: MakeAffineMatrix(
+				transform.scale,
+				transform.rotate,
+				transform.translate
+			);
 		viewMatrix = Inverse(worldMatrix);
 	}
 
@@ -34,11 +44,17 @@ void Camera::UpdatePreviewMatrices() {
 	} else if (usesLookAtMatrix_) {
 		viewMatrix = Inverse(worldMatrix);
 	} else {
-		worldMatrix = MakeAffineMatrix(
-			transform.scale,
-			transform.rotate,
-			transform.translate
-		);
+		worldMatrix = transform.useQuaternionRotation
+			? MakeAffineMatrix(
+				transform.scale,
+				transform.quaternionRotate,
+				transform.translate
+			)
+			: MakeAffineMatrix(
+				transform.scale,
+				transform.rotate,
+				transform.translate
+			);
 		viewMatrix = Inverse(worldMatrix);
 	}
 	projectionMatrix = MakePerspectiveFovMatrix(
@@ -54,6 +70,7 @@ void Camera::SetLookAt(const Vector3& translate, const Vector3& target) {
 	isOrbitMode_ = false;
 	usesLookAtMatrix_ = true;
 	transform.translate = translate;
+	transform.useQuaternionRotation = false;
 
 	Vector3 forward = Math::Normalize(Math::Subtract(target, translate));
 	if (Math::Length(forward) < 0.000001f) {
@@ -239,6 +256,7 @@ void Camera::DrawImGui(const char* label) {
 					rotateDeg.y * kDegToRad,
 					rotateDeg.z * kDegToRad
 				};
+				transform.useQuaternionRotation = false;
 			}
 		}
 

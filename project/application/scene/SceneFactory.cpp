@@ -1,15 +1,11 @@
-// 役割: タイトルとゲームプレイのシーン生成を実装する。
+// 役割: 実行プロファイルに対応するScene Controllerを生成する。
 #include "SceneFactory.h"
 
-#include "GamePlayScene.h"
-#include "TitleScene.h"
+#include "RuntimeScene.h"
 
-BaseScene* SceneFactory::CreateScene(const std::string& sceneName) {
-	if (sceneName == "TITLE") {
-		return new TitleScene();
-	}
-	if (sceneName == "GAMEPLAY") {
-		return new GamePlayScene();
+BaseScene* SceneFactory::CreateScene(const std::string& runtimeProfile) {
+	if (runtimeProfile == "RUNTIME") {
+		return new RuntimeScene();
 	}
 
 	return nullptr;

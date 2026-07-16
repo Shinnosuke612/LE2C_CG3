@@ -503,6 +503,7 @@ public:
 	);
 	bool SaveSceneParticleLayout(const std::string& filePath = "resources/particles/scene_particles.json") const;
 	void UpdateSceneParticles(const std::string& sceneName);
+	void ReleaseSceneParticles(const std::string& sceneName);
 	void CycleSceneParticleAssets(const std::string& sceneName);
 	void DrawSceneParticleImGui(
 		const std::string& currentSceneName,

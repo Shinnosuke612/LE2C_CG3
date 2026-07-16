@@ -1,0 +1,512 @@
+// 役割: SceneDocumentと各Runtime Systemを連携し、更新と描画を実行する。
+#include "RuntimeScene.h"
+
+#include "../../engine/scene/SceneManager.h"
+#include "../../engine/scene/SceneExecutionContext.h"
+#include "../../engine/scene/SceneDocument.h"
+#include "../../engine/3d/SrvManager.h"
+
+#include "../../engine/3d/Camera.h"
+#include "../../engine/3d/Object3dCommon.h"
+#include "../../engine/3d/Object3d.h"
+#include "../../engine/particle/ParticleManager.h"
+#include "../player/Player.h"
+
+namespace {
+	Transform MakeRuntimeTransform(const QuaternionTransform& source) {
+		Transform result{};
+		result.scale = source.scale;
+		result.rotate = MakeEulerFromQuaternion(source.rotate);
+		result.translate = source.translate;
+		result.useQuaternionRotation = true;
+		result.quaternionRotate = source.rotate;
+		return result;
+	}
+
+	void SynchronizeSceneTransform(
+		QuaternionTransform& destination,
+		const Transform& source
+	) {
+		destination.scale = source.scale;
+		destination.rotate = source.useQuaternionRotation
+			? source.quaternionRotate
+			: MakeQuaternionFromEuler(source.rotate);
+		destination.translate = source.translate;
+	}
+
+	Transform GetSceneTransform(
+		const SceneDocument* document,
+		const char* name,
+		const Transform& fallback
+	) {
+		const SceneEntity* entity = document
+			? document->FindEntityByName(name)
+			: nullptr;
+		return entity ? MakeRuntimeTransform(entity->transform) : fallback;
+	}
+
+	Camera* CreateOrbitCamera() {
+		Camera* camera = new Camera();
+		camera->SetOrbitMode(true);
+		camera->SetOrbitTarget({ 0.0f, 0.0f, 0.0f });
+		camera->SetOrbitDistance(10.0f);
+		camera->SetOrbitAngle(0.0f, 0.0f);
+		camera->Update();
+		return camera;
+	}
+}
+
+void RuntimeScene::ApplyRenderCamera(Camera* viewCamera) {
+	objectSystem_.ApplyRenderCamera(viewCamera);
+	environmentSystem_.ApplyRenderCamera(viewCamera);
+	ParticleManager::GetInstance()->SetCamera(viewCamera);
+}
+
+Camera* RuntimeScene::GetSceneViewCamera() const {
+	SceneExecutionContext* executionContext = sceneManager_
+		? sceneManager_->GetExecutionContext()
+		: nullptr;
+	return cameraSystem_.SelectSceneViewCamera(
+		camera_,
+		debugCamera_,
+		executionContext && executionContext->IsPaused()
+	);
+}
+
+void RuntimeScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
+	DrawEnvironment(viewCamera);
+	PrepareSceneContent(viewCamera);
+	BindLighting();
+	DrawPreparedSceneContentForView(viewCamera, skipEntityId);
+}
+
+void RuntimeScene::DrawPreparedSceneContentForView(
+	Camera* viewCamera,
+	uint64_t skipEntityId
+) {
+	SceneDocument* document = GetSceneDocument();
+	if (document) {
+		const bool hidePlayerModel =
+			ShouldHidePlayerModelForCamera(viewCamera);
+		objectSystem_.DrawModels(
+			*document,
+			skipEntityId,
+			hidePlayerModel
+		);
+	}
+	effectRenderSystem_.DrawScenePass(
+		document,
+		viewCamera,
+		skipEntityId,
+		environmentSystem_,
+		objectSystem_
+	);
+}
+
+bool RuntimeScene::ShouldHidePlayerModelForCamera(Camera* viewCamera) const {
+	return
+		viewCamera == camera_ &&
+		cameraSystem_.IsFirstPersonMode();
+}
+
+void RuntimeScene::Initialize()
+{
+	// PlayerはObjectSystemのObjectを借用するため、Objectを最初に構築する。
+	cameraSystem_.Reset();
+
+	camera_ = CreateOrbitCamera();
+	debugCamera_ = CreateOrbitCamera();
+
+	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
+	particleSystem_.Initialize(camera_);
+	SceneDocument* initialDocument = GetSceneDocument();
+	debugSystem_.LoadSettings(initialDocument);
+	SceneExecutionContext* initialExecutionContext = sceneManager_
+		? sceneManager_->GetExecutionContext()
+		: nullptr;
+	const bool initialEditing =
+		initialExecutionContext && initialExecutionContext->IsEditing();
+	const bool initialPlaying =
+		!initialExecutionContext || initialExecutionContext->IsPlaying();
+	objectSystem_.SyncModels(
+		initialDocument,
+		physicsSystem_,
+		0.0f,
+		initialPlaying,
+		initialEditing
+	);
+
+	Vector3 target = GetSceneTransform(
+		initialDocument,
+		"Human",
+		Transform{
+			{ 1.0f, 1.0f, 1.0f },
+			{ 0.0f, 0.0f, 0.0f },
+			{ -2.0f, 0.0f, -2.0f }
+		}
+	).translate;
+	camera_->SetOrbitTarget(target);
+
+	player_ = new Player();
+	player_->Initialize(
+		objectSystem_.FindObjectByName(initialDocument, "Player")
+	);
+	player_->SetTransform(GetSceneTransform(
+		initialDocument,
+		"Player",
+		Transform{
+			{ 1.0f, 1.0f, 1.0f },
+			{ 0.0f, 0.0f, 0.0f },
+			{ 0.0f, 1.0f, -4.0f }
+		}
+	));
+
+	environmentSystem_.Initialize(
+		Object3dCommon::GetInstance()->GetDxCommon()
+	);
+	if (initialDocument) {
+		objectSystem_.BuildBindings(
+			*initialDocument,
+			runtimeObjectBindings_
+		);
+		environmentSystem_.Sync(
+			initialDocument,
+			runtimeObjectBindings_
+		);
+	}
+
+	lightingSystem_.Initialize(
+		Object3dCommon::GetInstance()->GetDxCommon(),
+		SrvManager::GetInstance()
+	);
+	lightingSystem_.Sync(initialDocument);
+	monitorSystem_.Initialize(
+		Object3dCommon::GetInstance()->GetDxCommon(),
+		SrvManager::GetInstance()
+	);
+
+	effectRenderSystem_.Initialize(
+		Object3dCommon::GetInstance()->GetDxCommon()
+	);
+
+}
+
+void RuntimeScene::Update(float deltaTime)
+{
+	SceneExecutionContext* executionContext = sceneManager_
+		? sceneManager_->GetExecutionContext()
+		: nullptr;
+	const bool editing = executionContext && executionContext->IsEditing();
+	const bool playing = !executionContext || executionContext->IsPlaying();
+	SceneDocument* activeDocument = GetSceneDocument();
+
+	// 遷移が成立したフレームは旧Sceneの状態をこれ以上変更しない。
+	if (playing && activeDocument) {
+		const std::string targetSceneId =
+			transitionSystem_.Update(*activeDocument);
+		if (!targetSceneId.empty()) {
+			sceneManager_->ChangeScene(targetSceneId);
+			return;
+		}
+	}
+	const std::string runtimeSceneId = GetSceneAssetId().empty()
+		? "runtime"
+		: GetSceneAssetId();
+	if (editing && player_) {
+		const SceneEntity* playerEntity = activeDocument
+			? activeDocument->FindEntityByName("Player")
+			: nullptr;
+		if (playerEntity) {
+			player_->SetTransform(MakeRuntimeTransform(playerEntity->transform));
+		}
+	}
+
+	particleSystem_.Update(
+		runtimeSceneId,
+		editing
+	);
+	effectRenderSystem_.Update(deltaTime);
+	environmentSystem_.Update(deltaTime);
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (editing) {
+		// Editor操作を先に受け取り、変更されたDocumentを直後の同期へ反映する。
+		debugSystem_.DrawEditor(
+			activeDocument,
+			objectSystem_,
+			false
+		);
+
+		monitorSystem_.DrawEditor(
+			activeDocument,
+			GetSceneViewCamera()
+		);
+
+		if (activeDocument) {
+			environmentSystem_.DrawEditor(*activeDocument);
+		}
+
+		particleSystem_.DrawEditor(runtimeSceneId);
+	}
+#endif
+	lightingSystem_.Sync(activeDocument);
+
+	// Objectが実体を所有し、以降のSystemは再構築したbindingsだけを借用する。
+	objectSystem_.SyncModels(
+		activeDocument,
+		physicsSystem_,
+		deltaTime,
+		playing,
+		editing
+	);
+	if (activeDocument) {
+		objectSystem_.BuildBindings(
+			*activeDocument,
+			runtimeObjectBindings_
+		);
+		physicsSystem_.SyncSceneSettings(
+			*activeDocument,
+			player_,
+			runtimeObjectBindings_,
+			editing
+		);
+		if (playing) {
+			agentSystem_.Update(
+				*activeDocument,
+				runtimeObjectBindings_,
+				deltaTime
+			);
+		}
+	} else {
+		runtimeObjectBindings_.clear();
+		agentSystem_.Clear();
+		physicsSystem_.Clear();
+		cameraSystem_.Reset();
+	}
+
+	// Camera入力、Player移動、Physics、追従Cameraの順序は相互依存を持つ。
+	if (activeDocument) {
+		cameraSystem_.UpdateBeforeSimulation(
+			*activeDocument,
+			camera_,
+			player_,
+			runtimeObjectBindings_,
+			deltaTime,
+			playing,
+			playing
+		);
+	}
+	if (player_ && playing) {
+		player_->Update(camera_);
+	}
+	if (activeDocument) {
+		physicsSystem_.Step(
+			player_,
+			runtimeObjectBindings_,
+			deltaTime,
+			playing
+		);
+	}
+	if (player_ && playing) {
+		player_->PostPhysicsUpdate();
+		SceneEntity* playerEntity = activeDocument
+			? activeDocument->FindEntityByName("Player")
+			: nullptr;
+		if (playerEntity && player_->GetObject()) {
+			SynchronizeSceneTransform(
+				playerEntity->transform,
+				player_->GetObject()->GetTransform()
+			);
+		}
+	}
+	objectSystem_.SyncSprites(activeDocument);
+	if (activeDocument) {
+		cameraSystem_.UpdateAfterSimulation(
+			*activeDocument,
+			camera_,
+			player_,
+			runtimeObjectBindings_,
+			playing,
+			playing
+		);
+	} else if (camera_) {
+		camera_->Update();
+	}
+
+	// Transform確定後に環境設定とDebug形状を登録し、描画時の状態を揃える。
+	environmentSystem_.Sync(activeDocument, runtimeObjectBindings_);
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	debugSystem_.AddDebugDraw(
+		activeDocument,
+		objectSystem_,
+		cameraSystem_,
+		camera_,
+		playing,
+		playing,
+		false
+	);
+#endif
+}
+
+void RuntimeScene::UpdatePaused()
+{
+	cameraSystem_.UpdatePaused(camera_, debugCamera_);
+	SceneDocument* document = GetSceneDocument();
+	lightingSystem_.Sync(document);
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	debugSystem_.DrawEditor(document, objectSystem_, true);
+	monitorSystem_.DrawEditor(
+		document,
+		GetSceneViewCamera()
+	);
+	debugSystem_.AddDebugDraw(
+		document,
+		objectSystem_,
+		cameraSystem_,
+		camera_,
+		true,
+		false,
+		true
+	);
+#endif
+}
+
+void RuntimeScene::Draw()
+{
+	DrawWithCamera(GetSceneViewCamera());
+}
+
+Camera* RuntimeScene::GetRenderCamera() const
+{
+	return GetSceneViewCamera();
+}
+
+void RuntimeScene::DrawWithCamera(Camera* viewCamera)
+{
+	DrawSceneView(viewCamera ? viewCamera : GetSceneViewCamera());
+}
+
+void RuntimeScene::DrawEnvironment(Camera* viewCamera)
+{
+	ApplyRenderCamera(viewCamera ? viewCamera : GetSceneViewCamera());
+	environmentSystem_.DrawSkybox();
+}
+
+void RuntimeScene::BindLighting()
+{
+	lightingSystem_.Bind();
+}
+
+void RuntimeScene::DrawSceneContent(Camera* viewCamera)
+{
+	viewCamera = viewCamera ? viewCamera : GetSceneViewCamera();
+	PrepareSceneContent(viewCamera);
+	BindLighting();
+	DrawPreparedSceneContentForView(viewCamera, 0);
+}
+
+void RuntimeScene::PrepareSceneContent(Camera* viewCamera)
+{
+	ApplyRenderCamera(viewCamera ? viewCamera : GetSceneViewCamera());
+	objectSystem_.PrepareModelDraw();
+}
+
+void RuntimeScene::DrawPreparedSceneContent(Camera* viewCamera)
+{
+	DrawPreparedSceneContentForView(
+		viewCamera ? viewCamera : GetSceneViewCamera(),
+		0
+	);
+}
+
+void RuntimeScene::DrawForegroundEffects()
+{
+	DrawForegroundEffectsWithCamera(GetSceneViewCamera());
+}
+
+void RuntimeScene::DrawForegroundEffectsWithCamera(Camera* viewCamera)
+{
+	viewCamera = viewCamera ? viewCamera : GetSceneViewCamera();
+	ApplyRenderCamera(viewCamera);
+	effectRenderSystem_.DrawForegroundPass(
+		GetSceneDocument(),
+		viewCamera,
+		0,
+		environmentSystem_,
+		objectSystem_
+	);
+}
+
+void RuntimeScene::DrawOffscreenViews()
+{
+	SceneDocument* document = GetSceneDocument();
+	monitorSystem_.DrawOffscreen(
+		document,
+		runtimeObjectBindings_,
+		cameraSystem_,
+		[this](Camera* monitorCamera, uint64_t skipEntityId) {
+			DrawSceneView(monitorCamera, skipEntityId);
+		}
+	);
+	if (document) {
+		// Monitor描画が差し替えたCameraを、通常Scene View用へ戻す。
+		ApplyRenderCamera(GetSceneViewCamera());
+	}
+}
+
+void RuntimeScene::DrawShadow()
+{
+	std::vector<Object3d*> shadowCasters;
+	CollectShadowCasters(shadowCasters);
+	RenderShadowCasters(shadowCasters);
+}
+
+void RuntimeScene::CollectShadowCasters(
+	std::vector<Object3d*>& shadowCasters
+) {
+	const bool hidePlayerModel = ShouldHidePlayerModelForCamera(camera_);
+	SceneDocument* document = GetSceneDocument();
+	if (document) {
+		objectSystem_.CollectShadowCasters(
+			*document,
+			hidePlayerModel,
+			shadowCasters
+		);
+	}
+}
+
+void RuntimeScene::RenderShadowCasters(
+	const std::vector<Object3d*>& shadowCasters
+) {
+	lightingSystem_.RenderShadows(shadowCasters);
+}
+
+void RuntimeScene::Finalize()
+{
+	// 非所有参照を持つSystemから解除し、最後にObjectとCameraを破棄する。
+	monitorSystem_.Finalize(&runtimeObjectBindings_);
+	agentSystem_.Clear();
+	physicsSystem_.Clear();
+
+	if (player_) {
+		player_->Finalize();
+		delete player_;
+		player_ = nullptr;
+	}
+
+	runtimeObjectBindings_.clear();
+	objectSystem_.Finalize();
+
+	particleSystem_.Finalize();
+	lightingSystem_.Finalize();
+	effectRenderSystem_.Finalize();
+	environmentSystem_.Finalize();
+	cameraSystem_.Reset();
+
+	delete camera_;
+	camera_ = nullptr;
+
+	delete debugCamera_;
+	debugCamera_ = nullptr;
+}

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <unordered_set>
 #include "../Audio/Audio.h"
+#include "../math/Quaternion.h"
 
 #include <d3d12.h>
 #include "../../externals/imgui/imgui.h"
@@ -14,6 +15,44 @@ class WinApp;
 class DirectXCommon;
 class SrvManager;
 class EditorSession;
+class SceneCatalog;
+class SceneManager;
+class SceneTemplateRegistry;
+enum class SceneBuildConfiguration : uint8_t;
+enum class SceneStartupMode : uint8_t;
+
+enum class SceneAssetOperation {
+	None,
+	Create,
+	Duplicate,
+	Rename,
+	Delete
+};
+
+struct SceneAssetRequest {
+	SceneAssetOperation operation = SceneAssetOperation::None;
+	std::string sourceSceneId;
+	std::string sceneId;
+	std::string displayName;
+	std::string assetPath;
+	std::string templateId;
+};
+
+enum class SceneInstanceOperation {
+	None,
+	LoadAdditive,
+	Unload,
+	SetActive,
+	SetPersistent
+};
+
+struct SceneInstanceRequest {
+	SceneInstanceOperation operation = SceneInstanceOperation::None;
+	std::string sceneId;
+	std::string instanceKey;
+	uint64_t instanceId = 0;
+	bool persistent = false;
+};
 
 class ImGuiManager{
 public:
@@ -48,6 +87,42 @@ public:
 	void SetEditorSession(EditorSession* editorSession) {
 		editorSession_ = editorSession;
 	}
+	void SetSceneCatalog(SceneCatalog* sceneCatalog) {
+		sceneCatalog_ = sceneCatalog;
+		projectDirectoryCacheDirty_ = true;
+	}
+	void SetSceneManager(SceneManager* sceneManager) {
+		sceneManager_ = sceneManager;
+	}
+	void SetSceneTemplateRegistry(
+		const SceneTemplateRegistry* sceneTemplateRegistry
+	) {
+		sceneTemplateRegistry_ = sceneTemplateRegistry;
+	}
+	bool ConsumeOpenSceneRequest(
+		std::string& sceneId,
+		bool& discardUnsavedChanges
+	);
+	bool ConsumeSceneAssetRequest(SceneAssetRequest& request);
+	bool ConsumeSceneInstanceRequest(SceneInstanceRequest& request);
+	bool ConsumeStartSceneRequest(std::string& sceneId);
+	bool ConsumeStartupModeRequest(
+		SceneBuildConfiguration& configuration,
+		SceneStartupMode& mode
+	);
+	void NotifySceneAssetOperationResult(
+		bool success,
+		const std::string& message
+	);
+	void NotifySceneInstanceOperationResult(
+		bool success,
+		const std::string& message
+	);
+	void NotifyProjectSettingsResult(
+		bool success,
+		const std::string& message
+	);
+	void NotifyEditSceneOpened();
 	void SetModelPreviewTexture(
 		const std::string& modelPath,
 		D3D12_GPU_DESCRIPTOR_HANDLE texture,
@@ -81,6 +156,7 @@ private:
 	void DrawInspectorWindow();
 	void DrawProjectWindow();
 	void DrawConsoleWindow();
+	void DrawLoadedScenesWindow();
 	void DrawPlaybackControls();
 	void DrawSceneGizmo(
 		float x,
@@ -110,6 +186,7 @@ private:
 		bool isDirectory = false;
 		bool isTexture = false;
 		bool isModel = false;
+		bool isScene = false;
 	};
 	struct ProjectDirectoryNode {
 		std::string folderName;
@@ -128,6 +205,13 @@ private:
 		CascadiaMonoWithCjk
 	};
 	void DrawSettingsMenu();
+	void DrawSceneMenu();
+	void DrawSceneSwitchConfirmation();
+	void DrawSceneAssetDialogs();
+	void DrawProjectSettingsDialogs();
+	void RequestOpenScene(const std::string& sceneId);
+	void QueueSceneAssetRequest(const SceneAssetRequest& request);
+	void QueueSceneInstanceRequest(const SceneInstanceRequest& request);
 	void LoadEditorSettings();
 	void SaveEditorSettings() const;
 	void RequestEditorFontRebuild();
@@ -148,6 +232,7 @@ private:
 	bool showInspector_ = true;
 	bool showProject_ = true;
 	bool showConsole_ = true;
+	bool showLoadedScenes_ = true;
 	EditorFontPreset editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
 	float editorFontSize_ = 13.0f;
 	bool editorFontRebuildRequested_ = false;
@@ -166,14 +251,50 @@ private:
 	uint64_t hierarchyAutoOpenFolderId_ = 0;
 	double hierarchyAutoOpenStartTime_ = 0.0;
 	char hierarchySearchBuffer_[128] = {};
-	bool focusInspectorRequested_ = false;
+	bool revealInspectorRequested_ = false;
 	EditorSession* editorSession_ = nullptr;
+	SceneCatalog* sceneCatalog_ = nullptr;
+	SceneManager* sceneManager_ = nullptr;
+	const SceneTemplateRegistry* sceneTemplateRegistry_ = nullptr;
+	std::string requestedSceneId_;
+	std::string pendingSceneId_;
+	bool requestedSceneDiscardUnsavedChanges_ = false;
+	bool sceneSwitchPopupRequested_ = false;
+	bool sceneSaveFailed_ = false;
+	SceneAssetRequest requestedSceneAsset_{};
+	bool sceneAssetRequestPending_ = false;
+	SceneInstanceRequest requestedSceneInstance_{};
+	bool sceneInstanceRequestPending_ = false;
+	bool sceneInstanceOperationSucceeded_ = true;
+	std::string sceneInstanceStatusMessage_;
+	char additiveInstanceKeyBuffer_[64]{};
+	bool createScenePopupRequested_ = false;
+	bool duplicateScenePopupRequested_ = false;
+	bool renameScenePopupRequested_ = false;
+	bool deleteScenePopupRequested_ = false;
+	bool sceneAssetErrorPopupRequested_ = false;
+	std::string sceneAssetTargetId_;
+	std::string sceneAssetErrorMessage_;
+	std::string requestedStartSceneId_;
+	bool startSceneRequestPending_ = false;
+	SceneBuildConfiguration requestedStartupConfiguration_{};
+	SceneStartupMode requestedStartupMode_{};
+	bool startupModeRequestPending_ = false;
+	bool projectSettingsErrorPopupRequested_ = false;
+	std::string projectSettingsErrorMessage_;
+	char sceneAssetNameBuffer_[128]{};
+	char sceneAssetIdBuffer_[64]{};
+	char sceneAssetFileBuffer_[128]{};
+	int sceneTemplateIndex_ = 0;
 	int gizmoOperation_ = 0;
 	bool gizmoLocalMode_ = true;
 	bool gizmoSnapEnabled_ = false;
 	float gizmoTranslationSnap_ = 0.5f;
 	float gizmoRotationSnapDegrees_ = 15.0f;
 	float gizmoScaleSnap_ = 0.1f;
+	uint64_t inspectorRotationEntityId_ = 0;
+	Vector3 inspectorRotationEuler_{};
+	Quaternion inspectorRotationSource_ = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 	static bool sceneViewInputActive_;
 

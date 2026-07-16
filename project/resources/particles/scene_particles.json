@@ -174,7 +174,7 @@
     ]
   },
   "scenes": {
-    "GAMEPLAY": [
+    "gameplay": [
       {
         "assetName": "rainAsset",
         "enabled": false,
@@ -187,7 +187,7 @@
       },
       {
         "assetName": "RiftAsset",
-        "enabled": true,
+        "enabled": false,
         "label": "RiftAsset 1",
         "translate": [
           0.0,
@@ -196,7 +196,7 @@
         ]
       }
     ],
-    "TITLE": [
+    "title": [
       {
         "assetName": "Legacy_TITLE",
         "enabled": true,

@@ -10,5 +10,5 @@ class AbstractSceneFactory {
 public:
 	virtual ~AbstractSceneFactory() = default;
 
-	virtual BaseScene* CreateScene(const std::string& sceneName) = 0;
+	virtual BaseScene* CreateScene(const std::string& runtimeProfile) = 0;
 };

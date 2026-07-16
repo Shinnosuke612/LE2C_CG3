@@ -131,6 +131,17 @@ Quaternion MakeQuaternionFromEuler(const Vector3& rotate) {
 	return MakeQuaternionFromRotationMatrix(matrix);
 }
 
+Vector3 MakeEulerFromQuaternion(const Quaternion& quaternion) {
+	const Matrix4x4 matrix = MakeRotateMatrix(quaternion);
+	Vector3 scale{};
+	Vector3 rotate{};
+	Vector3 translate{};
+	if (DecomposeAffineMatrix(matrix, scale, rotate, translate)) {
+		return rotate;
+	}
+	return {};
+}
+
 Quaternion MakeLookRotationQuaternion(
 	const Vector3& forward,
 	const Vector3& up
