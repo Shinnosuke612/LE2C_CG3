@@ -379,7 +379,7 @@ void PhysicsWorld::Step(float deltaTime) {
 }
 
 bool PhysicsWorld::CollidesWithStatic(const PhysicsBody& body) const {
-	if (!body.collider) {
+	if (!body.collider || body.collider->IsTrigger()) {
 		return false;
 	}
 
@@ -388,7 +388,8 @@ bool PhysicsWorld::CollidesWithStatic(const PhysicsBody& body) const {
 			!other ||
 			other == &body ||
 			!other->collider ||
-			other->type == PhysicsBodyType::Dynamic
+			other->type == PhysicsBodyType::Dynamic ||
+			other->collider->IsTrigger()
 		) {
 			continue;
 		}
@@ -401,6 +402,7 @@ bool PhysicsWorld::CollidesWithStatic(const PhysicsBody& body) const {
 		if (
 			collider &&
 			collider != body.collider &&
+			!collider->IsTrigger() &&
 			body.collider->Intersects(*collider)
 		) {
 			return true;
@@ -452,7 +454,8 @@ bool PhysicsWorld::SnapToGround(
 bool PhysicsWorld::ResolveStaticPenetration(PhysicsBody& body) const {
 	if (
 		!body.transform ||
-		!body.collider
+		!body.collider ||
+		body.collider->IsTrigger()
 	) {
 		return false;
 	}
@@ -464,6 +467,7 @@ bool PhysicsWorld::ResolveStaticPenetration(PhysicsBody& body) const {
 		if (
 			!candidate ||
 			candidate == body.collider ||
+			candidate->IsTrigger() ||
 			!body.collider->CanCollideWith(*candidate) ||
 			std::find(
 				testedColliders.begin(),

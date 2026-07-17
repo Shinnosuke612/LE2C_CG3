@@ -276,6 +276,10 @@ void SceneObjectSystem::SyncModels(
 				: static_cast<Collider*>(&runtime.boxCollider);
 			runtimeCollider->SetWorldMatrix(&runtime.object->GetWorldMatrix());
 			runtimeCollider->SetOffset(obbCollider->colliderOffset);
+			runtimeCollider->SetTrigger(obbCollider->colliderIsTrigger);
+			runtimeCollider->SetActive(obbCollider->colliderActive);
+			runtimeCollider->SetCollisionAttribute(obbCollider->colliderLayer);
+			runtimeCollider->SetCollisionMask(obbCollider->colliderMask);
 			if (obbCollider->colliderShape == "Sphere") {
 				runtime.sphereCollider.SetRadius(
 					(std::max)(obbCollider->colliderSphereRadius, 0.001f)

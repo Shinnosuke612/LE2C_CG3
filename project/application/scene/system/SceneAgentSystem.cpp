@@ -93,15 +93,11 @@ namespace {
 
 	std::string ResolveAgentTeamRuntimeKey(
 		const SceneDocument& document,
-		const SceneEntity& entity,
-		const SceneComponent& behavior
+		const SceneEntity& entity
 	) {
 		const SceneTeamSettings* team = document.ResolveEntityTeam(entity);
 		if (team && !team->name.empty()) {
 			return "team:" + team->name;
-		}
-		if (!behavior.agentGroupName.empty()) {
-			return "group:" + behavior.agentGroupName;
 		}
 		return {};
 	}
@@ -375,20 +371,38 @@ void SceneAgentSystem::Update(
 		if (!runtime.initialized) {
 			const Vector3 entityRotate =
 				MakeEulerFromQuaternion(entity.transform.rotate);
-			const float yaw =
-				entityRotate.y +
-				Hash01(entity.id, 17u) * 6.28318530718f;
+			runtime.wanderSeedId = BuildFlockRuntimeSeed(
+				entity.id,
+				resolvedBehavior.agentRandomSeed,
+				resolvedBehavior.agentRandomizeSeedOnPlay
+			);
+			const Vector3 initialDirection = BuildFlockWanderDirection(
+				{ std::sin(entityRotate.y), 0.0f, std::cos(entityRotate.y) },
+				runtime.wanderSeedId,
+				runtime.wanderStep,
+				3.14159265359f,
+				resolvedBehavior.agentWanderVerticalRange
+			);
+			++runtime.wanderStep;
 			const float speed =
 				resolvedBehavior.agentMinSpeed +
 				(resolvedBehavior.agentMaxSpeed -
 					resolvedBehavior.agentMinSpeed) *
-				Hash01(entity.id, 29u);
-			runtime.velocity = {
-				std::sin(yaw) * speed,
-				(Hash01(entity.id, 43u) - 0.5f) * speed * 0.25f,
-				std::cos(yaw) * speed
-			};
-			runtime.phase = Hash01(entity.id, 59u) * 6.28318530718f;
+				Hash01(runtime.wanderSeedId, 29u);
+			runtime.velocity = Math::Multiply(initialDirection, speed);
+			runtime.rotation = entityRotate;
+			runtime.wanderDirection = BuildFlockWanderDirection(
+				initialDirection,
+				runtime.wanderSeedId,
+				runtime.wanderStep,
+				resolvedBehavior.agentWanderDirectionRange,
+				resolvedBehavior.agentWanderVerticalRange
+			);
+			runtime.wanderTimer =
+				resolvedBehavior.agentWanderChangeInterval *
+				(0.75f + Hash01(runtime.wanderSeedId, 401u) * 0.5f);
+			runtime.phase =
+				Hash01(runtime.wanderSeedId, 59u) * 6.28318530718f;
 			runtime.initialized = true;
 		}
 
@@ -399,7 +413,7 @@ void SceneAgentSystem::Update(
 			object,
 			&runtime,
 			object->GetTransform(),
-			ResolveAgentTeamRuntimeKey(document, entity, resolvedBehavior)
+			ResolveAgentTeamRuntimeKey(document, entity)
 		});
 	}
 
@@ -777,13 +791,14 @@ void SceneAgentSystem::Update(
 				position = ClampToBounds(position, bounds);
 			}
 			transform.translate = position;
-			ApplyAgentRotation(transform, BuildAgentVelocityRotation(
+			runtime.rotation = BuildAgentVelocityRotation(
 				behavior,
-				transform.rotate,
+				runtime.rotation,
 				runtime.velocity,
 				desiredDirection,
 				dt
-			));
+			);
+			ApplyAgentRotation(transform, runtime.rotation);
 			agent.object->GetTransform() = transform;
 			agent.object->Update();
 			SynchronizeSceneTransform(*agent.entity, transform);
@@ -808,21 +823,41 @@ void SceneAgentSystem::Update(
 
 		runtime.phase += dt * (
 			0.7f +
-			Hash01(agent.entity->id, 71u) * 0.8f
+			Hash01(runtime.wanderSeedId, 71u) * 0.8f
 		);
-		const Vector3 wander = SafeNormalize(
-			{
-				std::sin(runtime.phase * 1.37f + Hash01(agent.entity->id, 3u) * 8.0f),
-				std::sin(runtime.phase * 0.83f + Hash01(agent.entity->id, 5u) * 9.0f) * 0.45f,
-				std::cos(runtime.phase * 1.11f + Hash01(agent.entity->id, 7u) * 7.0f)
-			},
-			velocityDirection
-		);
-		desired = AddScaled(
-			desired,
-			wander,
-			behavior.agentWanderStrength
-		);
+		if (behavior.agentWanderStrength > 0.0f) {
+			const float wanderChangeInterval = (std::max)(
+				behavior.agentWanderChangeInterval,
+				0.0f
+			);
+			if (wanderChangeInterval > 0.0f) {
+				runtime.wanderTimer = (std::max)(
+					runtime.wanderTimer - dt,
+					0.0f
+				);
+				if (runtime.wanderTimer <= 0.0f) {
+					++runtime.wanderStep;
+					runtime.wanderDirection = BuildFlockWanderDirection(
+						velocityDirection,
+						runtime.wanderSeedId,
+						runtime.wanderStep,
+						behavior.agentWanderDirectionRange,
+						behavior.agentWanderVerticalRange
+					);
+					runtime.wanderTimer = wanderChangeInterval * (
+						0.75f + Hash01(
+							runtime.wanderSeedId,
+							419u + runtime.wanderStep * 3u
+						) * 0.5f
+					);
+				}
+			}
+			desired = AddScaled(
+				desired,
+				runtime.wanderDirection,
+				behavior.agentWanderStrength
+			);
+		}
 
 		AgentBounds bounds{};
 		if (TryResolveAgentBounds(document, behavior, position, bounds)) {
@@ -1067,13 +1102,14 @@ void SceneAgentSystem::Update(
 				rotationDirection
 			);
 		}
-		ApplyAgentRotation(transform, BuildAgentVelocityRotation(
+		runtime.rotation = BuildAgentVelocityRotation(
 			behavior,
-			transform.rotate,
+			runtime.rotation,
 			rotationDirection,
 			desiredDirection,
 			dt
-		));
+		);
+		ApplyAgentRotation(transform, runtime.rotation);
 
 		agent.object->GetTransform() = transform;
 		agent.object->Update();

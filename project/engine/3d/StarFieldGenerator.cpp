@@ -434,7 +434,11 @@ std::optional<std::string> StarFieldGenerator::DrawImGui(const char* windowTitle
 		}
 	}
 
-	if (!ImGui::Begin(windowTitle)) {
+	if (!ImGui::Begin(
+		windowTitle,
+		nullptr,
+		ImGuiWindowFlags_NoFocusOnAppearing
+	)) {
 		ImGui::End();
 		return appliedPath;
 	}

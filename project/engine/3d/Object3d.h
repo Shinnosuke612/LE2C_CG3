@@ -98,6 +98,11 @@ public: //公開メンバ関数
 	void SetModel(const std::string& filePath);
 	void SetCamera(Camera* camera){ this->camera = camera; }
 	void SetParent(const Object3d* parent) { parent_ = parent; }
+	void SetParentMatrixOverride(const Matrix4x4& matrix) {
+		parentMatrixOverride_ = matrix;
+		hasParentMatrixOverride_ = true;
+	}
+	void ClearParentMatrixOverride() { hasParentMatrixOverride_ = false; }
 	void SetCullMode(Object3dCommon::CullMode cullMode) {
 		cullMode_ = cullMode;
 	}
@@ -177,6 +182,10 @@ public: //公開メンバ関数
 	const Skeleton* GetSkeleton() const {
 		return skeleton_.IsValid() ? &skeleton_ : nullptr;
 	}
+	bool TryGetJointWorldMatrix(
+		const std::string& jointName,
+		Matrix4x4& worldMatrix
+	) const;
 private: //非公開メンバ関数
 
 	//座標変換行列用リソース作成関数
@@ -193,6 +202,8 @@ private://メンバ変数
 	Transform transform;
 	Matrix4x4 objectWorldMatrix_ = MakeIdentity4x4();
 	const Object3d* parent_ = nullptr;
+	Matrix4x4 parentMatrixOverride_ = MakeIdentity4x4();
+	bool hasParentMatrixOverride_ = false;
 
 	Object3dCommon* object3dCommon = nullptr;
 

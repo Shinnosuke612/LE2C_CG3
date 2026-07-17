@@ -281,7 +281,11 @@ bool ParticleEffectEditor::DrawImGui(
 	bool applied = false;
 	bool changed = false;
 
-	ImGui::Begin(windowTitle);
+	ImGui::Begin(
+		windowTitle,
+		nullptr,
+		ImGuiWindowFlags_NoFocusOnAppearing
+	);
 
 	const char* selectedName =
 		selectedEffectIndex_ >= 0 &&

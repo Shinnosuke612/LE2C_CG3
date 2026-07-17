@@ -1,6 +1,7 @@
 // 役割: Scene内で使用するカメラを選択し、追従・経路・Pause状態を更新する。
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include "../SceneRuntimeObjectBinding.h"
@@ -33,6 +34,7 @@ public:
 		Camera* camera,
 		Player* player,
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
+		float deltaTime,
 		bool runtimeActive,
 		bool playing
 	);
@@ -52,7 +54,8 @@ public:
 	) const;
 
 	bool IsFirstPersonMode() const {
-		return playerCameraController_.IsFirstPersonMode();
+		return thirdPersonCameraEntityId_ != 0 &&
+			playerCameraController_.IsFirstPersonMode();
 	}
 	bool IsPathPlaying() const { return cameraPathRuntime_.IsPlaying(); }
 	bool HasCurrentPathTransform() const {
@@ -63,19 +66,34 @@ public:
 	}
 
 private:
-	void ApplyMainCamera(
+	void ApplyActiveCamera(
 		const SceneDocument& document,
 		Camera* camera
+	) const;
+	void UpdateCameraSwitch(
+		const SceneDocument& document,
+		bool playing
+	);
+	const SceneEntity* ResolveActiveCameraEntity(
+		const SceneDocument& document
+	) const;
+	const SceneEntity* ResolveThirdPersonTarget(
+		const SceneDocument& document,
+		const SceneEntity& cameraEntity,
+		const SceneComponent& thirdPerson
 	) const;
 	bool UpdateThirdPersonCamera(
 		SceneDocument& document,
 		Camera* camera,
 		Player* player,
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
-		bool playing
+		float deltaTime,
+		bool playing,
+		bool acceptMouseInput
 	);
 	void ApplyPlayerDissolve(
-		const std::vector<SceneRuntimeObjectBinding>& bindings
+		const std::vector<SceneRuntimeObjectBinding>& bindings,
+		bool enabled
 	) const;
 	bool TryStartCameraPath(
 		SceneDocument& document,
@@ -92,4 +110,7 @@ private:
 	CameraPathRuntime cameraPathRuntime_;
 	bool playerCameraInitialized_ = false;
 	bool debugCameraInitialized_ = false;
+	bool wasPlaying_ = false;
+	uint64_t activeCameraEntityId_ = 0;
+	uint64_t thirdPersonCameraEntityId_ = 0;
 };

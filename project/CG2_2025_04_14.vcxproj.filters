@@ -77,10 +77,22 @@
     <ClCompile Include="application\scene\system\SceneAgentSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
+    <ClCompile Include="application\scene\system\SceneAttachmentSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
     <ClCompile Include="application\scene\system\SceneCameraSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
+    <ClCompile Include="application\scene\system\SceneCombatSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneEnemySystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneEventSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
     <ClCompile Include="application\scene\system\SceneEffectRenderSystem.cpp">
@@ -102,6 +114,15 @@
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
     <ClCompile Include="application\scene\system\ScenePhysicsSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\ScenePrefabAnimationSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneProjectileSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+    <ClCompile Include="application\scene\system\SceneStatSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
     <ClCompile Include="application\scene\system\SceneTransitionSystem.cpp">
@@ -247,10 +268,22 @@
     <ClInclude Include="application\scene\system\SceneAgentSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
+    <ClInclude Include="application\scene\system\SceneAttachmentSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
     <ClInclude Include="application\scene\system\SceneCameraSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
+    <ClInclude Include="application\scene\system\SceneCombatSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
     <ClInclude Include="application\scene\system\SceneDebugSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneEnemySystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneEventSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
     <ClInclude Include="application\scene\system\SceneEffectRenderSystem.h">
@@ -272,6 +305,15 @@
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
     <ClInclude Include="application\scene\system\ScenePhysicsSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\ScenePrefabAnimationSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneProjectileSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneStatSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
     <ClInclude Include="application\scene\system\SceneTransitionSystem.h">

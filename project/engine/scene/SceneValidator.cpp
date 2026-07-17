@@ -61,6 +61,7 @@ bool SceneValidator::ValidateDocument(
 	uint32_t pointLightCount = 0;
 	uint32_t spotLightCount = 0;
 	uint32_t spotShadowCount = 0;
+	uint32_t cameraSwitcherCount = 0;
 	for (const SceneEntity& entity : document.GetEntities()) {
 		if (!entity.teamName.empty() && !document.FindTeam(entity.teamName)) {
 			addIssue(
@@ -188,6 +189,118 @@ bool SceneValidator::ValidateDocument(
 					component.monitorCameraEntityId,
 					"Monitor camera"
 				);
+			} else if (component.type == "CameraSwitcher") {
+				if (component.enabled && activeInHierarchy) {
+					++cameraSwitcherCount;
+					if (cameraSwitcherCount > 1) {
+						addIssue(
+							SceneValidationSeverity::Warning,
+							entity.id,
+							"Only the first active CameraSwitcher is used"
+						);
+					}
+				}
+				std::unordered_set<uint64_t> registeredCameraIds;
+				for (const SceneCameraSwitchEntry& entry :
+					component.cameraSwitchEntries) {
+					validateEntityReference(
+						entry.cameraEntityId,
+						"CameraSwitcher camera"
+					);
+					const SceneEntity* cameraEntity = entry.cameraEntityId != 0
+						? document.FindEntity(entry.cameraEntityId)
+						: nullptr;
+					if (
+						!entry.cameraEntityName.empty() &&
+						(!cameraEntity ||
+							cameraEntity->name != entry.cameraEntityName)
+					) {
+						cameraEntity = document.FindEntityByName(
+							entry.cameraEntityName
+						);
+					}
+					if (!cameraEntity) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"CameraSwitcher contains an unresolved camera"
+						);
+						continue;
+					}
+					const bool hasCamera = std::any_of(
+						cameraEntity->components.begin(),
+						cameraEntity->components.end(),
+						[](const SceneComponent& candidate) {
+							return candidate.enabled && candidate.type == "Camera";
+						}
+					);
+					if (!hasCamera) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"CameraSwitcher target has no enabled Camera: " +
+								cameraEntity->name
+						);
+					} else if (!registeredCameraIds.insert(cameraEntity->id).second) {
+						addIssue(
+							SceneValidationSeverity::Warning,
+							entity.id,
+							"CameraSwitcher contains a duplicate camera: " +
+								cameraEntity->name
+						);
+					}
+				}
+				if (component.cameraSwitchEntries.empty()) {
+					addIssue(
+						SceneValidationSeverity::Warning,
+						entity.id,
+						"CameraSwitcher has no registered cameras"
+					);
+				}
+			} else if (component.type == "ThirdPersonCamera") {
+				const bool hasCamera = std::any_of(
+					entity.components.begin(),
+					entity.components.end(),
+					[](const SceneComponent& candidate) {
+						return candidate.enabled && candidate.type == "Camera";
+					}
+				);
+				if (!hasCamera) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"ThirdPersonCamera requires Camera on the same Entity"
+					);
+				}
+				validateEntityReference(
+					component.thirdPersonTargetEntityId,
+					"ThirdPerson target"
+				);
+				if (
+					component.thirdPersonTargetEntityId == 0 &&
+					!component.thirdPersonTargetEntityName.empty() &&
+					!document.FindEntityByName(
+						component.thirdPersonTargetEntityName
+					)
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"ThirdPerson target name cannot be resolved: " +
+							component.thirdPersonTargetEntityName
+					);
+				}
+				if (
+					component.thirdPersonYawReference != "World" &&
+					component.thirdPersonYawReference != "Target"
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"ThirdPersonCamera has an unknown yawReference: " +
+							component.thirdPersonYawReference
+					);
+				}
 			} else if (component.type == "AgentBehavior") {
 				validateEntityReference(
 					component.agentBoundsEntityId,
@@ -259,6 +372,131 @@ bool SceneValidator::ValidateDocument(
 						component.sceneTransitionTargetSceneId
 					);
 				}
+			} else if (component.type == "StatSet") {
+				std::unordered_set<std::string> statIds;
+				for (const SceneStatDefinition& stat : component.stats) {
+					if (stat.id.empty()) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"StatSet contains an empty Stat Id"
+						);
+					} else if (!statIds.insert(stat.id).second) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"StatSet contains a duplicate Stat Id: " + stat.id
+						);
+					}
+					if (stat.maxValue < stat.minValue) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"Stat max is below min: " + stat.id
+						);
+					}
+				}
+			} else if (component.type == "EventTrigger") {
+				for (const SceneEventBinding& binding : component.eventBindings) {
+					validateEntityReference(
+						binding.targetEntityId,
+						"Event target"
+					);
+					for (const SceneEventAction& action : binding.actions) {
+						validateEntityReference(
+							action.targetEntityId,
+							"Event action target"
+						);
+						if (
+							action.type == "SceneTransition" &&
+							!action.sceneId.empty() &&
+							catalog &&
+							!catalog->Find(action.sceneId)
+						) {
+							addIssue(
+								SceneValidationSeverity::Error,
+								entity.id,
+								"Event SceneTransition target is not registered: " +
+									action.sceneId
+							);
+						}
+					}
+				}
+			} else if (
+				component.type == "HitBox" ||
+				component.type == "HurtBox"
+			) {
+				const SceneComponent* collider = nullptr;
+				for (const SceneComponent& candidate : entity.components) {
+					if (candidate.type == "OBBCollider" && candidate.enabled) {
+						collider = &candidate;
+						break;
+					}
+				}
+				if (!collider || !collider->colliderIsTrigger) {
+					addIssue(
+						SceneValidationSeverity::Warning,
+						entity.id,
+						component.type +
+							" requires an enabled Trigger Collider on the same Entity"
+					);
+				}
+				if (component.type == "HitBox") {
+					validateEntityReference(
+						component.hitBoxOwnerEntityId,
+						"HitBox owner"
+					);
+				} else {
+					validateEntityReference(
+						component.hurtBoxStatsEntityId,
+						"HurtBox stats owner"
+					);
+				}
+			} else if (component.type == "BoneAttachment") {
+				validateEntityReference(
+					component.boneAttachmentTargetEntityId,
+					"BoneAttachment target"
+				);
+				if (component.boneAttachmentJointName.empty()) {
+					addIssue(
+						SceneValidationSeverity::Warning,
+						entity.id,
+						"BoneAttachment jointName is empty"
+					);
+				}
+				if (
+					component.boneAttachmentAlignmentMode != "ManualOffset" &&
+					component.boneAttachmentAlignmentMode != "MatchSourceBone"
+				) {
+					addIssue(
+						SceneValidationSeverity::Warning,
+						entity.id,
+						"BoneAttachment alignmentMode is invalid"
+					);
+				} else if (
+					component.boneAttachmentAlignmentMode == "MatchSourceBone" &&
+					component.boneAttachmentSourceJointName.empty()
+				) {
+					addIssue(
+						SceneValidationSeverity::Warning,
+						entity.id,
+						"BoneAttachment sourceJointName is empty"
+					);
+				}
+			} else if (component.type == "EnemyBehavior") {
+				validateEntityReference(
+					component.enemyTargetEntityId,
+					"Enemy target"
+				);
+				validateEntityReference(
+					component.enemyAttackHitBoxEntityId,
+					"Enemy attack HitBox"
+				);
+			} else if (component.type == "Projectile") {
+				validateEntityReference(
+					component.projectileHomingTargetEntityId,
+					"Projectile homing target"
+				);
 			}
 		}
 	}

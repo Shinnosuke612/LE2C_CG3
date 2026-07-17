@@ -81,6 +81,68 @@ struct SceneMeshMaterialOverride {
 	std::string texturePath;
 };
 
+struct SceneStatDefinition {
+	std::string id = "stat";
+	std::string displayName = "Stat";
+	float minValue = 0.0f;
+	float maxValue = 100.0f;
+	float initialValue = 100.0f;
+};
+
+struct SceneEventAction {
+	std::string type = "SetEntityActive";
+	uint64_t targetEntityId = 0;
+	std::string targetEntityName;
+	std::string statId;
+	std::string statOperation = "Add";
+	float value = 0.0f;
+	bool active = true;
+	std::string sceneId;
+	std::string prefabPath;
+	bool prefabParentToTarget = false;
+	bool prefabUseTargetTransform = true;
+};
+
+struct SceneEventBinding {
+	std::string triggerType = "OnStart";
+	uint64_t targetEntityId = 0;
+	std::string targetEntityName;
+	std::string statId = "hp";
+	std::string statComparison = "LessOrEqual";
+	float statValue = 0.0f;
+	Vector3 targetPosition{};
+	float radius = 1.0f;
+	bool triggerOnce = true;
+	float cooldown = 0.0f;
+	std::vector<SceneEventAction> actions;
+};
+
+struct SceneAnimationKeyframe {
+	float time = 0.0f;
+	Vector3 value{};
+};
+
+struct SceneAnimationTrack {
+	uint64_t targetEntityId = 0;
+	std::string targetEntityName;
+	std::string property = "LocalPosition";
+	std::string easing = "SmoothStep";
+	std::vector<SceneAnimationKeyframe> keyframes;
+};
+
+struct ScenePrefabAnimationClip {
+	std::string name = "Animation";
+	float duration = 1.0f;
+	bool loop = false;
+	bool playOnStart = true;
+	std::vector<SceneAnimationTrack> tracks;
+};
+
+struct SceneCameraSwitchEntry {
+	uint64_t cameraEntityId = 0;
+	std::string cameraEntityName;
+};
+
 struct SceneComponent {
 	SceneComponent() = default;
 	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
@@ -132,6 +194,11 @@ struct SceneComponent {
 	uint32_t monitorWidth = 512;
 	uint32_t monitorHeight = 512;
 	bool monitorHideSelf = true;
+	std::string cameraSwitchTriggerKey = "F5";
+	bool cameraSwitchWrap = true;
+	std::vector<SceneCameraSwitchEntry> cameraSwitchEntries;
+	uint64_t thirdPersonTargetEntityId = 0;
+	std::string thirdPersonTargetEntityName;
 	float thirdPersonDistance = 8.0f;
 	float thirdPersonAimDistance = 3.0f;
 	Vector3 thirdPersonTargetOffset = { 0.0f, 1.35f, 0.0f };
@@ -140,6 +207,12 @@ struct SceneComponent {
 	float thirdPersonMinPitch = -1.45f;
 	float thirdPersonMaxPitch = 1.35f;
 	float thirdPersonOcclusionMargin = 0.45f;
+	float thirdPersonPositionSmoothTime = 0.12f;
+	float thirdPersonRotationSmoothTime = 0.08f;
+	std::string thirdPersonYawReference = "World";
+	bool thirdPersonAllowMouseInput = true;
+	bool thirdPersonOcclusionEnabled = true;
+	bool thirdPersonAimModeEnabled = true;
 	bool thirdPersonInvertYaw = false;
 	bool thirdPersonInvertPitch = false;
 	bool animatorPlayOnStart = true;
@@ -168,6 +241,10 @@ struct SceneComponent {
 	bool colliderDebugVisible = true;
 	std::string colliderDebugDrawMode = "Wireframe";
 	int colliderDebugSegments = 16;
+	bool colliderIsTrigger = false;
+	bool colliderActive = true;
+	uint32_t colliderLayer = 0xffffffffu;
+	uint32_t colliderMask = 0xffffffffu;
 	float playerMoveSpeed = 10.8f;
 	float playerJumpVelocity = 37.2f;
 	float playerTurnResponsiveness = 0.018f;
@@ -286,6 +363,53 @@ struct SceneComponent {
 	bool cameraPathAutoCollectChildPoints = true;
 	float cameraPathPointDurationToNext = 1.0f;
 	std::string cameraPathPointEasingToNext = "SmoothStep";
+	std::vector<SceneStatDefinition> stats;
+	std::vector<SceneEventBinding> eventBindings;
+	std::vector<ScenePrefabAnimationClip> prefabAnimationClips;
+	std::string factionName = "Neutral";
+	float hitBoxDamage = 10.0f;
+	float hitBoxPoiseDamage = 0.0f;
+	std::string hitBoxDamageStatId = "hp";
+	std::string hitBoxPoiseStatId = "poise";
+	uint64_t hitBoxOwnerEntityId = 0;
+	std::string hitBoxOwnerEntityName;
+	bool hitBoxIgnoreSameFaction = true;
+	float hurtBoxDamageMultiplier = 1.0f;
+	std::string hurtBoxHealthStatId = "hp";
+	uint64_t hurtBoxStatsEntityId = 0;
+	std::string hurtBoxStatsEntityName;
+	uint64_t boneAttachmentTargetEntityId = 0;
+	std::string boneAttachmentTargetEntityName;
+	std::string boneAttachmentJointName;
+	// ManualOffsetはEntity Transformをオフセットとして使う。
+	// MatchSourceBoneは武器側の指定ボーンを対象ボーンへ一致させる。
+	std::string boneAttachmentAlignmentMode = "ManualOffset";
+	std::string boneAttachmentSourceJointName;
+	bool boneAttachmentInheritScale = true;
+	uint64_t enemyTargetEntityId = 0;
+	std::string enemyTargetEntityName = "Player";
+	std::string enemyHealthStatId = "hp";
+	float enemyDetectionRange = 12.0f;
+	float enemyLoseRange = 18.0f;
+	float enemyAttackRange = 2.0f;
+	float enemyMoveSpeed = 3.0f;
+	float enemyTurnSpeed = 8.0f;
+	float enemyAttackCooldown = 1.5f;
+	float enemyAttackWindup = 0.2f;
+	float enemyAttackActiveTime = 0.25f;
+	float enemyAttackRecovery = 0.55f;
+	int enemyAttackAnimationClip = 0;
+	std::string enemyAttackPrefabAnimationClip;
+	uint64_t enemyAttackHitBoxEntityId = 0;
+	std::string enemyAttackHitBoxEntityName;
+	Vector3 projectileDirection = { 0.0f, 0.0f, 1.0f };
+	float projectileSpeed = 12.0f;
+	float projectileGravity = 0.0f;
+	float projectileLifetime = 5.0f;
+	bool projectileDestroyOnHit = true;
+	uint64_t projectileHomingTargetEntityId = 0;
+	std::string projectileHomingTargetEntityName;
+	float projectileHomingStrength = 0.0f;
 };
 
 struct SceneEntity {
@@ -296,6 +420,7 @@ struct SceneEntity {
 	bool folderTeamEnabled = false;
 	bool active = true;
 	bool locked = false;
+	bool runtimeOnly = false;
 	std::string teamName;
 	QuaternionTransform transform{};
 	std::string modelPath;
@@ -318,6 +443,12 @@ public:
 	SceneEntity& CreateEntity(const std::string& name, uint64_t parentId = 0);
 	bool RemoveEntity(uint64_t id);
 	uint64_t DuplicateEntity(uint64_t id);
+	bool SaveEntityBranchAsPrefab(uint64_t id, const std::string& filePath) const;
+	uint64_t InstantiatePrefab(
+		const std::string& filePath,
+		uint64_t parentId = 0,
+		bool runtimeOnly = false
+	);
 	bool SetParent(uint64_t id, uint64_t parentId);
 	bool MoveEntity(uint64_t id, int direction);
 	bool MoveEntityToParent(uint64_t id, uint64_t parentId);

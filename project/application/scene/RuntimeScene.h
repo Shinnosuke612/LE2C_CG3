@@ -3,8 +3,12 @@
 #include "../../engine/scene/BaseScene.h"
 #include "SceneRuntimeObjectBinding.h"
 #include "system/SceneAgentSystem.h"
+#include "system/SceneAttachmentSystem.h"
 #include "system/SceneCameraSystem.h"
+#include "system/SceneCombatSystem.h"
 #include "system/SceneDebugSystem.h"
+#include "system/SceneEnemySystem.h"
+#include "system/SceneEventSystem.h"
 #include "system/SceneEffectRenderSystem.h"
 #include "system/SceneEnvironmentSystem.h"
 #include "system/SceneLightingSystem.h"
@@ -12,6 +16,9 @@
 #include "system/SceneObjectSystem.h"
 #include "system/SceneParticleSystem.h"
 #include "system/ScenePhysicsSystem.h"
+#include "system/ScenePrefabAnimationSystem.h"
+#include "system/SceneProjectileSystem.h"
+#include "system/SceneStatSystem.h"
 #include "system/SceneTransitionSystem.h"
 
 #include <cstdint>
@@ -66,8 +73,12 @@ private:
 	std::vector<SceneRuntimeObjectBinding> runtimeObjectBindings_;
 
 	SceneAgentSystem agentSystem_;
+	SceneAttachmentSystem attachmentSystem_;
 	SceneCameraSystem cameraSystem_;
+	SceneCombatSystem combatSystem_;
 	SceneDebugSystem debugSystem_;
+	SceneEnemySystem enemySystem_;
+	SceneEventSystem eventSystem_;
 	SceneEffectRenderSystem effectRenderSystem_;
 	SceneEnvironmentSystem environmentSystem_;
 	SceneLightingSystem lightingSystem_;
@@ -76,5 +87,8 @@ private:
 	SceneTransitionSystem transitionSystem_;
 	SceneParticleSystem particleSystem_;
 	ScenePhysicsSystem physicsSystem_;
+	ScenePrefabAnimationSystem prefabAnimationSystem_;
+	SceneProjectileSystem projectileSystem_;
+	SceneStatSystem statSystem_;
 };
 

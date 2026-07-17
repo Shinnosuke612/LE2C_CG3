@@ -355,7 +355,11 @@ void SceneMonitorSystem::DrawEditor(
 	Camera* sceneViewCamera
 ) {
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	if (!ImGui::Begin("Monitor Debug")) {
+	if (!ImGui::Begin(
+		"Monitor Debug",
+		nullptr,
+		ImGuiWindowFlags_NoFocusOnAppearing
+	)) {
 		ImGui::End();
 		return;
 	}

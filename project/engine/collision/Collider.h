@@ -29,6 +29,8 @@ public:
 
 	void SetActive(bool active) { isActive_ = active; }
 	bool IsActive() const { return isActive_; }
+	void SetTrigger(bool trigger) { isTrigger_ = trigger; }
+	bool IsTrigger() const { return isTrigger_; }
 
 	void SetCollisionAttribute(uint32_t attribute) { collisionAttribute_ = attribute; }
 	uint32_t GetCollisionAttribute() const { return collisionAttribute_; }
@@ -46,6 +48,7 @@ protected:
 	const Matrix4x4* worldMatrix_ = nullptr;
 	Vector3 offset_ = { 0.0f, 0.0f, 0.0f };
 	bool isActive_ = true;
+	bool isTrigger_ = false;
 	uint32_t collisionAttribute_ = 0xffffffffu;
 	uint32_t collisionMask_ = 0xffffffffu;
 };

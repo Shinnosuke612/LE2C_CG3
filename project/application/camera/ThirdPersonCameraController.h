@@ -13,7 +13,9 @@ public:
 	void Initialize(Camera* camera);
 	void Update(
 		const Vector3& targetPosition,
+		float targetYaw,
 		const std::vector<OBBCollider*>& obstacleColliders,
+		float deltaTime,
 		bool acceptMouseInput
 	);
 
@@ -25,8 +27,10 @@ public:
 	float GetYaw() const { return yaw_; }
 	float GetPitch() const { return pitch_; }
 	Vector3 GetForwardDirection() const;
-	bool IsAimMode() const { return isFirstPersonMode_; }
-	bool IsFirstPersonMode() const { return isFirstPersonMode_; }
+	bool IsAimMode() const { return isAimMode_; }
+	bool IsFirstPersonMode() const {
+		return isAimMode_ && distance_ <= minDistance_ + 0.05f;
+	}
 
 	void SetDistance(float distance);
 	void SetAimDistance(float distance);
@@ -39,6 +43,22 @@ public:
 	}
 	void SetPitchLimit(float minPitch, float maxPitch);
 	void SetOcclusionMargin(float margin) { occlusionMargin_ = margin; }
+	void SetPositionSmoothTime(float seconds) { positionSmoothTime_ = seconds; }
+	void SetRotationSmoothTime(float seconds) { rotationSmoothTime_ = seconds; }
+	void SetFollowTargetYaw(bool enabled) {
+		if (followTargetYaw_ == enabled) {
+			return;
+		}
+		followTargetYaw_ = enabled;
+		targetYawInitialized_ = false;
+	}
+	void SetOcclusionEnabled(bool enabled) { occlusionEnabled_ = enabled; }
+	void SetAimModeEnabled(bool enabled) {
+		aimModeEnabled_ = enabled;
+		if (!enabled) {
+			isAimMode_ = false;
+		}
+	}
 
 private:
 	bool RayIntersectOBB(
@@ -61,6 +81,8 @@ private:
 	Camera* camera_ = nullptr;
 	float yaw_ = 0.0f;
 	float pitch_ = 0.35f;
+	float desiredYaw_ = 0.0f;
+	float desiredPitch_ = 0.35f;
 	float distance_ = 8.0f;
 	float targetDistance_ = 8.0f;
 	float normalDistance_ = 8.0f;
@@ -71,14 +93,19 @@ private:
 	float maxPitch_ = 1.35f;
 	float mouseSensitivity_ = 0.005f;
 	float zoomStep_ = 1.0f;
-	float distanceEase_ = 0.18f;
-	float focusEase_ = 0.35f;
+	float positionSmoothTime_ = 0.12f;
+	float rotationSmoothTime_ = 0.08f;
 	float occlusionMargin_ = 0.45f;
 	float cameraBodyRadius_ = 0.12f;
-	bool isFirstPersonMode_ = false;
+	bool isAimMode_ = false;
 	bool focusInitialized_ = false;
+	bool followTargetYaw_ = false;
+	bool targetYawInitialized_ = false;
+	bool occlusionEnabled_ = true;
+	bool aimModeEnabled_ = true;
 	bool invertYaw_ = false;
 	bool invertPitch_ = false;
+	float previousTargetYaw_ = 0.0f;
 	Vector3 currentFocus_ = {};
 	Vector3 targetOffset_ = { 0.0f, 1.35f, 0.0f };
 	Vector3 aimTargetOffset_ = { 0.0f, 1.55f, 0.0f };

@@ -11,10 +11,26 @@
 #include <cmath>
 #include <limits>
 
+namespace {
+	constexpr float kTwoPi = 6.28318530718f;
+
+	float NormalizeAngle(float radians) {
+		return std::remainder(radians, kTwoPi);
+	}
+
+	float SmoothAlpha(float smoothTime, float deltaTime) {
+		if (smoothTime <= 0.000001f) {
+			return 1.0f;
+		}
+		return 1.0f - std::exp(-(std::max)(deltaTime, 0.0f) / smoothTime);
+	}
+}
+
 void ThirdPersonCameraController::Initialize(Camera* camera) {
 	camera_ = camera;
 	focusInitialized_ = false;
-	isFirstPersonMode_ = false;
+	isAimMode_ = false;
+	targetYawInitialized_ = false;
 	distance_ = normalDistance_;
 	targetDistance_ = normalDistance_;
 	if (camera_) {
@@ -25,6 +41,8 @@ void ThirdPersonCameraController::Initialize(Camera* camera) {
 void ThirdPersonCameraController::SetYawPitch(float yaw, float pitch) {
 	yaw_ = yaw;
 	pitch_ = std::clamp(pitch, minPitch_, maxPitch_);
+	desiredYaw_ = yaw_;
+	desiredPitch_ = pitch_;
 }
 
 void ThirdPersonCameraController::SyncFromCameraPose(
@@ -50,6 +68,8 @@ void ThirdPersonCameraController::SyncFromCameraPose(
 		minPitch_,
 		maxPitch_
 	);
+	desiredYaw_ = yaw_;
+	desiredPitch_ = pitch_;
 
 	distance_ = std::clamp(distance, minDistance_, maxDistance_);
 	targetDistance_ = distance_;
@@ -82,11 +102,18 @@ void ThirdPersonCameraController::SetPitchLimit(float minPitch, float maxPitch) 
 	minPitch_ = std::min(minPitch, maxPitch);
 	maxPitch_ = std::max(minPitch, maxPitch);
 	pitch_ = std::clamp(pitch_, minPitch_, maxPitch_);
+	desiredPitch_ = std::clamp(
+		desiredPitch_,
+		minPitch_,
+		maxPitch_
+	);
 }
 
 void ThirdPersonCameraController::Update(
 	const Vector3& targetPosition,
+	float targetYaw,
 	const std::vector<OBBCollider*>& obstacleColliders,
+	float deltaTime,
 	bool acceptMouseInput
 ) {
 	if (!camera_) {
@@ -94,21 +121,32 @@ void ThirdPersonCameraController::Update(
 	}
 
 	Input* input = Input::GetInstance();
-	isFirstPersonMode_ =
-		acceptMouseInput &&
-		input &&
-		input->PushMouse(Input::MouseButton::Right);
+	if (followTargetYaw_) {
+		if (!targetYawInitialized_) {
+			previousTargetYaw_ = targetYaw;
+			targetYawInitialized_ = true;
+		} else {
+			desiredYaw_ += NormalizeAngle(targetYaw - previousTargetYaw_);
+			previousTargetYaw_ = targetYaw;
+		}
+	}
 
 	if (acceptMouseInput) {
+		isAimMode_ = aimModeEnabled_ && input &&
+			input->PushMouse(Input::MouseButton::Right);
 		if (input) {
 			const Vector2 mouseMove = input->GetMouseMove();
-			yaw_ += mouseMove.x * mouseSensitivity_ *
+			desiredYaw_ += mouseMove.x * mouseSensitivity_ *
 				(invertYaw_ ? -1.0f : 1.0f);
-			pitch_ += mouseMove.y * mouseSensitivity_ *
+			desiredPitch_ += mouseMove.y * mouseSensitivity_ *
 				(invertPitch_ ? 1.0f : -1.0f);
-			pitch_ = std::clamp(pitch_, minPitch_, maxPitch_);
+			desiredPitch_ = std::clamp(
+				desiredPitch_,
+				minPitch_,
+				maxPitch_
+			);
 
-			if (!isFirstPersonMode_) {
+			if (!isAimMode_) {
 				const float wheel = input->GetMouseWheel();
 				if (std::abs(wheel) > 0.000001f) {
 					targetDistance_ = std::clamp(
@@ -121,39 +159,38 @@ void ThirdPersonCameraController::Update(
 			}
 		}
 	}
+	const float rotationAlpha = SmoothAlpha(rotationSmoothTime_, deltaTime);
+	yaw_ += NormalizeAngle(desiredYaw_ - yaw_) * rotationAlpha;
+	pitch_ += (desiredPitch_ - pitch_) * rotationAlpha;
+	pitch_ = std::clamp(pitch_, minPitch_, maxPitch_);
 
 	const Vector3 desiredFocus = Math::Add(
 		targetPosition,
-		isFirstPersonMode_ ? aimTargetOffset_ : targetOffset_
+		isAimMode_ ? aimTargetOffset_ : targetOffset_
 	);
-	if (isFirstPersonMode_) {
-		currentFocus_ = desiredFocus;
-		focusInitialized_ = true;
-		const Vector3 forward = GetForwardDirection();
-		const Vector3 cameraPosition = currentFocus_;
-		camera_->SetLookAt(
-			cameraPosition,
-			Math::Add(cameraPosition, forward)
-		);
-		return;
-	}
 
 	if (!focusInitialized_) {
 		currentFocus_ = desiredFocus;
 		focusInitialized_ = true;
 	} else {
+		const float positionAlpha = SmoothAlpha(
+			positionSmoothTime_,
+			deltaTime
+		);
 		currentFocus_ = Math::Add(
 			currentFocus_,
 			Math::Multiply(
 				Math::Subtract(desiredFocus, currentFocus_),
-				std::clamp(focusEase_, 0.0f, 1.0f)
+				positionAlpha
 			)
 		);
 	}
 
-	const float desiredDistance = targetDistance_;
-	distance_ += (desiredDistance - distance_) *
-		std::clamp(distanceEase_, 0.0f, 1.0f);
+	const float desiredDistance = isAimMode_ ? aimDistance_ : targetDistance_;
+	distance_ += (desiredDistance - distance_) * SmoothAlpha(
+		positionSmoothTime_,
+		deltaTime
+	);
 	distance_ = std::clamp(distance_, minDistance_, maxDistance_);
 
 	const float cosPitch = std::cos(pitch_);
@@ -174,7 +211,7 @@ void ThirdPersonCameraController::Update(
 	Vector3 ray = Math::Subtract(desiredCameraPosition, currentFocus_);
 	const float rayLength = Math::Length(ray);
 	Vector3 cameraPosition = desiredCameraPosition;
-	if (rayLength > 0.0001f) {
+	if (occlusionEnabled_ && rayLength > 0.0001f) {
 		const Vector3 direction = Math::Multiply(ray, 1.0f / rayLength);
 		const float safeDistance = ResolveOcclusionDistance(
 			currentFocus_,

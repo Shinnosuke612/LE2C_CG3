@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <iterator>
 #include <string>
 
 namespace {
@@ -25,6 +26,50 @@ namespace {
 
 	constexpr float kMinimumFov = 0.0174532925f;
 	constexpr float kMaximumFov = 3.12413936f;
+
+	const SceneEntity* ResolveEntityReference(
+		const SceneDocument& document,
+		uint64_t entityId,
+		const std::string& entityName
+	) {
+		const SceneEntity* byId = entityId != 0
+			? document.FindEntity(entityId)
+			: nullptr;
+		if (byId && (entityName.empty() || byId->name == entityName)) {
+			return byId;
+		}
+		if (!entityName.empty()) {
+			if (const SceneEntity* byName = document.FindEntityByName(entityName)) {
+				return byName;
+			}
+		}
+		return byId;
+	}
+
+	BYTE ResolveSwitchKey(const std::string& keyName) {
+		std::string key = keyName;
+		std::transform(
+			key.begin(),
+			key.end(),
+			key.begin(),
+			[](unsigned char character) {
+				return static_cast<char>(std::toupper(character));
+			}
+		);
+		if (key == "F1") return DIK_F1;
+		if (key == "F2") return DIK_F2;
+		if (key == "F3") return DIK_F3;
+		if (key == "F4") return DIK_F4;
+		if (key.empty() || key == "F5") return DIK_F5;
+		if (key == "F6") return DIK_F6;
+		if (key == "F7") return DIK_F7;
+		if (key == "F8") return DIK_F8;
+		if (key == "F9") return DIK_F9;
+		if (key == "F10") return DIK_F10;
+		if (key == "F11") return DIK_F11;
+		if (key == "F12") return DIK_F12;
+		return 0;
+	}
 }
 
 void SceneCameraSystem::Reset() {
@@ -32,6 +77,9 @@ void SceneCameraSystem::Reset() {
 	playerCameraController_ = ThirdPersonCameraController{};
 	playerCameraInitialized_ = false;
 	debugCameraInitialized_ = false;
+	wasPlaying_ = false;
+	activeCameraEntityId_ = 0;
+	thirdPersonCameraEntityId_ = 0;
 }
 
 void SceneCameraSystem::UpdateBeforeSimulation(
@@ -43,6 +91,22 @@ void SceneCameraSystem::UpdateBeforeSimulation(
 	bool runtimeActive,
 	bool playing
 ) {
+	if (!playing) {
+		if (wasPlaying_) {
+			cameraPathRuntime_.Stop();
+			playerCameraController_ = ThirdPersonCameraController{};
+			playerCameraInitialized_ = false;
+			activeCameraEntityId_ = 0;
+			thirdPersonCameraEntityId_ = 0;
+		}
+		wasPlaying_ = false;
+	} else if (!wasPlaying_) {
+		playerCameraController_ = ThirdPersonCameraController{};
+		playerCameraInitialized_ = false;
+		activeCameraEntityId_ = 0;
+		thirdPersonCameraEntityId_ = 0;
+		wasPlaying_ = true;
+	}
 	if (!camera || !runtimeActive) {
 		return;
 	}
@@ -55,8 +119,17 @@ void SceneCameraSystem::UpdateBeforeSimulation(
 			SyncPlayerController(document, camera, player);
 		}
 	} else {
-		ApplyMainCamera(document, camera);
-		UpdateThirdPersonCamera(document, camera, player, bindings, playing);
+		UpdateCameraSwitch(document, playing);
+		ApplyActiveCamera(document, camera);
+		UpdateThirdPersonCamera(
+			document,
+			camera,
+			player,
+			bindings,
+			deltaTime * 0.5f,
+			playing,
+			true
+		);
 		TryStartCameraPath(document, camera);
 		if (cameraPathRuntime_.IsPlaying()) {
 			cameraPathRuntime_.Update(deltaTime, *camera);
@@ -73,6 +146,7 @@ void SceneCameraSystem::UpdateAfterSimulation(
 	Camera* camera,
 	Player* player,
 	const std::vector<SceneRuntimeObjectBinding>& bindings,
+	float deltaTime,
 	bool runtimeActive,
 	bool playing
 ) {
@@ -80,8 +154,16 @@ void SceneCameraSystem::UpdateAfterSimulation(
 		return;
 	}
 	if (runtimeActive && !cameraPathRuntime_.IsPlaying()) {
-		ApplyMainCamera(document, camera);
-		UpdateThirdPersonCamera(document, camera, player, bindings, playing);
+		ApplyActiveCamera(document, camera);
+		UpdateThirdPersonCamera(
+			document,
+			camera,
+			player,
+			bindings,
+			deltaTime * 0.5f,
+			playing,
+			false
+		);
 	}
 	camera->Update();
 }
@@ -131,40 +213,113 @@ bool SceneCameraSystem::ApplyComponentToCamera(
 	return true;
 }
 
-void SceneCameraSystem::ApplyMainCamera(
+const SceneEntity* SceneCameraSystem::ResolveActiveCameraEntity(
+	const SceneDocument& document
+) const {
+	if (activeCameraEntityId_ != 0) {
+		if (const SceneEntity* selected = document.FindEntity(activeCameraEntityId_);
+			selected &&
+			IsEntityActiveInHierarchy(document, *selected) &&
+			FindEnabledComponent(*selected, "Camera")) {
+			return selected;
+		}
+	}
+
+	const SceneEntity* fallback = nullptr;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (
+			!IsEntityActiveInHierarchy(document, entity) ||
+			!FindEnabledComponent(entity, "Camera")
+		) {
+			continue;
+		}
+		if (!fallback) {
+			fallback = &entity;
+		}
+		if (const SceneComponent* component =
+			FindEnabledComponent(entity, "Camera");
+			component && component->cameraIsMain) {
+			return &entity;
+		}
+	}
+	return fallback;
+}
+
+void SceneCameraSystem::UpdateCameraSwitch(
+	const SceneDocument& document,
+	bool playing
+) {
+	if (!playing) {
+		return;
+	}
+	const SceneComponent* switcher = nullptr;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			continue;
+		}
+		switcher = FindEnabledComponent(entity, "CameraSwitcher");
+		if (switcher) {
+			break;
+		}
+	}
+	if (!switcher) {
+		return;
+	}
+	Input* input = Input::GetInstance();
+	const BYTE switchKey = ResolveSwitchKey(switcher->cameraSwitchTriggerKey);
+	if (!input || switchKey == 0 || !input->TriggerKey(switchKey)) {
+		return;
+	}
+
+	std::vector<const SceneEntity*> cameras;
+	for (const SceneCameraSwitchEntry& entry : switcher->cameraSwitchEntries) {
+		const SceneEntity* entity = ResolveEntityReference(
+			document,
+			entry.cameraEntityId,
+			entry.cameraEntityName
+		);
+		if (
+			!entity ||
+			!IsEntityActiveInHierarchy(document, *entity) ||
+			!FindEnabledComponent(*entity, "Camera") ||
+			std::find(cameras.begin(), cameras.end(), entity) != cameras.end()
+		) {
+			continue;
+		}
+		cameras.push_back(entity);
+	}
+	if (cameras.empty()) {
+		return;
+	}
+
+	const SceneEntity* current = ResolveActiveCameraEntity(document);
+	auto found = std::find(cameras.begin(), cameras.end(), current);
+	size_t nextIndex = 0;
+	if (found != cameras.end()) {
+		nextIndex = static_cast<size_t>(std::distance(cameras.begin(), found)) + 1;
+		if (nextIndex >= cameras.size()) {
+			if (!switcher->cameraSwitchWrap) {
+				return;
+			}
+			nextIndex = 0;
+		}
+	}
+	activeCameraEntityId_ = cameras[nextIndex]->id;
+	playerCameraInitialized_ = false;
+	thirdPersonCameraEntityId_ = 0;
+}
+
+void SceneCameraSystem::ApplyActiveCamera(
 	const SceneDocument& document,
 	Camera* camera
 ) const {
 	if (!camera) {
 		return;
 	}
-
-	const SceneEntity* fallbackEntity = nullptr;
-	const SceneComponent* fallbackCamera = nullptr;
-	const SceneEntity* mainEntity = nullptr;
-	const SceneComponent* mainCamera = nullptr;
-	for (const SceneEntity& entity : document.GetEntities()) {
-		if (!IsEntityActiveInHierarchy(document, entity)) {
-			continue;
-		}
-		const SceneComponent* component =
-			FindEnabledComponent(entity, "Camera");
-		if (!component) {
-			continue;
-		}
-		if (!fallbackEntity) {
-			fallbackEntity = &entity;
-			fallbackCamera = component;
-		}
-		if (component->cameraIsMain) {
-			mainEntity = &entity;
-			mainCamera = component;
-			break;
-		}
-	}
-
-	const SceneEntity* entity = mainEntity ? mainEntity : fallbackEntity;
-	const SceneComponent* component = mainCamera ? mainCamera : fallbackCamera;
+	const SceneEntity* entity = ResolveActiveCameraEntity(document);
+	const SceneComponent* component = entity
+		? FindEnabledComponent(*entity, "Camera")
+		: nullptr;
 	if (!entity || !component) {
 		return;
 	}
@@ -186,63 +341,89 @@ void SceneCameraSystem::ApplyMainCamera(
 	));
 }
 
+const SceneEntity* SceneCameraSystem::ResolveThirdPersonTarget(
+	const SceneDocument& document,
+	const SceneEntity& cameraEntity,
+	const SceneComponent& thirdPerson
+) const {
+	if (
+		const SceneEntity* configured = ResolveEntityReference(
+			document,
+			thirdPerson.thirdPersonTargetEntityId,
+			thirdPerson.thirdPersonTargetEntityName
+		);
+		configured && IsEntityActiveInHierarchy(document, *configured)
+	) {
+		return configured;
+	}
+	if (
+		HasComponent(cameraEntity, "PlayerBehavior") ||
+		HasComponent(cameraEntity, "AgentBehavior") ||
+		HasComponent(cameraEntity, "MeshRenderer")
+	) {
+		return &cameraEntity;
+	}
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (
+			IsEntityActiveInHierarchy(document, entity) &&
+			HasComponent(entity, "PlayerBehavior")
+		) {
+			return &entity;
+		}
+	}
+	return nullptr;
+}
+
 bool SceneCameraSystem::UpdateThirdPersonCamera(
 	SceneDocument& document,
 	Camera* camera,
 	Player* player,
 	const std::vector<SceneRuntimeObjectBinding>& bindings,
-	bool playing
+	float deltaTime,
+	bool playing,
+	bool acceptMouseInput
 ) {
-	if (!playing || !camera || !player) {
+	(void)player;
+	if (!playing || !camera) {
 		playerCameraInitialized_ = false;
+		thirdPersonCameraEntityId_ = 0;
+		ApplyPlayerDissolve(bindings, false);
 		return false;
 	}
 
-	const SceneEntity* fallbackEntity = nullptr;
-	const SceneComponent* fallbackCamera = nullptr;
-	const SceneComponent* fallbackThirdPerson = nullptr;
-	const SceneEntity* mainEntity = nullptr;
-	const SceneComponent* mainCamera = nullptr;
-	const SceneComponent* mainThirdPerson = nullptr;
-	for (const SceneEntity& entity : document.GetEntities()) {
-		if (!IsEntityActiveInHierarchy(document, entity)) {
-			continue;
-		}
-		const SceneComponent* cameraComponent =
-			FindEnabledComponent(entity, "Camera");
-		const SceneComponent* thirdPerson =
-			FindEnabledComponent(entity, "ThirdPersonCamera");
-		if (!cameraComponent || !thirdPerson) {
-			continue;
-		}
-		if (!fallbackEntity) {
-			fallbackEntity = &entity;
-			fallbackCamera = cameraComponent;
-			fallbackThirdPerson = thirdPerson;
-		}
-		if (cameraComponent->cameraIsMain) {
-			mainEntity = &entity;
-			mainCamera = cameraComponent;
-			mainThirdPerson = thirdPerson;
-			break;
-		}
-	}
-
-	const SceneEntity* cameraEntity = mainEntity ? mainEntity : fallbackEntity;
-	const SceneComponent* cameraComponent = mainCamera ? mainCamera : fallbackCamera;
-	const SceneComponent* thirdPerson =
-		mainThirdPerson ? mainThirdPerson : fallbackThirdPerson;
+	const SceneEntity* cameraEntity = ResolveActiveCameraEntity(document);
+	const SceneComponent* cameraComponent = cameraEntity
+		? FindEnabledComponent(*cameraEntity, "Camera")
+		: nullptr;
+	const SceneComponent* thirdPerson = cameraEntity
+		? FindEnabledComponent(*cameraEntity, "ThirdPersonCamera")
+		: nullptr;
 	if (
 		!cameraEntity ||
 		!cameraComponent ||
-		!thirdPerson ||
-		!HasComponent(*cameraEntity, "PlayerBehavior")
+		!thirdPerson
 	) {
 		playerCameraInitialized_ = false;
+		thirdPersonCameraEntityId_ = 0;
+		ApplyPlayerDissolve(bindings, false);
+		return false;
+	}
+	const SceneEntity* targetEntity = ResolveThirdPersonTarget(
+		document,
+		*cameraEntity,
+		*thirdPerson
+	);
+	if (!targetEntity) {
+		playerCameraInitialized_ = false;
+		thirdPersonCameraEntityId_ = 0;
+		ApplyPlayerDissolve(bindings, false);
 		return false;
 	}
 
-	if (!playerCameraInitialized_) {
+	if (
+		!playerCameraInitialized_ ||
+		thirdPersonCameraEntityId_ != cameraEntity->id
+	) {
 		playerCameraController_.Initialize(camera);
 		const Transform initialTransform =
 			SceneTransformResolver::ResolveScene3DTransform(
@@ -258,12 +439,13 @@ bool SceneCameraSystem::UpdateThirdPersonCamera(
 			thirdPerson->thirdPersonAimDistance
 		);
 		playerCameraInitialized_ = true;
+		thirdPersonCameraEntityId_ = cameraEntity->id;
 	}
 
 	Input* input = Input::GetInstance();
 	const bool altHeld =
 		input && (input->PushKey(DIK_LMENU) || input->PushKey(DIK_RMENU));
-	if (altHeld) {
+	if (altHeld && acceptMouseInput) {
 		return true;
 	}
 
@@ -294,6 +476,22 @@ bool SceneCameraSystem::UpdateThirdPersonCamera(
 	playerCameraController_.SetOcclusionMargin(
 		thirdPerson->thirdPersonOcclusionMargin
 	);
+	playerCameraController_.SetPositionSmoothTime(
+		thirdPerson->thirdPersonPositionSmoothTime
+	);
+	playerCameraController_.SetRotationSmoothTime(
+		thirdPerson->thirdPersonRotationSmoothTime
+	);
+	playerCameraController_.SetFollowTargetYaw(
+		thirdPerson->thirdPersonYawReference == "Target"
+	);
+	playerCameraController_.SetOcclusionEnabled(
+		thirdPerson->thirdPersonOcclusionEnabled
+	);
+	playerCameraController_.SetAimModeEnabled(
+		thirdPerson->thirdPersonAimModeEnabled &&
+			thirdPerson->thirdPersonAllowMouseInput
+	);
 	playerCameraController_.SetMouseInvert(
 		thirdPerson->thirdPersonInvertYaw,
 		thirdPerson->thirdPersonInvertPitch
@@ -305,7 +503,7 @@ bool SceneCameraSystem::UpdateThirdPersonCamera(
 		if (
 			!binding.entity ||
 			!binding.collider ||
-			HasComponent(*binding.entity, "PlayerBehavior") ||
+			binding.entity->id == targetEntity->id ||
 			!IsEntityActiveInHierarchy(document, *binding.entity)
 		) {
 			continue;
@@ -331,17 +529,27 @@ bool SceneCameraSystem::UpdateThirdPersonCamera(
 		}
 	}
 
+	const Transform targetTransform =
+		SceneTransformResolver::ResolveScene3DTransform(document, *targetEntity);
 	playerCameraController_.Update(
-		player->GetPosition(),
+		targetTransform.translate,
+		targetTransform.rotate.y,
 		obstacles,
-		!altHeld
+		deltaTime,
+		acceptMouseInput &&
+			thirdPerson->thirdPersonAllowMouseInput &&
+			!altHeld
 	);
-	ApplyPlayerDissolve(bindings);
+	ApplyPlayerDissolve(
+		bindings,
+		HasComponent(*targetEntity, "PlayerBehavior")
+	);
 	return true;
 }
 
 void SceneCameraSystem::ApplyPlayerDissolve(
-	const std::vector<SceneRuntimeObjectBinding>& bindings
+	const std::vector<SceneRuntimeObjectBinding>& bindings,
+	bool enabled
 ) const {
 	constexpr float kStartPitch = -0.35f;
 	constexpr float kFullPitch = -0.85f;
@@ -351,7 +559,9 @@ void SceneCameraSystem::ApplyPlayerDissolve(
 		0.0f,
 		1.0f
 	);
-	const float amount = rawAmount * rawAmount * (3.0f - 2.0f * rawAmount);
+	const float amount = enabled
+		? rawAmount * rawAmount * (3.0f - 2.0f * rawAmount)
+		: 0.0f;
 	for (const SceneRuntimeObjectBinding& binding : bindings) {
 		if (
 			binding.entity &&
@@ -408,31 +618,10 @@ bool SceneCameraSystem::TryStartCameraPath(
 				? FindEnabledComponent(*targetEntity, "Camera")
 				: nullptr;
 		} else {
-			const SceneEntity* fallbackEntity = nullptr;
-			const SceneComponent* fallbackCamera = nullptr;
-			for (const SceneEntity& candidate : document.GetEntities()) {
-				if (!IsEntityActiveInHierarchy(document, candidate)) {
-					continue;
-				}
-				const SceneComponent* component =
-					FindEnabledComponent(candidate, "Camera");
-				if (!component) {
-					continue;
-				}
-				if (!fallbackEntity) {
-					fallbackEntity = &candidate;
-					fallbackCamera = component;
-				}
-				if (component->cameraIsMain) {
-					targetEntity = &candidate;
-					targetCamera = component;
-					break;
-				}
-			}
-			if (!targetEntity) {
-				targetEntity = fallbackEntity;
-				targetCamera = fallbackCamera;
-			}
+			targetEntity = ResolveActiveCameraEntity(document);
+			targetCamera = targetEntity
+				? FindEnabledComponent(*targetEntity, "Camera")
+				: nullptr;
 		}
 		if (!targetEntity || !targetCamera) {
 			continue;
@@ -460,45 +649,31 @@ void SceneCameraSystem::SyncPlayerController(
 	Camera* camera,
 	Player* player
 ) {
-	if (!camera || !player) {
+	(void)player;
+	if (!camera) {
 		return;
 	}
-
-	const SceneComponent* targetThirdPerson = nullptr;
-	const SceneComponent* fallbackThirdPerson = nullptr;
-	for (const SceneEntity& entity : document.GetEntities()) {
-		if (!IsEntityActiveInHierarchy(document, entity)) {
-			continue;
-		}
-		const SceneComponent* cameraComponent =
-			FindEnabledComponent(entity, "Camera");
-		const SceneComponent* thirdPerson =
-			FindEnabledComponent(entity, "ThirdPersonCamera");
-		if (!cameraComponent || !thirdPerson) {
-			continue;
-		}
-		if (!fallbackThirdPerson) {
-			fallbackThirdPerson = thirdPerson;
-		}
-		if (cameraComponent->cameraIsMain) {
-			targetThirdPerson = thirdPerson;
-			break;
-		}
-	}
-
-	const SceneComponent* thirdPerson =
-		targetThirdPerson ? targetThirdPerson : fallbackThirdPerson;
-	if (!thirdPerson) {
+	const SceneEntity* cameraEntity = ResolveActiveCameraEntity(document);
+	const SceneComponent* thirdPerson = cameraEntity
+		? FindEnabledComponent(*cameraEntity, "ThirdPersonCamera")
+		: nullptr;
+	const SceneEntity* targetEntity = cameraEntity && thirdPerson
+		? ResolveThirdPersonTarget(document, *cameraEntity, *thirdPerson)
+		: nullptr;
+	if (!cameraEntity || !thirdPerson || !targetEntity) {
 		return;
 	}
+	const Transform targetTransform =
+		SceneTransformResolver::ResolveScene3DTransform(document, *targetEntity);
 	const Vector3 focus = Math::Add(
-		player->GetPosition(),
+		targetTransform.translate,
 		playerCameraController_.IsAimMode()
 			? thirdPerson->thirdPersonAimTargetOffset
 			: thirdPerson->thirdPersonTargetOffset
 	);
 	playerCameraController_.SyncFromCameraPose(camera->GetTranslate(), focus);
 	playerCameraInitialized_ = true;
+	thirdPersonCameraEntityId_ = cameraEntity->id;
 }
 
 void SceneCameraSystem::InitializePauseDebugCamera(

@@ -250,6 +250,22 @@ void RuntimeScene::Update(float deltaTime)
 	}
 #endif
 	lightingSystem_.Sync(activeDocument);
+	if (activeDocument && playing) {
+		// 前フレームで寿命切れ/HitしたRuntime Entityをbinding再構築前に破棄する。
+		combatSystem_.FlushRemovals(*activeDocument);
+		projectileSystem_.FlushRemovals(*activeDocument);
+		// 保存値を実行時状態へ展開し、Transform AnimationをObject同期前に反映する。
+		statSystem_.Update(*activeDocument);
+		prefabAnimationSystem_.Update(*activeDocument, deltaTime);
+	} else {
+		statSystem_.Clear();
+		prefabAnimationSystem_.Clear();
+		eventSystem_.Clear();
+		combatSystem_.Clear();
+		enemySystem_.Clear();
+		projectileSystem_.Clear();
+		attachmentSystem_.Clear(&objectSystem_);
+	}
 
 	// Objectが実体を所有し、以降のSystemは再構築したbindingsだけを借用する。
 	objectSystem_.SyncModels(
@@ -276,10 +292,29 @@ void RuntimeScene::Update(float deltaTime)
 				runtimeObjectBindings_,
 				deltaTime
 			);
+			enemySystem_.Update(
+				*activeDocument,
+				runtimeObjectBindings_,
+				statSystem_,
+				prefabAnimationSystem_,
+				deltaTime
+			);
+			projectileSystem_.Update(
+				*activeDocument,
+				runtimeObjectBindings_,
+				deltaTime
+			);
 		}
 	} else {
 		runtimeObjectBindings_.clear();
 		agentSystem_.Clear();
+		attachmentSystem_.Clear(&objectSystem_);
+		combatSystem_.Clear();
+		enemySystem_.Clear();
+		eventSystem_.Clear();
+		prefabAnimationSystem_.Clear();
+		projectileSystem_.Clear();
+		statSystem_.Clear();
 		physicsSystem_.Clear();
 		cameraSystem_.Reset();
 	}
@@ -319,6 +354,19 @@ void RuntimeScene::Update(float deltaTime)
 			);
 		}
 	}
+	if (activeDocument && playing) {
+		// Bone追従はAnimation/Physics後、当たり判定とEventは最終Transform後に評価する。
+		attachmentSystem_.Update(
+			*activeDocument,
+			objectSystem_,
+			runtimeObjectBindings_
+		);
+		combatSystem_.Update(
+			*activeDocument,
+			runtimeObjectBindings_,
+			statSystem_
+		);
+	}
 	objectSystem_.SyncSprites(activeDocument);
 	if (activeDocument) {
 		cameraSystem_.UpdateAfterSimulation(
@@ -326,6 +374,7 @@ void RuntimeScene::Update(float deltaTime)
 			camera_,
 			player_,
 			runtimeObjectBindings_,
+			deltaTime,
 			playing,
 			playing
 		);
@@ -347,6 +396,18 @@ void RuntimeScene::Update(float deltaTime)
 		false
 	);
 #endif
+	if (activeDocument && playing) {
+		// Prefab生成はEntity配列を再配置し得るため、bindingを使い終えた最後に行う。
+		const std::string eventTargetSceneId = eventSystem_.Update(
+			*activeDocument,
+			statSystem_,
+			deltaTime
+		);
+		if (!eventTargetSceneId.empty()) {
+			sceneManager_->ChangeScene(eventTargetSceneId);
+			return;
+		}
+	}
 }
 
 void RuntimeScene::UpdatePaused()
@@ -487,7 +548,14 @@ void RuntimeScene::Finalize()
 	// 非所有参照を持つSystemから解除し、最後にObjectとCameraを破棄する。
 	monitorSystem_.Finalize(&runtimeObjectBindings_);
 	agentSystem_.Clear();
+	attachmentSystem_.Clear(&objectSystem_);
+	combatSystem_.Clear();
+	enemySystem_.Clear();
+	eventSystem_.Clear();
 	physicsSystem_.Clear();
+	prefabAnimationSystem_.Clear();
+	projectileSystem_.Clear();
+	statSystem_.Clear();
 
 	if (player_) {
 		player_->Finalize();

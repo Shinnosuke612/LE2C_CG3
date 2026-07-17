@@ -1137,7 +1137,11 @@ void ParticleManager::DrawSceneParticleImGui(
 	std::vector<std::string> effectNames;
 	CollectEffectFiles(effectPaths, effectNames);
 
-	ImGui::Begin(windowTitle);
+	ImGui::Begin(
+		windowTitle,
+		nullptr,
+		ImGuiWindowFlags_NoFocusOnAppearing
+	);
 	ImGui::InputText("Layout", layoutPath, sizeof(layoutPath));
 	if (ImGui::Button("Load Layout")) LoadSceneParticleLayout(layoutPath, true);
 	ImGui::SameLine();

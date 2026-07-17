@@ -96,6 +96,78 @@ namespace {
 		strncpy_s(destination, destinationSize, source.c_str(), _TRUNCATE);
 	}
 
+	bool InputTextString(const char* label, std::string& value) {
+		char buffer[256]{};
+		CopyTextBuffer(buffer, sizeof(buffer), value);
+		if (!ImGui::InputText(label, buffer, sizeof(buffer))) {
+			return false;
+		}
+		value = buffer;
+		return true;
+	}
+
+	std::vector<std::string> CollectEntityJointNames(
+		const SceneEntity& entity
+	) {
+		const SceneComponent* meshRenderer =
+			FindEnabledComponent(entity, "MeshRenderer");
+		if (!meshRenderer || meshRenderer->modelPath.empty()) {
+			return {};
+		}
+		ModelManager* modelManager = ModelManager::GetInstance();
+		if (!modelManager) {
+			return {};
+		}
+		modelManager->LoadModel(meshRenderer->modelPath);
+		const Model* model = modelManager->FindModel(meshRenderer->modelPath);
+		if (!model) {
+			return {};
+		}
+
+		std::vector<std::string> jointNames;
+		std::function<void(const Model::Node&)> collectNode;
+		collectNode = [&](const Model::Node& node) {
+			if (
+				!node.name.empty() &&
+				std::find(jointNames.begin(), jointNames.end(), node.name) ==
+					jointNames.end()
+			) {
+				jointNames.push_back(node.name);
+			}
+			for (const Model::Node& child : node.children) {
+				collectNode(child);
+			}
+		};
+		collectNode(model->GetRootNode());
+		return jointNames;
+	}
+
+	bool DrawJointNameCombo(
+		const char* label,
+		const std::vector<std::string>& jointNames,
+		std::string& selectedJointName
+	) {
+		const std::string preview = selectedJointName.empty()
+			? "Select Bone..."
+			: selectedJointName;
+		bool changed = false;
+		if (ImGui::BeginCombo(label, preview.c_str())) {
+			for (size_t index = 0; index < jointNames.size(); ++index) {
+				const std::string& jointName = jointNames[index];
+				ImGui::PushID(static_cast<int>(index));
+				if (ImGui::Selectable(
+					jointName.c_str(), selectedJointName == jointName
+				)) {
+					selectedJointName = jointName;
+					changed = true;
+				}
+				ImGui::PopID();
+			}
+			ImGui::EndCombo();
+		}
+		return changed;
+	}
+
 	std::string SceneAssetFileStem(const SceneDescriptor& descriptor) {
 		const std::string path = descriptor.assetPath.empty()
 			? descriptor.filePath
@@ -3678,9 +3750,39 @@ void ImGuiManager::DrawInspectorWindow() {
 			}
 		} 
 		else if (ext == ".json") {
-			// Particle JSON inspector
-			ParticleEffectDesc desc;
-			if (ParticleEffectResource::Load(selectedProjectFile_, desc)) {
+			if (fileName.ends_with(".prefab.json")) {
+				ImGui::Text("Type: Entity Prefab");
+				SceneDocument prefabPreview;
+				if (prefabPreview.Load(selectedProjectFile_)) {
+					ImGui::Text(
+						"Entities: %zu",
+						prefabPreview.GetEntities().size()
+					);
+				} else {
+					ImGui::TextWrapped(
+						"Load error: %s",
+						prefabPreview.GetLastLoadError().c_str()
+					);
+				}
+				ImGui::BeginDisabled(
+					!editorSession_ || !editorSession_->IsEditing()
+				);
+				if (ImGui::Button("Instantiate Prefab At Root")) {
+					SceneDocument& document = editorSession_->GetEditDocument();
+					const uint64_t instanceId = document.InstantiatePrefab(
+						selectedProjectFile_
+					);
+					if (instanceId != 0) {
+						selectedEntityId_ = instanceId;
+						selectedProjectFile_.clear();
+						editorSession_->RequestSceneReload();
+					}
+				}
+				ImGui::EndDisabled();
+			} else {
+				// Particle JSON inspector
+				ParticleEffectDesc desc;
+				if (ParticleEffectResource::Load(selectedProjectFile_, desc)) {
 				ImGui::Text("Type: Particle Effect Description");
 				ImGui::Text("Effect Name: %s", desc.name.c_str());
 				ImGui::Text("Texture: %s", desc.textureFilePath.c_str());
@@ -3692,9 +3794,10 @@ void ImGuiManager::DrawInspectorWindow() {
 					particleToLoad_ = selectedProjectFile_;
 					requestLoadParticle_ = true;
 				}
-			} else {
-				ImGui::Text("Type: JSON File");
-				ImGui::Text("Unable to parse as ParticleEffectDesc");
+				} else {
+					ImGui::Text("Type: JSON File");
+					ImGui::Text("Unable to parse as ParticleEffectDesc");
+				}
 			}
 		}
 		else {
@@ -3798,6 +3901,97 @@ void ImGuiManager::DrawInspectorWindow() {
 			}
 			document.MarkDirty();
 			editorSession_->RequestSceneReload();
+		}
+		ImGui::EndDisabled();
+
+		ImGui::SeparatorText("Prefab");
+		ImGui::BeginDisabled(entityLocked || !editorSession_->IsEditing());
+		static std::string prefabOperationStatus;
+		static uint64_t prefabFileNameEntityId = 0;
+		static char prefabFileName[192]{};
+		if (prefabFileNameEntityId != entity->id) {
+			prefabFileNameEntityId = entity->id;
+			std::string defaultName = entity->name.empty() ? "Prefab" : entity->name;
+			CopyTextBuffer(prefabFileName, sizeof(prefabFileName), defaultName);
+		}
+		ImGui::SetNextItemWidth(-1.0f);
+		ImGui::InputText(
+			"Prefab File Name",
+			prefabFileName,
+			sizeof(prefabFileName)
+		);
+		if (ImGui::Button("Save / Overwrite Prefab")) {
+			std::string prefabName = prefabFileName;
+			for (char& character : prefabName) {
+				if (
+					static_cast<unsigned char>(character) < 32 ||
+					std::strchr("<>:\"/\\|?*", character)
+				) {
+					character = '_';
+				}
+			}
+			if (prefabName.empty()) {
+				prefabName = "Prefab";
+			}
+			if (!prefabName.ends_with(".prefab.json")) {
+				prefabName += ".prefab.json";
+			}
+			const std::filesystem::path prefabDirectory =
+				GetProjectResourceRoot() / "prefabs";
+			const std::filesystem::path prefabFilePath =
+				prefabDirectory / PathFromUtf8(prefabName);
+			const std::string prefabPath = PathToUtf8(prefabFilePath);
+			std::error_code prefabDirectoryError;
+			std::filesystem::create_directories(
+				prefabDirectory,
+				prefabDirectoryError
+			);
+			if (!prefabDirectoryError) {
+				const bool prefabSaved = document.SaveEntityBranchAsPrefab(
+					entity->id,
+					prefabPath
+				);
+				if (prefabSaved) {
+					prefabOperationStatus = "Saved: resources/prefabs/" +
+						prefabName;
+					selectedProjectFolder_ = PathToUtf8(prefabDirectory);
+					selectedProjectFile_ = prefabPath;
+					InvalidateProjectCache();
+				} else {
+					prefabOperationStatus = "Failed to save: " + prefabPath;
+				}
+			} else {
+				prefabOperationStatus = "Failed to create: " +
+					PathToUtf8(prefabDirectory);
+			}
+		}
+		static char prefabInstantiatePath[256] =
+			"resources/prefabs/Prefab.prefab.json";
+		ImGui::SetNextItemWidth(-1.0f);
+		ImGui::InputText(
+			"Prefab Path",
+			prefabInstantiatePath,
+			sizeof(prefabInstantiatePath)
+		);
+		if (ImGui::Button("Instantiate As Child")) {
+			const uint64_t instanceId = document.InstantiatePrefab(
+				prefabInstantiatePath,
+				entity->id
+			);
+			if (instanceId != 0) {
+				prefabOperationStatus = "Instantiated: " +
+					std::string(prefabInstantiatePath);
+				selectedEntityId_ = instanceId;
+				editorSession_->RequestSceneReload();
+				ImGui::EndDisabled();
+				ImGui::End();
+				return;
+			}
+			prefabOperationStatus = "Failed to instantiate: " +
+				std::string(prefabInstantiatePath);
+		}
+		if (!prefabOperationStatus.empty()) {
+			ImGui::TextWrapped("%s", prefabOperationStatus.c_str());
 		}
 		ImGui::EndDisabled();
 		if (!entity->components.empty()) {
@@ -4557,9 +4751,18 @@ void ImGuiManager::DrawInspectorWindow() {
 		std::string removeComponentType;
 		for (SceneComponent& component : entity->components) {
 			ImGui::PushID(component.type.c_str());
-			ImGui::SeparatorText(
-				component.type == "OBBCollider" ? "Collider" : component.type.c_str()
+			const char* componentLabel = component.type == "OBBCollider"
+				? "Collider"
+				: component.type.c_str();
+			const bool componentOpen = ImGui::CollapsingHeader(
+				componentLabel,
+				ImGuiTreeNodeFlags_DefaultOpen |
+					ImGuiTreeNodeFlags_SpanAvailWidth
 			);
+			if (!componentOpen) {
+				ImGui::PopID();
+				continue;
+			}
 			ImGui::BeginDisabled(entityLocked || !editorSession_->IsEditing());
 			if (ImGui::Checkbox("Enabled", &component.enabled)) {
 				document.MarkDirty();
@@ -5506,9 +5709,220 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "CameraSwitcher") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool switcherChanged = false;
+				ImGui::TextDisabled(
+					"Cycles registered cameras in Play Mode"
+				);
+				const char* currentKey = component.cameraSwitchTriggerKey.empty()
+					? "F5"
+					: component.cameraSwitchTriggerKey.c_str();
+				if (ImGui::BeginCombo("Switch Key", currentKey)) {
+					for (const char* key : {
+						"F1", "F2", "F3", "F4", "F5", "F6",
+						"F7", "F8", "F9", "F10", "F11", "F12"
+					}) {
+						if (ImGui::Selectable(
+							key,
+							component.cameraSwitchTriggerKey == key ||
+								(component.cameraSwitchTriggerKey.empty() &&
+									std::strcmp(key, "F5") == 0)
+						)) {
+							component.cameraSwitchTriggerKey = key;
+							switcherChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				switcherChanged |= ImGui::Checkbox(
+					"Wrap To First",
+					&component.cameraSwitchWrap
+				);
+				int removeCameraIndex = -1;
+				int moveCameraIndex = -1;
+				int moveCameraDirection = 0;
+				for (size_t cameraIndex = 0;
+					cameraIndex < component.cameraSwitchEntries.size();
+					++cameraIndex) {
+					SceneCameraSwitchEntry& entry =
+						component.cameraSwitchEntries[cameraIndex];
+					ImGui::PushID(static_cast<int>(cameraIndex));
+					const SceneEntity* selectedCamera =
+						entry.cameraEntityId != 0
+						? document.FindEntity(entry.cameraEntityId)
+						: nullptr;
+					if (
+						!entry.cameraEntityName.empty() &&
+						(!selectedCamera ||
+							selectedCamera->name != entry.cameraEntityName)
+					) {
+						selectedCamera = document.FindEntityByName(
+							entry.cameraEntityName
+						);
+					}
+					const std::string cameraLabel = selectedCamera
+						? selectedCamera->name
+						: "Select Camera...";
+					if (ImGui::BeginCombo("Camera", cameraLabel.c_str())) {
+						for (const SceneEntity& candidate : document.GetEntities()) {
+							if (!FindEnabledComponent(candidate, "Camera")) {
+								continue;
+							}
+							std::string label = candidate.name;
+							if (const SceneComponent* cameraComponent =
+								FindEnabledComponent(candidate, "Camera");
+								cameraComponent && cameraComponent->cameraIsMain) {
+								label += " (Main)";
+							}
+							if (ImGui::Selectable(
+								label.c_str(),
+								selectedCamera && selectedCamera->id == candidate.id
+							)) {
+								entry.cameraEntityId = candidate.id;
+								entry.cameraEntityName = candidate.name;
+								switcherChanged = true;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::BeginDisabled(cameraIndex == 0);
+					if (ImGui::SmallButton("Up")) {
+						moveCameraIndex = static_cast<int>(cameraIndex);
+						moveCameraDirection = -1;
+					}
+					ImGui::EndDisabled();
+					ImGui::SameLine();
+					ImGui::BeginDisabled(
+						cameraIndex + 1 >= component.cameraSwitchEntries.size()
+					);
+					if (ImGui::SmallButton("Down")) {
+						moveCameraIndex = static_cast<int>(cameraIndex);
+						moveCameraDirection = 1;
+					}
+					ImGui::EndDisabled();
+					ImGui::SameLine();
+					if (ImGui::SmallButton("Remove")) {
+						removeCameraIndex = static_cast<int>(cameraIndex);
+					}
+					ImGui::PopID();
+				}
+				if (moveCameraIndex >= 0) {
+					std::swap(
+						component.cameraSwitchEntries[moveCameraIndex],
+						component.cameraSwitchEntries[
+							moveCameraIndex + moveCameraDirection
+						]
+					);
+					switcherChanged = true;
+				}
+				if (removeCameraIndex >= 0) {
+					component.cameraSwitchEntries.erase(
+						component.cameraSwitchEntries.begin() + removeCameraIndex
+					);
+					switcherChanged = true;
+				}
+				SceneCameraSwitchEntry nextCameraEntry{};
+				for (const SceneEntity& candidate : document.GetEntities()) {
+					if (!FindEnabledComponent(candidate, "Camera")) {
+						continue;
+					}
+					const bool alreadyRegistered = std::any_of(
+						component.cameraSwitchEntries.begin(),
+						component.cameraSwitchEntries.end(),
+						[&candidate](const SceneCameraSwitchEntry& existing) {
+							return existing.cameraEntityId == candidate.id ||
+								(!existing.cameraEntityName.empty() &&
+									existing.cameraEntityName == candidate.name);
+						}
+					);
+					if (!alreadyRegistered) {
+						nextCameraEntry.cameraEntityId = candidate.id;
+						nextCameraEntry.cameraEntityName = candidate.name;
+						break;
+					}
+				}
+				ImGui::BeginDisabled(nextCameraEntry.cameraEntityId == 0);
+				if (ImGui::Button("Add Camera")) {
+					component.cameraSwitchEntries.push_back(
+						std::move(nextCameraEntry)
+					);
+					switcherChanged = true;
+				}
+				ImGui::EndDisabled();
+				if (switcherChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			} else if (component.type == "ThirdPersonCamera") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool thirdPersonChanged = false;
+				const SceneEntity* targetEntity =
+					component.thirdPersonTargetEntityId != 0
+					? document.FindEntity(component.thirdPersonTargetEntityId)
+					: nullptr;
+				if (
+					!component.thirdPersonTargetEntityName.empty() &&
+					(!targetEntity ||
+						targetEntity->name != component.thirdPersonTargetEntityName)
+				) {
+					targetEntity = document.FindEntityByName(
+						component.thirdPersonTargetEntityName
+					);
+				}
+				const std::string targetLabel = targetEntity
+					? targetEntity->name
+					: "Auto / Legacy Target";
+				if (ImGui::BeginCombo("Target Entity", targetLabel.c_str())) {
+					if (ImGui::Selectable(
+						"Auto / Legacy Target",
+						component.thirdPersonTargetEntityId == 0 &&
+							component.thirdPersonTargetEntityName.empty()
+					)) {
+						component.thirdPersonTargetEntityId = 0;
+						component.thirdPersonTargetEntityName.clear();
+						thirdPersonChanged = true;
+					}
+					for (const SceneEntity& candidate : document.GetEntities()) {
+						if (ImGui::Selectable(
+							candidate.name.c_str(),
+							targetEntity && targetEntity->id == candidate.id
+						)) {
+							component.thirdPersonTargetEntityId = candidate.id;
+							component.thirdPersonTargetEntityName = candidate.name;
+							thirdPersonChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				if (!targetEntity) {
+					ImGui::TextDisabled(
+						"Auto uses this Entity when it has a model/behavior, otherwise Player"
+					);
+				}
+				thirdPersonChanged |= ImGui::Checkbox(
+					"Allow Mouse Input",
+					&component.thirdPersonAllowMouseInput
+				);
+				const char* yawReference =
+					component.thirdPersonYawReference == "Target"
+					? "Target"
+					: "World";
+				if (ImGui::BeginCombo("Yaw Reference", yawReference)) {
+					for (const char* reference : { "World", "Target" }) {
+						if (ImGui::Selectable(
+							reference,
+							component.thirdPersonYawReference == reference
+						)) {
+							component.thirdPersonYawReference = reference;
+							thirdPersonChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::TextDisabled(
+					"World: fixed orbit direction / Target: inherit target yaw"
+				);
 				thirdPersonChanged |= ImGui::DragFloat(
 					"Distance",
 					&component.thirdPersonDistance,
@@ -5522,6 +5936,10 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.05f,
 					0.01f,
 					30.0f
+				);
+				thirdPersonChanged |= ImGui::Checkbox(
+					"Aim Mode Enabled",
+					&component.thirdPersonAimModeEnabled
 				);
 				thirdPersonChanged |= ImGui::DragFloat3(
 					"Target Offset",
@@ -5563,6 +5981,26 @@ void ImGuiManager::DrawInspectorWindow() {
 					5.0f
 				);
 				thirdPersonChanged |= ImGui::Checkbox(
+					"Occlusion Enabled",
+					&component.thirdPersonOcclusionEnabled
+				);
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Position Smooth Time",
+					&component.thirdPersonPositionSmoothTime,
+					0.01f,
+					0.0f,
+					5.0f,
+					"%.2f s"
+				);
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Rotation Smooth Time",
+					&component.thirdPersonRotationSmoothTime,
+					0.01f,
+					0.0f,
+					5.0f,
+					"%.2f s"
+				);
+				thirdPersonChanged |= ImGui::Checkbox(
 					"Invert Horizontal",
 					&component.thirdPersonInvertYaw
 				);
@@ -5591,6 +6029,14 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				if (component.thirdPersonOcclusionMargin < 0.0f) {
 					component.thirdPersonOcclusionMargin = 0.0f;
+					thirdPersonChanged = true;
+				}
+				if (component.thirdPersonPositionSmoothTime < 0.0f) {
+					component.thirdPersonPositionSmoothTime = 0.0f;
+					thirdPersonChanged = true;
+				}
+				if (component.thirdPersonRotationSmoothTime < 0.0f) {
+					component.thirdPersonRotationSmoothTime = 0.0f;
 					thirdPersonChanged = true;
 				}
 				if (thirdPersonChanged) {
@@ -5991,6 +6437,24 @@ void ImGuiManager::DrawInspectorWindow() {
 			} else if (component.type == "OBBCollider") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool colliderChanged = false;
+				colliderChanged |= ImGui::Checkbox(
+					"Collider Active",
+					&component.colliderActive
+				);
+				colliderChanged |= ImGui::Checkbox(
+					"Is Trigger",
+					&component.colliderIsTrigger
+				);
+				colliderChanged |= ImGui::InputScalar(
+					"Collision Layer",
+					ImGuiDataType_U32,
+					&component.colliderLayer
+				);
+				colliderChanged |= ImGui::InputScalar(
+					"Collision Mask",
+					ImGuiDataType_U32,
+					&component.colliderMask
+				);
 				const char* shape = component.colliderShape == "Sphere"
 					? "Sphere"
 					: "Box";
@@ -6084,6 +6548,782 @@ void ImGuiManager::DrawInspectorWindow() {
 					64
 				);
 				if (colliderChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "StatSet") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool statsChanged = false;
+				int removeStatIndex = -1;
+				for (size_t statIndex = 0; statIndex < component.stats.size(); ++statIndex) {
+					SceneStatDefinition& stat = component.stats[statIndex];
+					ImGui::PushID(static_cast<int>(statIndex));
+					const std::string statLabel = stat.displayName.empty()
+						? stat.id
+						: stat.displayName;
+					if (ImGui::TreeNodeEx(
+						"Stat",
+						ImGuiTreeNodeFlags_DefaultOpen,
+						"%s",
+						statLabel.empty() ? "Stat" : statLabel.c_str()
+					)) {
+						statsChanged |= InputTextString("Id", stat.id);
+						statsChanged |= InputTextString("Display Name", stat.displayName);
+						statsChanged |= ImGui::DragFloat(
+							"Min", &stat.minValue, 0.1f
+						);
+						statsChanged |= ImGui::DragFloat(
+							"Max", &stat.maxValue, 0.1f
+						);
+						statsChanged |= ImGui::DragFloat(
+							"Initial", &stat.initialValue, 0.1f
+						);
+						if (stat.maxValue < stat.minValue) {
+							stat.maxValue = stat.minValue;
+							statsChanged = true;
+						}
+						const float clampedInitial = std::clamp(
+							stat.initialValue,
+							stat.minValue,
+							stat.maxValue
+						);
+						if (clampedInitial != stat.initialValue) {
+							stat.initialValue = clampedInitial;
+							statsChanged = true;
+						}
+						if (ImGui::SmallButton("Remove Stat")) {
+							removeStatIndex = static_cast<int>(statIndex);
+						}
+						ImGui::TreePop();
+					}
+					ImGui::PopID();
+				}
+				if (removeStatIndex >= 0) {
+					component.stats.erase(
+						component.stats.begin() + removeStatIndex
+					);
+					statsChanged = true;
+				}
+				if (ImGui::Button("Add Stat")) {
+					SceneStatDefinition stat{};
+					stat.id = "stat" + std::to_string(component.stats.size() + 1);
+					stat.displayName = stat.id;
+					component.stats.push_back(std::move(stat));
+					statsChanged = true;
+				}
+				if (statsChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "EventTrigger") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool eventsChanged = false;
+				int removeBindingIndex = -1;
+				for (size_t bindingIndex = 0;
+					bindingIndex < component.eventBindings.size();
+					++bindingIndex) {
+					SceneEventBinding& binding = component.eventBindings[bindingIndex];
+					ImGui::PushID(static_cast<int>(bindingIndex));
+					if (ImGui::TreeNodeEx(
+						"Event Binding",
+						ImGuiTreeNodeFlags_DefaultOpen,
+						"Event %zu: %s",
+						bindingIndex + 1,
+						binding.triggerType.c_str()
+					)) {
+						if (ImGui::BeginCombo("Trigger", binding.triggerType.c_str())) {
+							for (const char* trigger : {
+								"OnStart", "OnInterval", "OnStatReachedMin", "OnStatCompare",
+								"OnPositionReached"
+							}) {
+								if (ImGui::Selectable(
+									trigger,
+									binding.triggerType == trigger
+								)) {
+									binding.triggerType = trigger;
+									if (binding.triggerType == "OnInterval") {
+										binding.triggerOnce = false;
+										if (binding.cooldown <= 0.0f) {
+											binding.cooldown = 1.0f;
+										}
+									}
+									eventsChanged = true;
+								}
+							}
+							ImGui::EndCombo();
+						}
+						eventsChanged |= ImGui::InputScalar(
+							"Target Entity Id",
+							ImGuiDataType_U64,
+							&binding.targetEntityId
+						);
+						eventsChanged |= InputTextString(
+							"Target Entity Name", binding.targetEntityName
+						);
+						if (
+							binding.triggerType == "OnStatReachedMin" ||
+							binding.triggerType == "OnStatCompare"
+						) {
+							eventsChanged |= InputTextString("Stat Id", binding.statId);
+						}
+						if (binding.triggerType == "OnStatCompare") {
+							if (ImGui::BeginCombo(
+								"Comparison", binding.statComparison.c_str()
+							)) {
+								for (const char* comparison : {
+									"LessOrEqual", "Less", "Equal",
+									"Greater", "GreaterOrEqual"
+								}) {
+									if (ImGui::Selectable(
+										comparison,
+										binding.statComparison == comparison
+									)) {
+										binding.statComparison = comparison;
+										eventsChanged = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+							eventsChanged |= ImGui::DragFloat(
+								"Compare Value", &binding.statValue, 0.1f
+							);
+						}
+						if (binding.triggerType == "OnPositionReached") {
+							eventsChanged |= ImGui::DragFloat3(
+								"Target Position", &binding.targetPosition.x, 0.05f
+							);
+							eventsChanged |= ImGui::DragFloat(
+								"Radius", &binding.radius, 0.05f, 0.0f, 10000.0f
+							);
+						}
+						eventsChanged |= ImGui::Checkbox(
+							"Trigger Once", &binding.triggerOnce
+						);
+						eventsChanged |= ImGui::DragFloat(
+							"Cooldown", &binding.cooldown, 0.01f, 0.0f, 10000.0f
+						);
+						binding.radius = (std::max)(binding.radius, 0.0f);
+						binding.cooldown = (std::max)(binding.cooldown, 0.0f);
+
+						ImGui::SeparatorText("Actions");
+						int removeActionIndex = -1;
+						for (size_t actionIndex = 0;
+							actionIndex < binding.actions.size();
+							++actionIndex) {
+							SceneEventAction& action = binding.actions[actionIndex];
+							ImGui::PushID(static_cast<int>(actionIndex));
+							if (ImGui::TreeNodeEx(
+								"Action",
+								ImGuiTreeNodeFlags_DefaultOpen,
+								"Action %zu: %s",
+								actionIndex + 1,
+								action.type.c_str()
+							)) {
+								if (ImGui::BeginCombo("Type", action.type.c_str())) {
+									for (const char* actionType : {
+										"ModifyStat", "SetEntityActive",
+										"InstantiatePrefab", "SceneTransition"
+									}) {
+										if (ImGui::Selectable(
+											actionType,
+											action.type == actionType
+										)) {
+											action.type = actionType;
+											eventsChanged = true;
+										}
+									}
+									ImGui::EndCombo();
+								}
+								if (action.type != "SceneTransition") {
+									eventsChanged |= ImGui::InputScalar(
+										"Action Target Entity Id",
+										ImGuiDataType_U64,
+										&action.targetEntityId
+									);
+									eventsChanged |= InputTextString(
+										"Action Target Entity Name",
+										action.targetEntityName
+									);
+								}
+								if (action.type == "ModifyStat") {
+									eventsChanged |= InputTextString(
+										"Action Stat Id", action.statId
+									);
+									if (ImGui::BeginCombo(
+										"Operation", action.statOperation.c_str()
+									)) {
+										for (const char* operation : {
+											"Add", "Subtract", "Set", "Multiply",
+											"SetMin", "SetMax", "RestoreToMax"
+										}) {
+											if (ImGui::Selectable(
+												operation,
+												action.statOperation == operation
+											)) {
+												action.statOperation = operation;
+												eventsChanged = true;
+											}
+										}
+										ImGui::EndCombo();
+									}
+									eventsChanged |= ImGui::DragFloat(
+										"Value", &action.value, 0.1f
+									);
+								} else if (action.type == "SetEntityActive") {
+									eventsChanged |= ImGui::Checkbox(
+										"Active", &action.active
+									);
+								} else if (action.type == "InstantiatePrefab") {
+									eventsChanged |= InputTextString(
+										"Prefab Path", action.prefabPath
+									);
+									eventsChanged |= ImGui::Checkbox(
+										"Parent To Target", &action.prefabParentToTarget
+									);
+									eventsChanged |= ImGui::Checkbox(
+										"Spawn At Target Transform",
+										&action.prefabUseTargetTransform
+									);
+								} else if (action.type == "SceneTransition") {
+									eventsChanged |= InputTextString(
+										"Scene Id", action.sceneId
+									);
+								}
+								if (ImGui::SmallButton("Remove Action")) {
+									removeActionIndex = static_cast<int>(actionIndex);
+								}
+								ImGui::TreePop();
+							}
+							ImGui::PopID();
+						}
+						if (removeActionIndex >= 0) {
+							binding.actions.erase(
+								binding.actions.begin() + removeActionIndex
+							);
+							eventsChanged = true;
+						}
+						if (ImGui::SmallButton("Add Action")) {
+							binding.actions.push_back(SceneEventAction{});
+							eventsChanged = true;
+						}
+						if (ImGui::SmallButton("Remove Event")) {
+							removeBindingIndex = static_cast<int>(bindingIndex);
+						}
+						ImGui::TreePop();
+					}
+					ImGui::PopID();
+				}
+				if (removeBindingIndex >= 0) {
+					component.eventBindings.erase(
+						component.eventBindings.begin() + removeBindingIndex
+					);
+					eventsChanged = true;
+				}
+				if (ImGui::Button("Add Event")) {
+					component.eventBindings.push_back(SceneEventBinding{});
+					eventsChanged = true;
+				}
+				if (eventsChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "PrefabAnimator") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool animationChanged = false;
+				int removeClipIndex = -1;
+				for (size_t clipIndex = 0;
+					clipIndex < component.prefabAnimationClips.size();
+					++clipIndex) {
+					ScenePrefabAnimationClip& clip =
+						component.prefabAnimationClips[clipIndex];
+					ImGui::PushID(static_cast<int>(clipIndex));
+					if (ImGui::TreeNodeEx(
+						"Prefab Clip",
+						ImGuiTreeNodeFlags_DefaultOpen,
+						"Clip %zu: %s",
+						clipIndex + 1,
+						clip.name.c_str()
+					)) {
+						animationChanged |= InputTextString("Clip Name", clip.name);
+						animationChanged |= ImGui::DragFloat(
+							"Duration", &clip.duration, 0.01f, 0.001f, 10000.0f
+						);
+						animationChanged |= ImGui::Checkbox("Loop", &clip.loop);
+						animationChanged |= ImGui::Checkbox(
+							"Play On Start", &clip.playOnStart
+						);
+						clip.duration = (std::max)(clip.duration, 0.001f);
+						int removeTrackIndex = -1;
+						for (size_t trackIndex = 0;
+							trackIndex < clip.tracks.size();
+							++trackIndex) {
+							SceneAnimationTrack& track = clip.tracks[trackIndex];
+							ImGui::PushID(static_cast<int>(trackIndex));
+							if (ImGui::TreeNodeEx(
+								"Track",
+								ImGuiTreeNodeFlags_DefaultOpen,
+								"Track %zu: %s",
+								trackIndex + 1,
+								track.property.c_str()
+							)) {
+								animationChanged |= ImGui::InputScalar(
+									"Target Entity Id",
+									ImGuiDataType_U64,
+									&track.targetEntityId
+								);
+								animationChanged |= InputTextString(
+									"Target Entity Name", track.targetEntityName
+								);
+								if (ImGui::BeginCombo("Property", track.property.c_str())) {
+									for (const char* property : {
+										"LocalPosition", "LocalRotation", "LocalScale", "Active"
+									}) {
+										if (ImGui::Selectable(
+											property,
+											track.property == property
+										)) {
+											track.property = property;
+											animationChanged = true;
+										}
+									}
+									ImGui::EndCombo();
+								}
+								if (track.property != "Active") {
+									if (ImGui::BeginCombo("Easing", track.easing.c_str())) {
+										for (const char* easing : { "Linear", "SmoothStep" }) {
+											if (ImGui::Selectable(
+												easing,
+												track.easing == easing
+											)) {
+												track.easing = easing;
+												animationChanged = true;
+											}
+										}
+										ImGui::EndCombo();
+									}
+								}
+								int removeKeyframeIndex = -1;
+								bool keyframeTimeChanged = false;
+								for (size_t keyframeIndex = 0;
+									keyframeIndex < track.keyframes.size();
+									++keyframeIndex) {
+									SceneAnimationKeyframe& keyframe =
+										track.keyframes[keyframeIndex];
+									ImGui::PushID(static_cast<int>(keyframeIndex));
+									ImGui::SeparatorText("Keyframe");
+									if (ImGui::DragFloat(
+										"Time", &keyframe.time, 0.01f, 0.0f, clip.duration
+									)) {
+										keyframe.time = std::clamp(
+											keyframe.time,
+											0.0f,
+											clip.duration
+										);
+										keyframeTimeChanged = true;
+										animationChanged = true;
+									}
+									if (track.property == "Active") {
+										bool activeValue = keyframe.value.x >= 0.5f;
+										if (ImGui::Checkbox("Active Value", &activeValue)) {
+											keyframe.value.x = activeValue ? 1.0f : 0.0f;
+											animationChanged = true;
+										}
+									} else {
+										animationChanged |= ImGui::DragFloat3(
+											track.property == "LocalRotation"
+												? "Euler Value (Radians)"
+												: "Value",
+											&keyframe.value.x,
+											0.01f
+										);
+									}
+									if (ImGui::SmallButton("Remove Keyframe")) {
+										removeKeyframeIndex = static_cast<int>(keyframeIndex);
+									}
+									ImGui::PopID();
+								}
+								if (removeKeyframeIndex >= 0) {
+									track.keyframes.erase(
+										track.keyframes.begin() + removeKeyframeIndex
+									);
+									animationChanged = true;
+								}
+								if (keyframeTimeChanged) {
+									std::stable_sort(
+										track.keyframes.begin(),
+										track.keyframes.end(),
+										[](const SceneAnimationKeyframe& left,
+											const SceneAnimationKeyframe& right) {
+											return left.time < right.time;
+										}
+									);
+								}
+								if (ImGui::SmallButton("Add Keyframe")) {
+									SceneAnimationKeyframe keyframe{};
+									keyframe.time = track.keyframes.empty()
+										? 0.0f
+										: (std::min)(
+											track.keyframes.back().time + 0.1f,
+											clip.duration
+										);
+									if (!track.keyframes.empty()) {
+										keyframe.value = track.keyframes.back().value;
+									}
+									track.keyframes.push_back(keyframe);
+									animationChanged = true;
+								}
+								if (ImGui::SmallButton("Remove Track")) {
+									removeTrackIndex = static_cast<int>(trackIndex);
+								}
+								ImGui::TreePop();
+							}
+							ImGui::PopID();
+						}
+						if (removeTrackIndex >= 0) {
+							clip.tracks.erase(clip.tracks.begin() + removeTrackIndex);
+							animationChanged = true;
+						}
+						if (ImGui::SmallButton("Add Track")) {
+							SceneAnimationTrack track{};
+							track.keyframes = {
+								{ 0.0f, {} },
+								{ clip.duration, {} }
+							};
+							clip.tracks.push_back(std::move(track));
+							animationChanged = true;
+						}
+						if (ImGui::SmallButton("Remove Clip")) {
+							removeClipIndex = static_cast<int>(clipIndex);
+						}
+						ImGui::TreePop();
+					}
+					ImGui::PopID();
+				}
+				if (removeClipIndex >= 0) {
+					component.prefabAnimationClips.erase(
+						component.prefabAnimationClips.begin() + removeClipIndex
+					);
+					animationChanged = true;
+				}
+				if (ImGui::Button("Add Clip")) {
+					component.prefabAnimationClips.push_back(
+						ScenePrefabAnimationClip{}
+					);
+					animationChanged = true;
+				}
+				if (animationChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "Faction") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				if (InputTextString("Faction", component.factionName)) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "HitBox") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool hitBoxChanged = false;
+				hitBoxChanged |= ImGui::DragFloat(
+					"Damage", &component.hitBoxDamage, 0.1f, 0.0f, 100000.0f
+				);
+				hitBoxChanged |= ImGui::DragFloat(
+					"Poise Damage",
+					&component.hitBoxPoiseDamage,
+					0.1f,
+					0.0f,
+					100000.0f
+				);
+				hitBoxChanged |= InputTextString(
+					"Damage Stat", component.hitBoxDamageStatId
+				);
+				hitBoxChanged |= InputTextString(
+					"Poise Stat", component.hitBoxPoiseStatId
+				);
+				hitBoxChanged |= ImGui::InputScalar(
+					"Owner Entity Id",
+					ImGuiDataType_U64,
+					&component.hitBoxOwnerEntityId
+				);
+				hitBoxChanged |= InputTextString(
+					"Owner Entity Name", component.hitBoxOwnerEntityName
+				);
+				hitBoxChanged |= ImGui::Checkbox(
+					"Ignore Same Faction", &component.hitBoxIgnoreSameFaction
+				);
+				component.hitBoxDamage = (std::max)(component.hitBoxDamage, 0.0f);
+				component.hitBoxPoiseDamage = (std::max)(
+					component.hitBoxPoiseDamage,
+					0.0f
+				);
+				if (hitBoxChanged) {
+					document.MarkDirty();
+				}
+				ImGui::TextDisabled("Requires a Trigger Collider on this Entity.");
+				ImGui::EndDisabled();
+			} else if (component.type == "HurtBox") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool hurtBoxChanged = false;
+				hurtBoxChanged |= ImGui::DragFloat(
+					"Damage Multiplier",
+					&component.hurtBoxDamageMultiplier,
+					0.01f,
+					0.0f,
+					100.0f
+				);
+				hurtBoxChanged |= InputTextString(
+					"Health Stat", component.hurtBoxHealthStatId
+				);
+				hurtBoxChanged |= ImGui::InputScalar(
+					"Stats Entity Id",
+					ImGuiDataType_U64,
+					&component.hurtBoxStatsEntityId
+				);
+				hurtBoxChanged |= InputTextString(
+					"Stats Entity Name", component.hurtBoxStatsEntityName
+				);
+				component.hurtBoxDamageMultiplier = (std::max)(
+					component.hurtBoxDamageMultiplier,
+					0.0f
+				);
+				if (hurtBoxChanged) {
+					document.MarkDirty();
+				}
+				ImGui::TextDisabled("Requires a Trigger Collider on this Entity.");
+				ImGui::EndDisabled();
+			} else if (component.type == "BoneAttachment") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool attachmentChanged = false;
+				const SceneEntity* targetEntity = nullptr;
+				if (component.boneAttachmentTargetEntityId != 0) {
+					targetEntity = document.FindEntity(
+						component.boneAttachmentTargetEntityId
+					);
+				}
+				if (
+					!targetEntity &&
+					!component.boneAttachmentTargetEntityName.empty()
+				) {
+					targetEntity = document.FindEntityByName(
+						component.boneAttachmentTargetEntityName
+					);
+				}
+				const SceneEntity* parentEntity = document.FindEntity(entity->parentId);
+				const SceneEntity* effectiveTargetEntity = targetEntity
+					? targetEntity
+					: parentEntity;
+				const std::string targetLabel = targetEntity
+					? targetEntity->name
+					: "Parent / Auto";
+				if (ImGui::BeginCombo("Target Entity", targetLabel.c_str())) {
+					const bool autoSelected =
+						component.boneAttachmentTargetEntityId == 0 &&
+						component.boneAttachmentTargetEntityName.empty();
+					if (ImGui::Selectable("Parent / Auto", autoSelected)) {
+						component.boneAttachmentTargetEntityId = 0;
+						component.boneAttachmentTargetEntityName.clear();
+						component.boneAttachmentJointName.clear();
+						attachmentChanged = true;
+					}
+					for (const SceneEntity& candidate : document.GetEntities()) {
+						const SceneComponent* meshRenderer =
+							FindEnabledComponent(candidate, "MeshRenderer");
+						if (
+							candidate.id == entity->id ||
+							!meshRenderer ||
+							meshRenderer->modelPath.empty()
+						) {
+							continue;
+						}
+						if (ImGui::Selectable(
+							candidate.name.c_str(),
+							targetEntity && targetEntity->id == candidate.id
+						)) {
+							component.boneAttachmentTargetEntityId = candidate.id;
+							component.boneAttachmentTargetEntityName = candidate.name;
+							component.boneAttachmentJointName.clear();
+							attachmentChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				if (targetEntity) {
+					ImGui::TextDisabled(
+						"Bound Entity ID: %llu",
+						static_cast<unsigned long long>(targetEntity->id)
+					);
+				} else if (!parentEntity) {
+					ImGui::TextDisabled("Select a target Entity or set a parent.");
+				}
+
+				const std::vector<std::string> targetJointNames =
+					effectiveTargetEntity
+					? CollectEntityJointNames(*effectiveTargetEntity)
+					: std::vector<std::string>{};
+				ImGui::BeginDisabled(targetJointNames.empty());
+				attachmentChanged |= DrawJointNameCombo(
+					"Target Bone",
+					targetJointNames,
+					component.boneAttachmentJointName
+				);
+				ImGui::EndDisabled();
+				if (targetJointNames.empty()) {
+					ImGui::TextDisabled(
+						"The target Entity needs a MeshRenderer model with bones."
+					);
+				}
+
+				const bool matchesSourceBone =
+					component.boneAttachmentAlignmentMode == "MatchSourceBone";
+				if (ImGui::BeginCombo(
+					"Alignment Mode",
+					matchesSourceBone ? "Match Weapon Bone" : "Manual Offset"
+				)) {
+					if (ImGui::Selectable(
+						"Manual Offset", !matchesSourceBone
+					)) {
+						component.boneAttachmentAlignmentMode = "ManualOffset";
+						attachmentChanged = true;
+					}
+					if (ImGui::Selectable(
+						"Match Weapon Bone", matchesSourceBone
+					)) {
+						component.boneAttachmentAlignmentMode = "MatchSourceBone";
+						attachmentChanged = true;
+					}
+					ImGui::EndCombo();
+				}
+				if (matchesSourceBone) {
+					const std::vector<std::string> sourceJointNames =
+						CollectEntityJointNames(*entity);
+					ImGui::BeginDisabled(sourceJointNames.empty());
+					attachmentChanged |= DrawJointNameCombo(
+						"Weapon Bone",
+						sourceJointNames,
+						component.boneAttachmentSourceJointName
+					);
+					ImGui::EndDisabled();
+					if (sourceJointNames.empty()) {
+						ImGui::TextDisabled(
+							"This Entity needs a MeshRenderer model with bones."
+						);
+					} else {
+						ImGui::TextDisabled(
+							"This Entity Transform is ignored so both bones match exactly."
+						);
+					}
+				} else {
+					ImGui::TextDisabled(
+						"Use this Entity's Transform section above as the attachment offset."
+					);
+				}
+				attachmentChanged |= ImGui::Checkbox(
+					"Inherit Bone Scale", &component.boneAttachmentInheritScale
+				);
+				if (attachmentChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "EnemyBehavior") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool enemyChanged = false;
+				enemyChanged |= ImGui::InputScalar(
+					"Target Entity Id",
+					ImGuiDataType_U64,
+					&component.enemyTargetEntityId
+				);
+				enemyChanged |= InputTextString(
+					"Target Entity Name", component.enemyTargetEntityName
+				);
+				enemyChanged |= InputTextString(
+					"Health Stat", component.enemyHealthStatId
+				);
+				enemyChanged |= ImGui::DragFloat(
+					"Detection Range", &component.enemyDetectionRange, 0.1f, 0.0f, 10000.0f
+				);
+				enemyChanged |= ImGui::DragFloat(
+					"Lose Range", &component.enemyLoseRange, 0.1f, 0.0f, 10000.0f
+				);
+				enemyChanged |= ImGui::DragFloat(
+					"Attack Range", &component.enemyAttackRange, 0.1f, 0.0f, 10000.0f
+				);
+				enemyChanged |= ImGui::DragFloat(
+					"Move Speed", &component.enemyMoveSpeed, 0.05f, 0.0f, 1000.0f
+				);
+				enemyChanged |= ImGui::DragFloat(
+					"Turn Speed", &component.enemyTurnSpeed, 0.05f, 0.0f, 1000.0f
+				);
+				enemyChanged |= ImGui::DragFloat(
+					"Attack Cooldown", &component.enemyAttackCooldown, 0.01f, 0.0f, 1000.0f
+				);
+				enemyChanged |= ImGui::DragFloat(
+					"Attack Windup", &component.enemyAttackWindup, 0.01f, 0.0f, 1000.0f
+				);
+				enemyChanged |= ImGui::DragFloat(
+					"Attack Active Time", &component.enemyAttackActiveTime, 0.01f, 0.0f, 1000.0f
+				);
+				enemyChanged |= ImGui::DragFloat(
+					"Attack Recovery", &component.enemyAttackRecovery, 0.01f, 0.0f, 1000.0f
+				);
+				enemyChanged |= ImGui::DragInt(
+					"Attack Animation Clip", &component.enemyAttackAnimationClip, 1.0f, 0, 1024
+				);
+				enemyChanged |= InputTextString(
+					"Attack Prefab Animation Clip",
+					component.enemyAttackPrefabAnimationClip
+				);
+				enemyChanged |= ImGui::InputScalar(
+					"Attack HitBox Entity Id",
+					ImGuiDataType_U64,
+					&component.enemyAttackHitBoxEntityId
+				);
+				enemyChanged |= InputTextString(
+					"Attack HitBox Entity Name",
+					component.enemyAttackHitBoxEntityName
+				);
+				component.enemyLoseRange = (std::max)(
+					component.enemyLoseRange,
+					component.enemyDetectionRange
+				);
+				if (enemyChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "Projectile") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool projectileChanged = false;
+				projectileChanged |= ImGui::DragFloat3(
+					"Local Direction", &component.projectileDirection.x, 0.01f
+				);
+				projectileChanged |= ImGui::DragFloat(
+					"Speed", &component.projectileSpeed, 0.1f, 0.0f, 10000.0f
+				);
+				projectileChanged |= ImGui::DragFloat(
+					"Gravity", &component.projectileGravity, 0.1f, -1000.0f, 1000.0f
+				);
+				projectileChanged |= ImGui::DragFloat(
+					"Lifetime", &component.projectileLifetime, 0.05f, 0.0f, 10000.0f
+				);
+				projectileChanged |= ImGui::Checkbox(
+					"Destroy On Hit", &component.projectileDestroyOnHit
+				);
+				projectileChanged |= ImGui::InputScalar(
+					"Homing Target Entity Id",
+					ImGuiDataType_U64,
+					&component.projectileHomingTargetEntityId
+				);
+				projectileChanged |= InputTextString(
+					"Homing Target Entity Name",
+					component.projectileHomingTargetEntityName
+				);
+				projectileChanged |= ImGui::DragFloat(
+					"Homing Strength",
+					&component.projectileHomingStrength,
+					0.1f,
+					0.0f,
+					1000.0f
+				);
+				if (projectileChanged) {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
@@ -6286,8 +7526,10 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				const SceneTeamSettings* agentTeam =
 					document.ResolveEntityTeam(*entity);
+				const bool belongsToAgentTeam =
+					agentTeam && !agentTeam->name.empty();
 				const bool hasTeamAgentSettings =
-					agentTeam && agentTeam->agentBehaviorOverride;
+					belongsToAgentTeam && agentTeam->agentBehaviorOverride;
 				if (hasTeamAgentSettings) {
 					agentChanged |= ImGui::Checkbox(
 						"Override Team Agent Settings",
@@ -6304,19 +7546,21 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 				}
 				ImGui::BeginDisabled(useTeamAgentSettings);
-				char groupBuffer[64]{};
-				strncpy_s(
-					groupBuffer,
-					component.agentGroupName.c_str(),
-					_TRUNCATE
-				);
-				if (ImGui::InputText(
-					"Group",
-					groupBuffer,
-					sizeof(groupBuffer)
-				)) {
-					component.agentGroupName = groupBuffer;
-					agentChanged = true;
+				if (belongsToAgentTeam || component.agentSchooling) {
+					char groupBuffer[64]{};
+					strncpy_s(
+						groupBuffer,
+						component.agentGroupName.c_str(),
+						_TRUNCATE
+					);
+					if (ImGui::InputText(
+						"Group",
+						groupBuffer,
+						sizeof(groupBuffer)
+					)) {
+						component.agentGroupName = groupBuffer;
+						agentChanged = true;
+					}
 				}
 
 				ImGui::SeparatorText("Motion");
@@ -6348,217 +7592,225 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.0f,
 					20.0f
 				);
-				agentChanged |= ImGui::DragFloat(
-					"Wander Change Interval",
-					&component.agentWanderChangeInterval,
-					0.05f,
-					0.0f,
-					60.0f
-				);
-				agentChanged |= ImGui::SliderFloat(
-					"Wander Direction Range",
-					&component.agentWanderDirectionRange,
-					0.0f,
-					3.141592f
-				);
-				agentChanged |= ImGui::SliderFloat(
-					"Wander Vertical Range",
-					&component.agentWanderVerticalRange,
-					0.0f,
-					1.0f
-				);
-				agentChanged |= ImGui::Checkbox(
-					"Randomize Seed On Play",
-					&component.agentRandomizeSeedOnPlay
-				);
-				ImGui::BeginDisabled(component.agentRandomizeSeedOnPlay);
-				agentChanged |= ImGui::InputInt(
-					"Random Seed",
-					&component.agentRandomSeed
-				);
-				ImGui::EndDisabled();
-				agentChanged |= ImGui::DragFloat(
-					"Flock Decision Interval",
-					&component.agentFlockDecisionInterval,
-					0.01f,
-					0.0f,
-					5.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Flock Acceleration",
-					&component.agentFlockAcceleration,
-					0.05f,
-					0.0f,
-					100.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Flock Max Turn Rate",
-					&component.agentFlockTurnRate,
-					0.01f,
-					0.0f,
-					6.283185f
-				);
-				ImGui::SeparatorText("Member Follow");
-				agentChanged |= ImGui::DragFloat(
-					"Return Strength",
-					&component.agentMemberCenterFollow,
-					0.05f,
-					0.0f,
-					20.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Jitter Strength",
-					&component.agentMemberJitterStrength,
-					0.01f,
-					0.0f,
-					10.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Jitter Frequency",
-					&component.agentMemberJitterFrequency,
-					0.01f,
-					0.0f,
-					10.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Jitter Update Interval",
-					&component.agentMemberJitterUpdateInterval,
-					0.01f,
-					0.0f,
-					10.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Jitter Follow Speed",
-					&component.agentMemberJitterFollowSpeed,
-					0.01f,
-					0.0f,
-					20.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Max Distance",
-					&component.agentMemberLeashDistance,
-					0.05f,
-					0.0f,
-					100.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Leash Strength",
-					&component.agentMemberLeashStrength,
-					0.05f,
-					0.0f,
-					20.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Catchup Speed",
-					&component.agentMemberCatchupSpeed,
-					0.05f,
-					0.0f,
-					100.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Separation Update Interval",
-					&component.agentMemberSeparationUpdateInterval,
-					0.01f,
-					0.0f,
-					5.0f
-				);
-				agentChanged |= ImGui::SliderFloat(
-					"Separation Blend",
-					&component.agentMemberSeparationBlend,
-					0.0f,
-					1.0f
-				);
+				if (component.agentWanderStrength > 0.0f) {
+					agentChanged |= ImGui::DragFloat(
+						"Wander Change Interval",
+						&component.agentWanderChangeInterval,
+						0.05f,
+						0.0f,
+						60.0f
+					);
+					agentChanged |= ImGui::SliderFloat(
+						"Wander Direction Range",
+						&component.agentWanderDirectionRange,
+						0.0f,
+						3.141592f
+					);
+					agentChanged |= ImGui::SliderFloat(
+						"Wander Vertical Range",
+						&component.agentWanderVerticalRange,
+						0.0f,
+						1.0f
+					);
+					agentChanged |= ImGui::Checkbox(
+						"Randomize Seed On Play",
+						&component.agentRandomizeSeedOnPlay
+					);
+					if (!component.agentRandomizeSeedOnPlay) {
+						agentChanged |= ImGui::InputInt(
+							"Random Seed",
+							&component.agentRandomSeed
+						);
+					}
+				}
+				if (belongsToAgentTeam) {
+					agentChanged |= ImGui::DragFloat(
+						"Flock Decision Interval",
+						&component.agentFlockDecisionInterval,
+						0.01f,
+						0.0f,
+						5.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Flock Acceleration",
+						&component.agentFlockAcceleration,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Flock Max Turn Rate",
+						&component.agentFlockTurnRate,
+						0.01f,
+						0.0f,
+						6.283185f
+					);
+					ImGui::SeparatorText("Member Follow");
+					agentChanged |= ImGui::DragFloat(
+						"Return Strength",
+						&component.agentMemberCenterFollow,
+						0.05f,
+						0.0f,
+						20.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Jitter Strength",
+						&component.agentMemberJitterStrength,
+						0.01f,
+						0.0f,
+						10.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Jitter Frequency",
+						&component.agentMemberJitterFrequency,
+						0.01f,
+						0.0f,
+						10.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Jitter Update Interval",
+						&component.agentMemberJitterUpdateInterval,
+						0.01f,
+						0.0f,
+						10.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Jitter Follow Speed",
+						&component.agentMemberJitterFollowSpeed,
+						0.01f,
+						0.0f,
+						20.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Max Distance",
+						&component.agentMemberLeashDistance,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Leash Strength",
+						&component.agentMemberLeashStrength,
+						0.05f,
+						0.0f,
+						20.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Catchup Speed",
+						&component.agentMemberCatchupSpeed,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Separation Update Interval",
+						&component.agentMemberSeparationUpdateInterval,
+						0.01f,
+						0.0f,
+						5.0f
+					);
+					agentChanged |= ImGui::SliderFloat(
+						"Separation Blend",
+						&component.agentMemberSeparationBlend,
+						0.0f,
+						1.0f
+					);
 
-				ImGui::SeparatorText("Team Heading");
-				agentChanged |= ImGui::Checkbox(
-					"Use Team Heading",
-					&component.agentUseTeamHeading
-				);
-				agentChanged |= ImGui::DragFloat3(
-					"Team Heading Direction",
-					&component.agentTeamHeadingDirection.x,
-					0.01f,
-					-1.0f,
-					1.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Team Heading Weight",
-					&component.agentTeamHeadingWeight,
-					0.05f,
-					0.0f,
-					20.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Team Heading Follow Speed",
-					&component.agentTeamHeadingFollowSpeed,
-					0.05f,
-					0.0f,
-					20.0f
-				);
+					ImGui::SeparatorText("Team Heading");
+					agentChanged |= ImGui::Checkbox(
+						"Use Team Heading",
+						&component.agentUseTeamHeading
+					);
+					if (component.agentUseTeamHeading) {
+						agentChanged |= ImGui::DragFloat3(
+							"Team Heading Direction",
+							&component.agentTeamHeadingDirection.x,
+							0.01f,
+							-1.0f,
+							1.0f
+						);
+						agentChanged |= ImGui::DragFloat(
+							"Team Heading Weight",
+							&component.agentTeamHeadingWeight,
+							0.05f,
+							0.0f,
+							20.0f
+						);
+						agentChanged |= ImGui::DragFloat(
+							"Team Heading Follow Speed",
+							&component.agentTeamHeadingFollowSpeed,
+							0.05f,
+							0.0f,
+							20.0f
+						);
+					}
+				}
 
 				ImGui::SeparatorText("Rotation");
 				agentChanged |= ImGui::Checkbox(
 					"Align Forward To Velocity",
 					&component.agentAlignForwardToVelocity
 				);
-				const char* agentForwardAxes[] = {
-					"+Z",
-					"-Z",
-					"+X",
-					"-X",
-					"+Y",
-					"-Y"
-				};
-				if (ImGui::BeginCombo(
-					"Forward Axis",
-					component.agentForwardAxis.c_str()
-				)) {
-					for (const char* axis : agentForwardAxes) {
-						if (ImGui::Selectable(
-							axis,
-							component.agentForwardAxis == axis
-						)) {
-							component.agentForwardAxis = axis;
-							agentChanged = true;
+				if (component.agentAlignForwardToVelocity) {
+					const char* agentForwardAxes[] = {
+						"+Z",
+						"-Z",
+						"+X",
+						"-X",
+						"+Y",
+						"-Y"
+					};
+					if (ImGui::BeginCombo(
+						"Forward Axis",
+						component.agentForwardAxis.c_str()
+					)) {
+						for (const char* axis : agentForwardAxes) {
+							if (ImGui::Selectable(
+								axis,
+								component.agentForwardAxis == axis
+							)) {
+								component.agentForwardAxis = axis;
+								agentChanged = true;
+							}
 						}
+						ImGui::EndCombo();
 					}
-					ImGui::EndCombo();
+					agentChanged |= ImGui::Checkbox(
+						"Rotate X",
+						&component.agentRotateAxisX
+					);
+					ImGui::SameLine();
+					agentChanged |= ImGui::Checkbox(
+						"Rotate Y",
+						&component.agentRotateAxisY
+					);
+					ImGui::SameLine();
+					agentChanged |= ImGui::Checkbox(
+						"Rotate Z",
+						&component.agentRotateAxisZ
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Rotation Follow Speed",
+						&component.agentRotationFollowSpeed,
+						0.05f,
+						0.0f,
+						60.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Pitch From Vertical Velocity",
+						&component.agentPitchFromVerticalVelocity,
+						0.05f,
+						0.0f,
+						4.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Banking Strength",
+						&component.agentBankingStrength,
+						0.05f,
+						0.0f,
+						4.0f
+					);
 				}
-				agentChanged |= ImGui::Checkbox(
-					"Rotate X",
-					&component.agentRotateAxisX
-				);
-				ImGui::SameLine();
-				agentChanged |= ImGui::Checkbox(
-					"Rotate Y",
-					&component.agentRotateAxisY
-				);
-				ImGui::SameLine();
-				agentChanged |= ImGui::Checkbox(
-					"Rotate Z",
-					&component.agentRotateAxisZ
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Rotation Follow Speed",
-					&component.agentRotationFollowSpeed,
-					0.05f,
-					0.0f,
-					60.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Pitch From Vertical Velocity",
-					&component.agentPitchFromVerticalVelocity,
-					0.05f,
-					0.0f,
-					4.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Banking Strength",
-					&component.agentBankingStrength,
-					0.05f,
-					0.0f,
-					4.0f
-				);
 				ImGui::EndDisabled();
 
 				ImGui::SeparatorText("Bounds");
@@ -6594,25 +7846,6 @@ void ImGuiManager::DrawInspectorWindow() {
 				);
 
 				ImGui::SeparatorText("Attractor");
-				agentChanged |= ImGui::InputScalar(
-					"Attractor Entity Id",
-					ImGuiDataType_U64,
-					&component.agentAttractorEntityId
-				);
-				char attractorTagBuffer[64]{};
-				strncpy_s(
-					attractorTagBuffer,
-					component.agentAttractorTag.c_str(),
-					_TRUNCATE
-				);
-				if (ImGui::InputText(
-					"Attractor Tag",
-					attractorTagBuffer,
-					sizeof(attractorTagBuffer)
-				)) {
-					component.agentAttractorTag = attractorTagBuffer;
-					agentChanged = true;
-				}
 				agentChanged |= ImGui::DragFloat(
 					"Attractor Weight",
 					&component.agentAttractorWeight,
@@ -6620,6 +7853,27 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.0f,
 					50.0f
 				);
+				if (component.agentAttractorWeight > 0.0f) {
+					agentChanged |= ImGui::InputScalar(
+						"Attractor Entity Id",
+						ImGuiDataType_U64,
+						&component.agentAttractorEntityId
+					);
+					char attractorTagBuffer[64]{};
+					strncpy_s(
+						attractorTagBuffer,
+						component.agentAttractorTag.c_str(),
+						_TRUNCATE
+					);
+					if (ImGui::InputText(
+						"Attractor Tag",
+						attractorTagBuffer,
+						sizeof(attractorTagBuffer)
+					)) {
+						component.agentAttractorTag = attractorTagBuffer;
+						agentChanged = true;
+					}
+				}
 
 				ImGui::BeginDisabled(useTeamAgentSettings);
 				ImGui::SeparatorText("Schooling");
@@ -6627,72 +7881,74 @@ void ImGuiManager::DrawInspectorWindow() {
 					"Schooling",
 					&component.agentSchooling
 				);
-				agentChanged |= ImGui::DragFloat(
-					"Schooling Update Interval",
-					&component.agentSchoolingUpdateInterval,
-					0.01f,
-					0.0f,
-					5.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Schooling Update Jitter",
-					&component.agentSchoolingUpdateJitter,
-					0.01f,
-					0.0f,
-					1.0f
-				);
-				agentChanged |= ImGui::InputInt(
-					"Neighbor Limit",
-					&component.agentNeighborLimit
-				);
-				agentChanged |= ImGui::SliderFloat(
-					"Schooling Blend",
-					&component.agentSchoolingBlend,
-					0.0f,
-					1.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Separation Radius",
-					&component.agentSeparationRadius,
-					0.05f,
-					0.0f,
-					100.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Alignment Radius",
-					&component.agentAlignmentRadius,
-					0.05f,
-					0.0f,
-					100.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Cohesion Radius",
-					&component.agentCohesionRadius,
-					0.05f,
-					0.0f,
-					100.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Separation Weight",
-					&component.agentSeparationWeight,
-					0.05f,
-					0.0f,
-					50.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Alignment Weight",
-					&component.agentAlignmentWeight,
-					0.05f,
-					0.0f,
-					50.0f
-				);
-				agentChanged |= ImGui::DragFloat(
-					"Cohesion Weight",
-					&component.agentCohesionWeight,
-					0.05f,
-					0.0f,
-					50.0f
-				);
+				if (component.agentSchooling) {
+					agentChanged |= ImGui::DragFloat(
+						"Schooling Update Interval",
+						&component.agentSchoolingUpdateInterval,
+						0.01f,
+						0.0f,
+						5.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Schooling Update Jitter",
+						&component.agentSchoolingUpdateJitter,
+						0.01f,
+						0.0f,
+						1.0f
+					);
+					agentChanged |= ImGui::InputInt(
+						"Neighbor Limit",
+						&component.agentNeighborLimit
+					);
+					agentChanged |= ImGui::SliderFloat(
+						"Schooling Blend",
+						&component.agentSchoolingBlend,
+						0.0f,
+						1.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Separation Radius",
+						&component.agentSeparationRadius,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Alignment Radius",
+						&component.agentAlignmentRadius,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Cohesion Radius",
+						&component.agentCohesionRadius,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Separation Weight",
+						&component.agentSeparationWeight,
+						0.05f,
+						0.0f,
+						50.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Alignment Weight",
+						&component.agentAlignmentWeight,
+						0.05f,
+						0.0f,
+						50.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Cohesion Weight",
+						&component.agentCohesionWeight,
+						0.05f,
+						0.0f,
+						50.0f
+					);
+				}
 
 				ImGui::SeparatorText("Visual");
 				agentChanged |= ImGui::ColorEdit4(
@@ -7134,6 +8390,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				"Camera",
 				"Light",
 				"MonitorRenderer",
+				"CameraSwitcher",
 				"ThirdPersonCamera",
 				"EntityReference",
 				"SceneTransition",
@@ -7145,13 +8402,28 @@ void ImGuiManager::DrawInspectorWindow() {
 				"AgentAttractor",
 				"WaterVolume",
 				"Animator",
-				"OBBCollider"
+				"OBBCollider",
+				"StatSet",
+				"EventTrigger",
+				"PrefabAnimator",
+				"Faction",
+				"HitBox",
+				"HurtBox",
+				"BoneAttachment",
+				"EnemyBehavior",
+				"Projectile"
 			};
 			for (const char* componentType : availableComponents) {
 				if (HasComponent(*entity, componentType)) {
 					continue;
 				}
 				if (ImGui::Selectable(componentType)) {
+					if (
+						std::strcmp(componentType, "ThirdPersonCamera") == 0 &&
+						!HasComponent(*entity, "Camera")
+					) {
+						document.AddComponent(entity->id, "Camera");
+					}
 					document.AddComponent(entity->id, componentType);
 					editorSession_->RequestSceneReload();
 				}

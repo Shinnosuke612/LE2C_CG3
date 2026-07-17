@@ -1,12 +1,12 @@
 {
   "debug": {
     "jointAxisLength": 0.05999999865889549,
-    "jointRadius": 0.017999999225139618,
+    "jointRadius": 0.008999999612569809,
     "showCameraDirection": false,
     "showCameraPath": true,
     "showCameraPathPointCameraDirection": true,
-    "showColliders": true,
-    "showJointAxes": true,
+    "showColliders": false,
+    "showJointAxes": false,
     "showJointNames": false,
     "showSkeleton": false
   },
@@ -20,7 +20,7 @@
           "fovY": 0.44999998807907104,
           "invertPitch": false,
           "invertYaw": false,
-          "isMain": true,
+          "isMain": false,
           "nearClip": 0.10000000149011612,
           "type": "Camera"
         }
@@ -65,9 +65,9 @@
           1.0
         ],
         "translate": [
-          -3.7576286792755127,
-          17.474258422851563,
-          -13.871315002441406
+          -19.704593658447266,
+          113.02601623535156,
+          -77.24729919433594
         ]
       }
     },
@@ -141,6 +141,7 @@
           "type": "MeshRenderer"
         },
         {
+          "active": true,
           "debugColor": [
             0.20000000298023224,
             0.949999988079071,
@@ -151,6 +152,9 @@
           "debugSegments": 16,
           "debugVisible": true,
           "enabled": true,
+          "isTrigger": false,
+          "layer": 4294967295,
+          "mask": 4294967295,
           "offset": [
             0.0,
             0.0,
@@ -265,7 +269,7 @@
       "active": true,
       "components": [
         {
-          "castsShadow": false,
+          "castsShadow": true,
           "color": [
             1.0,
             1.0,
@@ -275,7 +279,7 @@
           "decay": 1.0,
           "enabled": true,
           "innerAngle": 25.0,
-          "intensity": 2.0,
+          "intensity": 0.30000001192092896,
           "lightType": "Directional",
           "outerAngle": 35.0,
           "range": 8.0,
@@ -321,10 +325,10 @@
       "team": "",
       "transform": {
         "rotation": [
-          -0.23023536801338196,
-          -0.33910974860191345,
-          0.3668355345726013,
-          0.8351215124130249
+          0.6033644676208496,
+          0.14446434378623962,
+          0.47822025418281555,
+          0.6216002702713013
         ],
         "scale": [
           1.0,
@@ -350,7 +354,7 @@
             1.0
           ],
           "decay": 0.0,
-          "enabled": true,
+          "enabled": false,
           "innerAngle": 42.5,
           "intensity": 2.1500000953674316,
           "lightType": "Spot",
@@ -419,6 +423,7 @@
       "active": true,
       "components": [
         {
+          "active": true,
           "debugColor": [
             0.20000000298023224,
             0.949999988079071,
@@ -429,6 +434,9 @@
           "debugSegments": 16,
           "debugVisible": true,
           "enabled": true,
+          "isTrigger": false,
+          "layer": 4294967295,
+          "mask": 4294967295,
           "offset": [
             0.0,
             1.0,
@@ -446,8 +454,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
-          "environmentReflectionIntensity": 0.30000001192092896,
-          "environmentReflectionOverride": false,
+          "environmentReflectionIntensity": 0.0010000000474974513,
+          "environmentReflectionOverride": true,
           "materialOverrides": [
             {
               "color": [
@@ -536,7 +544,7 @@
             1.0,
             1.0
           ],
-          "wanderChangeInterval": 4.0,
+          "wanderChangeInterval": 1.0,
           "wanderDirectionRange": 1.100000023841858,
           "wanderStrength": 0.800000011920929,
           "wanderVerticalRange": 0.18000000715255737
@@ -560,6 +568,46 @@
             0.0,
             0.0
           ]
+        },
+        {
+          "aimDistance": 3.0,
+          "aimModeEnabled": true,
+          "aimTargetOffset": [
+            0.0,
+            1.5499999523162842,
+            0.0
+          ],
+          "allowMouseInput": true,
+          "distance": 5.0,
+          "enabled": true,
+          "invertPitch": true,
+          "invertYaw": false,
+          "maxPitch": 1.350000023841858,
+          "minPitch": -1.4500000476837158,
+          "mouseSensitivity": 0.004999999888241291,
+          "occlusionEnabled": true,
+          "occlusionMargin": 0.44999998807907104,
+          "positionSmoothTime": 0.11999999731779099,
+          "rotationSmoothTime": 0.07999999821186066,
+          "targetEntityId": 0,
+          "targetEntityName": "",
+          "targetOffset": [
+            0.0,
+            2.0,
+            0.0
+          ],
+          "type": "ThirdPersonCamera",
+          "yawReference": "World"
+        },
+        {
+          "enabled": true,
+          "farClip": 1000.0,
+          "fovY": 0.44999998807907104,
+          "invertPitch": false,
+          "invertYaw": false,
+          "isMain": true,
+          "nearClip": 0.10000000149011612,
+          "type": "Camera"
         }
       ],
       "folder": false,
@@ -567,7 +615,7 @@
       "id": 7,
       "locked": false,
       "modelPath": "9y5Huh14gN/艾莲.pmx",
-      "name": "Entity",
+      "name": "Elen",
       "parentId": 0,
       "sprite": {
         "anchor": [
@@ -605,6 +653,565 @@
           0.0,
           0.0,
           0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": false,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "materialOverrides": [
+            {
+              "color": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "colorOverrideEnabled": false,
+              "enabled": false,
+              "materialName": "颜2",
+              "texturePath": ""
+            }
+          ],
+          "modelPath": "9y5Huh14gN/艾莲.pmx",
+          "type": "MeshRenderer"
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "Agent",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-Z",
+          "groupName": "",
+          "maxSpeed": 3.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 1.0,
+          "neighborLimit": 0,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 1,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": false,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": false,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": false,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 1.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "bodyType": "Dynamic",
+          "drag": 0.0,
+          "enabled": true,
+          "freezePositionX": false,
+          "freezePositionY": false,
+          "freezePositionZ": false,
+          "friction": 0.0,
+          "gravityScale": 1.0,
+          "mass": 1.0,
+          "maxFallSpeed": 100.0,
+          "restitution": 0.0,
+          "type": "PhysicsBody",
+          "useGravity": true,
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 10,
+      "locked": false,
+      "modelPath": "9y5Huh14gN/艾莲.pmx",
+      "name": "Entity",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          2.982830286026001,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "enabled": true,
+          "reflectionIntensity": 0.0,
+          "skyboxEnabled": true,
+          "skyboxIntensity": 0.009999999776482582,
+          "skyboxPath": "resources/rostock_laage_airport_4k.dds",
+          "type": "Environment"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 11,
+      "locked": false,
+      "modelPath": "",
+      "name": "Enviroment",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "castsShadow": false,
+          "color": [
+            1.0,
+            0.8500000238418579,
+            0.6499999761581421,
+            1.0
+          ],
+          "decay": 1.0,
+          "enabled": true,
+          "innerAngle": 25.0,
+          "intensity": 4.949999809265137,
+          "lightType": "Point",
+          "outerAngle": 35.0,
+          "range": 8.0,
+          "shadow": {
+            "bias": 0.0024999999441206455,
+            "distance": 45.0,
+            "farClip": 120.0,
+            "nearClip": 0.10000000149011612,
+            "normalBias": 0.019999999552965164,
+            "orthographicSize": 40.0,
+            "strength": 0.550000011920929,
+            "texelSnap": true
+          },
+          "type": "Light"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 12,
+      "locked": false,
+      "modelPath": "",
+      "name": "Entity",
+      "parentId": 7,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "materialOverrides": [],
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "allowJump": true,
+          "cameraRelativeMove": true,
+          "dashMultiplier": 1.649999976158142,
+          "enabled": true,
+          "jumpVelocity": 37.20000076293945,
+          "moveSpeed": 19.799999237060547,
+          "turnResponsiveness": 0.017999999225139618,
+          "type": "PlayerBehavior"
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": false,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "enabled": true,
+          "farClip": 1000.0,
+          "fovY": 0.44999998807907104,
+          "invertPitch": false,
+          "invertYaw": false,
+          "isMain": false,
+          "nearClip": 0.10000000149011612,
+          "type": "Camera"
+        },
+        {
+          "aimDistance": 3.0,
+          "aimModeEnabled": true,
+          "aimTargetOffset": [
+            0.0,
+            1.5499999523162842,
+            0.0
+          ],
+          "allowMouseInput": true,
+          "distance": 8.0,
+          "enabled": true,
+          "invertPitch": true,
+          "invertYaw": false,
+          "maxPitch": 1.350000023841858,
+          "minPitch": -1.4500000476837158,
+          "mouseSensitivity": 0.004999999888241291,
+          "occlusionEnabled": true,
+          "occlusionMargin": 0.44999998807907104,
+          "positionSmoothTime": 0.11999999731779099,
+          "rotationSmoothTime": 0.07999999821186066,
+          "targetEntityId": 0,
+          "targetEntityName": "",
+          "targetOffset": [
+            0.0,
+            1.350000023841858,
+            0.0
+          ],
+          "type": "ThirdPersonCamera",
+          "yawReference": "World"
+        },
+        {
+          "bodyType": "Dynamic",
+          "drag": 0.0,
+          "enabled": true,
+          "freezePositionX": false,
+          "freezePositionY": false,
+          "freezePositionZ": false,
+          "friction": 0.0,
+          "gravityScale": 8.0,
+          "mass": 1.0,
+          "maxFallSpeed": 60.0,
+          "restitution": 0.0,
+          "type": "PhysicsBody",
+          "useGravity": true,
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 13,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "Player",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.8146223425865173,
+          -11.263381958007813
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "materialOverrides": [],
+          "modelPath": "9y5Huh14gN/武器.pmx",
+          "type": "MeshRenderer"
+        },
+        {
+          "alignmentMode": "MatchSourceBone",
+          "enabled": true,
+          "inheritScale": true,
+          "jointName": "右ダミー",
+          "sourceJointName": "Ctr_Wpn_A",
+          "targetEntityId": 7,
+          "targetEntityName": "Elen",
+          "type": "BoneAttachment"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 14,
+      "locked": false,
+      "modelPath": "9y5Huh14gN/武器.pmx",
+      "name": "Wepon",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -0.5244928598403931,
+          1.0347552299499512,
+          -0.9147420525550842
         ]
       }
     }

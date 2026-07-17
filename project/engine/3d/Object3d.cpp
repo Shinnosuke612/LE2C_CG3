@@ -115,7 +115,12 @@ void Object3d::UpdateInternal() {
 			transform.rotate,
 			transform.translate
 		);
-	if (parent_) {
+	if (hasParentMatrixOverride_) {
+		objectWorldMatrix_ = Multiply(
+			objectWorldMatrix_,
+			parentMatrixOverride_
+		);
+	} else if (parent_) {
 		objectWorldMatrix_ = Multiply(
 			objectWorldMatrix_,
 			parent_->objectWorldMatrix_
@@ -453,6 +458,28 @@ void Object3d::SetColor(const Vector4& color) {
 	}
 	materialColorMultiplier_ = color;
 	UpdateMaterialResources();
+}
+
+bool Object3d::TryGetJointWorldMatrix(
+	const std::string& jointName,
+	Matrix4x4& worldMatrix
+) const {
+	if (!skeleton_.IsValid()) {
+		return false;
+	}
+	const auto found = skeleton_.jointMap.find(jointName);
+	if (
+		found == skeleton_.jointMap.end() ||
+		found->second < 0 ||
+		found->second >= static_cast<int32_t>(skeleton_.joints.size())
+	) {
+		return false;
+	}
+	worldMatrix = Multiply(
+		skeleton_.joints[found->second].skeletonSpaceMatrix,
+		objectWorldMatrix_
+	);
+	return true;
 }
 
 void Object3d::SetEnableLighting(bool enableLighting) {

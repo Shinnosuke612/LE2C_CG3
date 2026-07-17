@@ -25,15 +25,20 @@ public:
 private:
 	struct AgentRuntime {
 		Vector3 velocity{};
+		Vector3 rotation{};
+		Vector3 wanderDirection = { 0.0f, 0.0f, 1.0f };
 		Vector3 jitterOffset{};
 		Vector3 jitterTargetLocal{};
 		Vector3 cachedSchoolingSteering{};
 		Vector3 cachedSeparationSteering{};
 		float phase = 0.0f;
+		float wanderTimer = 0.0f;
 		float jitterTimer = 0.0f;
 		float schoolingTimer = 0.0f;
 		float separationTimer = 0.0f;
 		uint64_t flockSeedId = 0;
+		uint64_t wanderSeedId = 0;
+		uint32_t wanderStep = 0;
 		uint32_t jitterStep = 0;
 		bool initialized = false;
 		bool flockInitialized = false;

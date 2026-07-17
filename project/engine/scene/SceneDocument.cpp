@@ -5,6 +5,7 @@
 #include "SceneTransformResolver.h"
 #include "SceneValidator.h"
 #include "../math/Matrix4x4.h"
+#include "../utility/EditableResourcePath.h"
 #include "../utility/StringUtility.h"
 
 #include <algorithm>
@@ -14,6 +15,7 @@
 #include <fstream>
 #include <functional>
 #include <system_error>
+#include <unordered_map>
 #include <unordered_set>
 
 #include <Windows.h>
@@ -811,6 +813,93 @@ namespace {
 		return candidate;
 	}
 
+	json StatsToJson(const std::vector<SceneStatDefinition>& stats) {
+		json result = json::array();
+		for (const SceneStatDefinition& stat : stats) {
+			result.push_back({
+				{ "id", stat.id },
+				{ "displayName", stat.displayName },
+				{ "min", stat.minValue },
+				{ "max", stat.maxValue },
+				{ "initial", stat.initialValue }
+			});
+		}
+		return result;
+	}
+
+	json EventActionsToJson(const std::vector<SceneEventAction>& actions) {
+		json result = json::array();
+		for (const SceneEventAction& action : actions) {
+			result.push_back({
+				{ "type", action.type },
+				{ "targetEntityId", action.targetEntityId },
+				{ "targetEntityName", action.targetEntityName },
+				{ "statId", action.statId },
+				{ "statOperation", action.statOperation },
+				{ "value", action.value },
+				{ "active", action.active },
+				{ "sceneId", action.sceneId },
+				{ "prefabPath", action.prefabPath },
+				{ "prefabParentToTarget", action.prefabParentToTarget },
+				{ "prefabUseTargetTransform", action.prefabUseTargetTransform }
+			});
+		}
+		return result;
+	}
+
+	json EventsToJson(const std::vector<SceneEventBinding>& bindings) {
+		json result = json::array();
+		for (const SceneEventBinding& binding : bindings) {
+			result.push_back({
+				{ "triggerType", binding.triggerType },
+				{ "targetEntityId", binding.targetEntityId },
+				{ "targetEntityName", binding.targetEntityName },
+				{ "statId", binding.statId },
+				{ "statComparison", binding.statComparison },
+				{ "statValue", binding.statValue },
+				{ "targetPosition", VectorToJson(binding.targetPosition) },
+				{ "radius", binding.radius },
+				{ "triggerOnce", binding.triggerOnce },
+				{ "cooldown", binding.cooldown },
+				{ "actions", EventActionsToJson(binding.actions) }
+			});
+		}
+		return result;
+	}
+
+	json PrefabAnimationsToJson(
+		const std::vector<ScenePrefabAnimationClip>& clips
+	) {
+		json result = json::array();
+		for (const ScenePrefabAnimationClip& clip : clips) {
+			json tracks = json::array();
+			for (const SceneAnimationTrack& track : clip.tracks) {
+				json keyframes = json::array();
+				for (const SceneAnimationKeyframe& keyframe : track.keyframes) {
+					keyframes.push_back({
+						{ "time", keyframe.time },
+						{ "value", VectorToJson(keyframe.value) }
+					});
+				}
+				tracks.push_back({
+					{ "targetEntityId", track.targetEntityId },
+					{ "targetEntityName", track.targetEntityName },
+					{ "property", track.property },
+					{ "easing", track.easing },
+					{ "keyframes", std::move(keyframes) }
+				});
+			}
+			result.push_back({
+				{ "name", clip.name },
+				{ "duration", clip.duration },
+				{ "loop", clip.loop },
+				{ "playOnStart", clip.playOnStart },
+				{ "tracks", std::move(tracks) }
+			});
+		}
+		return result;
+	}
+
 	json ComponentToJson(const SceneComponent& component) {
 		json result = {
 			{ "type", component.type },
@@ -881,7 +970,21 @@ namespace {
 			result["width"] = component.monitorWidth;
 			result["height"] = component.monitorHeight;
 			result["hideSelf"] = component.monitorHideSelf;
+		} else if (component.type == "CameraSwitcher") {
+			result["triggerKey"] = component.cameraSwitchTriggerKey;
+			result["wrap"] = component.cameraSwitchWrap;
+			json cameras = json::array();
+			for (const SceneCameraSwitchEntry& entry :
+				component.cameraSwitchEntries) {
+				cameras.push_back({
+					{ "entityId", entry.cameraEntityId },
+					{ "entityName", entry.cameraEntityName }
+				});
+			}
+			result["cameras"] = std::move(cameras);
 		} else if (component.type == "ThirdPersonCamera") {
+			result["targetEntityId"] = component.thirdPersonTargetEntityId;
+			result["targetEntityName"] = component.thirdPersonTargetEntityName;
 			result["distance"] = component.thirdPersonDistance;
 			result["aimDistance"] = component.thirdPersonAimDistance;
 			result["targetOffset"] = VectorToJson(component.thirdPersonTargetOffset);
@@ -891,6 +994,14 @@ namespace {
 			result["minPitch"] = component.thirdPersonMinPitch;
 			result["maxPitch"] = component.thirdPersonMaxPitch;
 			result["occlusionMargin"] = component.thirdPersonOcclusionMargin;
+			result["positionSmoothTime"] =
+				component.thirdPersonPositionSmoothTime;
+			result["rotationSmoothTime"] =
+				component.thirdPersonRotationSmoothTime;
+			result["yawReference"] = component.thirdPersonYawReference;
+			result["allowMouseInput"] = component.thirdPersonAllowMouseInput;
+			result["occlusionEnabled"] = component.thirdPersonOcclusionEnabled;
+			result["aimModeEnabled"] = component.thirdPersonAimModeEnabled;
 			result["invertYaw"] = component.thirdPersonInvertYaw;
 			result["invertPitch"] = component.thirdPersonInvertPitch;
 		} else if (component.type == "Animator") {
@@ -924,6 +1035,10 @@ namespace {
 			result["debugVisible"] = component.colliderDebugVisible;
 			result["debugDrawMode"] = component.colliderDebugDrawMode;
 			result["debugSegments"] = component.colliderDebugSegments;
+			result["isTrigger"] = component.colliderIsTrigger;
+			result["active"] = component.colliderActive;
+			result["layer"] = component.colliderLayer;
+			result["mask"] = component.colliderMask;
 		} else if (component.type == "PlayerBehavior") {
 			result["moveSpeed"] = component.playerMoveSpeed;
 			result["jumpVelocity"] = component.playerJumpVelocity;
@@ -1088,8 +1203,308 @@ namespace {
 				component.cameraPathPointDurationToNext;
 			result["easingToNext"] =
 				component.cameraPathPointEasingToNext;
+		} else if (component.type == "StatSet") {
+			result["stats"] = StatsToJson(component.stats);
+		} else if (component.type == "EventTrigger") {
+			result["bindings"] = EventsToJson(component.eventBindings);
+		} else if (component.type == "PrefabAnimator") {
+			result["clips"] = PrefabAnimationsToJson(
+				component.prefabAnimationClips
+			);
+		} else if (component.type == "Faction") {
+			result["name"] = component.factionName;
+		} else if (component.type == "HitBox") {
+			result["damage"] = component.hitBoxDamage;
+			result["poiseDamage"] = component.hitBoxPoiseDamage;
+			result["damageStatId"] = component.hitBoxDamageStatId;
+			result["poiseStatId"] = component.hitBoxPoiseStatId;
+			result["ownerEntityId"] = component.hitBoxOwnerEntityId;
+			result["ownerEntityName"] = component.hitBoxOwnerEntityName;
+			result["ignoreSameFaction"] = component.hitBoxIgnoreSameFaction;
+		} else if (component.type == "HurtBox") {
+			result["damageMultiplier"] = component.hurtBoxDamageMultiplier;
+			result["healthStatId"] = component.hurtBoxHealthStatId;
+			result["statsEntityId"] = component.hurtBoxStatsEntityId;
+			result["statsEntityName"] = component.hurtBoxStatsEntityName;
+		} else if (component.type == "BoneAttachment") {
+			result["targetEntityId"] = component.boneAttachmentTargetEntityId;
+			result["targetEntityName"] = component.boneAttachmentTargetEntityName;
+			result["jointName"] = component.boneAttachmentJointName;
+			result["alignmentMode"] = component.boneAttachmentAlignmentMode;
+			result["sourceJointName"] = component.boneAttachmentSourceJointName;
+			result["inheritScale"] = component.boneAttachmentInheritScale;
+		} else if (component.type == "EnemyBehavior") {
+			result["targetEntityId"] = component.enemyTargetEntityId;
+			result["targetEntityName"] = component.enemyTargetEntityName;
+			result["healthStatId"] = component.enemyHealthStatId;
+			result["detectionRange"] = component.enemyDetectionRange;
+			result["loseRange"] = component.enemyLoseRange;
+			result["attackRange"] = component.enemyAttackRange;
+			result["moveSpeed"] = component.enemyMoveSpeed;
+			result["turnSpeed"] = component.enemyTurnSpeed;
+			result["attackCooldown"] = component.enemyAttackCooldown;
+			result["attackWindup"] = component.enemyAttackWindup;
+			result["attackActiveTime"] = component.enemyAttackActiveTime;
+			result["attackRecovery"] = component.enemyAttackRecovery;
+			result["attackAnimationClip"] = component.enemyAttackAnimationClip;
+			result["attackPrefabAnimationClip"] =
+				component.enemyAttackPrefabAnimationClip;
+			result["attackHitBoxEntityId"] =
+				component.enemyAttackHitBoxEntityId;
+			result["attackHitBoxEntityName"] =
+				component.enemyAttackHitBoxEntityName;
+		} else if (component.type == "Projectile") {
+			result["direction"] = VectorToJson(component.projectileDirection);
+			result["speed"] = component.projectileSpeed;
+			result["gravity"] = component.projectileGravity;
+			result["lifetime"] = component.projectileLifetime;
+			result["destroyOnHit"] = component.projectileDestroyOnHit;
+			result["homingTargetEntityId"] =
+				component.projectileHomingTargetEntityId;
+			result["homingTargetEntityName"] =
+				component.projectileHomingTargetEntityName;
+			result["homingStrength"] = component.projectileHomingStrength;
 		}
 		return result;
+	}
+
+	void ReadStats(
+		const json& source,
+		std::vector<SceneStatDefinition>& destination
+	) {
+		if (!source.is_array()) {
+			return;
+		}
+		for (const json& value : source) {
+			if (!value.is_object()) {
+				continue;
+			}
+			SceneStatDefinition stat{};
+			stat.id = value.value("id", stat.id);
+			stat.displayName = value.value("displayName", stat.displayName);
+			stat.minValue = value.value("min", stat.minValue);
+			stat.maxValue = (std::max)(
+				value.value("max", stat.maxValue),
+				stat.minValue
+			);
+			stat.initialValue = std::clamp(
+				value.value("initial", stat.initialValue),
+				stat.minValue,
+				stat.maxValue
+			);
+			if (!stat.id.empty()) {
+				destination.push_back(std::move(stat));
+			}
+		}
+	}
+
+	SceneEventAction ReadEventAction(const json& value) {
+		SceneEventAction action{};
+		if (!value.is_object()) {
+			return action;
+		}
+		action.type = value.value("type", action.type);
+		action.targetEntityId = value.value(
+			"targetEntityId", action.targetEntityId
+		);
+		action.targetEntityName = value.value(
+			"targetEntityName", action.targetEntityName
+		);
+		action.statId = value.value("statId", action.statId);
+		action.statOperation = value.value(
+			"statOperation", action.statOperation
+		);
+		action.value = value.value("value", action.value);
+		action.active = value.value("active", action.active);
+		action.sceneId = value.value("sceneId", action.sceneId);
+		action.prefabPath = value.value("prefabPath", action.prefabPath);
+		action.prefabParentToTarget = value.value(
+			"prefabParentToTarget", action.prefabParentToTarget
+		);
+		action.prefabUseTargetTransform = value.value(
+			"prefabUseTargetTransform", action.prefabUseTargetTransform
+		);
+		return action;
+	}
+
+	void ReadEvents(
+		const json& source,
+		std::vector<SceneEventBinding>& destination
+	) {
+		if (!source.is_array()) {
+			return;
+		}
+		for (const json& value : source) {
+			if (!value.is_object()) {
+				continue;
+			}
+			SceneEventBinding binding{};
+			binding.triggerType = value.value(
+				"triggerType", binding.triggerType
+			);
+			binding.targetEntityId = value.value(
+				"targetEntityId", binding.targetEntityId
+			);
+			binding.targetEntityName = value.value(
+				"targetEntityName", binding.targetEntityName
+			);
+			binding.statId = value.value("statId", binding.statId);
+			binding.statComparison = value.value(
+				"statComparison", binding.statComparison
+			);
+			binding.statValue = value.value("statValue", binding.statValue);
+			if (value.contains("targetPosition")) {
+				binding.targetPosition = JsonToVector(
+					value.at("targetPosition"),
+					binding.targetPosition
+				);
+			}
+			binding.radius = (std::max)(value.value("radius", binding.radius), 0.0f);
+			binding.triggerOnce = value.value(
+				"triggerOnce", binding.triggerOnce
+			);
+			binding.cooldown = (std::max)(
+				value.value("cooldown", binding.cooldown),
+				0.0f
+			);
+			if (const auto actions = value.find("actions");
+				actions != value.end() && actions->is_array()) {
+				for (const json& action : *actions) {
+					binding.actions.push_back(ReadEventAction(action));
+				}
+			}
+			destination.push_back(std::move(binding));
+		}
+	}
+
+	void ReadPrefabAnimations(
+		const json& source,
+		std::vector<ScenePrefabAnimationClip>& destination
+	) {
+		if (!source.is_array()) {
+			return;
+		}
+		for (const json& value : source) {
+			if (!value.is_object()) {
+				continue;
+			}
+			ScenePrefabAnimationClip clip{};
+			clip.name = value.value("name", clip.name);
+			clip.duration = (std::max)(value.value("duration", clip.duration), 0.001f);
+			clip.loop = value.value("loop", clip.loop);
+			clip.playOnStart = value.value("playOnStart", clip.playOnStart);
+			if (const auto tracks = value.find("tracks");
+				tracks != value.end() && tracks->is_array()) {
+				for (const json& trackValue : *tracks) {
+					if (!trackValue.is_object()) {
+						continue;
+					}
+					SceneAnimationTrack track{};
+					track.targetEntityId = trackValue.value(
+						"targetEntityId", track.targetEntityId
+					);
+					track.targetEntityName = trackValue.value(
+						"targetEntityName", track.targetEntityName
+					);
+					track.property = trackValue.value("property", track.property);
+					track.easing = trackValue.value("easing", track.easing);
+					if (const auto keyframes = trackValue.find("keyframes");
+						keyframes != trackValue.end() && keyframes->is_array()) {
+						for (const json& keyframeValue : *keyframes) {
+							if (!keyframeValue.is_object()) {
+								continue;
+							}
+							SceneAnimationKeyframe keyframe{};
+							keyframe.time = (std::max)(
+								keyframeValue.value("time", keyframe.time),
+								0.0f
+							);
+							if (keyframeValue.contains("value")) {
+								keyframe.value = JsonToVector(
+									keyframeValue.at("value"),
+									keyframe.value
+								);
+							}
+							track.keyframes.push_back(keyframe);
+						}
+						std::stable_sort(
+							track.keyframes.begin(),
+							track.keyframes.end(),
+							[](const SceneAnimationKeyframe& left,
+								const SceneAnimationKeyframe& right) {
+								return left.time < right.time;
+							}
+						);
+					}
+					clip.tracks.push_back(std::move(track));
+				}
+			}
+			destination.push_back(std::move(clip));
+		}
+	}
+
+	uint64_t RemapEntityId(
+		uint64_t id,
+		const std::unordered_map<uint64_t, uint64_t>& idMap
+	) {
+		const auto found = idMap.find(id);
+		// Prefab外のScene固有IDは持ち越さず、名前参照のfallbackに任せる。
+		return found == idMap.end() ? 0 : found->second;
+	}
+
+	void RemapComponentEntityReferences(
+		SceneComponent& component,
+		const std::unordered_map<uint64_t, uint64_t>& idMap
+	) {
+		component.monitorCameraEntityId = RemapEntityId(
+			component.monitorCameraEntityId, idMap
+		);
+		component.thirdPersonTargetEntityId = RemapEntityId(
+			component.thirdPersonTargetEntityId, idMap
+		);
+		for (SceneCameraSwitchEntry& entry : component.cameraSwitchEntries) {
+			entry.cameraEntityId = RemapEntityId(entry.cameraEntityId, idMap);
+		}
+		component.agentBoundsEntityId = RemapEntityId(
+			component.agentBoundsEntityId, idMap
+		);
+		component.agentAttractorEntityId = RemapEntityId(
+			component.agentAttractorEntityId, idMap
+		);
+		if (component.entityReferenceTarget.sceneId.empty()) {
+			component.entityReferenceTarget.entityId = RemapEntityId(
+				component.entityReferenceTarget.entityId, idMap
+			);
+		}
+		component.hitBoxOwnerEntityId = RemapEntityId(
+			component.hitBoxOwnerEntityId, idMap
+		);
+		component.hurtBoxStatsEntityId = RemapEntityId(
+			component.hurtBoxStatsEntityId, idMap
+		);
+		component.boneAttachmentTargetEntityId = RemapEntityId(
+			component.boneAttachmentTargetEntityId, idMap
+		);
+		component.enemyTargetEntityId = RemapEntityId(
+			component.enemyTargetEntityId, idMap
+		);
+		component.enemyAttackHitBoxEntityId = RemapEntityId(
+			component.enemyAttackHitBoxEntityId, idMap
+		);
+		component.projectileHomingTargetEntityId = RemapEntityId(
+			component.projectileHomingTargetEntityId, idMap
+		);
+		for (SceneEventBinding& binding : component.eventBindings) {
+			binding.targetEntityId = RemapEntityId(binding.targetEntityId, idMap);
+			for (SceneEventAction& action : binding.actions) {
+				action.targetEntityId = RemapEntityId(action.targetEntityId, idMap);
+			}
+		}
+		for (ScenePrefabAnimationClip& clip : component.prefabAnimationClips) {
+			for (SceneAnimationTrack& track : clip.tracks) {
+				track.targetEntityId = RemapEntityId(track.targetEntityId, idMap);
+			}
+		}
 	}
 
 	std::vector<SceneComponent> ComponentsFromJson(const json& source) {
@@ -1332,6 +1747,42 @@ namespace {
 					"hideSelf",
 					component.monitorHideSelf
 				);
+				if (component.type == "CameraSwitcher") {
+					component.cameraSwitchTriggerKey = value.value(
+						"triggerKey",
+						component.cameraSwitchTriggerKey
+					);
+					component.cameraSwitchWrap = value.value(
+						"wrap",
+						component.cameraSwitchWrap
+					);
+					if (const auto cameras = value.find("cameras");
+						cameras != value.end() && cameras->is_array()) {
+						for (const json& camera : *cameras) {
+							if (!camera.is_object()) {
+								continue;
+							}
+							SceneCameraSwitchEntry entry{};
+							entry.cameraEntityId = camera.value(
+								"entityId", entry.cameraEntityId
+							);
+							entry.cameraEntityName = camera.value(
+								"entityName", entry.cameraEntityName
+							);
+							component.cameraSwitchEntries.push_back(
+								std::move(entry)
+							);
+						}
+					}
+				}
+				component.thirdPersonTargetEntityId = value.value(
+					"targetEntityId",
+					component.thirdPersonTargetEntityId
+				);
+				component.thirdPersonTargetEntityName = value.value(
+					"targetEntityName",
+					component.thirdPersonTargetEntityName
+				);
 				component.thirdPersonDistance = value.value(
 					"distance",
 					component.thirdPersonDistance
@@ -1367,6 +1818,36 @@ namespace {
 				component.thirdPersonOcclusionMargin = value.value(
 					"occlusionMargin",
 					component.thirdPersonOcclusionMargin
+				);
+				component.thirdPersonPositionSmoothTime = (std::max)(
+					value.value(
+						"positionSmoothTime",
+						component.thirdPersonPositionSmoothTime
+					),
+					0.0f
+				);
+				component.thirdPersonRotationSmoothTime = (std::max)(
+					value.value(
+						"rotationSmoothTime",
+						component.thirdPersonRotationSmoothTime
+					),
+					0.0f
+				);
+				component.thirdPersonYawReference = value.value(
+					"yawReference",
+					component.thirdPersonYawReference
+				);
+				component.thirdPersonAllowMouseInput = value.value(
+					"allowMouseInput",
+					component.thirdPersonAllowMouseInput
+				);
+				component.thirdPersonOcclusionEnabled = value.value(
+					"occlusionEnabled",
+					component.thirdPersonOcclusionEnabled
+				);
+				component.thirdPersonAimModeEnabled = value.value(
+					"aimModeEnabled",
+					component.thirdPersonAimModeEnabled
 				);
 				component.thirdPersonInvertYaw = value.value(
 					"invertYaw",
@@ -1499,6 +1980,18 @@ namespace {
 					component.colliderDebugSegments = value.value(
 						"debugSegments",
 						component.colliderDebugSegments
+					);
+					component.colliderIsTrigger = value.value(
+						"isTrigger", component.colliderIsTrigger
+					);
+					component.colliderActive = value.value(
+						"active", component.colliderActive
+					);
+					component.colliderLayer = value.value(
+						"layer", component.colliderLayer
+					);
+					component.colliderMask = value.value(
+						"mask", component.colliderMask
 					);
 					if (component.colliderShape != "Sphere") {
 						component.colliderShape = "Box";
@@ -2020,6 +2513,159 @@ namespace {
 					"easingToNext",
 					component.cameraPathPointEasingToNext
 				);
+				if (component.type == "StatSet" && value.contains("stats")) {
+					ReadStats(value.at("stats"), component.stats);
+				}
+				if (component.type == "EventTrigger" && value.contains("bindings")) {
+					ReadEvents(value.at("bindings"), component.eventBindings);
+				}
+				if (component.type == "PrefabAnimator" && value.contains("clips")) {
+					ReadPrefabAnimations(
+						value.at("clips"),
+						component.prefabAnimationClips
+					);
+				}
+				if (component.type == "Faction") {
+					component.factionName = value.value("name", component.factionName);
+				}
+				if (component.type == "HitBox") {
+					component.hitBoxDamage = value.value("damage", component.hitBoxDamage);
+					component.hitBoxPoiseDamage = value.value(
+						"poiseDamage", component.hitBoxPoiseDamage
+					);
+					component.hitBoxDamageStatId = value.value(
+						"damageStatId", component.hitBoxDamageStatId
+					);
+					component.hitBoxPoiseStatId = value.value(
+						"poiseStatId", component.hitBoxPoiseStatId
+					);
+					component.hitBoxOwnerEntityId = value.value(
+						"ownerEntityId", component.hitBoxOwnerEntityId
+					);
+					component.hitBoxOwnerEntityName = value.value(
+						"ownerEntityName", component.hitBoxOwnerEntityName
+					);
+					component.hitBoxIgnoreSameFaction = value.value(
+						"ignoreSameFaction", component.hitBoxIgnoreSameFaction
+					);
+				}
+				if (component.type == "HurtBox") {
+					component.hurtBoxDamageMultiplier = value.value(
+						"damageMultiplier", component.hurtBoxDamageMultiplier
+					);
+					component.hurtBoxHealthStatId = value.value(
+						"healthStatId", component.hurtBoxHealthStatId
+					);
+					component.hurtBoxStatsEntityId = value.value(
+						"statsEntityId", component.hurtBoxStatsEntityId
+					);
+					component.hurtBoxStatsEntityName = value.value(
+						"statsEntityName", component.hurtBoxStatsEntityName
+					);
+				}
+				if (component.type == "BoneAttachment") {
+					component.boneAttachmentTargetEntityId = value.value(
+						"targetEntityId", component.boneAttachmentTargetEntityId
+					);
+					component.boneAttachmentTargetEntityName = value.value(
+						"targetEntityName", component.boneAttachmentTargetEntityName
+					);
+					component.boneAttachmentJointName = value.value(
+						"jointName", component.boneAttachmentJointName
+					);
+					component.boneAttachmentAlignmentMode = value.value(
+						"alignmentMode", component.boneAttachmentAlignmentMode
+					);
+					component.boneAttachmentSourceJointName = value.value(
+						"sourceJointName",
+						component.boneAttachmentSourceJointName
+					);
+					component.boneAttachmentInheritScale = value.value(
+						"inheritScale", component.boneAttachmentInheritScale
+					);
+				}
+				if (component.type == "EnemyBehavior") {
+					component.enemyTargetEntityId = value.value(
+						"targetEntityId", component.enemyTargetEntityId
+					);
+					component.enemyTargetEntityName = value.value(
+						"targetEntityName", component.enemyTargetEntityName
+					);
+					component.enemyHealthStatId = value.value(
+						"healthStatId", component.enemyHealthStatId
+					);
+					component.enemyDetectionRange = value.value(
+						"detectionRange", component.enemyDetectionRange
+					);
+					component.enemyLoseRange = value.value(
+						"loseRange", component.enemyLoseRange
+					);
+					component.enemyAttackRange = value.value(
+						"attackRange", component.enemyAttackRange
+					);
+					component.enemyMoveSpeed = value.value(
+						"moveSpeed", component.enemyMoveSpeed
+					);
+					component.enemyTurnSpeed = value.value(
+						"turnSpeed", component.enemyTurnSpeed
+					);
+					component.enemyAttackCooldown = value.value(
+						"attackCooldown", component.enemyAttackCooldown
+					);
+					component.enemyAttackWindup = value.value(
+						"attackWindup", component.enemyAttackWindup
+					);
+					component.enemyAttackActiveTime = value.value(
+						"attackActiveTime", component.enemyAttackActiveTime
+					);
+					component.enemyAttackRecovery = value.value(
+						"attackRecovery", component.enemyAttackRecovery
+					);
+					component.enemyAttackAnimationClip = value.value(
+						"attackAnimationClip", component.enemyAttackAnimationClip
+					);
+					component.enemyAttackPrefabAnimationClip = value.value(
+						"attackPrefabAnimationClip",
+						component.enemyAttackPrefabAnimationClip
+					);
+					component.enemyAttackHitBoxEntityId = value.value(
+						"attackHitBoxEntityId", component.enemyAttackHitBoxEntityId
+					);
+					component.enemyAttackHitBoxEntityName = value.value(
+						"attackHitBoxEntityName",
+						component.enemyAttackHitBoxEntityName
+					);
+				}
+				if (component.type == "Projectile") {
+					if (value.contains("direction")) {
+						component.projectileDirection = JsonToVector(
+							value.at("direction"), component.projectileDirection
+						);
+					}
+					component.projectileSpeed = value.value(
+						"speed", component.projectileSpeed
+					);
+					component.projectileGravity = value.value(
+						"gravity", component.projectileGravity
+					);
+					component.projectileLifetime = value.value(
+						"lifetime", component.projectileLifetime
+					);
+					component.projectileDestroyOnHit = value.value(
+						"destroyOnHit", component.projectileDestroyOnHit
+					);
+					component.projectileHomingTargetEntityId = value.value(
+						"homingTargetEntityId",
+						component.projectileHomingTargetEntityId
+					);
+					component.projectileHomingTargetEntityName = value.value(
+						"homingTargetEntityName",
+						component.projectileHomingTargetEntityName
+					);
+					component.projectileHomingStrength = value.value(
+						"homingStrength", component.projectileHomingStrength
+					);
+				}
 			}
 			if (!component.type.empty()) {
 				if (component.type == "Environment") {
@@ -2273,6 +2919,9 @@ bool SceneDocument::Save(const std::string& filePath) {
 	root["entities"] = json::array();
 
 	for (const SceneEntity& entity : entities_) {
+		if (entity.runtimeOnly) {
+			continue;
+		}
 		json components = json::array();
 		for (const SceneComponent& component : entity.components) {
 			components.push_back(ComponentToJson(component));
@@ -2483,6 +3132,105 @@ uint64_t SceneDocument::DuplicateEntity(uint64_t id) {
 	};
 
 	return duplicateBranch(id, source->parentId, true);
+}
+
+bool SceneDocument::SaveEntityBranchAsPrefab(
+	uint64_t id,
+	const std::string& filePath
+) const {
+	const SceneEntity* root = FindEntity(id);
+	if (!root || filePath.empty()) {
+		return false;
+	}
+
+	std::vector<const SceneEntity*> branch;
+	for (const SceneEntity& entity : entities_) {
+		if (entity.id == id || IsDescendantOf(entity.id, id)) {
+			branch.push_back(&entity);
+		}
+	}
+	if (branch.empty()) {
+		return false;
+	}
+
+	std::unordered_map<uint64_t, uint64_t> idMap;
+	uint64_t localId = 1;
+	for (const SceneEntity* entity : branch) {
+		idMap.emplace(entity->id, localId++);
+	}
+
+	SceneDocument prefab;
+	prefab.Clear(root->name);
+	for (const SceneEntity* source : branch) {
+		SceneEntity entity = *source;
+		entity.id = idMap.at(source->id);
+		entity.parentId = source->id == id
+			? 0
+			: RemapEntityId(source->parentId, idMap);
+		entity.runtimeOnly = false;
+		entity.teamName.clear();
+		for (SceneComponent& component : entity.components) {
+			RemapComponentEntityReferences(component, idMap);
+		}
+		prefab.GetEntities().push_back(std::move(entity));
+	}
+	const std::filesystem::path resolvedPath =
+		EditableResourcePath::ResolveResource(StringUtility::ToPath(filePath));
+	return prefab.Save(StringUtility::ToUtf8(resolvedPath));
+}
+
+uint64_t SceneDocument::InstantiatePrefab(
+	const std::string& filePath,
+	uint64_t parentId,
+	bool runtimeOnly
+) {
+	if (
+		filePath.empty() ||
+		(parentId != 0 && !FindEntity(parentId))
+	) {
+		return 0;
+	}
+	SceneDocument prefab;
+	const std::filesystem::path resolvedPath =
+		EditableResourcePath::ResolveResource(StringUtility::ToPath(filePath));
+	if (
+		!prefab.Load(StringUtility::ToUtf8(resolvedPath)) ||
+		prefab.GetEntities().empty()
+	) {
+		return 0;
+	}
+
+	const bool wasDirty = dirty_;
+	std::unordered_map<uint64_t, uint64_t> idMap;
+	uint64_t rootId = 0;
+	for (const SceneEntity& source : prefab.GetEntities()) {
+		SceneEntity& created = CreateEntity(source.name);
+		idMap.emplace(source.id, created.id);
+		if (source.parentId == 0 && rootId == 0) {
+			rootId = created.id;
+		}
+	}
+
+	for (const SceneEntity& source : prefab.GetEntities()) {
+		SceneEntity* destination = FindEntity(idMap.at(source.id));
+		if (!destination) {
+			continue;
+		}
+		const uint64_t destinationId = destination->id;
+		*destination = source;
+		destination->id = destinationId;
+		destination->parentId = source.parentId == 0
+			? parentId
+			: RemapEntityId(source.parentId, idMap);
+		destination->runtimeOnly = runtimeOnly;
+		for (SceneComponent& component : destination->components) {
+			RemapComponentEntityReferences(component, idMap);
+		}
+	}
+	if (runtimeOnly && !wasDirty) {
+		MarkClean();
+	}
+	return rootId;
 }
 
 bool SceneDocument::SetParent(uint64_t id, uint64_t parentId) {
@@ -2974,6 +3722,11 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->monitorHeight = height;
 				changed = true;
 			}
+		} else if (type == "CameraSwitcher") {
+			if (found->cameraSwitchTriggerKey.empty()) {
+				found->cameraSwitchTriggerKey = "F5";
+				changed = true;
+			}
 		} else if (type == "ThirdPersonCamera") {
 			if (found->thirdPersonDistance < 0.01f) {
 				found->thirdPersonDistance = 0.01f;
@@ -2993,6 +3746,21 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 			}
 			if (found->thirdPersonOcclusionMargin < 0.0f) {
 				found->thirdPersonOcclusionMargin = 0.0f;
+				changed = true;
+			}
+			if (found->thirdPersonPositionSmoothTime < 0.0f) {
+				found->thirdPersonPositionSmoothTime = 0.0f;
+				changed = true;
+			}
+			if (found->thirdPersonRotationSmoothTime < 0.0f) {
+				found->thirdPersonRotationSmoothTime = 0.0f;
+				changed = true;
+			}
+			if (
+				found->thirdPersonYawReference != "World" &&
+				found->thirdPersonYawReference != "Target"
+			) {
+				found->thirdPersonYawReference = "World";
 				changed = true;
 			}
 		} else if (type == "PhysicsBody") {
@@ -3403,7 +4171,28 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.monitorWidth = 512;
 		component.monitorHeight = 512;
 		component.monitorHideSelf = true;
+	} else if (type == "CameraSwitcher") {
+		component.cameraSwitchTriggerKey = "F5";
+		component.cameraSwitchWrap = true;
+		for (const SceneEntity& candidate : entities_) {
+			const bool hasCamera = std::any_of(
+				candidate.components.begin(),
+				candidate.components.end(),
+				[](const SceneComponent& candidateComponent) {
+					return candidateComponent.enabled &&
+						candidateComponent.type == "Camera";
+				}
+			);
+			if (hasCamera) {
+				component.cameraSwitchEntries.push_back({
+					candidate.id,
+					candidate.name
+				});
+			}
+		}
 	} else if (type == "ThirdPersonCamera") {
+		component.thirdPersonTargetEntityId = 0;
+		component.thirdPersonTargetEntityName.clear();
 		component.thirdPersonDistance = 8.0f;
 		component.thirdPersonAimDistance = 3.0f;
 		component.thirdPersonTargetOffset = { 0.0f, 1.35f, 0.0f };
@@ -3412,6 +4201,12 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.thirdPersonMinPitch = -1.45f;
 		component.thirdPersonMaxPitch = 1.35f;
 		component.thirdPersonOcclusionMargin = 0.45f;
+		component.thirdPersonPositionSmoothTime = 0.12f;
+		component.thirdPersonRotationSmoothTime = 0.08f;
+		component.thirdPersonYawReference = "World";
+		component.thirdPersonAllowMouseInput = true;
+		component.thirdPersonOcclusionEnabled = true;
+		component.thirdPersonAimModeEnabled = true;
 		component.thirdPersonInvertYaw = false;
 		component.thirdPersonInvertPitch = false;
 	} else if (type == "Animator") {
@@ -3517,6 +4312,31 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 	} else if (type == "CameraPathPoint") {
 		component.cameraPathPointDurationToNext = 1.0f;
 		component.cameraPathPointEasingToNext = "SmoothStep";
+	} else if (type == "StatSet") {
+		component.stats.push_back({ "hp", "HP", 0.0f, 100.0f, 100.0f });
+	} else if (type == "EventTrigger") {
+		component.eventBindings.push_back({});
+	} else if (type == "PrefabAnimator") {
+		ScenePrefabAnimationClip clip{};
+		SceneAnimationTrack track{};
+		track.keyframes = {
+			{ 0.0f, {} },
+			{ 1.0f, {} }
+		};
+		clip.tracks.push_back(std::move(track));
+		component.prefabAnimationClips.push_back(std::move(clip));
+	} else if (type == "Faction") {
+		component.factionName = "Neutral";
+	} else if (type == "HitBox") {
+		component.hitBoxDamage = 10.0f;
+		component.hitBoxDamageStatId = "hp";
+	} else if (type == "HurtBox") {
+		component.hurtBoxDamageMultiplier = 1.0f;
+		component.hurtBoxHealthStatId = "hp";
+	} else if (type == "EnemyBehavior") {
+		component.enemyTargetEntityName = "Player";
+	} else if (type == "Projectile") {
+		component.projectileDirection = { 0.0f, 0.0f, 1.0f };
 	}
 	entity->components.push_back(std::move(component));
 	if (type == "CameraPath") {

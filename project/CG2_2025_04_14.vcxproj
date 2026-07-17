@@ -179,8 +179,12 @@
     <ClCompile Include="application\Game.cpp" />
     <ClCompile Include="application\scene\RuntimeScene.cpp" />
     <ClCompile Include="application\scene\system\SceneAgentSystem.cpp" />
+    <ClCompile Include="application\scene\system\SceneAttachmentSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneCameraSystem.cpp" />
+    <ClCompile Include="application\scene\system\SceneCombatSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp" />
+    <ClCompile Include="application\scene\system\SceneEnemySystem.cpp" />
+    <ClCompile Include="application\scene\system\SceneEventSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEffectRenderSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEnvironmentSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneLightingSystem.cpp" />
@@ -188,6 +192,9 @@
     <ClCompile Include="application\scene\system\SceneObjectSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneParticleSystem.cpp" />
     <ClCompile Include="application\scene\system\ScenePhysicsSystem.cpp" />
+    <ClCompile Include="application\scene\system\ScenePrefabAnimationSystem.cpp" />
+    <ClCompile Include="application\scene\system\SceneProjectileSystem.cpp" />
+    <ClCompile Include="application\scene\system\SceneStatSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneTransitionSystem.cpp" />
     <ClCompile Include="engine\3d\LightManager.cpp" />
     <ClCompile Include="engine\3d\ShadowManager.cpp" />
@@ -372,8 +379,12 @@
     <ClInclude Include="application\scene\RuntimeScene.h" />
     <ClInclude Include="application\scene\SceneRuntimeObjectBinding.h" />
     <ClInclude Include="application\scene\system\SceneAgentSystem.h" />
+    <ClInclude Include="application\scene\system\SceneAttachmentSystem.h" />
     <ClInclude Include="application\scene\system\SceneCameraSystem.h" />
+    <ClInclude Include="application\scene\system\SceneCombatSystem.h" />
     <ClInclude Include="application\scene\system\SceneDebugSystem.h" />
+    <ClInclude Include="application\scene\system\SceneEnemySystem.h" />
+    <ClInclude Include="application\scene\system\SceneEventSystem.h" />
     <ClInclude Include="application\scene\system\SceneEffectRenderSystem.h" />
     <ClInclude Include="application\scene\system\SceneEnvironmentSystem.h" />
     <ClInclude Include="application\scene\system\SceneLightingSystem.h" />
@@ -381,6 +392,9 @@
     <ClInclude Include="application\scene\system\SceneObjectSystem.h" />
     <ClInclude Include="application\scene\system\SceneParticleSystem.h" />
     <ClInclude Include="application\scene\system\ScenePhysicsSystem.h" />
+    <ClInclude Include="application\scene\system\ScenePrefabAnimationSystem.h" />
+    <ClInclude Include="application\scene\system\SceneProjectileSystem.h" />
+    <ClInclude Include="application\scene\system\SceneStatSystem.h" />
     <ClInclude Include="application\scene\system\SceneTransitionSystem.h" />
     <ClInclude Include="engine\agent\AgentSettingsResolver.h" />
     <ClInclude Include="engine\agent\AgentSteering.h" />

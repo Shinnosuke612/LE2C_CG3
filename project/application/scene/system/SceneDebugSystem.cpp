@@ -195,8 +195,27 @@ namespace {
 		if (!IsEntityActiveInHierarchy(document, entity)) {
 			return;
 		}
+		const SceneEntity* target = thirdPersonCamera.thirdPersonTargetEntityId != 0
+			? document.FindEntity(thirdPersonCamera.thirdPersonTargetEntityId)
+			: nullptr;
+		if (
+			!thirdPersonCamera.thirdPersonTargetEntityName.empty() &&
+			(!target ||
+				target->name != thirdPersonCamera.thirdPersonTargetEntityName)
+		) {
+			target = document.FindEntityByName(
+				thirdPersonCamera.thirdPersonTargetEntityName
+			);
+		}
+		if (!target) {
+			target = &entity;
+		}
+		const Transform targetTransform = ResolveScene3DTransform(
+			document,
+			*target
+		);
 		const Vector3 focus = Math::Add(
-			entity.transform.translate,
+			targetTransform.translate,
 			thirdPersonCamera.thirdPersonTargetOffset
 		);
 		DebugRenderer* renderer = DebugRenderer::GetInstance();
@@ -256,7 +275,11 @@ void SceneDebugSystem::DrawEditor(
 	bool paused
 ) {
 #if defined(_DEBUG) || defined(DEVELOPMENT)
-	ImGui::Begin("Scene Controls");
+	ImGui::Begin(
+		"Scene Controls",
+		nullptr,
+		ImGuiWindowFlags_NoFocusOnAppearing
+	);
 	if (paused) {
 		ImGui::TextDisabled("Paused Debug View");
 	}
