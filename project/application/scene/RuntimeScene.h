@@ -19,6 +19,7 @@
 #include "system/ScenePrefabAnimationSystem.h"
 #include "system/SceneProjectileSystem.h"
 #include "system/SceneStatSystem.h"
+#include "system/SceneStateMachineSystem.h"
 #include "system/SceneTransitionSystem.h"
 
 #include <cstdint>
@@ -90,5 +91,6 @@ private:
 	ScenePrefabAnimationSystem prefabAnimationSystem_;
 	SceneProjectileSystem projectileSystem_;
 	SceneStatSystem statSystem_;
+	SceneStateMachineSystem stateMachineSystem_;
 };
 

@@ -8,12 +8,14 @@
 
 class SceneDocument;
 class SceneStatSystem;
+class SceneStateMachineSystem;
 
 class SceneEventSystem {
 public:
 	std::string Update(
 		SceneDocument& document,
 		SceneStatSystem& statSystem,
+		SceneStateMachineSystem& stateMachineSystem,
 		float deltaTime
 	);
 	void Clear();

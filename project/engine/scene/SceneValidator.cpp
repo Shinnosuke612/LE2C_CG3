@@ -62,6 +62,7 @@ bool SceneValidator::ValidateDocument(
 	uint32_t spotLightCount = 0;
 	uint32_t spotShadowCount = 0;
 	uint32_t cameraSwitcherCount = 0;
+	std::unordered_map<uint64_t, std::unordered_set<uint64_t>> prefabLocalIds;
 	for (const SceneEntity& entity : document.GetEntities()) {
 		if (!entity.teamName.empty() && !document.FindTeam(entity.teamName)) {
 			addIssue(
@@ -82,6 +83,51 @@ bool SceneValidator::ValidateDocument(
 				entity.id,
 				"Parent Entity does not exist: " + std::to_string(entity.parentId)
 			);
+		}
+		const bool hasPrefabMetadata =
+			!entity.prefabSourcePath.empty() ||
+			entity.prefabInstanceRootId != 0 ||
+			entity.prefabLocalId != 0;
+		if (hasPrefabMetadata) {
+			if (
+				entity.prefabSourcePath.empty() ||
+				entity.prefabInstanceRootId == 0 ||
+				entity.prefabLocalId == 0
+			) {
+				addIssue(
+					SceneValidationSeverity::Error,
+					entity.id,
+					"Prefab instance metadata is incomplete"
+				);
+			} else {
+				const auto root = entitiesById.find(entity.prefabInstanceRootId);
+				if (root == entitiesById.end()) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"Prefab instance root does not exist: " +
+						std::to_string(entity.prefabInstanceRootId)
+					);
+				} else if (
+					root->second->prefabInstanceRootId != entity.prefabInstanceRootId ||
+					root->second->prefabSourcePath != entity.prefabSourcePath
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"Prefab instance root metadata does not match"
+					);
+				}
+				if (!prefabLocalIds[entity.prefabInstanceRootId].insert(
+					entity.prefabLocalId
+				).second) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"Prefab instance contains a duplicate local Entity ID"
+					);
+				}
+			}
 		}
 
 		std::unordered_set<uint64_t> visited;
@@ -408,6 +454,16 @@ bool SceneValidator::ValidateDocument(
 							"Event action target"
 						);
 						if (
+							action.type == "ChangeState" &&
+							action.stateName.empty()
+						) {
+							addIssue(
+								SceneValidationSeverity::Warning,
+								entity.id,
+								"ChangeState action has an empty state name"
+							);
+						}
+						if (
 							action.type == "SceneTransition" &&
 							!action.sceneId.empty() &&
 							catalog &&
@@ -421,6 +477,56 @@ bool SceneValidator::ValidateDocument(
 							);
 						}
 					}
+				}
+			} else if (component.type == "StateMachine") {
+				std::unordered_set<std::string> stateNames;
+				for (const SceneStateDefinition& state :
+					component.stateMachineStates) {
+					if (state.name.empty()) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"StateMachine contains an empty state name"
+						);
+					} else if (!stateNames.insert(state.name).second) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"StateMachine contains a duplicate state: " + state.name
+						);
+					}
+					if (state.actionId.empty()) {
+						addIssue(
+							SceneValidationSeverity::Warning,
+							entity.id,
+							"State has an empty Action Id: " + state.name
+						);
+					}
+					std::unordered_set<std::string> parameterNames;
+					for (const SceneStateParameter& parameter : state.parameters) {
+						if (!parameterNames.insert(parameter.name).second) {
+							addIssue(
+								SceneValidationSeverity::Warning,
+								entity.id,
+								"State contains a duplicate parameter: " +
+									state.name + "." + parameter.name
+							);
+						}
+						validateEntityReference(
+							parameter.entityId,
+							"State parameter"
+						);
+					}
+				}
+				if (
+					component.stateMachineStates.empty() ||
+					!stateNames.contains(component.stateMachineInitialState)
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"StateMachine initial state cannot be resolved"
+					);
 				}
 			} else if (
 				component.type == "HitBox" ||

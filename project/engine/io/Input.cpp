@@ -121,6 +121,13 @@ bool Input::PushMouse(MouseButton button) const {
 	return (mouseState_.rgbButtons[index] & 0x80) != 0;
 }
 
+bool Input::TriggerMouse(MouseButton button) const {
+	const uint8_t index = static_cast<uint8_t>(button);
+	return
+		(mouseState_.rgbButtons[index] & 0x80) != 0 &&
+		(previousMouseState_.rgbButtons[index] & 0x80) == 0;
+}
+
 void Input::SetCursorCapture(bool enabled) {
 	if (cursorCaptured_ == enabled) {
 		return;

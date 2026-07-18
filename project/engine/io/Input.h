@@ -40,6 +40,7 @@ public:
 	bool TriggerKey(BYTE keyNumber);
 
 	bool PushMouse(MouseButton button) const;
+	bool TriggerMouse(MouseButton button) const;
 
 	const Vector2& GetMousePosition() const { return mousePosition_; }
 	Vector2 GetMouseMove() const {

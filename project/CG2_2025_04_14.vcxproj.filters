@@ -95,6 +95,9 @@
     <ClCompile Include="application\scene\system\SceneEventSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
+    <ClCompile Include="application\scene\system\SceneStateMachineSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
     <ClCompile Include="application\scene\system\SceneEffectRenderSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
@@ -183,6 +186,9 @@
       <Filter>Engine\Scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\EditorSession.cpp">
+      <Filter>Engine\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\PrefabEditorSession.cpp">
       <Filter>Engine\Scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\particle\ParticleEffectResource.cpp" />
@@ -286,6 +292,9 @@
     <ClInclude Include="application\scene\system\SceneEventSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
+    <ClInclude Include="application\scene\system\SceneStateMachineSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
     <ClInclude Include="application\scene\system\SceneEffectRenderSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
@@ -386,6 +395,9 @@
       <Filter>Engine\Scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\EditorSession.h">
+      <Filter>Engine\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\PrefabEditorSession.h">
       <Filter>Engine\Scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\particle\ParticleEffectResource.h" />

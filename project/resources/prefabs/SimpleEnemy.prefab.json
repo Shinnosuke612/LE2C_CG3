@@ -1,0 +1,187 @@
+{
+  "debug": {
+    "showColliders": false,
+    "showJointAxes": false,
+    "showJointNames": false,
+    "showSkeleton": false
+  },
+  "entities": [
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.3,
+          "environmentReflectionOverride": false,
+          "materialOverrides": [],
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "active": true,
+          "debugColor": [0.9, 0.3, 0.25, 1.0],
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": false,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [0.0, 0.0, 0.0],
+          "shape": "Box",
+          "sizeMultiplier": [1.0, 1.0, 1.0],
+          "type": "OBBCollider"
+        },
+        {
+          "bodyType": "Dynamic",
+          "drag": 0.0,
+          "enabled": true,
+          "friction": 0.0,
+          "gravityScale": 8.0,
+          "mass": 1.0,
+          "maxFallSpeed": 60.0,
+          "restitution": 0.0,
+          "type": "PhysicsBody",
+          "useGravity": true,
+          "velocity": [0.0, 0.0, 0.0]
+        },
+        {
+          "enabled": true,
+          "stats": [
+            {
+              "displayName": "HP",
+              "id": "hp",
+              "initial": 60.0,
+              "max": 60.0,
+              "min": 0.0
+            }
+          ],
+          "type": "StatSet"
+        },
+        {
+          "enabled": true,
+          "name": "Enemy",
+          "type": "Faction"
+        },
+        {
+          "attackActiveTime": 0.25,
+          "attackCooldown": 1.2,
+          "attackHitBoxEntityId": 3,
+          "attackHitBoxEntityName": "SimpleEnemyAttackHitBox",
+          "attackRange": 2.3,
+          "attackRecovery": 0.45,
+          "attackWindup": 0.25,
+          "detectionRange": 12.0,
+          "enabled": true,
+          "healthStatId": "hp",
+          "loseRange": 18.0,
+          "moveSpeed": 3.0,
+          "targetEntityId": 0,
+          "targetEntityName": "Player",
+          "turnSpeed": 8.0,
+          "type": "EnemyBehavior"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 1,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "SimpleEnemy",
+      "parentId": 0,
+      "team": "",
+      "transform": {
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 1.0, 0.0]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [1.0, 0.6, 0.2, 1.0],
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [0.0, 0.0, 0.0],
+          "shape": "Box",
+          "sizeMultiplier": [1.0, 1.0, 1.0],
+          "type": "OBBCollider"
+        },
+        {
+          "damageMultiplier": 1.0,
+          "enabled": true,
+          "healthStatId": "hp",
+          "statsEntityId": 1,
+          "statsEntityName": "SimpleEnemy",
+          "type": "HurtBox"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 2,
+      "locked": false,
+      "modelPath": "",
+      "name": "SimpleEnemyHurtBox",
+      "parentId": 1,
+      "team": "",
+      "transform": {
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 0.0, 0.0]
+      }
+    },
+    {
+      "active": false,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [1.0, 0.1, 0.1, 1.0],
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [0.0, 0.0, 0.0],
+          "shape": "Box",
+          "sizeMultiplier": [0.8, 0.8, 1.0],
+          "type": "OBBCollider"
+        },
+        {
+          "damage": 10.0,
+          "damageStatId": "hp",
+          "enabled": true,
+          "ignoreSameFaction": true,
+          "ownerEntityId": 1,
+          "ownerEntityName": "SimpleEnemy",
+          "poiseDamage": 0.0,
+          "poiseStatId": "poise",
+          "type": "HitBox"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 3,
+      "locked": false,
+      "modelPath": "",
+      "name": "SimpleEnemyAttackHitBox",
+      "parentId": 1,
+      "team": "",
+      "transform": {
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 0.0, 1.4]
+      }
+    }
+  ],
+  "lighting": {
+    "shadowMapSize": 1024
+  },
+  "postProcess": {},
+  "sceneName": "SimpleEnemy",
+  "teams": [],
+  "version": 27
+}

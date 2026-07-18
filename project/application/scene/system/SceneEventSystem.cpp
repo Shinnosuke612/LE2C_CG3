@@ -2,6 +2,7 @@
 #include "SceneEventSystem.h"
 
 #include "SceneStatSystem.h"
+#include "SceneStateMachineSystem.h"
 #include "../../../engine/math/Math.h"
 #include "../../../engine/scene/SceneDocument.h"
 #include "../../../engine/scene/SceneEntityQuery.h"
@@ -51,6 +52,7 @@ namespace {
 std::string SceneEventSystem::Update(
 	SceneDocument& document,
 	SceneStatSystem& statSystem,
+	SceneStateMachineSystem& stateMachineSystem,
 	float deltaTime
 ) {
 	struct QueuedAction {
@@ -188,6 +190,10 @@ std::string SceneEventSystem::Update(
 					instance->transform.translate = spawnTransform.translate;
 					instance->transform.rotate = spawnTransform.quaternionRotate;
 				}
+			}
+		} else if (action.type == "ChangeState") {
+			if (target) {
+				stateMachineSystem.RequestState(target->id, action.stateName);
 			}
 		} else if (
 			action.type == "SceneTransition" &&

@@ -1,0 +1,146 @@
+{
+  "debug": {
+    "showColliders": false,
+    "showJointAxes": false,
+    "showJointNames": false,
+    "showSkeleton": false
+  },
+  "entities": [
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.3,
+          "environmentReflectionOverride": false,
+          "materialOverrides": [],
+          "modelPath": "9y5Huh14gN/武器.pmx",
+          "type": "MeshRenderer"
+        },
+        {
+          "alignmentMode": "MatchSourceBone",
+          "enabled": true,
+          "inheritScale": true,
+          "jointName": "右ダミー",
+          "sourceJointName": "Ctr_Wpn_A",
+          "targetEntityId": 0,
+          "targetEntityName": "",
+          "type": "BoneAttachment"
+        },
+        {
+          "clips": [
+            {
+              "duration": 0.64,
+              "loop": false,
+              "name": "Attack",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [0.0, 0.0, 0.0]
+                    },
+                    {
+                      "time": 0.12,
+                      "value": [1.0, 0.0, 0.0]
+                    },
+                    {
+                      "time": 0.34,
+                      "value": [0.0, 0.0, 0.0]
+                    },
+                    {
+                      "time": 0.64,
+                      "value": [0.0, 0.0, 0.0]
+                    }
+                  ],
+                  "property": "Active",
+                  "targetEntityId": 2,
+                  "targetEntityName": "PlayerWeaponHitBox"
+                }
+              ]
+            }
+          ],
+          "enabled": true,
+          "type": "PrefabAnimator"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 1,
+      "locked": false,
+      "modelPath": "9y5Huh14gN/武器.pmx",
+      "name": "PlayerWeapon",
+      "parentId": 0,
+      "team": "",
+      "transform": {
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 0.0, 0.0]
+      }
+    },
+    {
+      "active": false,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [1.0, 0.2, 0.1, 1.0],
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [0.0, 0.0, 0.0],
+          "shape": "Box",
+          "sizeMultiplier": [0.9, 0.8, 1.2],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "damage": 20.0,
+          "damageStatId": "hp",
+          "enabled": true,
+          "ignoreSameFaction": true,
+          "ownerEntityId": 0,
+          "ownerEntityName": "Player",
+          "poiseDamage": 0.0,
+          "poiseStatId": "poise",
+          "type": "HitBox"
+        },
+        {
+          "alignmentMode": "ManualOffset",
+          "enabled": true,
+          "inheritScale": true,
+          "jointName": "Ctr_Wpn_A",
+          "sourceJointName": "",
+          "targetEntityId": 1,
+          "targetEntityName": "PlayerWeapon",
+          "type": "BoneAttachment"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 2,
+      "locked": false,
+      "modelPath": "",
+      "name": "PlayerWeaponHitBox",
+      "parentId": 1,
+      "team": "",
+      "transform": {
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 0.0, 0.0]
+      }
+    }
+  ],
+  "lighting": {
+    "shadowMapSize": 1024
+  },
+  "postProcess": {},
+  "sceneName": "PlayerWeapon",
+  "teams": [],
+  "version": 27
+}

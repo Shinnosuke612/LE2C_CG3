@@ -49,6 +49,9 @@ void Framework::Initialize() {
 
 	winApp_ = new WinApp();
 	winApp_->Initialize();
+	if (ImGuiManager::LoadStartFullscreenSetting()) {
+		winApp_->SetFullscreen(true);
+	}
 
 	dxCommon_ = new DirectXCommon();
 	dxCommon_->Initialize(winApp_);

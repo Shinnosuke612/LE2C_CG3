@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <unordered_map>
 #include <unordered_set>
 #include "../Audio/Audio.h"
 #include "../math/Quaternion.h"
@@ -15,6 +16,7 @@ class WinApp;
 class DirectXCommon;
 class SrvManager;
 class EditorSession;
+class PrefabEditorSession;
 class SceneCatalog;
 class SceneManager;
 class SceneTemplateRegistry;
@@ -57,6 +59,8 @@ struct SceneInstanceRequest {
 class ImGuiManager{
 public:
 	static ImGuiManager* GetInstance();
+	// DirectX初期化前に適用する起動時フルスクリーン設定を読み込む。
+	static bool LoadStartFullscreenSetting();
 
 	// 初期化
 	void Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManager* srvManager);
@@ -157,6 +161,9 @@ private:
 	void DrawProjectWindow();
 	void DrawConsoleWindow();
 	void DrawLoadedScenesWindow();
+	void DrawPrefabWindow();
+	void DrawPrefabHierarchy();
+	void DrawPrefabInspector();
 	void DrawPlaybackControls();
 	void DrawSceneGizmo(
 		float x,
@@ -233,9 +240,13 @@ private:
 	bool showProject_ = true;
 	bool showConsole_ = true;
 	bool showLoadedScenes_ = true;
+	bool showPrefab_ = false;
 	EditorFontPreset editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
 	float editorFontSize_ = 13.0f;
 	bool editorFontRebuildRequested_ = false;
+	bool startFullscreen_ = false;
+	// シーン/Entity/コンポーネント単位のInspector折りたたみ状態。
+	std::unordered_map<std::string, bool> componentFoldoutStates_;
 	int selectedHierarchyItem_ = 0;
 	uint64_t selectedEntityId_ = 0;
 	// Hierarchyの複数選択と表示状態を保持する。selectedEntityId_はInspector/Gizmo用の基準Entity。
@@ -253,6 +264,9 @@ private:
 	char hierarchySearchBuffer_[128] = {};
 	bool revealInspectorRequested_ = false;
 	EditorSession* editorSession_ = nullptr;
+	PrefabEditorSession* prefabEditorSession_ = nullptr;
+	uint64_t prefabSelectedEntityId_ = 0;
+	bool prefabClosePopupRequested_ = false;
 	SceneCatalog* sceneCatalog_ = nullptr;
 	SceneManager* sceneManager_ = nullptr;
 	const SceneTemplateRegistry* sceneTemplateRegistry_ = nullptr;

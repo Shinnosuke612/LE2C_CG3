@@ -185,6 +185,7 @@
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEnemySystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEventSystem.cpp" />
+    <ClCompile Include="application\scene\system\SceneStateMachineSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEffectRenderSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEnvironmentSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneLightingSystem.cpp" />
@@ -236,6 +237,7 @@
     <ClCompile Include="engine\scene\SceneTransformResolver.cpp" />
     <ClCompile Include="engine\scene\SceneTemplateRegistry.cpp" />
     <ClCompile Include="engine\scene\EditorSession.cpp" />
+    <ClCompile Include="engine\scene\PrefabEditorSession.cpp" />
     <ClCompile Include="engine\particle\ParticleEffectResource.cpp" />
 	<ClCompile Include="engine\3d\Skybox.cpp" />
 	<ClCompile Include="engine\3d\StarFieldGenerator.cpp" />
@@ -385,6 +387,7 @@
     <ClInclude Include="application\scene\system\SceneDebugSystem.h" />
     <ClInclude Include="application\scene\system\SceneEnemySystem.h" />
     <ClInclude Include="application\scene\system\SceneEventSystem.h" />
+    <ClInclude Include="application\scene\system\SceneStateMachineSystem.h" />
     <ClInclude Include="application\scene\system\SceneEffectRenderSystem.h" />
     <ClInclude Include="application\scene\system\SceneEnvironmentSystem.h" />
     <ClInclude Include="application\scene\system\SceneLightingSystem.h" />
@@ -413,6 +416,7 @@
     <ClInclude Include="engine\scene\SceneTransformResolver.h" />
     <ClInclude Include="engine\scene\SceneTemplateRegistry.h" />
     <ClInclude Include="engine\scene\EditorSession.h" />
+    <ClInclude Include="engine\scene\PrefabEditorSession.h" />
     <ClInclude Include="engine\particle\ParticleEffectResource.h" />
     <ClInclude Include="engine\3d\LightManager.h" />
     <ClInclude Include="engine\3d\ShadowManager.h" />

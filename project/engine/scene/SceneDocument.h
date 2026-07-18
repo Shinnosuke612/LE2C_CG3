@@ -101,6 +101,7 @@ struct SceneEventAction {
 	std::string prefabPath;
 	bool prefabParentToTarget = false;
 	bool prefabUseTargetTransform = true;
+	std::string stateName;
 };
 
 struct SceneEventBinding {
@@ -141,6 +142,23 @@ struct ScenePrefabAnimationClip {
 struct SceneCameraSwitchEntry {
 	uint64_t cameraEntityId = 0;
 	std::string cameraEntityName;
+};
+
+struct SceneStateParameter {
+	std::string name = "Parameter";
+	std::string type = "Float";
+	float floatValue = 0.0f;
+	int intValue = 0;
+	bool boolValue = false;
+	std::string stringValue;
+	uint64_t entityId = 0;
+	std::string entityName;
+};
+
+struct SceneStateDefinition {
+	std::string name = "State";
+	std::string actionId = "Builtin.Idle";
+	std::vector<SceneStateParameter> parameters;
 };
 
 struct SceneComponent {
@@ -366,6 +384,9 @@ struct SceneComponent {
 	std::vector<SceneStatDefinition> stats;
 	std::vector<SceneEventBinding> eventBindings;
 	std::vector<ScenePrefabAnimationClip> prefabAnimationClips;
+	std::string stateMachineInitialState = "Idle";
+	bool stateMachineResetOnDisable = true;
+	std::vector<SceneStateDefinition> stateMachineStates;
 	std::string factionName = "Neutral";
 	float hitBoxDamage = 10.0f;
 	float hitBoxPoiseDamage = 0.0f;
@@ -421,6 +442,11 @@ struct SceneEntity {
 	bool active = true;
 	bool locked = false;
 	bool runtimeOnly = false;
+	// Prefab内の安定IDとScene上のInstance Rootを分けて保持する。
+	// 元アセットとの対応がない通常Entityは全て既定値のままにする。
+	std::string prefabSourcePath;
+	uint64_t prefabInstanceRootId = 0;
+	uint64_t prefabLocalId = 0;
 	std::string teamName;
 	QuaternionTransform transform{};
 	std::string modelPath;
@@ -449,6 +475,11 @@ public:
 		uint64_t parentId = 0,
 		bool runtimeOnly = false
 	);
+	bool ApplyPrefabInstance(uint64_t rootId);
+	bool RevertPrefabInstance(uint64_t rootId);
+	bool UnpackPrefabInstance(uint64_t rootId);
+	uint64_t FindPrefabInstanceRoot(uint64_t entityId) const;
+	std::vector<std::string> CollectPrefabInstanceOverrides(uint64_t rootId) const;
 	bool SetParent(uint64_t id, uint64_t parentId);
 	bool MoveEntity(uint64_t id, int direction);
 	bool MoveEntityToParent(uint64_t id, uint64_t parentId);

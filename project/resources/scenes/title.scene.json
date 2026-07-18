@@ -605,7 +605,7 @@
           "fovY": 0.44999998807907104,
           "invertPitch": false,
           "invertYaw": false,
-          "isMain": true,
+          "isMain": false,
           "nearClip": 0.10000000149011612,
           "type": "Camera"
         }
@@ -1045,7 +1045,7 @@
           "fovY": 0.44999998807907104,
           "invertPitch": false,
           "invertYaw": false,
-          "isMain": false,
+          "isMain": true,
           "nearClip": 0.10000000149011612,
           "type": "Camera"
         },
@@ -1098,6 +1098,180 @@
             0.0,
             0.0
           ]
+        },
+        {
+          "enabled": true,
+          "stats": [
+            {
+              "displayName": "HP",
+              "id": "hp",
+              "initial": 100.0,
+              "max": 100.0,
+              "min": 0.0
+            }
+          ],
+          "type": "StatSet"
+        },
+        {
+          "enabled": true,
+          "name": "Player",
+          "type": "Faction"
+        },
+        {
+          "enabled": true,
+          "initialState": "Idle",
+          "resetOnDisable": true,
+          "states": [
+            {
+              "actionId": "Builtin.Idle",
+              "name": "Idle",
+              "parameters": [
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "MoveState",
+                  "stringValue": "Move",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AttackState",
+                  "stringValue": "Attack",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AttackInput",
+                  "stringValue": "Mouse Left",
+                  "type": "Input"
+                }
+              ]
+            },
+            {
+              "actionId": "Builtin.Move",
+              "name": "Move",
+              "parameters": [
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "IdleState",
+                  "stringValue": "Idle",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AttackState",
+                  "stringValue": "Attack",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AttackInput",
+                  "stringValue": "Mouse Left",
+                  "type": "Input"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 19.799999237060547,
+                  "intValue": 0,
+                  "name": "Speed",
+                  "stringValue": "",
+                  "type": "Float"
+                }
+              ]
+            },
+            {
+              "actionId": "Builtin.MeleeAttack",
+              "name": "Attack",
+              "parameters": [
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "ReturnState",
+                  "stringValue": "Idle",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 15,
+                  "entityName": "PlayerAttackHitBox",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "HitBox",
+                  "stringValue": "",
+                  "type": "Entity"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "Animation",
+                  "stringValue": "",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.11999999731779099,
+                  "intValue": 0,
+                  "name": "Windup",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.2199999988079071,
+                  "intValue": 0,
+                  "name": "ActiveTime",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.30000001192092896,
+                  "intValue": 0,
+                  "name": "Recovery",
+                  "stringValue": "",
+                  "type": "Float"
+                }
+              ]
+            }
+          ],
+          "type": "StateMachine"
         }
       ],
       "folder": false,
@@ -1212,6 +1386,506 @@
           -0.5244928598403931,
           1.0347552299499512,
           -0.9147420525550842
+        ]
+      }
+    },
+    {
+      "active": false,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [
+            1.0,
+            0.25,
+            0.15000000596046448,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            0.8999999761581421,
+            0.800000011920929,
+            1.2000000476837158
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "damage": 20.0,
+          "damageStatId": "hp",
+          "enabled": true,
+          "ignoreSameFaction": true,
+          "ownerEntityId": 13,
+          "ownerEntityName": "Player",
+          "poiseDamage": 0.0,
+          "poiseStatId": "poise",
+          "type": "HitBox"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 15,
+      "locked": false,
+      "modelPath": "",
+      "name": "PlayerAttackHitBox",
+      "parentId": 13,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          1.600000023841858
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.6499999761581421,
+            1.0,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "damageMultiplier": 1.0,
+          "enabled": true,
+          "healthStatId": "hp",
+          "statsEntityId": 13,
+          "statsEntityName": "Player",
+          "type": "HurtBox"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 16,
+      "locked": false,
+      "modelPath": "",
+      "name": "PlayerHurtBox",
+      "parentId": 13,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "materialOverrides": [],
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.8999999761581421,
+            0.30000001192092896,
+            0.25,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": false,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "bodyType": "Dynamic",
+          "drag": 0.0,
+          "enabled": true,
+          "freezePositionX": false,
+          "freezePositionY": false,
+          "freezePositionZ": false,
+          "friction": 0.0,
+          "gravityScale": 8.0,
+          "mass": 1.0,
+          "maxFallSpeed": 60.0,
+          "restitution": 0.0,
+          "type": "PhysicsBody",
+          "useGravity": true,
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "enabled": true,
+          "stats": [
+            {
+              "displayName": "HP",
+              "id": "hp",
+              "initial": 60.0,
+              "max": 60.0,
+              "min": 0.0
+            }
+          ],
+          "type": "StatSet"
+        },
+        {
+          "enabled": true,
+          "name": "Enemy",
+          "type": "Faction"
+        },
+        {
+          "attackActiveTime": 0.25,
+          "attackAnimationClip": 0,
+          "attackCooldown": 1.2000000476837158,
+          "attackHitBoxEntityId": 19,
+          "attackHitBoxEntityName": "TrainingEnemyAttackHitBox",
+          "attackPrefabAnimationClip": "",
+          "attackRange": 2.299999952316284,
+          "attackRecovery": 0.44999998807907104,
+          "attackWindup": 0.25,
+          "detectionRange": 12.0,
+          "enabled": true,
+          "healthStatId": "hp",
+          "loseRange": 18.0,
+          "moveSpeed": 3.0,
+          "targetEntityId": 13,
+          "targetEntityName": "Player",
+          "turnSpeed": 8.0,
+          "type": "EnemyBehavior"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 17,
+      "locked": false,
+      "modelPath": "Cube.obj",
+      "name": "TrainingEnemy",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          1.0,
+          -5.5
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [
+            1.0,
+            0.6000000238418579,
+            0.20000000298023224,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "damageMultiplier": 1.0,
+          "enabled": true,
+          "healthStatId": "hp",
+          "statsEntityId": 17,
+          "statsEntityName": "TrainingEnemy",
+          "type": "HurtBox"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 18,
+      "locked": false,
+      "modelPath": "",
+      "name": "TrainingEnemyHurtBox",
+      "parentId": 17,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": false,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [
+            1.0,
+            0.10000000149011612,
+            0.10000000149011612,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            0.800000011920929,
+            0.800000011920929,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "damage": 10.0,
+          "damageStatId": "hp",
+          "enabled": true,
+          "ignoreSameFaction": true,
+          "ownerEntityId": 17,
+          "ownerEntityName": "TrainingEnemy",
+          "poiseDamage": 0.0,
+          "poiseStatId": "poise",
+          "type": "HitBox"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 19,
+      "locked": false,
+      "modelPath": "",
+      "name": "TrainingEnemyAttackHitBox",
+      "parentId": 17,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          1.399999976158142
         ]
       }
     }

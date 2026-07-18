@@ -841,7 +841,8 @@ namespace {
 				{ "sceneId", action.sceneId },
 				{ "prefabPath", action.prefabPath },
 				{ "prefabParentToTarget", action.prefabParentToTarget },
-				{ "prefabUseTargetTransform", action.prefabUseTargetTransform }
+				{ "prefabUseTargetTransform", action.prefabUseTargetTransform },
+				{ "stateName", action.stateName }
 			});
 		}
 		return result;
@@ -895,6 +896,33 @@ namespace {
 				{ "loop", clip.loop },
 				{ "playOnStart", clip.playOnStart },
 				{ "tracks", std::move(tracks) }
+			});
+		}
+		return result;
+	}
+
+	json StateMachineStatesToJson(
+		const std::vector<SceneStateDefinition>& states
+	) {
+		json result = json::array();
+		for (const SceneStateDefinition& state : states) {
+			json parameters = json::array();
+			for (const SceneStateParameter& parameter : state.parameters) {
+				parameters.push_back({
+					{ "name", parameter.name },
+					{ "type", parameter.type },
+					{ "floatValue", parameter.floatValue },
+					{ "intValue", parameter.intValue },
+					{ "boolValue", parameter.boolValue },
+					{ "stringValue", parameter.stringValue },
+					{ "entityId", parameter.entityId },
+					{ "entityName", parameter.entityName }
+				});
+			}
+			result.push_back({
+				{ "name", state.name },
+				{ "actionId", state.actionId },
+				{ "parameters", std::move(parameters) }
 			});
 		}
 		return result;
@@ -1211,6 +1239,12 @@ namespace {
 			result["clips"] = PrefabAnimationsToJson(
 				component.prefabAnimationClips
 			);
+		} else if (component.type == "StateMachine") {
+			result["initialState"] = component.stateMachineInitialState;
+			result["resetOnDisable"] = component.stateMachineResetOnDisable;
+			result["states"] = StateMachineStatesToJson(
+				component.stateMachineStates
+			);
 		} else if (component.type == "Faction") {
 			result["name"] = component.factionName;
 		} else if (component.type == "HitBox") {
@@ -1324,6 +1358,7 @@ namespace {
 		action.prefabUseTargetTransform = value.value(
 			"prefabUseTargetTransform", action.prefabUseTargetTransform
 		);
+		action.stateName = value.value("stateName", action.stateName);
 		return action;
 	}
 
@@ -1443,6 +1478,54 @@ namespace {
 		}
 	}
 
+	void ReadStateMachineStates(
+		const json& source,
+		std::vector<SceneStateDefinition>& destination
+	) {
+		if (!source.is_array()) {
+			return;
+		}
+		for (const json& stateValue : source) {
+			if (!stateValue.is_object()) {
+				continue;
+			}
+			SceneStateDefinition state{};
+			state.name = stateValue.value("name", state.name);
+			state.actionId = stateValue.value("actionId", state.actionId);
+			if (const auto parameters = stateValue.find("parameters");
+				parameters != stateValue.end() && parameters->is_array()) {
+				for (const json& parameterValue : *parameters) {
+					if (!parameterValue.is_object()) {
+						continue;
+					}
+					SceneStateParameter parameter{};
+					parameter.name = parameterValue.value("name", parameter.name);
+					parameter.type = parameterValue.value("type", parameter.type);
+					parameter.floatValue = parameterValue.value(
+						"floatValue", parameter.floatValue
+					);
+					parameter.intValue = parameterValue.value(
+						"intValue", parameter.intValue
+					);
+					parameter.boolValue = parameterValue.value(
+						"boolValue", parameter.boolValue
+					);
+					parameter.stringValue = parameterValue.value(
+						"stringValue", parameter.stringValue
+					);
+					parameter.entityId = parameterValue.value(
+						"entityId", parameter.entityId
+					);
+					parameter.entityName = parameterValue.value(
+						"entityName", parameter.entityName
+					);
+					state.parameters.push_back(std::move(parameter));
+				}
+			}
+			destination.push_back(std::move(state));
+		}
+	}
+
 	uint64_t RemapEntityId(
 		uint64_t id,
 		const std::unordered_map<uint64_t, uint64_t>& idMap
@@ -1482,6 +1565,11 @@ namespace {
 		component.hurtBoxStatsEntityId = RemapEntityId(
 			component.hurtBoxStatsEntityId, idMap
 		);
+		for (SceneStateDefinition& state : component.stateMachineStates) {
+			for (SceneStateParameter& parameter : state.parameters) {
+				parameter.entityId = RemapEntityId(parameter.entityId, idMap);
+			}
+		}
 		component.boneAttachmentTargetEntityId = RemapEntityId(
 			component.boneAttachmentTargetEntityId, idMap
 		);
@@ -2525,6 +2613,20 @@ namespace {
 						component.prefabAnimationClips
 					);
 				}
+				if (component.type == "StateMachine") {
+					component.stateMachineInitialState = value.value(
+						"initialState", component.stateMachineInitialState
+					);
+					component.stateMachineResetOnDisable = value.value(
+						"resetOnDisable", component.stateMachineResetOnDisable
+					);
+					if (value.contains("states")) {
+						ReadStateMachineStates(
+							value.at("states"),
+							component.stateMachineStates
+						);
+					}
+				}
 				if (component.type == "Faction") {
 					component.factionName = value.value("name", component.factionName);
 				}
@@ -2949,7 +3051,7 @@ bool SceneDocument::Save(const std::string& filePath) {
 		const bool spriteFlipY = spriteRenderer
 			? spriteRenderer->spriteFlipY
 			: entity.spriteFlipY;
-		root["entities"].push_back({
+		json entityValue = {
 			{ "id", entity.id },
 			{ "parentId", entity.parentId },
 			{ "name", entity.name },
@@ -2973,7 +3075,19 @@ bool SceneDocument::Save(const std::string& filePath) {
 				{ "flipY", spriteFlipY }
 			} },
 			{ "components", components }
-		});
+		};
+		if (
+			!entity.prefabSourcePath.empty() ||
+			entity.prefabInstanceRootId != 0 ||
+			entity.prefabLocalId != 0
+		) {
+			entityValue["prefab"] = {
+				{ "sourcePath", entity.prefabSourcePath },
+				{ "instanceRootId", entity.prefabInstanceRootId },
+				{ "localId", entity.prefabLocalId }
+			};
+		}
+		root["entities"].push_back(std::move(entityValue));
 	}
 
 	const std::filesystem::path target = StringUtility::ToPath(filePath);
@@ -3154,9 +3268,18 @@ bool SceneDocument::SaveEntityBranchAsPrefab(
 	}
 
 	std::unordered_map<uint64_t, uint64_t> idMap;
-	uint64_t localId = 1;
+	std::unordered_set<uint64_t> usedLocalIds;
+	uint64_t nextLocalId = 1;
 	for (const SceneEntity* entity : branch) {
-		idMap.emplace(entity->id, localId++);
+		uint64_t localId = entity->prefabLocalId;
+		if (localId == 0 || !usedLocalIds.insert(localId).second) {
+			while (usedLocalIds.contains(nextLocalId)) {
+				++nextLocalId;
+			}
+			localId = nextLocalId++;
+			usedLocalIds.insert(localId);
+		}
+		idMap.emplace(entity->id, localId);
 	}
 
 	SceneDocument prefab;
@@ -3168,6 +3291,10 @@ bool SceneDocument::SaveEntityBranchAsPrefab(
 			? 0
 			: RemapEntityId(source->parentId, idMap);
 		entity.runtimeOnly = false;
+		// Prefabアセット自身へScene Instanceのリンク情報を持ち込まない。
+		entity.prefabSourcePath.clear();
+		entity.prefabInstanceRootId = 0;
+		entity.prefabLocalId = 0;
 		entity.teamName.clear();
 		for (SceneComponent& component : entity.components) {
 			RemapComponentEntityReferences(component, idMap);
@@ -3193,10 +3320,20 @@ uint64_t SceneDocument::InstantiatePrefab(
 	SceneDocument prefab;
 	const std::filesystem::path resolvedPath =
 		EditableResourcePath::ResolveResource(StringUtility::ToPath(filePath));
+	const std::string sourcePath = StringUtility::ToUtf8(
+		EditableResourcePath::ToProjectRelative(resolvedPath)
+	);
 	if (
 		!prefab.Load(StringUtility::ToUtf8(resolvedPath)) ||
 		prefab.GetEntities().empty()
 	) {
+		return 0;
+	}
+	if (std::count_if(
+		prefab.GetEntities().begin(),
+		prefab.GetEntities().end(),
+		[](const SceneEntity& entity) { return entity.parentId == 0; }
+	) != 1) {
 		return 0;
 	}
 
@@ -3223,6 +3360,9 @@ uint64_t SceneDocument::InstantiatePrefab(
 			? parentId
 			: RemapEntityId(source.parentId, idMap);
 		destination->runtimeOnly = runtimeOnly;
+		destination->prefabSourcePath = sourcePath;
+		destination->prefabInstanceRootId = rootId;
+		destination->prefabLocalId = source.id;
 		for (SceneComponent& component : destination->components) {
 			RemapComponentEntityReferences(component, idMap);
 		}
@@ -3231,6 +3371,328 @@ uint64_t SceneDocument::InstantiatePrefab(
 		MarkClean();
 	}
 	return rootId;
+}
+
+uint64_t SceneDocument::FindPrefabInstanceRoot(uint64_t entityId) const {
+	const SceneEntity* entity = FindEntity(entityId);
+	if (!entity) {
+		return 0;
+	}
+	std::unordered_set<uint64_t> visited;
+	const SceneEntity* current = entity;
+	while (current && visited.insert(current->id).second) {
+		const uint64_t rootId = current->prefabInstanceRootId;
+		const SceneEntity* root = FindEntity(rootId);
+		if (
+			root &&
+			root->prefabInstanceRootId == rootId &&
+			!root->prefabSourcePath.empty()
+		) {
+			return rootId;
+		}
+		current = FindEntity(current->parentId);
+	}
+	return 0;
+}
+
+std::vector<std::string> SceneDocument::CollectPrefabInstanceOverrides(
+	uint64_t rootId
+) const {
+	std::vector<std::string> overrides;
+	const SceneEntity* instanceRoot = FindEntity(rootId);
+	if (
+		!instanceRoot ||
+		instanceRoot->prefabInstanceRootId != rootId ||
+		instanceRoot->prefabSourcePath.empty()
+	) {
+		return overrides;
+	}
+
+	SceneDocument prefab;
+	const std::filesystem::path resolvedPath =
+		EditableResourcePath::ResolveResource(
+			StringUtility::ToPath(instanceRoot->prefabSourcePath)
+		);
+	if (!prefab.Load(StringUtility::ToUtf8(resolvedPath))) {
+		overrides.push_back("Unable to load the linked Prefab asset.");
+		return overrides;
+	}
+
+	std::unordered_map<uint64_t, const SceneEntity*> instanceByLocalId;
+	std::unordered_map<uint64_t, uint64_t> sceneToLocalId;
+	for (const SceneEntity& entity : entities_) {
+		if (
+			entity.prefabInstanceRootId == rootId &&
+			entity.prefabSourcePath == instanceRoot->prefabSourcePath &&
+			entity.prefabLocalId != 0
+		) {
+			instanceByLocalId.emplace(entity.prefabLocalId, &entity);
+			sceneToLocalId.emplace(entity.id, entity.prefabLocalId);
+		}
+	}
+
+	auto makeComparableEntity = [](
+		const SceneEntity& entity,
+		bool includeTransform
+	) {
+		json components = json::array();
+		for (const SceneComponent& component : entity.components) {
+			components.push_back(ComponentToJson(component));
+		}
+		json value = {
+			{ "name", entity.name },
+			{ "parentId", entity.parentId },
+			{ "folder", entity.folder },
+			{ "folderTeamEnabled", entity.folderTeamEnabled },
+			{ "active", entity.active },
+			{ "locked", entity.locked },
+			{ "modelPath", entity.modelPath },
+			{ "sprite", {
+				{ "texturePath", entity.spriteTexturePath },
+				{ "size", VectorToJson(entity.spriteSize) },
+				{ "anchor", VectorToJson(entity.spriteAnchor) },
+				{ "color", VectorToJson(entity.spriteColor) },
+				{ "flipX", entity.spriteFlipX },
+				{ "flipY", entity.spriteFlipY }
+			} },
+			{ "components", std::move(components) }
+		};
+		if (includeTransform) {
+			value["transform"] = {
+				{ "scale", VectorToJson(entity.transform.scale) },
+				{ "rotation", QuaternionToJson(entity.transform.rotate) },
+				{ "translate", VectorToJson(entity.transform.translate) }
+			};
+		}
+		return value;
+	};
+
+	std::unordered_set<uint64_t> sourceLocalIds;
+	for (const SceneEntity& source : prefab.GetEntities()) {
+		sourceLocalIds.insert(source.id);
+		const auto found = instanceByLocalId.find(source.id);
+		if (found == instanceByLocalId.end()) {
+			overrides.push_back("Removed Entity: " + source.name);
+			continue;
+		}
+
+		SceneEntity normalizedInstance = *found->second;
+		normalizedInstance.parentId = RemapEntityId(
+			normalizedInstance.parentId,
+			sceneToLocalId
+		);
+		for (SceneComponent& component : normalizedInstance.components) {
+			RemapComponentEntityReferences(component, sceneToLocalId);
+		}
+		const bool isRoot = source.parentId == 0;
+		if (
+			makeComparableEntity(normalizedInstance, !isRoot) !=
+			makeComparableEntity(source, !isRoot)
+		) {
+			overrides.push_back("Modified Entity: " + source.name);
+		}
+	}
+
+	for (const auto& [localId, instance] : instanceByLocalId) {
+		if (!sourceLocalIds.contains(localId)) {
+			overrides.push_back("Stale Entity: " + instance->name);
+		}
+	}
+	for (const SceneEntity& entity : entities_) {
+		if (
+			entity.id != rootId &&
+			entity.prefabInstanceRootId == 0 &&
+			IsDescendantOf(entity.id, rootId)
+		) {
+			overrides.push_back("Added Entity: " + entity.name);
+		}
+	}
+	return overrides;
+}
+
+bool SceneDocument::ApplyPrefabInstance(uint64_t rootId) {
+	SceneEntity* root = FindEntity(rootId);
+	if (
+		!root ||
+		root->prefabInstanceRootId != rootId ||
+		root->prefabSourcePath.empty()
+	) {
+		return false;
+	}
+
+	std::vector<SceneEntity*> branch;
+	for (SceneEntity& entity : entities_) {
+		if (entity.id == rootId || IsDescendantOf(entity.id, rootId)) {
+			branch.push_back(&entity);
+		}
+	}
+	std::unordered_map<uint64_t, uint64_t> localIds;
+	std::unordered_set<uint64_t> usedLocalIds;
+	uint64_t nextLocalId = 1;
+	for (SceneEntity* entity : branch) {
+		uint64_t localId = entity->prefabLocalId;
+		if (localId == 0 || !usedLocalIds.insert(localId).second) {
+			while (usedLocalIds.contains(nextLocalId)) {
+				++nextLocalId;
+			}
+			localId = nextLocalId++;
+			usedLocalIds.insert(localId);
+		}
+		localIds.emplace(entity->id, localId);
+	}
+	const std::string sourcePath = root->prefabSourcePath;
+	if (!SaveEntityBranchAsPrefab(rootId, sourcePath)) {
+		return false;
+	}
+
+	bool metadataChanged = false;
+	for (SceneEntity* entity : branch) {
+		const uint64_t localId = localIds.at(entity->id);
+		metadataChanged |=
+			entity->prefabSourcePath != sourcePath ||
+			entity->prefabInstanceRootId != rootId ||
+			entity->prefabLocalId != localId;
+		entity->prefabSourcePath = sourcePath;
+		entity->prefabInstanceRootId = rootId;
+		entity->prefabLocalId = localId;
+	}
+	if (metadataChanged) {
+		MarkDirty();
+	}
+	return true;
+}
+
+bool SceneDocument::RevertPrefabInstance(uint64_t rootId) {
+	SceneEntity* instanceRoot = FindEntity(rootId);
+	if (
+		!instanceRoot ||
+		instanceRoot->prefabInstanceRootId != rootId ||
+		instanceRoot->prefabSourcePath.empty()
+	) {
+		return false;
+	}
+
+	const std::string sourcePath = instanceRoot->prefabSourcePath;
+	SceneDocument prefab;
+	const std::filesystem::path resolvedPath =
+		EditableResourcePath::ResolveResource(StringUtility::ToPath(sourcePath));
+	if (
+		!prefab.Load(StringUtility::ToUtf8(resolvedPath)) ||
+		prefab.GetEntities().empty()
+	) {
+		return false;
+	}
+	if (std::count_if(
+		prefab.GetEntities().begin(),
+		prefab.GetEntities().end(),
+		[](const SceneEntity& entity) { return entity.parentId == 0; }
+	) != 1) {
+		return false;
+	}
+
+	const uint64_t preservedParentId = instanceRoot->parentId;
+	const QuaternionTransform preservedRootTransform = instanceRoot->transform;
+	const bool preservedRuntimeOnly = instanceRoot->runtimeOnly;
+	const SceneEntity* prefabRoot = nullptr;
+	for (const SceneEntity& source : prefab.GetEntities()) {
+		if (source.parentId == 0) {
+			prefabRoot = &source;
+			break;
+		}
+	}
+	if (!prefabRoot) {
+		return false;
+	}
+
+	std::unordered_map<uint64_t, uint64_t> localToSceneId;
+	for (const SceneEntity& entity : entities_) {
+		if (
+			entity.prefabInstanceRootId == rootId &&
+			entity.prefabSourcePath == sourcePath &&
+			entity.prefabLocalId != 0
+		) {
+			localToSceneId.emplace(entity.prefabLocalId, entity.id);
+		}
+	}
+	localToSceneId[prefabRoot->id] = rootId;
+
+	for (const SceneEntity& source : prefab.GetEntities()) {
+		if (localToSceneId.contains(source.id)) {
+			continue;
+		}
+		SceneEntity& created = CreateEntity(source.name);
+		localToSceneId.emplace(source.id, created.id);
+	}
+
+	std::unordered_set<uint64_t> sourceLocalIds;
+	for (const SceneEntity& source : prefab.GetEntities()) {
+		sourceLocalIds.insert(source.id);
+		SceneEntity* destination = FindEntity(localToSceneId.at(source.id));
+		if (!destination) {
+			continue;
+		}
+		const uint64_t destinationId = destination->id;
+		*destination = source;
+		destination->id = destinationId;
+		destination->parentId = source.parentId == 0
+			? preservedParentId
+			: RemapEntityId(source.parentId, localToSceneId);
+		destination->runtimeOnly = preservedRuntimeOnly;
+		destination->prefabSourcePath = sourcePath;
+		destination->prefabInstanceRootId = rootId;
+		destination->prefabLocalId = source.id;
+		for (SceneComponent& component : destination->components) {
+			RemapComponentEntityReferences(component, localToSceneId);
+		}
+		if (source.id == prefabRoot->id) {
+			destination->transform = preservedRootTransform;
+		}
+	}
+
+	std::unordered_set<uint64_t> removeIds;
+	for (const SceneEntity& entity : entities_) {
+		const bool removedFromPrefab =
+			entity.id != rootId &&
+			entity.prefabInstanceRootId == rootId &&
+			entity.prefabSourcePath == sourcePath &&
+			!sourceLocalIds.contains(entity.prefabLocalId);
+		const bool addedToInstance =
+			entity.id != rootId &&
+			entity.prefabInstanceRootId == 0 &&
+			IsDescendantOf(entity.id, rootId);
+		if (removedFromPrefab || addedToInstance) {
+			removeIds.insert(entity.id);
+		}
+	}
+	for (uint64_t removeId : removeIds) {
+		const SceneEntity* entity = FindEntity(removeId);
+		if (entity && !removeIds.contains(entity->parentId)) {
+			RemoveEntity(removeId);
+		}
+	}
+
+	MarkDirty();
+	return true;
+}
+
+bool SceneDocument::UnpackPrefabInstance(uint64_t rootId) {
+	if (FindPrefabInstanceRoot(rootId) != rootId) {
+		return false;
+	}
+	bool changed = false;
+	for (SceneEntity& entity : entities_) {
+		if (entity.prefabInstanceRootId != rootId) {
+			continue;
+		}
+		entity.prefabSourcePath.clear();
+		entity.prefabInstanceRootId = 0;
+		entity.prefabLocalId = 0;
+		changed = true;
+	}
+	if (changed) {
+		MarkDirty();
+	}
+	return changed;
 }
 
 bool SceneDocument::SetParent(uint64_t id, uint64_t parentId) {
@@ -4314,6 +4776,76 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.cameraPathPointEasingToNext = "SmoothStep";
 	} else if (type == "StatSet") {
 		component.stats.push_back({ "hp", "HP", 0.0f, 100.0f, 100.0f });
+	} else if (type == "StateMachine") {
+		SceneStateDefinition idle{};
+		idle.name = "Idle";
+		idle.actionId = "Builtin.Idle";
+		SceneStateParameter idleMove{};
+		idleMove.name = "MoveState";
+		idleMove.type = "String";
+		idleMove.stringValue = "Move";
+		SceneStateParameter idleAttack{};
+		idleAttack.name = "AttackState";
+		idleAttack.type = "String";
+		idleAttack.stringValue = "Attack";
+		SceneStateParameter idleAttackInput{};
+		idleAttackInput.name = "AttackInput";
+		idleAttackInput.type = "Input";
+		idleAttackInput.stringValue = "Mouse Left";
+		idle.parameters = { idleMove, idleAttack, idleAttackInput };
+
+		SceneStateDefinition move{};
+		move.name = "Move";
+		move.actionId = "Builtin.Move";
+		SceneStateParameter moveIdle{};
+		moveIdle.name = "IdleState";
+		moveIdle.type = "String";
+		moveIdle.stringValue = "Idle";
+		SceneStateParameter moveAttack = idleAttack;
+		SceneStateParameter moveAttackInput = idleAttackInput;
+		SceneStateParameter moveSpeed{};
+		moveSpeed.name = "Speed";
+		moveSpeed.type = "Float";
+		moveSpeed.floatValue = 6.0f;
+		move.parameters = {
+			moveIdle, moveAttack, moveAttackInput, moveSpeed
+		};
+
+		SceneStateDefinition attack{};
+		attack.name = "Attack";
+		attack.actionId = "Builtin.MeleeAttack";
+		SceneStateParameter returnState{};
+		returnState.name = "ReturnState";
+		returnState.type = "String";
+		returnState.stringValue = "Idle";
+		SceneStateParameter hitBox{};
+		hitBox.name = "HitBox";
+		hitBox.type = "Entity";
+		SceneStateParameter animation{};
+		animation.name = "Animation";
+		animation.type = "String";
+		SceneStateParameter animationTarget{};
+		animationTarget.name = "AnimationTarget";
+		animationTarget.type = "Entity";
+		SceneStateParameter windup{};
+		windup.name = "Windup";
+		windup.type = "Float";
+		windup.floatValue = 0.15f;
+		SceneStateParameter activeTime{};
+		activeTime.name = "ActiveTime";
+		activeTime.type = "Float";
+		activeTime.floatValue = 0.2f;
+		SceneStateParameter recovery{};
+		recovery.name = "Recovery";
+		recovery.type = "Float";
+		recovery.floatValue = 0.35f;
+		attack.parameters = {
+			returnState, hitBox, animation, animationTarget,
+			windup, activeTime, recovery
+		};
+		component.stateMachineInitialState = "Idle";
+		component.stateMachineResetOnDisable = true;
+		component.stateMachineStates = { idle, move, attack };
 	} else if (type == "EventTrigger") {
 		component.eventBindings.push_back({});
 	} else if (type == "PrefabAnimator") {
@@ -4532,6 +5064,10 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 				lastLoadError_ = "Entity sprite must be an object";
 				return false;
 			}
+			if (source.contains("prefab") && !source.at("prefab").is_object()) {
+				lastLoadError_ = "Entity prefab metadata must be an object";
+				return false;
+			}
 			if (source.contains("components")) {
 				if (!source.at("components").is_array()) {
 					lastLoadError_ = "Entity components must be an array";
@@ -4559,6 +5095,21 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 			);
 			entity.active = source.value("active", true);
 			entity.locked = source.value("locked", false);
+			if (source.contains("prefab")) {
+				const json& prefab = source.at("prefab");
+				entity.prefabSourcePath = prefab.value(
+					"sourcePath",
+					std::string{}
+				);
+				entity.prefabInstanceRootId = prefab.value(
+					"instanceRootId",
+					uint64_t{}
+				);
+				entity.prefabLocalId = prefab.value(
+					"localId",
+					uint64_t{}
+				);
+			}
 			entity.teamName = source.value("team", std::string{});
 			entity.modelPath = source.value("modelPath", std::string{});
 			if (source.contains("sprite") && source.at("sprite").is_object()) {

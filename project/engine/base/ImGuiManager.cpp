@@ -29,6 +29,7 @@
 #include "../particle/ParticleEffectResource.h"
 #include "../particle/ParticleManager.h"
 #include "../scene/EditorSession.h"
+#include "../scene/PrefabEditorSession.h"
 #include "../scene/SceneCatalog.h"
 #include "../scene/SceneDocument.h"
 #include "../scene/SceneEntityQuery.h"
@@ -256,6 +257,14 @@ namespace {
 	}
 
 	constexpr char kEditorSettingsPath[] = "editor_settings.json";
+
+	std::string MakeComponentFoldoutKey(
+		const std::string& sceneId,
+		uint64_t entityId,
+		const std::string& componentType
+	) {
+		return sceneId + "/" + std::to_string(entityId) + "/" + componentType;
+	}
 
 	std::string GetProjectResourcePath(const std::string& path) {
 		return PathToUtf8(EditableResourcePath::ToProjectRelative(
@@ -533,6 +542,22 @@ void ImGuiManager::NotifyEditSceneOpened() {
 
 bool ImGuiManager::sceneViewInputActive_ = false;
 
+bool ImGuiManager::LoadStartFullscreenSetting() {
+	std::string text;
+	if (!EditableResourcePath::ReadText(kEditorSettingsPath, text)) {
+		return false;
+	}
+
+	try {
+		const json settings = json::parse(text);
+		return settings.contains("startFullscreen") &&
+			settings["startFullscreen"].is_boolean() &&
+			settings["startFullscreen"].get<bool>();
+	} catch (const json::exception&) {
+		return false;
+	}
+}
+
 void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManager* srvManager){
 	instance = this;
 	assert(winApp);
@@ -544,6 +569,7 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 	srvManager_ = srvManager;
 	sceneViewWidth_ = dxCommon_->GetClientWidth();
 	sceneViewHeight_ = dxCommon_->GetClientHeight();
+	prefabEditorSession_ = new PrefabEditorSession();
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -771,6 +797,23 @@ void ImGuiManager::LoadEditorSettings() {
 				22.0f
 			);
 		}
+		if (
+			settings.contains("startFullscreen") &&
+			settings["startFullscreen"].is_boolean()
+		) {
+			startFullscreen_ = settings["startFullscreen"].get<bool>();
+		}
+		if (
+			settings.contains("componentFoldouts") &&
+			settings["componentFoldouts"].is_object()
+		) {
+			componentFoldoutStates_.clear();
+			for (const auto& [key, value] : settings["componentFoldouts"].items()) {
+				if (value.is_boolean()) {
+					componentFoldoutStates_[key] = value.get<bool>();
+				}
+			}
+		}
 	} catch (const json::exception&) {
 		// 壊れたエディタ設定は無視し、既定値で起動する。
 	}
@@ -784,9 +827,16 @@ void ImGuiManager::SaveEditorSettings() const {
 		preset = "cascadiaMonoWithCjk";
 	}
 
+	json componentFoldouts = json::object();
+	for (const auto& [key, open] : componentFoldoutStates_) {
+		componentFoldouts[key] = open;
+	}
+
 	const json settings = {
 		{ "fontPreset", preset },
-		{ "fontSize", editorFontSize_ }
+		{ "fontSize", editorFontSize_ },
+		{ "startFullscreen", startFullscreen_ },
+		{ "componentFoldouts", std::move(componentFoldouts) }
 	};
 	EditableResourcePath::WriteTextAtomically(
 		kEditorSettingsPath,
@@ -1036,6 +1086,9 @@ void ImGuiManager::DrawEditorWorkspace(
 	if (showLoadedScenes_) {
 		DrawLoadedScenesWindow();
 	}
+	if (showPrefab_) {
+		DrawPrefabWindow();
+	}
 
 	if (editorSession_) {
 		const bool editingInteractionActive =
@@ -1193,6 +1246,21 @@ bool ImGuiManager::GetModelPreviewRequest(
 	float& pitch,
 	float& zoom
 ) const {
+	if (prefabEditorSession_ && prefabEditorSession_->IsOpen()) {
+		const SceneDocument& prefab = prefabEditorSession_->GetDocument();
+		if (const SceneEntity* entity = prefab.FindEntity(prefabSelectedEntityId_)) {
+			if (const SceneComponent* meshRenderer =
+				FindEnabledComponent(*entity, "MeshRenderer")) {
+				if (!meshRenderer->modelPath.empty()) {
+					modelPath = meshRenderer->modelPath;
+					yaw = modelPreviewYaw_;
+					pitch = modelPreviewPitch_;
+					zoom = modelPreviewZoom_;
+					return true;
+				}
+			}
+		}
+	}
 	if (!selectedProjectFile_.empty()) {
 		const std::filesystem::path selectedPath =
 			PathFromUtf8(selectedProjectFile_);
@@ -1689,6 +1757,8 @@ void ImGuiManager::Finalize(){
 	if (previewSoundData_.pBuffer && Audio::GetInstance()) {
 		Audio::GetInstance()->SoundUnload(&previewSoundData_);
 	}
+	delete prefabEditorSession_;
+	prefabEditorSession_ = nullptr;
 	ImGui_ImplDX12_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
@@ -2226,6 +2296,19 @@ void ImGuiManager::DrawSettingsMenu() {
 		ImGui::EndMenu();
 	}
 
+	if (ImGui::BeginMenu("Application")) {
+		if (ImGui::MenuItem(
+			"Start in Fullscreen",
+			nullptr,
+			startFullscreen_
+		)) {
+			startFullscreen_ = !startFullscreen_;
+			SaveEditorSettings();
+		}
+		ImGui::TextDisabled("Applied on next launch. F11 toggles now.");
+		ImGui::EndMenu();
+	}
+
 	if (ImGui::BeginMenu("Appearance")) {
 		if (ImGui::BeginMenu("Font")) {
 			if (ImGui::MenuItem(
@@ -2459,6 +2542,7 @@ void ImGuiManager::BuildDefaultLayout() {
 	);
 
 	ImGui::DockBuilderDockWindow("Scene", centerId);
+	ImGui::DockBuilderDockWindow("Prefab", centerId);
 	ImGui::DockBuilderDockWindow("Hierarchy", leftId);
 	ImGui::DockBuilderDockWindow("Inspector", rightId);
 	ImGui::DockBuilderDockWindow("Scene Controls", rightId);
@@ -3764,16 +3848,58 @@ void ImGuiManager::DrawInspectorWindow() {
 						prefabPreview.GetLastLoadError().c_str()
 					);
 				}
+				if (ImGui::Button("Open Prefab Editor")) {
+					if (
+						prefabEditorSession_ &&
+						prefabEditorSession_->Open(selectedProjectFile_)
+					) {
+						showPrefab_ = true;
+						prefabSelectedEntityId_ = prefabPreview.GetEntities().empty()
+							? 0
+							: prefabPreview.GetEntities().front().id;
+					}
+				}
 				ImGui::BeginDisabled(
 					!editorSession_ || !editorSession_->IsEditing()
 				);
-				if (ImGui::Button("Instantiate Prefab At Root")) {
+				static uint64_t prefabParentEntityId = 0;
+				SceneDocument* editDocument = editorSession_ && editorSession_->IsEditing()
+					? &editorSession_->GetEditDocument()
+					: nullptr;
+				const SceneEntity* prefabParent = editDocument
+					? editDocument->FindEntity(prefabParentEntityId)
+					: nullptr;
+				if (!prefabParent) {
+					prefabParentEntityId = 0;
+				}
+				if (ImGui::BeginCombo(
+					"Instance Parent",
+					prefabParent ? prefabParent->name.c_str() : "Scene Root"
+				)) {
+					if (ImGui::Selectable("Scene Root", prefabParentEntityId == 0)) {
+						prefabParentEntityId = 0;
+					}
+					if (editDocument) {
+						for (const SceneEntity& candidate : editDocument->GetEntities()) {
+							if (ImGui::Selectable(
+								candidate.name.c_str(),
+								prefabParentEntityId == candidate.id
+							)) {
+								prefabParentEntityId = candidate.id;
+							}
+						}
+					}
+					ImGui::EndCombo();
+				}
+				if (ImGui::Button("Instantiate Prefab")) {
 					SceneDocument& document = editorSession_->GetEditDocument();
 					const uint64_t instanceId = document.InstantiatePrefab(
-						selectedProjectFile_
+						selectedProjectFile_,
+						prefabParentEntityId
 					);
 					if (instanceId != 0) {
 						selectedEntityId_ = instanceId;
+						selectedEntityIds_ = { instanceId };
 						selectedProjectFile_.clear();
 						editorSession_->RequestSceneReload();
 					}
@@ -3905,6 +4031,109 @@ void ImGuiManager::DrawInspectorWindow() {
 		ImGui::EndDisabled();
 
 		ImGui::SeparatorText("Prefab");
+		const uint64_t prefabInstanceRootId =
+			document.FindPrefabInstanceRoot(entity->id);
+		if (prefabInstanceRootId != 0) {
+			const SceneEntity* prefabRoot =
+				document.FindEntity(prefabInstanceRootId);
+			ImGui::TextWrapped(
+				"Linked Asset: %s",
+				prefabRoot ? prefabRoot->prefabSourcePath.c_str() : "Unknown"
+			);
+			ImGui::TextDisabled(
+				"Instance Root: %llu / Local Entity: %llu",
+				static_cast<unsigned long long>(prefabInstanceRootId),
+				static_cast<unsigned long long>(entity->prefabLocalId)
+			);
+			if (ImGui::TreeNode("Overrides")) {
+				const std::vector<std::string> overrides =
+					document.CollectPrefabInstanceOverrides(prefabInstanceRootId);
+				if (overrides.empty()) {
+					ImGui::TextDisabled("No Entity overrides.");
+				} else {
+					for (const std::string& overrideLabel : overrides) {
+						ImGui::BulletText("%s", overrideLabel.c_str());
+					}
+				}
+				ImGui::TreePop();
+			}
+			ImGui::TextDisabled(
+				"Apply and Revert currently operate on the whole instance."
+			);
+			bool prefabEditConflict = false;
+			if (
+				prefabRoot &&
+				prefabEditorSession_ &&
+				prefabEditorSession_->IsOpen() &&
+				prefabEditorSession_->IsDirty()
+			) {
+				const std::filesystem::path openPrefabPath =
+					EditableResourcePath::ResolveResource(
+						PathFromUtf8(prefabEditorSession_->GetFilePath())
+					);
+				const std::filesystem::path linkedPrefabPath =
+					EditableResourcePath::ResolveResource(
+						PathFromUtf8(prefabRoot->prefabSourcePath)
+					);
+				std::error_code equivalentError;
+				prefabEditConflict = std::filesystem::equivalent(
+					openPrefabPath,
+					linkedPrefabPath,
+					equivalentError
+				);
+				if (equivalentError) {
+					prefabEditConflict =
+						openPrefabPath.lexically_normal() ==
+						linkedPrefabPath.lexically_normal();
+				}
+			}
+			if (prefabEditConflict) {
+				ImGui::TextColored(
+					ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+					"Save or close the open Prefab before changing this instance."
+				);
+			}
+			static std::string prefabInstanceStatus;
+			ImGui::BeginDisabled(
+				entityLocked ||
+				!editorSession_->IsEditing() ||
+				prefabEditConflict
+			);
+			if (ImGui::Button("Apply Instance To Prefab")) {
+				if (document.ApplyPrefabInstance(prefabInstanceRootId)) {
+					prefabInstanceStatus = "Applied instance values to the Prefab asset.";
+					InvalidateProjectCache();
+				} else {
+					prefabInstanceStatus = "Failed to apply the Prefab instance.";
+				}
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Revert Instance")) {
+				if (document.RevertPrefabInstance(prefabInstanceRootId)) {
+					prefabInstanceStatus = "Reverted the instance from its Prefab asset.";
+					selectedEntityId_ = prefabInstanceRootId;
+					selectedEntityIds_ = { prefabInstanceRootId };
+					editorSession_->RequestSceneReload();
+					ImGui::EndDisabled();
+					ImGui::End();
+					return;
+				}
+				prefabInstanceStatus = "Failed to revert the Prefab instance.";
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Unpack")) {
+				if (document.UnpackPrefabInstance(prefabInstanceRootId)) {
+					prefabInstanceStatus = "Unpacked the Prefab instance.";
+				} else {
+					prefabInstanceStatus = "Failed to unpack the Prefab instance.";
+				}
+			}
+			ImGui::EndDisabled();
+			if (!prefabInstanceStatus.empty()) {
+				ImGui::TextWrapped("%s", prefabInstanceStatus.c_str());
+			}
+			ImGui::SeparatorText("Create Prefab Asset");
+		}
 		ImGui::BeginDisabled(entityLocked || !editorSession_->IsEditing());
 		static std::string prefabOperationStatus;
 		static uint64_t prefabFileNameEntityId = 0;
@@ -4754,11 +4983,26 @@ void ImGuiManager::DrawInspectorWindow() {
 			const char* componentLabel = component.type == "OBBCollider"
 				? "Collider"
 				: component.type.c_str();
-			const bool componentOpen = ImGui::CollapsingHeader(
-				componentLabel,
-				ImGuiTreeNodeFlags_DefaultOpen |
-					ImGuiTreeNodeFlags_SpanAvailWidth
+			const std::string componentHeaderLabel =
+				std::string(componentLabel) + "##ComponentHeader";
+			const std::string foldoutKey = MakeComponentFoldoutKey(
+				editorSession_->GetActiveSceneId(),
+				entity->id,
+				component.type
 			);
+			const auto savedFoldout = componentFoldoutStates_.find(foldoutKey);
+			const bool wasComponentOpen = savedFoldout == componentFoldoutStates_.end()
+				? true
+				: savedFoldout->second;
+			ImGui::SetNextItemOpen(wasComponentOpen, ImGuiCond_Always);
+			const bool componentOpen = ImGui::CollapsingHeader(
+				componentHeaderLabel.c_str(),
+				ImGuiTreeNodeFlags_SpanAvailWidth
+			);
+			if (componentOpen != wasComponentOpen) {
+				componentFoldoutStates_[foldoutKey] = componentOpen;
+				SaveEditorSettings();
+			}
 			if (!componentOpen) {
 				ImGui::PopID();
 				continue;
@@ -6615,6 +6859,199 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "StateMachine") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool stateMachineChanged = false;
+				const char* initialPreview = component.stateMachineInitialState.empty()
+					? "Select State..."
+					: component.stateMachineInitialState.c_str();
+				if (ImGui::BeginCombo("Initial State", initialPreview)) {
+					for (const SceneStateDefinition& state :
+						component.stateMachineStates) {
+						if (ImGui::Selectable(
+							state.name.c_str(),
+							component.stateMachineInitialState == state.name
+						)) {
+							component.stateMachineInitialState = state.name;
+							stateMachineChanged = true;
+						}
+					}
+					ImGui::EndCombo();
+				}
+				stateMachineChanged |= ImGui::Checkbox(
+					"Reset On Disable", &component.stateMachineResetOnDisable
+				);
+				ImGui::TextDisabled(
+					"Actions are C++ classes registered by Action Id."
+				);
+				int removeStateIndex = -1;
+				for (size_t stateIndex = 0;
+					stateIndex < component.stateMachineStates.size();
+					++stateIndex) {
+					SceneStateDefinition& state =
+						component.stateMachineStates[stateIndex];
+					ImGui::PushID(static_cast<int>(stateIndex));
+					if (ImGui::TreeNodeEx(
+						"State",
+						ImGuiTreeNodeFlags_DefaultOpen,
+						"%s",
+						state.name.empty() ? "State" : state.name.c_str()
+					)) {
+						stateMachineChanged |= InputTextString("Name", state.name);
+						stateMachineChanged |= InputTextString(
+							"Action Id", state.actionId
+						);
+						if (ImGui::BeginCombo("Built-in Action", state.actionId.c_str())) {
+							for (const char* actionId : {
+								"Builtin.Idle", "Builtin.Move", "Builtin.MeleeAttack"
+							}) {
+								if (ImGui::Selectable(
+									actionId, state.actionId == actionId
+								)) {
+									state.actionId = actionId;
+									stateMachineChanged = true;
+								}
+							}
+							ImGui::EndCombo();
+						}
+
+						int removeParameterIndex = -1;
+						for (size_t parameterIndex = 0;
+							parameterIndex < state.parameters.size();
+							++parameterIndex) {
+							SceneStateParameter& parameter =
+								state.parameters[parameterIndex];
+							ImGui::PushID(static_cast<int>(parameterIndex));
+							ImGui::SeparatorText(
+								parameter.name.empty() ? "Parameter" : parameter.name.c_str()
+							);
+							stateMachineChanged |= InputTextString(
+								"Parameter Name", parameter.name
+							);
+							if (ImGui::BeginCombo("Type", parameter.type.c_str())) {
+								for (const char* type : {
+									"Float", "Int", "Bool", "String", "Input", "Entity"
+								}) {
+									if (ImGui::Selectable(
+										type, parameter.type == type
+									)) {
+										parameter.type = type;
+										stateMachineChanged = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+							if (parameter.type == "Float") {
+								stateMachineChanged |= ImGui::DragFloat(
+									"Value", &parameter.floatValue, 0.01f
+								);
+							} else if (parameter.type == "Int") {
+								stateMachineChanged |= ImGui::DragInt(
+									"Value", &parameter.intValue
+								);
+							} else if (parameter.type == "Bool") {
+								stateMachineChanged |= ImGui::Checkbox(
+									"Value", &parameter.boolValue
+								);
+							} else if (parameter.type == "String") {
+								stateMachineChanged |= InputTextString(
+									"Value", parameter.stringValue
+								);
+							} else if (parameter.type == "Input") {
+								const char* inputPreview = parameter.stringValue.empty()
+									? "Select Input..."
+									: parameter.stringValue.c_str();
+								if (ImGui::BeginCombo("Value", inputPreview)) {
+									for (const char* inputName : {
+										"Mouse Left", "Mouse Right", "Mouse Middle",
+										"Space", "Enter", "Escape", "Tab",
+										"A", "B", "C", "D", "E", "F", "G",
+										"H", "I", "J", "K", "L", "M", "N",
+										"O", "P", "Q", "R", "S", "T", "U",
+										"V", "W", "X", "Y", "Z"
+									}) {
+										if (ImGui::Selectable(
+											inputName,
+											parameter.stringValue == inputName
+										)) {
+											parameter.stringValue = inputName;
+											stateMachineChanged = true;
+										}
+									}
+									ImGui::EndCombo();
+								}
+							} else if (parameter.type == "Entity") {
+								const SceneEntity* selectedParameterEntity =
+									parameter.entityId != 0
+									? document.FindEntity(parameter.entityId)
+									: nullptr;
+								if (
+									!selectedParameterEntity &&
+									!parameter.entityName.empty()
+								) {
+									selectedParameterEntity = document.FindEntityByName(
+										parameter.entityName
+									);
+								}
+								const char* entityPreview = selectedParameterEntity
+									? selectedParameterEntity->name.c_str()
+									: "Select Entity...";
+								if (ImGui::BeginCombo("Value", entityPreview)) {
+									for (const SceneEntity& candidate : document.GetEntities()) {
+										if (ImGui::Selectable(
+											candidate.name.c_str(),
+											selectedParameterEntity &&
+											selectedParameterEntity->id == candidate.id
+										)) {
+											parameter.entityId = candidate.id;
+											parameter.entityName = candidate.name;
+											stateMachineChanged = true;
+										}
+									}
+									ImGui::EndCombo();
+								}
+							}
+							if (ImGui::SmallButton("Remove Parameter")) {
+								removeParameterIndex = static_cast<int>(parameterIndex);
+							}
+							ImGui::PopID();
+						}
+						if (removeParameterIndex >= 0) {
+							state.parameters.erase(
+								state.parameters.begin() + removeParameterIndex
+							);
+							stateMachineChanged = true;
+						}
+						if (ImGui::SmallButton("Add Parameter")) {
+							state.parameters.push_back(SceneStateParameter{});
+							stateMachineChanged = true;
+						}
+						ImGui::SameLine();
+						if (ImGui::SmallButton("Remove State")) {
+							removeStateIndex = static_cast<int>(stateIndex);
+						}
+						ImGui::TreePop();
+					}
+					ImGui::PopID();
+				}
+				if (removeStateIndex >= 0) {
+					component.stateMachineStates.erase(
+						component.stateMachineStates.begin() + removeStateIndex
+					);
+					stateMachineChanged = true;
+				}
+				if (ImGui::Button("Add State")) {
+					SceneStateDefinition state{};
+					state.name = "State" + std::to_string(
+						component.stateMachineStates.size() + 1
+					);
+					component.stateMachineStates.push_back(std::move(state));
+					stateMachineChanged = true;
+				}
+				if (stateMachineChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			} else if (component.type == "EventTrigger") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool eventsChanged = false;
@@ -6722,7 +7159,8 @@ void ImGuiManager::DrawInspectorWindow() {
 								if (ImGui::BeginCombo("Type", action.type.c_str())) {
 									for (const char* actionType : {
 										"ModifyStat", "SetEntityActive",
-										"InstantiatePrefab", "SceneTransition"
+										"InstantiatePrefab", "ChangeState",
+										"SceneTransition"
 									}) {
 										if (ImGui::Selectable(
 											actionType,
@@ -6783,6 +7221,10 @@ void ImGuiManager::DrawInspectorWindow() {
 									eventsChanged |= ImGui::Checkbox(
 										"Spawn At Target Transform",
 										&action.prefabUseTargetTransform
+									);
+								} else if (action.type == "ChangeState") {
+									eventsChanged |= InputTextString(
+										"State Name", action.stateName
 									);
 								} else if (action.type == "SceneTransition") {
 									eventsChanged |= InputTextString(
@@ -8404,6 +8846,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				"Animator",
 				"OBBCollider",
 				"StatSet",
+				"StateMachine",
 				"EventTrigger",
 				"PrefabAnimator",
 				"Faction",
@@ -8629,6 +9072,7 @@ void ImGuiManager::DrawProjectWindow() {
 
 			bool clicked = false;
 			bool openSceneRequested = false;
+			bool openPrefabRequested = false;
 			auto loadHoveredTexturePreview = [&]() {
 				if (
 					isTexture &&
@@ -8722,6 +9166,9 @@ void ImGuiManager::DrawProjectWindow() {
 					);
 					openSceneRequested = isScene && ImGui::IsItemHovered() &&
 						ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+					openPrefabRequested = fileName.ends_with(".prefab.json") &&
+						ImGui::IsItemHovered() &&
+						ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 					if (ImGui::IsItemHovered()) {
 						loadHoveredTexturePreview();
 					}
@@ -8745,6 +9192,9 @@ void ImGuiManager::DrawProjectWindow() {
 				);
 				openSceneRequested = isScene && ImGui::IsItemHovered() &&
 					ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+				openPrefabRequested = fileName.ends_with(".prefab.json") &&
+					ImGui::IsItemHovered() &&
+					ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 				if (ImGui::IsItemHovered()) {
 					loadHoveredTexturePreview();
 				}
@@ -8754,7 +9204,7 @@ void ImGuiManager::DrawProjectWindow() {
 			if (isSelected || selectedProjectFolder_ == filePath) {
 				ImGui::PopStyleColor();
 			}
-			if (clicked || openSceneRequested) {
+			if (clicked || openSceneRequested || openPrefabRequested) {
 				if (isDirectory) {
 					selectedProjectFolder_ = filePath;
 					selectedProjectFile_.clear();
@@ -8775,6 +9225,18 @@ void ImGuiManager::DrawProjectWindow() {
 						if (scene) {
 							RequestOpenScene(scene->id);
 						}
+					}
+					if (
+						openPrefabRequested &&
+						prefabEditorSession_ &&
+						prefabEditorSession_->Open(filePath)
+					) {
+						showPrefab_ = true;
+						const SceneDocument& prefab =
+							prefabEditorSession_->GetDocument();
+						prefabSelectedEntityId_ = prefab.GetEntities().empty()
+							? 0
+							: prefab.GetEntities().front().id;
 					}
 				}
 			}
@@ -8812,6 +9274,647 @@ void ImGuiManager::DrawDirectoryTreeNode(const ProjectDirectoryNode& node) {
 		ImGui::TreePop();
 	}
 	ImGui::PopID();
+}
+
+void ImGuiManager::DrawPrefabWindow() {
+	if (!prefabEditorSession_) {
+		showPrefab_ = false;
+		return;
+	}
+
+	bool windowOpen = true;
+	if (!ImGui::Begin("Prefab", &windowOpen)) {
+		ImGui::End();
+		if (!windowOpen) {
+			if (prefabEditorSession_->IsDirty()) {
+				prefabClosePopupRequested_ = true;
+			} else {
+				prefabEditorSession_->Close(true);
+				showPrefab_ = false;
+				prefabSelectedEntityId_ = 0;
+			}
+		}
+		return;
+	}
+
+	if (!prefabEditorSession_->IsOpen()) {
+		ImGui::TextDisabled(
+			"Select a .prefab.json asset in Project and choose Open Prefab Editor."
+		);
+		ImGui::End();
+		return;
+	}
+
+	prefabEditorSession_->BeginEditFrame();
+	ImGui::TextUnformatted(prefabEditorSession_->GetFilePath().c_str());
+	if (prefabEditorSession_->IsDirty()) {
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.25f, 1.0f), "Unsaved");
+	}
+	if (ImGui::Button("Save")) {
+		prefabEditorSession_->Save();
+	}
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!prefabEditorSession_->CanUndo());
+	if (ImGui::Button("Undo")) {
+		prefabEditorSession_->Undo();
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!prefabEditorSession_->CanRedo());
+	if (ImGui::Button("Redo")) {
+		prefabEditorSession_->Redo();
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(prefabEditorSession_->IsDirty());
+	if (ImGui::Button("Reload")) {
+		prefabEditorSession_->Reload();
+		const SceneDocument& document = prefabEditorSession_->GetDocument();
+		prefabSelectedEntityId_ = document.GetEntities().empty()
+			? 0
+			: document.GetEntities().front().id;
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	if (ImGui::Button("Close")) {
+		windowOpen = false;
+	}
+	if (!prefabEditorSession_->GetLastError().empty()) {
+		ImGui::TextColored(
+			ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+			"%s",
+			prefabEditorSession_->GetLastError().c_str()
+		);
+	}
+
+	ImGui::Separator();
+	if (ImGui::BeginTable(
+		"PrefabWorkspace",
+		2,
+		ImGuiTableFlags_Resizable |
+			ImGuiTableFlags_BordersInnerV |
+			ImGuiTableFlags_SizingStretchProp
+	)) {
+		ImGui::TableSetupColumn("Hierarchy", ImGuiTableColumnFlags_WidthFixed, 250.0f);
+		ImGui::TableSetupColumn("Inspector", ImGuiTableColumnFlags_WidthStretch);
+		ImGui::TableNextColumn();
+		DrawPrefabHierarchy();
+		ImGui::TableNextColumn();
+		DrawPrefabInspector();
+		ImGui::EndTable();
+	}
+
+	const bool editingInteractionActive =
+		ImGui::IsAnyItemActive() ||
+		ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
+		ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
+		ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+	prefabEditorSession_->EndEditFrame(!editingInteractionActive);
+	ImGui::End();
+
+	if (!windowOpen) {
+		if (prefabEditorSession_->IsDirty()) {
+			prefabClosePopupRequested_ = true;
+		} else {
+			prefabEditorSession_->Close(true);
+			showPrefab_ = false;
+			prefabSelectedEntityId_ = 0;
+		}
+	}
+	if (prefabClosePopupRequested_) {
+		ImGui::OpenPopup("Close Prefab?");
+		prefabClosePopupRequested_ = false;
+	}
+	if (ImGui::BeginPopupModal(
+		"Close Prefab?",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		ImGui::TextUnformatted("The Prefab has unsaved changes.");
+		if (ImGui::Button("Save and Close")) {
+			if (prefabEditorSession_->Save()) {
+				prefabEditorSession_->Close(true);
+				showPrefab_ = false;
+				prefabSelectedEntityId_ = 0;
+				ImGui::CloseCurrentPopup();
+			}
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Discard")) {
+			prefabEditorSession_->Close(true);
+			showPrefab_ = false;
+			prefabSelectedEntityId_ = 0;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel")) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+}
+
+void ImGuiManager::DrawPrefabHierarchy() {
+	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
+		return;
+	}
+	SceneDocument& document = prefabEditorSession_->GetDocument();
+	const uint64_t selectedParentId = document.FindEntity(prefabSelectedEntityId_)
+		? prefabSelectedEntityId_
+		: 0;
+	const bool hasRoot = std::any_of(
+		document.GetEntities().begin(),
+		document.GetEntities().end(),
+		[](const SceneEntity& entity) { return entity.parentId == 0; }
+	);
+	ImGui::BeginDisabled(hasRoot);
+	if (ImGui::Button("Create Root")) {
+		SceneEntity& entity = document.CreateEntity("Entity");
+		prefabSelectedEntityId_ = entity.id;
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(selectedParentId == 0);
+	if (ImGui::Button("Create Child")) {
+		SceneEntity& entity = document.CreateEntity("Entity", selectedParentId);
+		prefabSelectedEntityId_ = entity.id;
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(selectedParentId == 0);
+	if (ImGui::Button("Delete")) {
+		document.RemoveEntity(selectedParentId);
+		prefabSelectedEntityId_ = 0;
+	}
+	ImGui::EndDisabled();
+	ImGui::Separator();
+
+	std::function<void(uint64_t)> drawEntity;
+	drawEntity = [&](uint64_t entityId) {
+		const SceneEntity* entity = document.FindEntity(entityId);
+		if (!entity) {
+			return;
+		}
+		const bool hasChildren = std::any_of(
+			document.GetEntities().begin(),
+			document.GetEntities().end(),
+			[entityId](const SceneEntity& candidate) {
+				return candidate.parentId == entityId;
+			}
+		);
+		ImGuiTreeNodeFlags flags =
+			ImGuiTreeNodeFlags_OpenOnArrow |
+			ImGuiTreeNodeFlags_SpanAvailWidth;
+		if (!hasChildren) {
+			flags |= ImGuiTreeNodeFlags_Leaf |
+				ImGuiTreeNodeFlags_NoTreePushOnOpen;
+		}
+		if (prefabSelectedEntityId_ == entityId) {
+			flags |= ImGuiTreeNodeFlags_Selected;
+		}
+		ImGui::PushID(static_cast<int>(entityId));
+		const bool open = ImGui::TreeNodeEx(
+			"##PrefabEntity",
+			flags,
+			"%s%s",
+			entity->active ? "" : "(inactive) ",
+			entity->name.c_str()
+		);
+		if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+			prefabSelectedEntityId_ = entityId;
+		}
+		if (hasChildren && open) {
+			for (const SceneEntity& child : document.GetEntities()) {
+				if (child.parentId == entityId) {
+					drawEntity(child.id);
+				}
+			}
+			ImGui::TreePop();
+		}
+		ImGui::PopID();
+	};
+
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (entity.parentId == 0) {
+			drawEntity(entity.id);
+		}
+	}
+}
+
+void ImGuiManager::DrawPrefabInspector() {
+	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
+		return;
+	}
+	SceneDocument& document = prefabEditorSession_->GetDocument();
+	SceneEntity* entity = document.FindEntity(prefabSelectedEntityId_);
+	if (!entity) {
+		ImGui::TextDisabled("Select a Prefab Entity.");
+		return;
+	}
+
+	bool entityChanged = false;
+	entityChanged |= InputTextString("Name", entity->name);
+	entityChanged |= ImGui::Checkbox("Active", &entity->active);
+	ImGui::SeparatorText("Transform");
+	entityChanged |= ImGui::DragFloat3(
+		"Position", &entity->transform.translate.x, 0.01f
+	);
+	Vector3 rotationEuler = MakeEulerFromQuaternion(entity->transform.rotate);
+	if (ImGui::DragFloat3("Rotation", &rotationEuler.x, 0.01f)) {
+		entity->transform.rotate = MakeQuaternionFromEuler(rotationEuler);
+		entityChanged = true;
+	}
+	entityChanged |= ImGui::DragFloat3(
+		"Scale", &entity->transform.scale.x, 0.01f
+	);
+	if (entityChanged) {
+		document.MarkDirty();
+	}
+
+	if (const SceneComponent* meshRenderer =
+		FindEnabledComponent(*entity, "MeshRenderer")) {
+		if (
+			!meshRenderer->modelPath.empty() &&
+			modelPreviewRenderedPath_ == meshRenderer->modelPath &&
+			modelPreviewTexture_.ptr != 0
+		) {
+			ImGui::SeparatorText("Preview");
+			const float availableWidth = ImGui::GetContentRegionAvail().x;
+			const float previewSize = std::clamp(availableWidth, 180.0f, 420.0f);
+			ImGui::Image(
+				ImTextureRef(static_cast<ImTextureID>(modelPreviewTexture_.ptr)),
+				ImVec2(previewSize, previewSize)
+			);
+			if (ImGui::IsItemHovered()) {
+				const ImGuiIO& io = ImGui::GetIO();
+				if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+					modelPreviewYaw_ += io.MouseDelta.x * 0.01f;
+					modelPreviewPitch_ = std::clamp(
+						modelPreviewPitch_ + io.MouseDelta.y * 0.01f,
+						-1.45f,
+						1.45f
+					);
+				}
+				if (io.MouseWheel != 0.0f) {
+					modelPreviewZoom_ = std::clamp(
+						modelPreviewZoom_ * (1.0f - io.MouseWheel * 0.1f),
+						0.15f,
+						8.0f
+					);
+				}
+			}
+		}
+	}
+
+	int removeComponentIndex = -1;
+	for (size_t componentIndex = 0;
+		componentIndex < entity->components.size();
+		++componentIndex) {
+		SceneComponent& component = entity->components[componentIndex];
+		ImGui::PushID(static_cast<int>(componentIndex));
+		const bool open = ImGui::CollapsingHeader(
+			component.type.c_str(),
+			ImGuiTreeNodeFlags_DefaultOpen
+		);
+		if (!open) {
+			ImGui::PopID();
+			continue;
+		}
+		bool changed = ImGui::Checkbox("Enabled", &component.enabled);
+		if (component.type == "MeshRenderer") {
+			const char* currentModel = component.modelPath.empty()
+				? "None"
+				: component.modelPath.c_str();
+			if (ImGui::BeginCombo("Model", currentModel)) {
+				for (const std::string& modelPath : GetCachedModelAssetPaths()) {
+					if (ImGui::Selectable(
+						modelPath.c_str(), component.modelPath == modelPath
+					)) {
+						component.modelPath = modelPath;
+						entity->modelPath = modelPath;
+						changed = true;
+					}
+				}
+				ImGui::EndCombo();
+			}
+		} else if (component.type == "Animator") {
+			changed |= ImGui::Checkbox(
+				"Play On Start", &component.animatorPlayOnStart
+			);
+			changed |= ImGui::Checkbox("Loop", &component.animatorLoop);
+			changed |= ImGui::DragFloat(
+				"Speed", &component.animatorSpeed, 0.01f, 0.0f, 100.0f
+			);
+			changed |= ImGui::DragInt(
+				"Default Clip", &component.animatorDefaultClip, 1.0f, 0, 1024
+			);
+		} else if (component.type == "OBBCollider") {
+			if (ImGui::BeginCombo("Shape", component.colliderShape.c_str())) {
+				for (const char* shape : { "Box", "Sphere" }) {
+					if (ImGui::Selectable(
+						shape, component.colliderShape == shape
+					)) {
+						component.colliderShape = shape;
+						changed = true;
+					}
+				}
+				ImGui::EndCombo();
+			}
+			changed |= ImGui::DragFloat3(
+				"Offset", &component.colliderOffset.x, 0.01f
+			);
+			if (component.colliderShape == "Sphere") {
+				changed |= ImGui::DragFloat(
+					"Radius", &component.colliderSphereRadius, 0.01f, 0.001f, 10000.0f
+				);
+			} else {
+				changed |= ImGui::DragFloat3(
+					"Half Size", &component.colliderSizeMultiplier.x, 0.01f
+				);
+			}
+			changed |= ImGui::Checkbox("Is Trigger", &component.colliderIsTrigger);
+			changed |= ImGui::Checkbox("Collider Active", &component.colliderActive);
+			changed |= ImGui::Checkbox(
+				"Debug Visible", &component.colliderDebugVisible
+			);
+		} else if (component.type == "HitBox") {
+			changed |= ImGui::DragFloat(
+				"Damage", &component.hitBoxDamage, 0.1f, 0.0f, 100000.0f
+			);
+			changed |= ImGui::DragFloat(
+				"Poise Damage", &component.hitBoxPoiseDamage, 0.1f, 0.0f, 100000.0f
+			);
+			changed |= InputTextString(
+				"Owner Name", component.hitBoxOwnerEntityName
+			);
+			ImGui::TextDisabled("Use with an active Trigger Collider.");
+		} else if (component.type == "HurtBox") {
+			changed |= ImGui::DragFloat(
+				"Damage Multiplier",
+				&component.hurtBoxDamageMultiplier,
+				0.01f,
+				0.0f,
+				1000.0f
+			);
+			changed |= InputTextString(
+				"Stats Entity Name", component.hurtBoxStatsEntityName
+			);
+		} else if (component.type == "BoneAttachment") {
+			SceneEntity* targetEntity = component.boneAttachmentTargetEntityId != 0
+				? document.FindEntity(component.boneAttachmentTargetEntityId)
+				: nullptr;
+			if (!targetEntity && !component.boneAttachmentTargetEntityName.empty()) {
+				targetEntity = document.FindEntityByName(
+					component.boneAttachmentTargetEntityName
+				);
+			}
+			SceneEntity* parentEntity = document.FindEntity(entity->parentId);
+			SceneEntity* effectiveTarget = targetEntity ? targetEntity : parentEntity;
+			const char* targetLabel = targetEntity
+				? targetEntity->name.c_str()
+				: "Parent / Auto";
+			if (ImGui::BeginCombo("Target Entity", targetLabel)) {
+				if (ImGui::Selectable(
+					"Parent / Auto",
+					component.boneAttachmentTargetEntityId == 0 &&
+						component.boneAttachmentTargetEntityName.empty()
+				)) {
+					component.boneAttachmentTargetEntityId = 0;
+					component.boneAttachmentTargetEntityName.clear();
+					component.boneAttachmentJointName.clear();
+					changed = true;
+				}
+				for (const SceneEntity& candidate : document.GetEntities()) {
+					if (
+						candidate.id == entity->id ||
+						!FindEnabledComponent(candidate, "MeshRenderer")
+					) {
+						continue;
+					}
+					if (ImGui::Selectable(
+						candidate.name.c_str(),
+						targetEntity && targetEntity->id == candidate.id
+					)) {
+						component.boneAttachmentTargetEntityId = candidate.id;
+						component.boneAttachmentTargetEntityName = candidate.name;
+						component.boneAttachmentJointName.clear();
+						changed = true;
+					}
+				}
+				ImGui::EndCombo();
+			}
+			const std::vector<std::string> jointNames = effectiveTarget
+				? CollectEntityJointNames(*effectiveTarget)
+				: std::vector<std::string>{};
+			ImGui::BeginDisabled(jointNames.empty());
+			changed |= DrawJointNameCombo(
+				"Target Bone", jointNames, component.boneAttachmentJointName
+			);
+			ImGui::EndDisabled();
+			const bool matchesSourceBone =
+				component.boneAttachmentAlignmentMode == "MatchSourceBone";
+			if (ImGui::BeginCombo(
+				"Alignment Mode",
+				matchesSourceBone ? "Match Weapon Bone" : "Manual Offset"
+			)) {
+				if (ImGui::Selectable("Manual Offset", !matchesSourceBone)) {
+					component.boneAttachmentAlignmentMode = "ManualOffset";
+					changed = true;
+				}
+				if (ImGui::Selectable("Match Weapon Bone", matchesSourceBone)) {
+					component.boneAttachmentAlignmentMode = "MatchSourceBone";
+					changed = true;
+				}
+				ImGui::EndCombo();
+			}
+			if (matchesSourceBone) {
+				const std::vector<std::string> sourceJointNames =
+					CollectEntityJointNames(*entity);
+				ImGui::BeginDisabled(sourceJointNames.empty());
+				changed |= DrawJointNameCombo(
+					"Weapon Bone",
+					sourceJointNames,
+					component.boneAttachmentSourceJointName
+				);
+				ImGui::EndDisabled();
+				ImGui::TextDisabled(
+					"The weapon bone is aligned exactly with the target bone."
+				);
+			} else {
+				ImGui::TextDisabled(
+					"The Entity Transform is used as the attachment offset."
+				);
+			}
+			changed |= ImGui::Checkbox(
+				"Inherit Bone Scale", &component.boneAttachmentInheritScale
+			);
+		} else if (component.type == "PrefabAnimator") {
+			int removeClipIndex = -1;
+			for (size_t clipIndex = 0;
+				clipIndex < component.prefabAnimationClips.size();
+				++clipIndex) {
+				ScenePrefabAnimationClip& clip =
+					component.prefabAnimationClips[clipIndex];
+				ImGui::PushID(static_cast<int>(clipIndex));
+				if (ImGui::TreeNodeEx(
+					"Clip", ImGuiTreeNodeFlags_DefaultOpen, "%s", clip.name.c_str()
+				)) {
+					changed |= InputTextString("Clip Name", clip.name);
+					changed |= ImGui::DragFloat(
+						"Duration", &clip.duration, 0.01f, 0.001f, 3600.0f
+					);
+					changed |= ImGui::Checkbox("Loop", &clip.loop);
+					changed |= ImGui::Checkbox("Play On Start", &clip.playOnStart);
+					int removeTrackIndex = -1;
+					for (size_t trackIndex = 0;
+						trackIndex < clip.tracks.size();
+						++trackIndex) {
+						SceneAnimationTrack& track = clip.tracks[trackIndex];
+						ImGui::PushID(static_cast<int>(trackIndex));
+						if (ImGui::TreeNodeEx(
+							"Track", ImGuiTreeNodeFlags_DefaultOpen, "%s", track.property.c_str()
+						)) {
+							const SceneEntity* trackTarget = track.targetEntityId != 0
+								? document.FindEntity(track.targetEntityId)
+								: entity;
+							if (ImGui::BeginCombo(
+								"Target",
+								trackTarget ? trackTarget->name.c_str() : "Self"
+							)) {
+								if (ImGui::Selectable("Self", track.targetEntityId == 0)) {
+									track.targetEntityId = 0;
+									track.targetEntityName.clear();
+									changed = true;
+								}
+								for (const SceneEntity& candidate : document.GetEntities()) {
+									if (ImGui::Selectable(
+										candidate.name.c_str(),
+										track.targetEntityId == candidate.id
+									)) {
+										track.targetEntityId = candidate.id;
+										track.targetEntityName = candidate.name;
+										changed = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+							if (ImGui::BeginCombo("Property", track.property.c_str())) {
+								for (const char* property : {
+									"LocalPosition", "LocalRotation", "LocalScale", "Active"
+								}) {
+									if (ImGui::Selectable(
+										property, track.property == property
+									)) {
+										track.property = property;
+										changed = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+							int removeKeyIndex = -1;
+							for (size_t keyIndex = 0;
+								keyIndex < track.keyframes.size();
+								++keyIndex) {
+								SceneAnimationKeyframe& key = track.keyframes[keyIndex];
+								ImGui::PushID(static_cast<int>(keyIndex));
+								changed |= ImGui::DragFloat(
+									"Time", &key.time, 0.01f, 0.0f, clip.duration
+								);
+								changed |= ImGui::DragFloat3(
+									"Value", &key.value.x, 0.01f
+								);
+								ImGui::SameLine();
+								if (ImGui::SmallButton("X")) {
+									removeKeyIndex = static_cast<int>(keyIndex);
+								}
+								ImGui::PopID();
+							}
+							if (removeKeyIndex >= 0) {
+								track.keyframes.erase(
+									track.keyframes.begin() + removeKeyIndex
+								);
+								changed = true;
+							}
+							if (ImGui::SmallButton("Add Keyframe")) {
+								track.keyframes.push_back(SceneAnimationKeyframe{});
+								changed = true;
+							}
+							ImGui::SameLine();
+							if (ImGui::SmallButton("Remove Track")) {
+								removeTrackIndex = static_cast<int>(trackIndex);
+							}
+							ImGui::TreePop();
+						}
+						ImGui::PopID();
+					}
+					if (removeTrackIndex >= 0) {
+						clip.tracks.erase(clip.tracks.begin() + removeTrackIndex);
+						changed = true;
+					}
+					if (ImGui::SmallButton("Add Track")) {
+						clip.tracks.push_back(SceneAnimationTrack{});
+						changed = true;
+					}
+					ImGui::SameLine();
+					if (ImGui::SmallButton("Remove Clip")) {
+						removeClipIndex = static_cast<int>(clipIndex);
+					}
+					ImGui::TreePop();
+				}
+				ImGui::PopID();
+			}
+			if (removeClipIndex >= 0) {
+				component.prefabAnimationClips.erase(
+					component.prefabAnimationClips.begin() + removeClipIndex
+				);
+				changed = true;
+			}
+			if (ImGui::Button("Add Clip")) {
+				component.prefabAnimationClips.push_back(ScenePrefabAnimationClip{});
+				changed = true;
+			}
+		}
+
+		if (changed) {
+			document.MarkDirty();
+		}
+		if (ImGui::SmallButton("Remove Component")) {
+			removeComponentIndex = static_cast<int>(componentIndex);
+		}
+		ImGui::Separator();
+		ImGui::PopID();
+	}
+	if (removeComponentIndex >= 0) {
+		const std::string type = entity->components[removeComponentIndex].type;
+		document.RemoveComponent(entity->id, type);
+	}
+
+	ImGui::SeparatorText("Add Component");
+	static int componentTypeIndex = 0;
+	static constexpr const char* componentTypes[] = {
+		"MeshRenderer", "Animator", "OBBCollider", "HitBox", "HurtBox",
+		"BoneAttachment", "PrefabAnimator", "Faction", "StateMachine"
+	};
+	componentTypeIndex = std::clamp(
+		componentTypeIndex,
+		0,
+		static_cast<int>(IM_ARRAYSIZE(componentTypes) - 1)
+	);
+	if (ImGui::BeginCombo("##PrefabComponentType", componentTypes[componentTypeIndex])) {
+		for (int index = 0; index < IM_ARRAYSIZE(componentTypes); ++index) {
+			if (ImGui::Selectable(
+				componentTypes[index], componentTypeIndex == index
+			)) {
+				componentTypeIndex = index;
+			}
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Add")) {
+		document.AddComponent(entity->id, componentTypes[componentTypeIndex]);
+	}
 }
 
 void ImGuiManager::DrawConsoleWindow() {

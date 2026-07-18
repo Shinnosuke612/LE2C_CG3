@@ -261,6 +261,7 @@ void RuntimeScene::Update(float deltaTime)
 		statSystem_.Clear();
 		prefabAnimationSystem_.Clear();
 		eventSystem_.Clear();
+		stateMachineSystem_.Clear();
 		combatSystem_.Clear();
 		enemySystem_.Clear();
 		projectileSystem_.Clear();
@@ -312,6 +313,7 @@ void RuntimeScene::Update(float deltaTime)
 		combatSystem_.Clear();
 		enemySystem_.Clear();
 		eventSystem_.Clear();
+		stateMachineSystem_.Clear();
 		prefabAnimationSystem_.Clear();
 		projectileSystem_.Clear();
 		statSystem_.Clear();
@@ -333,6 +335,16 @@ void RuntimeScene::Update(float deltaTime)
 	}
 	if (player_ && playing) {
 		player_->Update(camera_);
+	}
+	if (activeDocument && playing) {
+		// State行動は入力取得後、Physics確定前に速度・攻撃判定を更新する。
+		stateMachineSystem_.Update(
+			*activeDocument,
+			runtimeObjectBindings_,
+			player_,
+			prefabAnimationSystem_,
+			deltaTime
+		);
 	}
 	if (activeDocument) {
 		physicsSystem_.Step(
@@ -401,6 +413,7 @@ void RuntimeScene::Update(float deltaTime)
 		const std::string eventTargetSceneId = eventSystem_.Update(
 			*activeDocument,
 			statSystem_,
+			stateMachineSystem_,
 			deltaTime
 		);
 		if (!eventTargetSceneId.empty()) {
@@ -552,6 +565,7 @@ void RuntimeScene::Finalize()
 	combatSystem_.Clear();
 	enemySystem_.Clear();
 	eventSystem_.Clear();
+	stateMachineSystem_.Clear();
 	physicsSystem_.Clear();
 	prefabAnimationSystem_.Clear();
 	projectileSystem_.Clear();
