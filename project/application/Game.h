@@ -18,6 +18,7 @@ class SceneAssetService;
 class SceneExecutionContext;
 class SceneStartupErrorScreen;
 class SceneTemplateRegistry;
+class PrefabPreviewRenderer;
 class Camera;
 class Object3d;
 
@@ -71,6 +72,7 @@ private:
 	void StorePostProcessSettingsToDocument();
 	WaterPostEffectState ResolveWaterPostEffectState(const Camera* camera) const;
 	void DrawModelPreview();
+	void DrawPrefabPreview();
 	CameraSnapshot CaptureCameraSnapshot() const;
 	void RestoreCameraSnapshot(const CameraSnapshot& snapshot) const;
 	void BeginPauseDebugCamera();
@@ -101,6 +103,7 @@ private:
 	SceneRenderTarget* modelPreviewRenderTarget_ = nullptr;
 	Camera* modelPreviewCamera_ = nullptr;
 	Object3d* modelPreviewObject_ = nullptr;
+	PrefabPreviewRenderer* prefabPreviewRenderer_ = nullptr;
 	CameraSnapshot editorCameraSnapshot_{};
 	CameraSnapshot pauseMainCameraSnapshot_{};
 	bool editorWasEditingLastFrame_ = true;

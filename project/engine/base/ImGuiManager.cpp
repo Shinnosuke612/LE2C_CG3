@@ -34,6 +34,7 @@
 #include "../scene/SceneDocument.h"
 #include "../scene/SceneEntityQuery.h"
 #include "../scene/SceneManager.h"
+#include "../scene/ScenePrefabAnimationEvaluator.h"
 #include "../scene/SceneTemplateRegistry.h"
 #include "../scene/SceneTransformResolver.h"
 #include "../utility/EditableResourcePath.h"
@@ -52,6 +53,7 @@ namespace {
 	using SceneEntityQuery::FindComponent;
 	using SceneEntityQuery::FindEnabledComponent;
 	using SceneEntityQuery::HasComponent;
+	using SceneEntityQuery::IsEntityActiveInHierarchy;
 	using SceneTransformResolver::ResolveSceneWorldMatrix;
 
 	bool IsSameRotation(const Quaternion& left, const Quaternion& right) {
@@ -252,6 +254,40 @@ namespace {
 		return TextureFormat::IsSupportedTexturePath(path);
 	}
 
+	bool IsPrefabAssetPath(const std::filesystem::path& path) {
+		return PathToUtf8(path.filename()).ends_with(".prefab.json");
+	}
+
+	std::string ResolvePrefabAssetPath(const std::string& path) {
+		return PathToUtf8(
+			EditableResourcePath::ResolveResource(
+				PathFromUtf8(path)
+			).lexically_normal()
+		);
+	}
+
+	bool ContainsCaseInsensitive(
+		const std::string& text,
+		const std::string& search
+	) {
+		if (search.empty()) {
+			return true;
+		}
+		auto toLower = [](const std::string& value) {
+			std::string result = value;
+			std::transform(
+				result.begin(),
+				result.end(),
+				result.begin(),
+				[](unsigned char character) {
+					return static_cast<char>(std::tolower(character));
+				}
+			);
+			return result;
+		};
+		return toLower(text).find(toLower(search)) != std::string::npos;
+	}
+
 	std::filesystem::path GetProjectResourceRoot() {
 		return EditableResourcePath::Resolve("resources");
 	}
@@ -397,6 +433,41 @@ namespace {
 		}
 		outDistance = tMin;
 		return true;
+	}
+
+	bool IntersectRaySphere(
+		const Vector3& rayOrigin,
+		const Vector3& rayDirection,
+		const Vector3& center,
+		float radius,
+		float& outDistance
+	) {
+		const Vector3 originToCenter = Math::Subtract(rayOrigin, center);
+		const float projected = Math::Dot(originToCenter, rayDirection);
+		const float squaredDistance = Math::Dot(
+			originToCenter,
+			originToCenter
+		);
+		const float discriminant =
+			projected * projected - (squaredDistance - radius * radius);
+		if (discriminant < 0.0f) {
+			return false;
+		}
+		outDistance = -projected - std::sqrt(discriminant);
+		if (outDistance < 0.0f) {
+			outDistance = -projected + std::sqrt(discriminant);
+		}
+		return outDistance >= 0.0f;
+	}
+
+	float GetMaxWorldAxisScale(const Matrix4x4& matrix) {
+		return (std::max)(
+			Math::Length({ matrix.m[0][0], matrix.m[0][1], matrix.m[0][2] }),
+			(std::max)(
+				Math::Length({ matrix.m[1][0], matrix.m[1][1], matrix.m[1][2] }),
+				Math::Length({ matrix.m[2][0], matrix.m[2][1], matrix.m[2][2] })
+			)
+		);
 	}
 
 	bool IsLowPriorityPickTarget(
@@ -570,6 +641,7 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 	sceneViewWidth_ = dxCommon_->GetClientWidth();
 	sceneViewHeight_ = dxCommon_->GetClientHeight();
 	prefabEditorSession_ = new PrefabEditorSession();
+	prefabAnimationPreviewDocument_ = new SceneDocument();
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -814,6 +886,50 @@ void ImGuiManager::LoadEditorSettings() {
 				}
 			}
 		}
+		if (
+			settings.contains("recentPrefabs") &&
+			settings["recentPrefabs"].is_array()
+		) {
+			recentPrefabPaths_.clear();
+			for (const json& value : settings["recentPrefabs"]) {
+				if (!value.is_string()) {
+					continue;
+				}
+				const std::string resolvedPath = ResolvePrefabAssetPath(
+					value.get<std::string>()
+				);
+				if (
+					IsPrefabAssetPath(PathFromUtf8(resolvedPath)) &&
+					std::find(
+						recentPrefabPaths_.begin(),
+						recentPrefabPaths_.end(),
+						resolvedPath
+					) == recentPrefabPaths_.end()
+				) {
+					recentPrefabPaths_.push_back(resolvedPath);
+				}
+				if (recentPrefabPaths_.size() >= 12) {
+					break;
+				}
+			}
+		}
+		if (
+			settings.contains("favoritePrefabs") &&
+			settings["favoritePrefabs"].is_array()
+		) {
+			favoritePrefabPaths_.clear();
+			for (const json& value : settings["favoritePrefabs"]) {
+				if (!value.is_string()) {
+					continue;
+				}
+				const std::string resolvedPath = ResolvePrefabAssetPath(
+					value.get<std::string>()
+				);
+				if (IsPrefabAssetPath(PathFromUtf8(resolvedPath))) {
+					favoritePrefabPaths_.insert(resolvedPath);
+				}
+			}
+		}
 	} catch (const json::exception&) {
 		// 壊れたエディタ設定は無視し、既定値で起動する。
 	}
@@ -831,12 +947,35 @@ void ImGuiManager::SaveEditorSettings() const {
 	for (const auto& [key, open] : componentFoldoutStates_) {
 		componentFoldouts[key] = open;
 	}
+	json recentPrefabs = json::array();
+	for (const std::string& prefabPath : recentPrefabPaths_) {
+		recentPrefabs.push_back(PathToUtf8(
+			EditableResourcePath::ToProjectRelative(
+				PathFromUtf8(prefabPath)
+			)
+		));
+	}
+	std::vector<std::string> favoritePrefabPaths(
+		favoritePrefabPaths_.begin(),
+		favoritePrefabPaths_.end()
+	);
+	std::sort(favoritePrefabPaths.begin(), favoritePrefabPaths.end());
+	json favoritePrefabs = json::array();
+	for (const std::string& prefabPath : favoritePrefabPaths) {
+		favoritePrefabs.push_back(PathToUtf8(
+			EditableResourcePath::ToProjectRelative(
+				PathFromUtf8(prefabPath)
+			)
+		));
+	}
 
 	const json settings = {
 		{ "fontPreset", preset },
 		{ "fontSize", editorFontSize_ },
 		{ "startFullscreen", startFullscreen_ },
-		{ "componentFoldouts", std::move(componentFoldouts) }
+		{ "componentFoldouts", std::move(componentFoldouts) },
+		{ "recentPrefabs", std::move(recentPrefabs) },
+		{ "favoritePrefabs", std::move(favoritePrefabs) }
 	};
 	EditableResourcePath::WriteTextAtomically(
 		kEditorSettingsPath,
@@ -1012,6 +1151,60 @@ void ImGuiManager::DrawEditorWorkspace(
 				selectedProjectFile_.clear();
 			}
 		}
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+			"PROJECT_PREFAB_PATH"
+		)) {
+			const char* droppedPath = static_cast<const char*>(payload->Data);
+			if (droppedPath && droppedPath[0] != '\0') {
+				Vector3 dropPosition{};
+				const Vector3* rootTranslate = nullptr;
+				Camera* camera = Object3dCommon::GetInstance()
+					? Object3dCommon::GetInstance()->GetDefaultCamera()
+					: nullptr;
+				if (camera) {
+					const ImVec2 mouse = ImGui::GetMousePos();
+					const float width = (std::max)(
+						sceneMax.x - sceneMin.x,
+						1.0f
+					);
+					const float height = (std::max)(
+						sceneMax.y - sceneMin.y,
+						1.0f
+					);
+					const float ndcX =
+						((mouse.x - sceneMin.x) / width) * 2.0f - 1.0f;
+					const float ndcY =
+						1.0f - ((mouse.y - sceneMin.y) / height) * 2.0f;
+					const Matrix4x4 inverseViewProjection = Inverse(
+						Multiply(
+							camera->GetViewMatrix(),
+							camera->GetProjectionMatrix()
+						)
+					);
+					const Vector3 nearPoint = TransformCoord(
+						{ ndcX, ndcY, 0.0f },
+						inverseViewProjection
+					);
+					const Vector3 farPoint = TransformCoord(
+						{ ndcX, ndcY, 1.0f },
+						inverseViewProjection
+					);
+					const Vector3 rayDirection = Math::Normalize(
+						Math::Subtract(farPoint, nearPoint)
+					);
+					dropPosition = Math::Add(
+						nearPoint,
+						Math::Multiply(rayDirection, 5.0f)
+					);
+					rootTranslate = &dropPosition;
+				}
+				InstantiatePrefabInEditScene(
+					droppedPath,
+					0,
+					rootTranslate
+				);
+			}
+		}
 		ImGui::EndDragDropTarget();
 	}
 
@@ -1116,6 +1309,25 @@ void ImGuiManager::SetModelPreviewTexture(
 	modelPreviewHeight_ = (std::max)(height, 1u);
 }
 
+void ImGuiManager::SetPrefabPreviewTexture(
+	const std::string& assetPath,
+	uint64_t revision,
+	D3D12_GPU_DESCRIPTOR_HANDLE texture,
+	uint32_t width,
+	uint32_t height,
+	const Matrix4x4& viewMatrix,
+	const Matrix4x4& projectionMatrix
+) {
+	prefabPreviewRenderedPath_ = assetPath;
+	prefabPreviewRenderedRevision_ = revision;
+	prefabPreviewTexture_ = texture;
+	prefabPreviewTextureWidth_ = (std::max)(width, 1u);
+	prefabPreviewTextureHeight_ = (std::max)(height, 1u);
+	prefabPreviewViewMatrix_ = viewMatrix;
+	prefabPreviewProjectionMatrix_ = projectionMatrix;
+	prefabPreviewCameraValid_ = texture.ptr != 0;
+}
+
 const std::vector<std::string>& ImGuiManager::GetCachedModelAssetPaths() {
 	if (assetPathCacheDirty_) {
 		RefreshAssetPathCache();
@@ -1130,6 +1342,73 @@ const std::vector<std::string>& ImGuiManager::GetCachedTextureAssetPaths() {
 	return cachedTextureAssetPaths_;
 }
 
+const std::vector<std::string>& ImGuiManager::GetCachedPrefabAssetPaths() {
+	if (prefabAssetPathCacheDirty_) {
+		RefreshPrefabAssetPathCache();
+	}
+	return cachedPrefabAssetPaths_;
+}
+
+void ImGuiManager::RefreshPrefabAssetPathCache() {
+	cachedPrefabAssetPaths_.clear();
+	std::error_code error;
+	std::filesystem::recursive_directory_iterator iterator(
+		GetProjectResourceRoot(),
+		std::filesystem::directory_options::skip_permission_denied,
+		error
+	);
+	const std::filesystem::recursive_directory_iterator end;
+	while (!error && iterator != end) {
+		if (
+			iterator->is_regular_file(error) &&
+			IsPrefabAssetPath(iterator->path())
+		) {
+			cachedPrefabAssetPaths_.push_back(
+				PathToUtf8(iterator->path().lexically_normal())
+			);
+		}
+		iterator.increment(error);
+	}
+	std::sort(
+		cachedPrefabAssetPaths_.begin(),
+		cachedPrefabAssetPaths_.end()
+	);
+	prefabAssetPathCacheDirty_ = false;
+}
+
+void ImGuiManager::RecordRecentPrefab(const std::string& filePath) {
+	const std::string resolvedPath = ResolvePrefabAssetPath(filePath);
+	recentPrefabPaths_.erase(
+		std::remove(
+			recentPrefabPaths_.begin(),
+			recentPrefabPaths_.end(),
+			resolvedPath
+		),
+		recentPrefabPaths_.end()
+	);
+	recentPrefabPaths_.insert(recentPrefabPaths_.begin(), resolvedPath);
+	if (recentPrefabPaths_.size() > 12) {
+		recentPrefabPaths_.resize(12);
+	}
+	SaveEditorSettings();
+}
+
+bool ImGuiManager::IsFavoritePrefab(const std::string& filePath) const {
+	return
+		favoritePrefabPaths_.contains(filePath) ||
+		favoritePrefabPaths_.contains(ResolvePrefabAssetPath(filePath));
+}
+
+void ImGuiManager::ToggleFavoritePrefab(const std::string& filePath) {
+	const std::string resolvedPath = ResolvePrefabAssetPath(filePath);
+	if (favoritePrefabPaths_.contains(resolvedPath)) {
+		favoritePrefabPaths_.erase(resolvedPath);
+	} else {
+		favoritePrefabPaths_.insert(resolvedPath);
+	}
+	SaveEditorSettings();
+}
+
 void ImGuiManager::RefreshAssetPathCache() {
 	cachedModelAssetPaths_ = CollectModelAssetPaths();
 	cachedTextureAssetPaths_ = CollectTextureAssetPaths();
@@ -1138,6 +1417,7 @@ void ImGuiManager::RefreshAssetPathCache() {
 
 void ImGuiManager::InvalidateProjectCache() {
 	assetPathCacheDirty_ = true;
+	prefabAssetPathCacheDirty_ = true;
 	projectDirectoryCacheDirty_ = true;
 	projectTreeCacheDirty_ = true;
 	cachedProjectFolder_.clear();
@@ -1293,6 +1573,86 @@ bool ImGuiManager::GetModelPreviewRequest(
 	}
 
 	return false;
+}
+
+const SceneDocument& ImGuiManager::GetPrefabStageDocument() const {
+	const SceneDocument& sourceDocument = prefabEditorSession_->GetDocument();
+	if (
+		prefabAnimationPreviewActive_ &&
+		prefabAnimationPreviewDocument_ &&
+		prefabAnimationPreviewAssetPath_ == prefabEditorSession_->GetFilePath() &&
+		prefabAnimationPreviewSourceRevision_ == sourceDocument.GetRevision()
+	) {
+		return *prefabAnimationPreviewDocument_;
+	}
+	return sourceDocument;
+}
+
+void ImGuiManager::RebuildPrefabAnimationPreviewDocument() {
+	if (
+		!prefabAnimationPreviewActive_ ||
+		!prefabAnimationPreviewDocument_ ||
+		!prefabEditorSession_ ||
+		!prefabEditorSession_->IsOpen()
+	) {
+		return;
+	}
+
+	const SceneDocument& sourceDocument = prefabEditorSession_->GetDocument();
+	const SceneEntity* owner = sourceDocument.FindEntity(
+		prefabAnimationPreviewOwnerEntityId_
+	);
+	const SceneComponent* animator = owner
+		? FindEnabledComponent(*owner, "PrefabAnimator")
+		: nullptr;
+	if (
+		!animator ||
+		prefabAnimationPreviewClipIndex_ < 0 ||
+		prefabAnimationPreviewClipIndex_ >=
+			static_cast<int>(animator->prefabAnimationClips.size())
+	) {
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = false;
+		return;
+	}
+
+	*prefabAnimationPreviewDocument_ = sourceDocument;
+	ScenePrefabAnimationEvaluator::ApplyClip(
+		*prefabAnimationPreviewDocument_,
+		owner->id,
+		animator->prefabAnimationClips[prefabAnimationPreviewClipIndex_],
+		prefabAnimationPreviewTime_
+	);
+	prefabAnimationPreviewAssetPath_ = prefabEditorSession_->GetFilePath();
+	prefabAnimationPreviewSourceRevision_ = sourceDocument.GetRevision();
+}
+
+bool ImGuiManager::GetPrefabPreviewRequest(
+	PrefabPreviewRequest& request
+) const {
+	if (
+		!showPrefab_ ||
+		!prefabEditorSession_ ||
+		!prefabEditorSession_->IsOpen()
+	) {
+		return false;
+	}
+
+	const SceneDocument& sourceDocument = prefabEditorSession_->GetDocument();
+	request.document = &GetPrefabStageDocument();
+	request.assetPath = prefabEditorSession_->GetFilePath();
+	request.revision = sourceDocument.GetRevision();
+	request.yaw = prefabPreviewYaw_;
+	request.pitch = prefabPreviewPitch_;
+	request.zoom = prefabPreviewZoom_;
+	request.width = prefabPreviewRequestedWidth_;
+	request.height = prefabPreviewRequestedHeight_;
+	request.selectedEntityId = prefabSelectedEntityId_;
+	request.showSkeleton = prefabPreviewShowSkeleton_;
+	request.showJointAxes = prefabPreviewShowJointAxes_;
+	request.showColliders = prefabPreviewShowColliders_;
+	request.showCombatVolumes = prefabPreviewShowCombatVolumes_;
+	return true;
 }
 
 bool ImGuiManager::PickSceneEntity(
@@ -1759,6 +2119,8 @@ void ImGuiManager::Finalize(){
 	}
 	delete prefabEditorSession_;
 	prefabEditorSession_ = nullptr;
+	delete prefabAnimationPreviewDocument_;
+	prefabAnimationPreviewDocument_ = nullptr;
 	ImGui_ImplDX12_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
@@ -2844,6 +3206,8 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		bool hierarchyDropAfter = false;
 		bool hierarchyDropIntoFolder = false;
 		bool hierarchyDropToRoot = false;
+		std::string hierarchyPrefabDropPath;
+		uint64_t hierarchyPrefabDropParentId = 0;
 		if (!editorSession_->IsEditing() || searchActive) {
 			hierarchyDragSourceId_ = 0;
 			hierarchyDragActive_ = false;
@@ -3169,6 +3533,18 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			}
 			const ImVec2 itemMin = ImGui::GetItemRectMin();
 			const ImVec2 itemMax = ImGui::GetItemRectMax();
+			if (editable && ImGui::BeginDragDropTarget()) {
+				if (const ImGuiPayload* payload =
+					ImGui::AcceptDragDropPayload("PROJECT_PREFAB_PATH")) {
+					const char* droppedPath =
+						static_cast<const char*>(payload->Data);
+					if (droppedPath && droppedPath[0] != '\0') {
+						hierarchyPrefabDropPath = droppedPath;
+						hierarchyPrefabDropParentId = entity->id;
+					}
+				}
+				ImGui::EndDragDropTarget();
+			}
 			const ImVec2 nextItemCursor = ImGui::GetCursorScreenPos();
 			const bool treeItemClicked =
 				ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen();
@@ -3182,10 +3558,23 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 					ImGui::GetIO().KeyShift
 				);
 			}
-			if (treeItemDoubleClicked && editable && !renaming) {
-				hierarchyRenameEntityId_ = entity->id;
-				strncpy_s(hierarchyRenameBuffer_, entity->name.c_str(), _TRUNCATE);
-				hierarchyRenameFocusRequested_ = true;
+			if (treeItemDoubleClicked && !renaming) {
+				const uint64_t prefabRootId =
+					document.FindPrefabInstanceRoot(entity->id);
+				const SceneEntity* prefabRoot = prefabRootId != 0
+					? document.FindEntity(prefabRootId)
+					: nullptr;
+				if (prefabRoot && !prefabRoot->prefabSourcePath.empty()) {
+					RequestOpenPrefab(prefabRoot->prefabSourcePath);
+				} else if (editable) {
+					hierarchyRenameEntityId_ = entity->id;
+					strncpy_s(
+						hierarchyRenameBuffer_,
+						entity->name.c_str(),
+						_TRUNCATE
+					);
+					hierarchyRenameFocusRequested_ = true;
+				}
 			}
 			if (renaming) {
 				const float nameStart = itemMin.x + ImGui::GetTreeNodeToLabelSpacing();
@@ -3366,6 +3755,18 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		);
 		const ImVec2 rootItemMin = ImGui::GetItemRectMin();
 		const ImVec2 rootItemMax = ImGui::GetItemRectMax();
+		if (editorSession_->IsEditing() && ImGui::BeginDragDropTarget()) {
+			if (const ImGuiPayload* payload =
+				ImGui::AcceptDragDropPayload("PROJECT_PREFAB_PATH")) {
+				const char* droppedPath =
+					static_cast<const char*>(payload->Data);
+				if (droppedPath && droppedPath[0] != '\0') {
+					hierarchyPrefabDropPath = droppedPath;
+					hierarchyPrefabDropParentId = 0;
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}
 		const std::vector<uint64_t> draggedRoots = getDraggedRoots();
 		if (
 			hierarchyDragActive_ &&
@@ -3554,6 +3955,12 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			hierarchySelectionAnchorId_ = pathEntityId;
 			hierarchyRevealRequested_ = true;
 			selectedProjectFile_.clear();
+		}
+		if (!hierarchyPrefabDropPath.empty()) {
+			InstantiatePrefabInEditScene(
+				hierarchyPrefabDropPath,
+				hierarchyPrefabDropParentId
+			);
 		}
 		hierarchyObservedEntityId_ = selectedEntityId_;
 		ImGui::End();
@@ -3849,15 +4256,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 				}
 				if (ImGui::Button("Open Prefab Editor")) {
-					if (
-						prefabEditorSession_ &&
-						prefabEditorSession_->Open(selectedProjectFile_)
-					) {
-						showPrefab_ = true;
-						prefabSelectedEntityId_ = prefabPreview.GetEntities().empty()
-							? 0
-							: prefabPreview.GetEntities().front().id;
-					}
+					RequestOpenPrefab(selectedProjectFile_);
 				}
 				ImGui::BeginDisabled(
 					!editorSession_ || !editorSession_->IsEditing()
@@ -3892,17 +4291,10 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndCombo();
 				}
 				if (ImGui::Button("Instantiate Prefab")) {
-					SceneDocument& document = editorSession_->GetEditDocument();
-					const uint64_t instanceId = document.InstantiatePrefab(
+					InstantiatePrefabInEditScene(
 						selectedProjectFile_,
 						prefabParentEntityId
 					);
-					if (instanceId != 0) {
-						selectedEntityId_ = instanceId;
-						selectedEntityIds_ = { instanceId };
-						selectedProjectFile_.clear();
-						editorSession_->RequestSceneReload();
-					}
 				}
 				ImGui::EndDisabled();
 			} else {
@@ -4036,30 +4428,6 @@ void ImGuiManager::DrawInspectorWindow() {
 		if (prefabInstanceRootId != 0) {
 			const SceneEntity* prefabRoot =
 				document.FindEntity(prefabInstanceRootId);
-			ImGui::TextWrapped(
-				"Linked Asset: %s",
-				prefabRoot ? prefabRoot->prefabSourcePath.c_str() : "Unknown"
-			);
-			ImGui::TextDisabled(
-				"Instance Root: %llu / Local Entity: %llu",
-				static_cast<unsigned long long>(prefabInstanceRootId),
-				static_cast<unsigned long long>(entity->prefabLocalId)
-			);
-			if (ImGui::TreeNode("Overrides")) {
-				const std::vector<std::string> overrides =
-					document.CollectPrefabInstanceOverrides(prefabInstanceRootId);
-				if (overrides.empty()) {
-					ImGui::TextDisabled("No Entity overrides.");
-				} else {
-					for (const std::string& overrideLabel : overrides) {
-						ImGui::BulletText("%s", overrideLabel.c_str());
-					}
-				}
-				ImGui::TreePop();
-			}
-			ImGui::TextDisabled(
-				"Apply and Revert currently operate on the whole instance."
-			);
 			bool prefabEditConflict = false;
 			if (
 				prefabRoot &&
@@ -4087,19 +4455,191 @@ void ImGuiManager::DrawInspectorWindow() {
 						linkedPrefabPath.lexically_normal();
 				}
 			}
+			bool applyPrefabRequested = false;
+			bool revertPrefabRequested = false;
+			bool unpackPrefabRequested = false;
+			ImGui::TextWrapped(
+				"Linked Asset: %s",
+				prefabRoot ? prefabRoot->prefabSourcePath.c_str() : "Unknown"
+			);
+			if (ImGui::BeginPopupContextItem("PrefabInstanceContext")) {
+				const bool hasLinkedAsset =
+					prefabRoot && !prefabRoot->prefabSourcePath.empty();
+				if (ImGui::MenuItem(
+					"Open Prefab",
+					nullptr,
+					false,
+					hasLinkedAsset
+				)) {
+					RequestOpenPrefab(prefabRoot->prefabSourcePath);
+				}
+				if (ImGui::MenuItem(
+					"Select Asset",
+					nullptr,
+					false,
+					hasLinkedAsset
+				)) {
+					SelectPrefabAssetInProject(prefabRoot->prefabSourcePath);
+				}
+				ImGui::Separator();
+				const bool canModifyInstance =
+					!entityLocked &&
+					editorSession_->IsEditing() &&
+					!prefabEditConflict;
+				if (ImGui::MenuItem(
+					"Apply Instance To Prefab",
+					nullptr,
+					false,
+					canModifyInstance
+				)) {
+					applyPrefabRequested = true;
+				}
+				if (ImGui::MenuItem(
+					"Revert Instance",
+					nullptr,
+					false,
+					canModifyInstance
+				)) {
+					revertPrefabRequested = true;
+				}
+				if (ImGui::MenuItem(
+					"Unpack",
+					nullptr,
+					false,
+					canModifyInstance
+				)) {
+					unpackPrefabRequested = true;
+				}
+				ImGui::EndPopup();
+			}
+			ImGui::TextDisabled(
+				"Instance Root: %llu / Local Entity: %llu",
+				static_cast<unsigned long long>(prefabInstanceRootId),
+				static_cast<unsigned long long>(entity->prefabLocalId)
+			);
+			ImGui::BeginDisabled(
+				!prefabRoot || prefabRoot->prefabSourcePath.empty()
+			);
+			if (ImGui::Button("Open Prefab")) {
+				RequestOpenPrefab(prefabRoot->prefabSourcePath);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Select Asset")) {
+				SelectPrefabAssetInProject(prefabRoot->prefabSourcePath);
+			}
+			ImGui::EndDisabled();
+			static std::string prefabInstanceStatus;
+			std::vector<ScenePrefabPropertyOverride> propertyOverrides;
+			int applyPropertyOverrideIndex = -1;
+			int revertPropertyOverrideIndex = -1;
+			if (ImGui::TreeNode("Overrides")) {
+				const std::vector<std::string> entityOverrides =
+					document.CollectPrefabInstanceOverrides(prefabInstanceRootId);
+				propertyOverrides = document.CollectPrefabPropertyOverrides(
+					prefabInstanceRootId
+				);
+				bool hasLegacyOverrideStatus = false;
+				for (const std::string& overrideLabel : entityOverrides) {
+					if (
+						overrideLabel.starts_with("Modified Entity:") ||
+						overrideLabel.starts_with("Added Entity:") ||
+						overrideLabel.starts_with("Removed Entity:") ||
+						overrideLabel.starts_with("Stale Entity:")
+					) {
+						continue;
+					}
+					hasLegacyOverrideStatus = true;
+					ImGui::BulletText("%s", overrideLabel.c_str());
+				}
+				if (!propertyOverrides.empty()) {
+					ImGui::SeparatorText("Individual Overrides");
+				}
+				const bool canModifyProperty =
+					!entityLocked &&
+					editorSession_->IsEditing() &&
+					!prefabEditConflict;
+				for (size_t index = 0; index < propertyOverrides.size(); ++index) {
+					const ScenePrefabPropertyOverride& overrideValue =
+						propertyOverrides[index];
+					ImGui::PushID(static_cast<int>(index));
+					ImGui::BulletText("%s", overrideValue.label.c_str());
+					ImGui::Indent();
+					ImGui::BeginDisabled(!canModifyProperty);
+					if (ImGui::SmallButton("Apply")) {
+						applyPropertyOverrideIndex = static_cast<int>(index);
+					}
+					ImGui::SameLine();
+					if (ImGui::SmallButton("Revert")) {
+						revertPropertyOverrideIndex = static_cast<int>(index);
+					}
+					ImGui::EndDisabled();
+					ImGui::Unindent();
+					ImGui::PopID();
+				}
+				if (propertyOverrides.empty() && !hasLegacyOverrideStatus) {
+					ImGui::TextDisabled("No overrides.");
+				}
+				ImGui::TreePop();
+			}
+			if (applyPropertyOverrideIndex >= 0) {
+				const ScenePrefabPropertyOverride& overrideValue =
+					propertyOverrides[applyPropertyOverrideIndex];
+				if (document.ApplyPrefabPropertyOverride(
+					prefabInstanceRootId,
+					overrideValue
+				)) {
+					prefabInstanceStatus = "Applied: " + overrideValue.label;
+					InvalidateProjectCache();
+				} else {
+					prefabInstanceStatus = "Failed to apply: " + overrideValue.label;
+				}
+			}
+			if (revertPropertyOverrideIndex >= 0) {
+				const ScenePrefabPropertyOverride& overrideValue =
+					propertyOverrides[revertPropertyOverrideIndex];
+				const uint64_t selectedId = entity->id;
+				const bool removesSelectedBranch =
+					(
+						overrideValue.kind == ScenePrefabOverrideKind::AddedEntity ||
+						overrideValue.kind == ScenePrefabOverrideKind::StaleEntity
+					) &&
+					(
+						selectedId == overrideValue.instanceEntityId ||
+						document.IsDescendantOf(
+							selectedId,
+							overrideValue.instanceEntityId
+						)
+					);
+				if (document.RevertPrefabPropertyOverride(
+					prefabInstanceRootId,
+					overrideValue
+				)) {
+					prefabInstanceStatus = "Reverted: " + overrideValue.label;
+					selectedEntityId_ = removesSelectedBranch
+						? prefabInstanceRootId
+						: selectedId;
+					selectedEntityIds_ = { selectedEntityId_ };
+					editorSession_->RequestSceneReload();
+					ImGui::End();
+					return;
+				}
+				prefabInstanceStatus = "Failed to revert: " + overrideValue.label;
+			}
 			if (prefabEditConflict) {
 				ImGui::TextColored(
 					ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
 					"Save or close the open Prefab before changing this instance."
 				);
 			}
-			static std::string prefabInstanceStatus;
 			ImGui::BeginDisabled(
 				entityLocked ||
 				!editorSession_->IsEditing() ||
 				prefabEditConflict
 			);
-			if (ImGui::Button("Apply Instance To Prefab")) {
+			if (
+				ImGui::Button("Apply Instance To Prefab") ||
+				applyPrefabRequested
+			) {
 				if (document.ApplyPrefabInstance(prefabInstanceRootId)) {
 					prefabInstanceStatus = "Applied instance values to the Prefab asset.";
 					InvalidateProjectCache();
@@ -4108,7 +4648,10 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Revert Instance")) {
+			if (
+				ImGui::Button("Revert Instance") ||
+				revertPrefabRequested
+			) {
 				if (document.RevertPrefabInstance(prefabInstanceRootId)) {
 					prefabInstanceStatus = "Reverted the instance from its Prefab asset.";
 					selectedEntityId_ = prefabInstanceRootId;
@@ -4121,7 +4664,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				prefabInstanceStatus = "Failed to revert the Prefab instance.";
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Unpack")) {
+			if (ImGui::Button("Unpack") || unpackPrefabRequested) {
 				if (document.UnpackPrefabInstance(prefabInstanceRootId)) {
 					prefabInstanceStatus = "Unpacked the Prefab instance.";
 				} else {
@@ -8895,7 +9438,206 @@ void ImGuiManager::DrawInspectorWindow() {
 	ImGui::End();
 }
 
+void ImGuiManager::DrawProjectPrefabAccessPanel() {
+	ImGui::SeparatorText("Prefabs");
+	if (ImGui::Button("Quick Open...", ImVec2(-1.0f, 0.0f))) {
+		prefabQuickOpenSearchBuffer_[0] = '\0';
+		prefabQuickOpenFocusRequested_ = true;
+		ImGui::OpenPopup("Quick Open Prefab");
+	}
+
+	std::string openRequestedPath;
+	std::string toggleFavoritePath;
+	std::string removeRecentPath;
+	auto drawPrefabList = [&](
+		const char* label,
+		const std::vector<std::string>& paths,
+		bool recentList
+	) {
+		if (!ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_DefaultOpen)) {
+			return;
+		}
+		if (paths.empty()) {
+			ImGui::TextDisabled("None");
+		}
+		for (const std::string& prefabPath : paths) {
+			const std::filesystem::path path = PathFromUtf8(prefabPath);
+			const std::string fileName = PathToUtf8(path.filename());
+			std::error_code existsError;
+			const bool exists = std::filesystem::exists(path, existsError);
+			const std::string itemLabel = exists
+				? fileName
+				: fileName + " [Missing]";
+			ImGui::PushID(prefabPath.c_str());
+			const bool selected = selectedProjectFile_ == prefabPath;
+			if (ImGui::Selectable(itemLabel.c_str(), selected) && exists) {
+				SelectPrefabAssetInProject(prefabPath);
+			}
+			if (
+				exists &&
+				ImGui::IsItemHovered() &&
+				ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
+			) {
+				openRequestedPath = prefabPath;
+			}
+			if (ImGui::IsItemHovered()) {
+				const std::string relativePath = PathToUtf8(
+					EditableResourcePath::ToProjectRelative(path)
+				);
+				ImGui::SetTooltip("%s", relativePath.c_str());
+			}
+			if (ImGui::BeginPopupContextItem("PrefabAccessContext")) {
+				if (ImGui::MenuItem("Open Prefab", nullptr, false, exists)) {
+					openRequestedPath = prefabPath;
+				}
+				const bool favorite = IsFavoritePrefab(prefabPath);
+				if (ImGui::MenuItem(
+					favorite ? "Remove from Favorites" : "Add to Favorites"
+				)) {
+					toggleFavoritePath = prefabPath;
+				}
+				if (
+					recentList &&
+					ImGui::MenuItem("Remove from Recent")
+				) {
+					removeRecentPath = prefabPath;
+				}
+				ImGui::EndPopup();
+			}
+			ImGui::PopID();
+		}
+		ImGui::TreePop();
+	};
+
+	std::vector<std::string> favorites(
+		favoritePrefabPaths_.begin(),
+		favoritePrefabPaths_.end()
+	);
+	std::sort(
+		favorites.begin(),
+		favorites.end(),
+		[](const std::string& left, const std::string& right) {
+			return PathFromUtf8(left).filename() <
+				PathFromUtf8(right).filename();
+		}
+	);
+	drawPrefabList("Favorites", favorites, false);
+	drawPrefabList("Recent", recentPrefabPaths_, true);
+
+	if (!toggleFavoritePath.empty()) {
+		ToggleFavoritePrefab(toggleFavoritePath);
+	}
+	if (!removeRecentPath.empty()) {
+		recentPrefabPaths_.erase(
+			std::remove(
+				recentPrefabPaths_.begin(),
+				recentPrefabPaths_.end(),
+				removeRecentPath
+			),
+			recentPrefabPaths_.end()
+		);
+		SaveEditorSettings();
+	}
+	if (!openRequestedPath.empty()) {
+		RequestOpenPrefab(openRequestedPath);
+	}
+}
+
+void ImGuiManager::DrawPrefabQuickOpenPopup() {
+	if (!ImGui::BeginPopup("Quick Open Prefab")) {
+		return;
+	}
+	ImGui::SetNextItemWidth(520.0f);
+	if (prefabQuickOpenFocusRequested_) {
+		ImGui::SetKeyboardFocusHere();
+		prefabQuickOpenFocusRequested_ = false;
+	}
+	const bool searchSubmitted = ImGui::InputTextWithHint(
+		"##PrefabQuickSearch",
+		"Search Prefabs...",
+		prefabQuickOpenSearchBuffer_,
+		sizeof(prefabQuickOpenSearchBuffer_),
+		ImGuiInputTextFlags_EnterReturnsTrue
+	);
+	ImGui::Separator();
+
+	std::string openRequestedPath;
+	std::string selectRequestedPath;
+	std::string firstVisiblePath;
+	int visibleResultCount = 0;
+	if (ImGui::BeginChild(
+		"PrefabQuickOpenResults",
+		ImVec2(520.0f, 300.0f),
+		ImGuiChildFlags_Borders
+	)) {
+		for (const std::string& prefabPath : GetCachedPrefabAssetPaths()) {
+			const std::string relativePath = PathToUtf8(
+				EditableResourcePath::ToProjectRelative(
+					PathFromUtf8(prefabPath)
+				)
+			);
+			if (!ContainsCaseInsensitive(
+				relativePath,
+				prefabQuickOpenSearchBuffer_
+			)) {
+				continue;
+			}
+			if (firstVisiblePath.empty()) {
+				firstVisiblePath = prefabPath;
+			}
+			++visibleResultCount;
+			const std::string fileName = PathToUtf8(
+				PathFromUtf8(prefabPath).filename()
+			);
+			const std::string label =
+				(IsFavoritePrefab(prefabPath) ? "[Favorite] " : "") +
+				fileName + "##" + prefabPath;
+			if (ImGui::Selectable(label.c_str())) {
+				openRequestedPath = prefabPath;
+			}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip("%s", relativePath.c_str());
+			}
+			if (ImGui::BeginPopupContextItem("QuickPrefabContext")) {
+				if (ImGui::MenuItem("Open Prefab")) {
+					openRequestedPath = prefabPath;
+				}
+				if (ImGui::MenuItem("Select Asset")) {
+					selectRequestedPath = prefabPath;
+				}
+				const bool favorite = IsFavoritePrefab(prefabPath);
+				if (ImGui::MenuItem(
+					favorite ? "Remove from Favorites" : "Add to Favorites"
+				)) {
+					ToggleFavoritePrefab(prefabPath);
+				}
+				ImGui::EndPopup();
+			}
+		}
+		if (visibleResultCount == 0) {
+			ImGui::TextDisabled("No matching Prefabs.");
+		}
+	}
+	ImGui::EndChild();
+	if (searchSubmitted && !firstVisiblePath.empty()) {
+		openRequestedPath = firstVisiblePath;
+	}
+	if (!selectRequestedPath.empty()) {
+		SelectPrefabAssetInProject(selectRequestedPath);
+		ImGui::CloseCurrentPopup();
+	}
+	if (!openRequestedPath.empty()) {
+		RequestOpenPrefab(openRequestedPath);
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+}
+
 void ImGuiManager::DrawProjectWindow() {
+	if (projectFocusRequested_) {
+		ImGui::SetNextWindowFocus();
+		projectFocusRequested_ = false;
+	}
 	if (!ImGui::Begin("Project", &showProject_)) {
 		ImGui::End();
 		return;
@@ -8918,7 +9660,7 @@ void ImGuiManager::DrawProjectWindow() {
 	}
 
 	ImGui::Columns(2, "ProjectColumns", true);
-	
+
 	// Left column: directory tree
 	static bool setColWidth = false;
 	if (!setColWidth) {
@@ -8934,6 +9676,7 @@ void ImGuiManager::DrawProjectWindow() {
 		RefreshProjectTreeCache();
 	}
 	DrawDirectoryTreeNode(cachedProjectTreeRoot_);
+	DrawProjectPrefabAccessPanel();
 	
 	ImGui::NextColumn();
 
@@ -8973,6 +9716,8 @@ void ImGuiManager::DrawProjectWindow() {
 		TextureManager::GetInstance()->ClearFailedTextureCache();
 		ModelManager::GetInstance()->ClearFailedModelCache();
 	}
+	ImGui::SameLine();
+	ImGui::Checkbox("Prefabs Only", &projectPrefabFilterEnabled_);
 	if (projectGridView_) {
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(100.0f);
@@ -9033,6 +9778,15 @@ void ImGuiManager::DrawProjectWindow() {
 			const bool isTexture = entry.isTexture;
 			const bool isModel = entry.isModel;
 			const bool isScene = entry.isScene;
+			const bool isPrefab =
+				!isDirectory && IsPrefabAssetPath(PathFromUtf8(filePath));
+			if (
+				projectPrefabFilterEnabled_ &&
+				!isDirectory &&
+				!isPrefab
+			) {
+				continue;
+			}
 			const std::string resourcePath = isTexture
 				? GetProjectResourcePath(filePath)
 				: std::string{};
@@ -9073,6 +9827,7 @@ void ImGuiManager::DrawProjectWindow() {
 			bool clicked = false;
 			bool openSceneRequested = false;
 			bool openPrefabRequested = false;
+			bool openPrefabContextRequested = false;
 			auto loadHoveredTexturePreview = [&]() {
 				if (
 					isTexture &&
@@ -9085,14 +9840,24 @@ void ImGuiManager::DrawProjectWindow() {
 				}
 			};
 			auto drawDragSource = [&]() {
-				if (!(isModel || isTexture) || !ImGui::BeginDragDropSource()) {
+				if (
+					!(isModel || isTexture || isPrefab) ||
+					!ImGui::BeginDragDropSource()
+				) {
 					return;
 				}
 				const std::string dragPath = isModel
 					? GetModelPathRelativeToResources(filePath)
-					: resourcePath;
+					: isTexture
+						? resourcePath
+						: GetProjectResourcePath(filePath);
+				const char* payloadType = isModel
+					? "PROJECT_MODEL_PATH"
+					: isTexture
+						? "PROJECT_TEXTURE_PATH"
+						: "PROJECT_PREFAB_PATH";
 				ImGui::SetDragDropPayload(
-					isModel ? "PROJECT_MODEL_PATH" : "PROJECT_TEXTURE_PATH",
+					payloadType,
 					dragPath.c_str(),
 					dragPath.size() + 1
 				);
@@ -9104,6 +9869,26 @@ void ImGuiManager::DrawProjectWindow() {
 				}
 				ImGui::TextUnformatted(fileName.c_str());
 				ImGui::EndDragDropSource();
+			};
+			auto drawPrefabContextMenu = [&]() {
+				if (!isPrefab || !ImGui::BeginPopupContextItem(
+					"PrefabAssetContext"
+				)) {
+					return;
+				}
+				if (ImGui::MenuItem("Open Prefab")) {
+					openPrefabContextRequested = true;
+				}
+				if (ImGui::MenuItem("Select Asset")) {
+					SelectPrefabAssetInProject(filePath);
+				}
+				const bool favorite = IsFavoritePrefab(filePath);
+				if (ImGui::MenuItem(
+					favorite ? "Remove from Favorites" : "Add to Favorites"
+				)) {
+					ToggleFavoritePrefab(filePath);
+				}
+				ImGui::EndPopup();
 			};
 			if (projectGridView_) {
 				if (texturePreviewAvailable) {
@@ -9172,6 +9957,7 @@ void ImGuiManager::DrawProjectWindow() {
 					if (ImGui::IsItemHovered()) {
 						loadHoveredTexturePreview();
 					}
+					drawPrefabContextMenu();
 					drawDragSource();
 				}
 				ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + projectThumbnailSize_);
@@ -9198,8 +9984,11 @@ void ImGuiManager::DrawProjectWindow() {
 				if (ImGui::IsItemHovered()) {
 					loadHoveredTexturePreview();
 				}
+				drawPrefabContextMenu();
 				drawDragSource();
 			}
+			openPrefabRequested =
+				openPrefabRequested || openPrefabContextRequested;
 
 			if (isSelected || selectedProjectFolder_ == filePath) {
 				ImGui::PopStyleColor();
@@ -9226,17 +10015,8 @@ void ImGuiManager::DrawProjectWindow() {
 							RequestOpenScene(scene->id);
 						}
 					}
-					if (
-						openPrefabRequested &&
-						prefabEditorSession_ &&
-						prefabEditorSession_->Open(filePath)
-					) {
-						showPrefab_ = true;
-						const SceneDocument& prefab =
-							prefabEditorSession_->GetDocument();
-						prefabSelectedEntityId_ = prefab.GetEntities().empty()
-							? 0
-							: prefab.GetEntities().front().id;
+					if (openPrefabRequested) {
+						RequestOpenPrefab(filePath);
 					}
 				}
 			}
@@ -9248,6 +10028,7 @@ void ImGuiManager::DrawProjectWindow() {
 		}
 	}
 	ImGui::Columns(1);
+	DrawPrefabQuickOpenPopup();
 	ImGui::End();
 }
 
@@ -9276,12 +10057,224 @@ void ImGuiManager::DrawDirectoryTreeNode(const ProjectDirectoryNode& node) {
 	ImGui::PopID();
 }
 
+void ImGuiManager::RequestOpenPrefab(
+	const std::string& filePath,
+	int historyIndex
+) {
+	if (!prefabEditorSession_ || filePath.empty()) {
+		return;
+	}
+
+	const std::string resolvedPath = PathToUtf8(
+		EditableResourcePath::ResolveResource(
+			PathFromUtf8(filePath)
+		).lexically_normal()
+	);
+	showPrefab_ = true;
+	prefabFocusRequested_ = true;
+
+	if (prefabEditorSession_->IsOpen()) {
+		const std::filesystem::path currentPath =
+			EditableResourcePath::ResolveResource(
+				PathFromUtf8(prefabEditorSession_->GetFilePath())
+			).lexically_normal();
+		const std::filesystem::path targetPath = PathFromUtf8(resolvedPath);
+		std::error_code equivalentError;
+		const bool samePrefab = std::filesystem::equivalent(
+			currentPath,
+			targetPath,
+			equivalentError
+		);
+		if (
+			samePrefab ||
+			(equivalentError && currentPath == targetPath)
+		) {
+			if (
+				historyIndex >= 0 &&
+				historyIndex <
+					static_cast<int>(prefabNavigationHistory_.size())
+			) {
+				prefabNavigationIndex_ = historyIndex;
+			}
+			return;
+		}
+		if (prefabEditorSession_->IsDirty()) {
+			pendingPrefabOpenPath_ = resolvedPath;
+			pendingPrefabHistoryIndex_ = historyIndex;
+			prefabOpenPopupRequested_ = true;
+			return;
+		}
+	}
+
+	OpenPrefab(resolvedPath, historyIndex);
+}
+
+bool ImGuiManager::OpenPrefab(
+	const std::string& filePath,
+	int historyIndex
+) {
+	if (!prefabEditorSession_ || filePath.empty()) {
+		return false;
+	}
+
+	const std::string resolvedPath = PathToUtf8(
+		EditableResourcePath::ResolveResource(
+			PathFromUtf8(filePath)
+		).lexically_normal()
+	);
+	if (!prefabEditorSession_->Open(resolvedPath)) {
+		prefabNavigationStatus_ = prefabEditorSession_->GetLastError();
+		return false;
+	}
+
+	showPrefab_ = true;
+	prefabFocusRequested_ = true;
+	const SceneDocument& prefab = prefabEditorSession_->GetDocument();
+	prefabSelectedEntityId_ = prefab.GetEntities().empty()
+		? 0
+		: prefab.GetEntities().front().id;
+	prefabNavigationStatus_.clear();
+	RecordRecentPrefab(resolvedPath);
+
+	if (
+		historyIndex >= 0 &&
+		historyIndex < static_cast<int>(prefabNavigationHistory_.size())
+	) {
+		prefabNavigationIndex_ = historyIndex;
+		return true;
+	}
+
+	if (
+		prefabNavigationIndex_ + 1 <
+			static_cast<int>(prefabNavigationHistory_.size())
+	) {
+		prefabNavigationHistory_.erase(
+			prefabNavigationHistory_.begin() + prefabNavigationIndex_ + 1,
+			prefabNavigationHistory_.end()
+		);
+	}
+	if (
+		prefabNavigationHistory_.empty() ||
+		prefabNavigationHistory_.back() != resolvedPath
+	) {
+		prefabNavigationHistory_.push_back(resolvedPath);
+	}
+	prefabNavigationIndex_ =
+		static_cast<int>(prefabNavigationHistory_.size()) - 1;
+	return true;
+}
+
+void ImGuiManager::DrawPrefabOpenConfirmation() {
+	if (!prefabEditorSession_) {
+		return;
+	}
+	if (prefabOpenPopupRequested_) {
+		ImGui::OpenPopup("Open Another Prefab?");
+		prefabOpenPopupRequested_ = false;
+	}
+	if (!ImGui::BeginPopupModal(
+		"Open Another Prefab?",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		return;
+	}
+
+	ImGui::TextUnformatted("The current Prefab has unsaved changes.");
+	ImGui::TextWrapped("Open: %s", pendingPrefabOpenPath_.c_str());
+	if (ImGui::Button("Save and Open")) {
+		if (prefabEditorSession_->Save()) {
+			OpenPrefab(
+				pendingPrefabOpenPath_,
+				pendingPrefabHistoryIndex_
+			);
+			pendingPrefabOpenPath_.clear();
+			pendingPrefabHistoryIndex_ = -1;
+			ImGui::CloseCurrentPopup();
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Discard and Open")) {
+		prefabEditorSession_->Close(true);
+		OpenPrefab(
+			pendingPrefabOpenPath_,
+			pendingPrefabHistoryIndex_
+		);
+		pendingPrefabOpenPath_.clear();
+		pendingPrefabHistoryIndex_ = -1;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Cancel")) {
+		pendingPrefabOpenPath_.clear();
+		pendingPrefabHistoryIndex_ = -1;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+}
+
+void ImGuiManager::SelectPrefabAssetInProject(const std::string& filePath) {
+	if (filePath.empty()) {
+		return;
+	}
+	const std::filesystem::path resolvedPath =
+		EditableResourcePath::ResolveResource(
+			PathFromUtf8(filePath)
+		).lexically_normal();
+	selectedProjectFolder_ = PathToUtf8(resolvedPath.parent_path());
+	selectedProjectFile_ = PathToUtf8(resolvedPath);
+	selectedEntityId_ = 0;
+	selectedEntityIds_.clear();
+	projectDirectoryCacheDirty_ = true;
+	showProject_ = true;
+	projectFocusRequested_ = true;
+}
+
+uint64_t ImGuiManager::InstantiatePrefabInEditScene(
+	const std::string& filePath,
+	uint64_t parentId,
+	const Vector3* rootTranslate
+) {
+	if (
+		!editorSession_ ||
+		!editorSession_->IsEditing() ||
+		filePath.empty()
+	) {
+		return 0;
+	}
+	SceneDocument& document = editorSession_->GetEditDocument();
+	const uint64_t instanceId = document.InstantiatePrefab(
+		filePath,
+		parentId
+	);
+	if (instanceId == 0) {
+		return 0;
+	}
+	if (rootTranslate) {
+		if (SceneEntity* root = document.FindEntity(instanceId)) {
+			root->transform.translate = *rootTranslate;
+			document.MarkDirty();
+		}
+	}
+	selectedEntityId_ = instanceId;
+	selectedEntityIds_ = { instanceId };
+	hierarchySelectionAnchorId_ = instanceId;
+	hierarchyRevealRequested_ = true;
+	selectedProjectFile_.clear();
+	editorSession_->RequestSceneReload();
+	return instanceId;
+}
+
 void ImGuiManager::DrawPrefabWindow() {
 	if (!prefabEditorSession_) {
 		showPrefab_ = false;
 		return;
 	}
 
+	if (prefabFocusRequested_) {
+		ImGui::SetNextWindowFocus();
+		prefabFocusRequested_ = false;
+	}
 	bool windowOpen = true;
 	if (!ImGui::Begin("Prefab", &windowOpen)) {
 		ImGui::End();
@@ -9294,14 +10287,71 @@ void ImGuiManager::DrawPrefabWindow() {
 				prefabSelectedEntityId_ = 0;
 			}
 		}
+		DrawPrefabOpenConfirmation();
 		return;
 	}
+
+	const bool canNavigateBack = prefabNavigationIndex_ > 0;
+	const bool canNavigateForward =
+		prefabNavigationIndex_ >= 0 &&
+		prefabNavigationIndex_ + 1 <
+			static_cast<int>(prefabNavigationHistory_.size());
+	ImGui::BeginDisabled(!canNavigateBack);
+	if (ImGui::Button("<##PrefabBack")) {
+		const int targetIndex = prefabNavigationIndex_ - 1;
+		RequestOpenPrefab(
+			prefabNavigationHistory_[targetIndex],
+			targetIndex
+		);
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!canNavigateForward);
+	if (ImGui::Button(">##PrefabForward")) {
+		const int targetIndex = prefabNavigationIndex_ + 1;
+		RequestOpenPrefab(
+			prefabNavigationHistory_[targetIndex],
+			targetIndex
+		);
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	if (ImGui::Button("Scene")) {
+		ImGui::SetWindowFocus("Scene");
+	}
+	if (prefabEditorSession_->IsOpen()) {
+		ImGui::SameLine();
+		ImGui::TextDisabled(">");
+		ImGui::SameLine();
+		const std::string prefabFileName = PathToUtf8(
+			PathFromUtf8(
+				prefabEditorSession_->GetFilePath()
+			).filename()
+		);
+		if (ImGui::Button(prefabFileName.c_str())) {
+			SelectPrefabAssetInProject(
+				prefabEditorSession_->GetFilePath()
+			);
+		}
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("Select this Prefab in Project");
+		}
+	}
+	ImGui::Separator();
 
 	if (!prefabEditorSession_->IsOpen()) {
 		ImGui::TextDisabled(
 			"Select a .prefab.json asset in Project and choose Open Prefab Editor."
 		);
+		if (!prefabNavigationStatus_.empty()) {
+			ImGui::TextColored(
+				ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+				"%s",
+				prefabNavigationStatus_.c_str()
+			);
+		}
 		ImGui::End();
+		DrawPrefabOpenConfirmation();
 		return;
 	}
 
@@ -9349,6 +10399,8 @@ void ImGuiManager::DrawPrefabWindow() {
 	}
 
 	ImGui::Separator();
+	DrawPrefabPreview();
+	ImGui::Separator();
 	if (ImGui::BeginTable(
 		"PrefabWorkspace",
 		2,
@@ -9369,7 +10421,8 @@ void ImGuiManager::DrawPrefabWindow() {
 		ImGui::IsAnyItemActive() ||
 		ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
 		ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
-		ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+		ImGui::IsMouseDown(ImGuiMouseButton_Middle) ||
+		ImGuizmo::IsUsing();
 	prefabEditorSession_->EndEditFrame(!editingInteractionActive);
 	ImGui::End();
 
@@ -9413,6 +10466,829 @@ void ImGuiManager::DrawPrefabWindow() {
 		}
 		ImGui::EndPopup();
 	}
+	DrawPrefabOpenConfirmation();
+}
+
+void ImGuiManager::DrawPrefabPreview() {
+	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
+		return;
+	}
+
+	const SceneDocument& document = prefabEditorSession_->GetDocument();
+	ImGui::SeparatorText("Stage");
+	if (
+		ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+		!ImGui::GetIO().WantTextInput &&
+		!ImGuizmo::IsUsing()
+	) {
+		if (ImGui::IsKeyPressed(ImGuiKey_W, false)) {
+			gizmoOperation_ = 0;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_E, false)) {
+			gizmoOperation_ = 1;
+		}
+		if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+			gizmoOperation_ = 2;
+		}
+	}
+
+	if (ImGui::Button("Frame All")) {
+		prefabPreviewYaw_ = 0.65f;
+		prefabPreviewPitch_ = 0.25f;
+		prefabPreviewZoom_ = 1.0f;
+	}
+	ImGui::SameLine();
+	ImGui::PushID("PrefabStageTools");
+	const char* operationLabels[] = { "W", "E", "R" };
+	for (int operation = 0; operation < 3; ++operation) {
+		if (operation > 0) {
+			ImGui::SameLine();
+		}
+		if (gizmoOperation_ == operation) {
+			ImGui::PushStyleColor(
+				ImGuiCol_Button,
+				ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
+			);
+		}
+		if (ImGui::Button(operationLabels[operation], ImVec2(28.0f, 0.0f))) {
+			gizmoOperation_ = operation;
+		}
+		if (gizmoOperation_ == operation) {
+			ImGui::PopStyleColor();
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Button(gizmoLocalMode_ ? "Local" : "World")) {
+		gizmoLocalMode_ = !gizmoLocalMode_;
+	}
+	ImGui::SameLine();
+	ImGui::Checkbox("Snap", &gizmoSnapEnabled_);
+	if (gizmoSnapEnabled_) {
+		float* snapValue = gizmoOperation_ == 0
+			? &gizmoTranslationSnap_
+			: gizmoOperation_ == 1
+				? &gizmoRotationSnapDegrees_
+				: &gizmoScaleSnap_;
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(64.0f);
+		ImGui::DragFloat(
+			"##SnapValue",
+			snapValue,
+			gizmoOperation_ == 1 ? 1.0f : 0.05f,
+			0.01f,
+			0.0f,
+			"%.2f"
+		);
+	}
+	ImGui::PopID();
+	ImGui::SameLine();
+	ImGui::TextDisabled("LMB: Select | RMB: Orbit | Wheel: Zoom");
+	ImGui::PushID("PrefabStageOverlays");
+	ImGui::Checkbox("Skeleton", &prefabPreviewShowSkeleton_);
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!prefabPreviewShowSkeleton_);
+	ImGui::Checkbox("Joint Axes", &prefabPreviewShowJointAxes_);
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::Checkbox("Colliders", &prefabPreviewShowColliders_);
+	ImGui::SameLine();
+	ImGui::Checkbox("Hit/Hurt", &prefabPreviewShowCombatVolumes_);
+	ImGui::PopID();
+
+	const float availableWidth = (std::max)(
+		ImGui::GetContentRegionAvail().x,
+		240.0f
+	);
+	const float previewHeight = std::clamp(
+		availableWidth * 9.0f / 16.0f,
+		220.0f,
+		440.0f
+	);
+	if (!ImGui::BeginChild(
+		"PrefabStagePreview",
+		ImVec2(0.0f, previewHeight),
+		ImGuiChildFlags_Borders,
+		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
+	)) {
+		ImGui::EndChild();
+		return;
+	}
+
+	const ImVec2 imageSize = ImGui::GetContentRegionAvail();
+	const ImVec2 framebufferScale = ImGui::GetIO().DisplayFramebufferScale;
+	prefabPreviewRequestedWidth_ = static_cast<uint32_t>(std::clamp(
+		imageSize.x * framebufferScale.x,
+		320.0f,
+		1600.0f
+	));
+	prefabPreviewRequestedHeight_ = static_cast<uint32_t>(std::clamp(
+		imageSize.y * framebufferScale.y,
+		180.0f,
+		900.0f
+	));
+
+	const bool previewReady =
+		prefabPreviewTexture_.ptr != 0 &&
+		prefabPreviewCameraValid_ &&
+		prefabPreviewRenderedPath_ == prefabEditorSession_->GetFilePath() &&
+		prefabPreviewRenderedRevision_ == document.GetRevision();
+	if (previewReady) {
+		const ImVec2 imageMin = ImGui::GetCursorScreenPos();
+		ImGui::Image(
+			ImTextureRef(static_cast<ImTextureID>(prefabPreviewTexture_.ptr)),
+			imageSize
+		);
+		const bool imageHovered = ImGui::IsItemHovered();
+		if (imageHovered) {
+			const ImGuiIO& io = ImGui::GetIO();
+			if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+				prefabPreviewYaw_ += io.MouseDelta.x * 0.01f;
+				prefabPreviewPitch_ = std::clamp(
+					prefabPreviewPitch_ + io.MouseDelta.y * 0.01f,
+					-1.45f,
+					1.45f
+				);
+			}
+			if (io.MouseWheel != 0.0f) {
+				prefabPreviewZoom_ = std::clamp(
+					prefabPreviewZoom_ * (1.0f - io.MouseWheel * 0.1f),
+					0.15f,
+					8.0f
+				);
+			}
+		}
+		DrawPrefabGizmo(imageMin.x, imageMin.y, imageSize.x, imageSize.y);
+		if (&GetPrefabStageDocument() != &document) {
+			ImGui::GetWindowDrawList()->AddText(
+				ImVec2(imageMin.x + 8.0f, imageMin.y + 8.0f),
+				IM_COL32(255, 210, 90, 255),
+				"Animation Preview: Transform Gizmo is disabled."
+			);
+		}
+		if (
+			imageHovered &&
+			ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+			!ImGuizmo::IsOver() &&
+			!ImGuizmo::IsUsing()
+		) {
+			PickPrefabEntity(imageMin.x, imageMin.y, imageSize.x, imageSize.y);
+		}
+	} else {
+		const char* message = document.GetEntities().empty()
+			? "Prefab has no Entities."
+			: "Preparing Prefab Preview...";
+		const ImVec2 textSize = ImGui::CalcTextSize(message);
+		ImGui::SetCursorPos({
+			(std::max)((imageSize.x - textSize.x) * 0.5f, 0.0f),
+			(std::max)((imageSize.y - textSize.y) * 0.5f, 0.0f)
+		});
+		ImGui::TextDisabled("%s", message);
+	}
+	ImGui::EndChild();
+	DrawPrefabAnimationTimeline();
+}
+
+void ImGuiManager::DrawPrefabAnimationTimeline() {
+	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
+		return;
+	}
+
+	const std::string& assetPath = prefabEditorSession_->GetFilePath();
+	if (prefabAnimationPreviewAssetPath_ != assetPath) {
+		prefabAnimationPreviewAssetPath_ = assetPath;
+		prefabAnimationPreviewSourceRevision_ = 0;
+		prefabAnimationPreviewOwnerEntityId_ = 0;
+		prefabAnimationPreviewClipIndex_ = 0;
+		prefabAnimationPreviewTime_ = 0.0f;
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = false;
+	}
+
+	const SceneDocument& document = prefabEditorSession_->GetDocument();
+	struct AnimatorEntry {
+		const SceneEntity* entity = nullptr;
+		const SceneComponent* component = nullptr;
+	};
+	std::vector<AnimatorEntry> animators;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (const SceneComponent* component =
+			FindEnabledComponent(entity, "PrefabAnimator")) {
+			animators.push_back({ &entity, component });
+		}
+	}
+
+	ImGui::SeparatorText("Prefab Animator Timeline");
+	if (animators.empty()) {
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = false;
+		ImGui::TextDisabled("Add an enabled PrefabAnimator to preview clips.");
+		return;
+	}
+
+	int animatorIndex = -1;
+	for (size_t index = 0; index < animators.size(); ++index) {
+		if (animators[index].entity->id == prefabAnimationPreviewOwnerEntityId_) {
+			animatorIndex = static_cast<int>(index);
+			break;
+		}
+	}
+	if (animatorIndex < 0) {
+		animatorIndex = 0;
+		prefabAnimationPreviewOwnerEntityId_ = animators.front().entity->id;
+		prefabAnimationPreviewClipIndex_ = 0;
+		prefabAnimationPreviewTime_ = 0.0f;
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = false;
+	}
+
+	if (ImGui::BeginCombo(
+		"Animator",
+		animators[animatorIndex].entity->name.c_str()
+	)) {
+		for (size_t index = 0; index < animators.size(); ++index) {
+			const bool selected = static_cast<int>(index) == animatorIndex;
+			ImGui::PushID(static_cast<int>(animators[index].entity->id));
+			if (ImGui::Selectable(
+				animators[index].entity->name.c_str(),
+				selected
+			)) {
+				animatorIndex = static_cast<int>(index);
+				prefabAnimationPreviewOwnerEntityId_ =
+					animators[index].entity->id;
+				prefabAnimationPreviewClipIndex_ = 0;
+				prefabAnimationPreviewTime_ = 0.0f;
+				prefabAnimationPreviewPlaying_ = false;
+				prefabAnimationPreviewActive_ =
+					!animators[index].component->prefabAnimationClips.empty();
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndCombo();
+	}
+
+	const AnimatorEntry& animatorEntry = animators[animatorIndex];
+	const std::vector<ScenePrefabAnimationClip>& clips =
+		animatorEntry.component->prefabAnimationClips;
+	if (clips.empty()) {
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = false;
+		ImGui::TextDisabled("The selected PrefabAnimator has no clips.");
+		return;
+	}
+
+	prefabAnimationPreviewClipIndex_ = std::clamp(
+		prefabAnimationPreviewClipIndex_,
+		0,
+		static_cast<int>(clips.size() - 1)
+	);
+	const char* clipPreview =
+		clips[prefabAnimationPreviewClipIndex_].name.empty()
+			? "(Unnamed Clip)"
+			: clips[prefabAnimationPreviewClipIndex_].name.c_str();
+	if (ImGui::BeginCombo("Clip", clipPreview)) {
+		for (size_t index = 0; index < clips.size(); ++index) {
+			const bool selected =
+				static_cast<int>(index) == prefabAnimationPreviewClipIndex_;
+			const char* label = clips[index].name.empty()
+				? "(Unnamed Clip)"
+				: clips[index].name.c_str();
+			ImGui::PushID(static_cast<int>(index));
+			if (ImGui::Selectable(label, selected)) {
+				prefabAnimationPreviewClipIndex_ = static_cast<int>(index);
+				prefabAnimationPreviewTime_ = 0.0f;
+				prefabAnimationPreviewPlaying_ = false;
+				prefabAnimationPreviewActive_ = true;
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndCombo();
+	}
+
+	const ScenePrefabAnimationClip& clip =
+		clips[prefabAnimationPreviewClipIndex_];
+	const float duration = (std::max)(clip.duration, 0.001f);
+	prefabAnimationPreviewTime_ = std::clamp(
+		prefabAnimationPreviewTime_,
+		0.0f,
+		duration
+	);
+	if (prefabAnimationPreviewPlaying_) {
+		prefabAnimationPreviewActive_ = true;
+		prefabAnimationPreviewTime_ += (std::max)(
+			ImGui::GetIO().DeltaTime,
+			0.0f
+		);
+		if (clip.loop) {
+			prefabAnimationPreviewTime_ = std::fmod(
+				prefabAnimationPreviewTime_,
+				duration
+			);
+		} else if (prefabAnimationPreviewTime_ >= duration) {
+			prefabAnimationPreviewTime_ = duration;
+			prefabAnimationPreviewPlaying_ = false;
+		}
+	}
+
+	if (ImGui::Button(prefabAnimationPreviewPlaying_ ? "Pause" : "Play")) {
+		if (
+			!prefabAnimationPreviewPlaying_ &&
+			!clip.loop &&
+			prefabAnimationPreviewTime_ >= duration
+		) {
+			prefabAnimationPreviewTime_ = 0.0f;
+		}
+		prefabAnimationPreviewPlaying_ = !prefabAnimationPreviewPlaying_;
+		prefabAnimationPreviewActive_ = true;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Stop")) {
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewTime_ = 0.0f;
+		prefabAnimationPreviewActive_ = true;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Reset Pose")) {
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewTime_ = 0.0f;
+		prefabAnimationPreviewActive_ = false;
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled(
+		prefabAnimationPreviewActive_ ? "Preview Pose" : "Authoring Pose"
+	);
+
+	if (ImGui::SliderFloat(
+		"Time",
+		&prefabAnimationPreviewTime_,
+		0.0f,
+		duration,
+		"%.3f s"
+	)) {
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = true;
+	}
+
+	const float timelineWidth = (std::max)(
+		ImGui::GetContentRegionAvail().x,
+		280.0f
+	);
+	const float labelWidth = std::clamp(
+		timelineWidth * 0.28f,
+		120.0f,
+		220.0f
+	);
+	const float headerHeight = 24.0f;
+	const float rowHeight = 24.0f;
+	const size_t rowCount = (std::max)(clip.tracks.size(), size_t{ 1 });
+	const float timelineHeight = headerHeight + rowHeight * rowCount;
+	const ImVec2 timelineOrigin = ImGui::GetCursorScreenPos();
+	ImGui::InvisibleButton(
+		"##PrefabAnimationTimeline",
+		ImVec2(timelineWidth, timelineHeight),
+		ImGuiButtonFlags_MouseButtonLeft
+	);
+	const float trackLeft = timelineOrigin.x + labelWidth;
+	const float trackRight = timelineOrigin.x + timelineWidth;
+	const float trackWidth = (std::max)(trackRight - trackLeft, 1.0f);
+	if (
+		ImGui::IsItemActive() &&
+		ImGui::GetMousePos().x >= trackLeft
+	) {
+		const float amount = std::clamp(
+			(ImGui::GetMousePos().x - trackLeft) / trackWidth,
+			0.0f,
+			1.0f
+		);
+		prefabAnimationPreviewTime_ = amount * duration;
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = true;
+	}
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetItemTooltip(
+			"Drag to seek | %.3f / %.3f s",
+			prefabAnimationPreviewTime_,
+			duration
+		);
+	}
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->AddRectFilled(
+		timelineOrigin,
+		ImVec2(trackRight, timelineOrigin.y + timelineHeight),
+		IM_COL32(27, 30, 34, 255)
+	);
+	drawList->AddLine(
+		ImVec2(trackLeft, timelineOrigin.y),
+		ImVec2(trackLeft, timelineOrigin.y + timelineHeight),
+		IM_COL32(82, 88, 96, 255)
+	);
+	for (int division = 0; division <= 5; ++division) {
+		const float amount = static_cast<float>(division) / 5.0f;
+		const float x = trackLeft + trackWidth * amount;
+		drawList->AddLine(
+			ImVec2(x, timelineOrigin.y + headerHeight),
+			ImVec2(x, timelineOrigin.y + timelineHeight),
+			IM_COL32(58, 63, 70, 255)
+		);
+		char timeLabel[32]{};
+		std::snprintf(timeLabel, sizeof(timeLabel), "%.2f", duration * amount);
+		drawList->AddText(
+			ImVec2(x + 3.0f, timelineOrigin.y + 4.0f),
+			IM_COL32(165, 172, 182, 255),
+			timeLabel
+		);
+	}
+
+	for (size_t trackIndex = 0; trackIndex < clip.tracks.size(); ++trackIndex) {
+		const SceneAnimationTrack& track = clip.tracks[trackIndex];
+		const float rowTop =
+			timelineOrigin.y + headerHeight + rowHeight * trackIndex;
+		const float rowCenter = rowTop + rowHeight * 0.5f;
+		if ((trackIndex & 1u) != 0u) {
+			drawList->AddRectFilled(
+				ImVec2(timelineOrigin.x, rowTop),
+				ImVec2(trackRight, rowTop + rowHeight),
+				IM_COL32(35, 39, 44, 255)
+			);
+		}
+		const SceneEntity* target = track.targetEntityId != 0
+			? document.FindEntity(track.targetEntityId)
+			: nullptr;
+		if (!target && !track.targetEntityName.empty()) {
+			target = document.FindEntityByName(track.targetEntityName);
+		}
+		if (!target) {
+			target = animatorEntry.entity;
+		}
+		const std::string targetName = target
+			? target->name
+			: std::string("Missing Target");
+		const std::string rowLabel = targetName + " / " + track.property;
+		drawList->AddText(
+			ImVec2(timelineOrigin.x + 5.0f, rowTop + 4.0f),
+			IM_COL32(215, 220, 228, 255),
+			rowLabel.c_str()
+		);
+
+		ImU32 keyColor = IM_COL32(75, 170, 255, 255);
+		ImU32 activeColor = IM_COL32(80, 205, 120, 190);
+		if (target && FindEnabledComponent(*target, "HitBox")) {
+			activeColor = IM_COL32(255, 70, 45, 205);
+		} else if (target && FindEnabledComponent(*target, "HurtBox")) {
+			activeColor = IM_COL32(45, 190, 255, 205);
+		}
+		if (track.property == "Active" && !track.keyframes.empty()) {
+			keyColor = activeColor;
+			for (size_t keyIndex = 0;
+				keyIndex < track.keyframes.size();
+				++keyIndex) {
+				const float startTime = keyIndex == 0
+					? 0.0f
+					: std::clamp(
+						track.keyframes[keyIndex].time,
+						0.0f,
+						duration
+					);
+				const float endTime = keyIndex + 1 < track.keyframes.size()
+					? std::clamp(
+						track.keyframes[keyIndex + 1].time,
+						0.0f,
+						duration
+					)
+					: duration;
+				if (
+					track.keyframes[keyIndex].value.x < 0.5f ||
+					endTime <= startTime
+				) {
+					continue;
+				}
+				drawList->AddRectFilled(
+					ImVec2(
+						trackLeft + trackWidth * (startTime / duration),
+						rowCenter - 6.0f
+					),
+					ImVec2(
+						trackLeft + trackWidth * (endTime / duration),
+						rowCenter + 6.0f
+					),
+					activeColor,
+					2.0f
+				);
+			}
+		}
+		for (const SceneAnimationKeyframe& keyframe : track.keyframes) {
+			const float keyTime = std::clamp(
+				keyframe.time,
+				0.0f,
+				duration
+			);
+			const float keyX = trackLeft + trackWidth * (keyTime / duration);
+			drawList->AddCircleFilled(
+				ImVec2(keyX, rowCenter),
+				3.5f,
+				keyColor
+			);
+		}
+	}
+
+	const float playheadX = trackLeft + trackWidth *
+		(prefabAnimationPreviewTime_ / duration);
+	drawList->AddLine(
+		ImVec2(playheadX, timelineOrigin.y),
+		ImVec2(playheadX, timelineOrigin.y + timelineHeight),
+		IM_COL32(255, 215, 70, 255),
+		2.0f
+	);
+	RebuildPrefabAnimationPreviewDocument();
+}
+
+void ImGuiManager::DrawPrefabGizmo(
+	float x,
+	float y,
+	float width,
+	float height
+) {
+	if (
+		!prefabEditorSession_ ||
+		!prefabEditorSession_->IsOpen() ||
+		&GetPrefabStageDocument() != &prefabEditorSession_->GetDocument() ||
+		!prefabPreviewCameraValid_ ||
+		prefabSelectedEntityId_ == 0 ||
+		width <= 1.0f ||
+		height <= 1.0f
+	) {
+		return;
+	}
+
+	SceneDocument& document = prefabEditorSession_->GetDocument();
+	SceneEntity* entity = document.FindEntity(prefabSelectedEntityId_);
+	if (!entity || entity->locked) {
+		return;
+	}
+
+	const SceneEntity* parentEntity = document.FindEntity(entity->parentId);
+	const Matrix4x4 parentWorld = parentEntity
+		? ResolveSceneWorldMatrix(document, *parentEntity)
+		: MakeIdentity4x4();
+	Matrix4x4 worldMatrix = ResolveSceneWorldMatrix(document, *entity);
+	const ImGuizmo::OPERATION operation = gizmoOperation_ == 0
+		? ImGuizmo::TRANSLATE
+		: gizmoOperation_ == 1
+			? ImGuizmo::ROTATE
+			: ImGuizmo::SCALE;
+	const ImGuizmo::MODE mode = gizmoLocalMode_
+		? ImGuizmo::LOCAL
+		: ImGuizmo::WORLD;
+	if (
+		!gizmoLocalMode_ &&
+		gizmoOperation_ != 0 &&
+		parentEntity &&
+		HasNonUniformScale(parentWorld)
+	) {
+		ImGui::GetWindowDrawList()->AddText(
+			ImVec2(x + 8.0f, y + 8.0f),
+			IM_COL32(255, 190, 80, 255),
+			"World Rotate/Scale requires a uniformly scaled parent."
+		);
+		return;
+	}
+
+	const float snapValue = gizmoOperation_ == 0
+		? gizmoTranslationSnap_
+		: gizmoOperation_ == 1
+			? gizmoRotationSnapDegrees_
+			: gizmoScaleSnap_;
+	const float snap[3] = { snapValue, snapValue, snapValue };
+	ImGuizmo::SetOrthographic(false);
+	ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+	ImGuizmo::SetRect(x, y, width, height);
+	const bool changed = ImGuizmo::Manipulate(
+		&prefabPreviewViewMatrix_.m[0][0],
+		&prefabPreviewProjectionMatrix_.m[0][0],
+		operation,
+		mode,
+		&worldMatrix.m[0][0],
+		nullptr,
+		gizmoSnapEnabled_ ? snap : nullptr
+	);
+	if (!changed || !ImGuizmo::IsUsing()) {
+		return;
+	}
+
+	Matrix4x4 localMatrix = worldMatrix;
+	if (parentEntity) {
+		localMatrix = Multiply(worldMatrix, Inverse(parentWorld));
+	}
+	Vector3 localScale{};
+	Quaternion localRotate = MakeIdentityQuaternion();
+	Vector3 localTranslate{};
+	if (!DecomposeAffineMatrix(
+		localMatrix,
+		localScale,
+		localRotate,
+		localTranslate
+	)) {
+		return;
+	}
+	if (gizmoOperation_ == 0) {
+		entity->transform.translate = localTranslate;
+	} else if (gizmoOperation_ == 1) {
+		entity->transform.rotate = localRotate;
+	} else {
+		entity->transform.scale = localScale;
+	}
+	document.MarkDirty();
+}
+
+bool ImGuiManager::PickPrefabEntity(
+	float x,
+	float y,
+	float width,
+	float height
+) {
+	if (
+		!prefabEditorSession_ ||
+		!prefabEditorSession_->IsOpen() ||
+		!prefabPreviewCameraValid_ ||
+		width <= 1.0f ||
+		height <= 1.0f
+	) {
+		return false;
+	}
+
+	const ImVec2 mouse = ImGui::GetMousePos();
+	const float normalizedX = (mouse.x - x) / width;
+	const float normalizedY = (mouse.y - y) / height;
+	if (
+		normalizedX < 0.0f ||
+		normalizedX > 1.0f ||
+		normalizedY < 0.0f ||
+		normalizedY > 1.0f
+	) {
+		return false;
+	}
+
+	const float ndcX = normalizedX * 2.0f - 1.0f;
+	const float ndcY = 1.0f - normalizedY * 2.0f;
+	const Matrix4x4 inverseViewProjection = Inverse(Multiply(
+		prefabPreviewViewMatrix_,
+		prefabPreviewProjectionMatrix_
+	));
+	const Vector3 nearPoint = TransformCoord(
+		{ ndcX, ndcY, 0.0f },
+		inverseViewProjection
+	);
+	const Vector3 farPoint = TransformCoord(
+		{ ndcX, ndcY, 1.0f },
+		inverseViewProjection
+	);
+
+	const SceneDocument& document = GetPrefabStageDocument();
+	uint64_t bestEntityId = 0;
+	float bestDistance = (std::numeric_limits<float>::max)();
+	const Vector3 worldRayDirection = Math::Normalize(
+		Math::Subtract(farPoint, nearPoint)
+	);
+	const auto considerHit = [&](uint64_t entityId, float worldDistance) {
+		if (worldDistance < bestDistance) {
+			bestDistance = worldDistance;
+			bestEntityId = entityId;
+		}
+	};
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (entity.locked) {
+			continue;
+		}
+
+		if (IsEntityActiveInHierarchy(document, entity)) {
+			const SceneComponent* meshRenderer =
+				FindEnabledComponent(entity, "MeshRenderer");
+			if (meshRenderer && !meshRenderer->modelPath.empty()) {
+				ModelManager::GetInstance()->LoadModel(meshRenderer->modelPath);
+				Model* model = ModelManager::GetInstance()->FindModel(
+					meshRenderer->modelPath
+				);
+				Vector3 localMin{};
+				Vector3 localMax{};
+				if (model && model->GetLocalBounds(localMin, localMax)) {
+					Matrix4x4 modelWorld =
+						ResolveSceneWorldMatrix(document, entity);
+					if (!model->HasSkinning()) {
+						modelWorld = Multiply(
+							model->GetRootNodeLocalMatrix(),
+							modelWorld
+						);
+					}
+					const Matrix4x4 inverseWorld = Inverse(modelWorld);
+					const Vector3 localRayOrigin =
+						TransformCoord(nearPoint, inverseWorld);
+					const Vector3 localRayFar =
+						TransformCoord(farPoint, inverseWorld);
+					const Vector3 localRayDirection = Math::Normalize(
+						Math::Subtract(localRayFar, localRayOrigin)
+					);
+					float localDistance = 0.0f;
+					if (IntersectRayAabb(
+						localRayOrigin,
+						localRayDirection,
+						localMin,
+						localMax,
+						localDistance
+					)) {
+						const Vector3 localHit = Math::Add(
+							localRayOrigin,
+							Math::Multiply(localRayDirection, localDistance)
+						);
+						const Vector3 worldHit =
+							TransformCoord(localHit, modelWorld);
+						considerHit(
+							entity.id,
+							Math::Length(Math::Subtract(worldHit, nearPoint))
+						);
+					}
+				}
+			}
+		}
+
+		const SceneComponent* colliderComponent =
+			FindEnabledComponent(entity, "OBBCollider");
+		if (!colliderComponent) {
+			continue;
+		}
+		const bool isCombatVolume =
+			FindEnabledComponent(entity, "HitBox") != nullptr ||
+			FindEnabledComponent(entity, "HurtBox") != nullptr;
+		const bool colliderVisible = isCombatVolume
+			? prefabPreviewShowCombatVolumes_ || prefabPreviewShowColliders_
+			: prefabPreviewShowColliders_;
+		if (!colliderVisible) {
+			continue;
+		}
+
+		const Matrix4x4 colliderWorld =
+			ResolveSceneWorldMatrix(document, entity);
+		if (colliderComponent->colliderShape == "Sphere") {
+			const Vector3 center = TransformCoord(
+				colliderComponent->colliderOffset,
+				colliderWorld
+			);
+			const float radius =
+				(std::max)(colliderComponent->colliderSphereRadius, 0.001f) *
+				GetMaxWorldAxisScale(colliderWorld);
+			float worldDistance = 0.0f;
+			if (IntersectRaySphere(
+				nearPoint,
+				worldRayDirection,
+				center,
+				radius,
+				worldDistance
+			)) {
+				considerHit(entity.id, worldDistance);
+			}
+			continue;
+		}
+
+		const Matrix4x4 inverseWorld = Inverse(colliderWorld);
+		const Vector3 localRayOrigin = TransformCoord(nearPoint, inverseWorld);
+		const Vector3 localRayFar = TransformCoord(farPoint, inverseWorld);
+		const Vector3 localRayDirection = Math::Normalize(
+			Math::Subtract(localRayFar, localRayOrigin)
+		);
+		const Vector3 halfSize{
+			(std::max)(std::abs(colliderComponent->colliderSizeMultiplier.x), 0.001f),
+			(std::max)(std::abs(colliderComponent->colliderSizeMultiplier.y), 0.001f),
+			(std::max)(std::abs(colliderComponent->colliderSizeMultiplier.z), 0.001f)
+		};
+		const Vector3 localMin = Math::Subtract(
+			colliderComponent->colliderOffset,
+			halfSize
+		);
+		const Vector3 localMax = Math::Add(
+			colliderComponent->colliderOffset,
+			halfSize
+		);
+		float localDistance = 0.0f;
+		if (IntersectRayAabb(
+			localRayOrigin,
+			localRayDirection,
+			localMin,
+			localMax,
+			localDistance
+		)) {
+			const Vector3 localHit = Math::Add(
+				localRayOrigin,
+				Math::Multiply(localRayDirection, localDistance)
+			);
+			const Vector3 worldHit = TransformCoord(localHit, colliderWorld);
+			considerHit(
+				entity.id,
+				Math::Length(Math::Subtract(worldHit, nearPoint))
+			);
+		}
+	}
+
+	prefabSelectedEntityId_ = bestEntityId;
+	return bestEntityId != 0;
 }
 
 void ImGuiManager::DrawPrefabHierarchy() {

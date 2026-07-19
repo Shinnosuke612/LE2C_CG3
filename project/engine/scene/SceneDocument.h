@@ -167,6 +167,8 @@ struct SceneComponent {
 	SceneComponent(std::string componentType, bool componentEnabled = true)
 		: type(std::move(componentType)), enabled(componentEnabled) {}
 
+	// Prefab Property OverrideがComponentの並び順ではなく安定IDで対応付ける。
+	uint64_t localId = 0;
 	std::string type;
 	bool enabled = true;
 	std::string modelPath;
@@ -459,6 +461,27 @@ struct SceneEntity {
 	std::vector<SceneComponent> components;
 };
 
+enum class ScenePrefabOverrideKind {
+	EntityProperty,
+	ComponentProperty,
+	AddedComponent,
+	RemovedComponent,
+	AddedEntity,
+	RemovedEntity,
+	StaleEntity
+};
+
+struct ScenePrefabPropertyOverride {
+	ScenePrefabOverrideKind kind = ScenePrefabOverrideKind::EntityProperty;
+	uint64_t entityLocalId = 0;
+	uint64_t instanceEntityId = 0;
+	uint64_t componentLocalId = 0;
+	std::string entityName;
+	std::string componentType;
+	std::string propertyPath;
+	std::string label;
+};
+
 class SceneDocument {
 public:
 	void Clear(const std::string& sceneName = {});
@@ -480,6 +503,17 @@ public:
 	bool UnpackPrefabInstance(uint64_t rootId);
 	uint64_t FindPrefabInstanceRoot(uint64_t entityId) const;
 	std::vector<std::string> CollectPrefabInstanceOverrides(uint64_t rootId) const;
+	std::vector<ScenePrefabPropertyOverride> CollectPrefabPropertyOverrides(
+		uint64_t rootId
+	) const;
+	bool ApplyPrefabPropertyOverride(
+		uint64_t rootId,
+		const ScenePrefabPropertyOverride& overrideValue
+	);
+	bool RevertPrefabPropertyOverride(
+		uint64_t rootId,
+		const ScenePrefabPropertyOverride& overrideValue
+	);
 	bool SetParent(uint64_t id, uint64_t parentId);
 	bool MoveEntity(uint64_t id, int direction);
 	bool MoveEntityToParent(uint64_t id, uint64_t parentId);

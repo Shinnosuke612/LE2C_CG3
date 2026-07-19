@@ -70,6 +70,9 @@
     <ClCompile Include="application\Game.cpp">
       <Filter>Application</Filter>
     </ClCompile>
+    <ClCompile Include="application\PrefabPreviewRenderer.cpp">
+      <Filter>Application</Filter>
+    </ClCompile>
     <ClCompile Include="engine\base\Framework.cpp" />
     <ClCompile Include="application\scene\RuntimeScene.cpp">
       <Filter>Application\Scene</Filter>
@@ -182,6 +185,9 @@
     <ClCompile Include="engine\scene\SceneEntityQuery.cpp">
       <Filter>Engine\Scene</Filter>
     </ClCompile>
+	<ClCompile Include="engine\scene\ScenePrefabAnimationEvaluator.cpp">
+	  <Filter>Engine\Scene</Filter>
+	</ClCompile>
     <ClCompile Include="engine\scene\SceneTransformResolver.cpp">
       <Filter>Engine\Scene</Filter>
     </ClCompile>
@@ -262,6 +268,9 @@
     <ClInclude Include="engine\base\ImGuiManager.h" />
     <ClInclude Include="engine\Audio\Audio.h" />
     <ClInclude Include="application\Game.h">
+      <Filter>Application</Filter>
+    </ClInclude>
+    <ClInclude Include="application\PrefabPreviewRenderer.h">
       <Filter>Application</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\Framework.h" />
@@ -388,6 +397,9 @@
     <ClInclude Include="engine\scene\SceneEntityQuery.h">
       <Filter>Engine\Scene</Filter>
     </ClInclude>
+	<ClInclude Include="engine\scene\ScenePrefabAnimationEvaluator.h">
+	  <Filter>Engine\Scene</Filter>
+	</ClInclude>
     <ClInclude Include="engine\scene\SceneSettings.h">
       <Filter>Engine\Scene</Filter>
     </ClInclude>

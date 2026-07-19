@@ -1,93 +1,13 @@
 // 役割: 軽量なPrefab内Property AnimationをScene Entityへ適用する。
 #include "ScenePrefabAnimationSystem.h"
 
-#include "../../../engine/math/Math.h"
 #include "../../../engine/scene/SceneDocument.h"
 #include "../../../engine/scene/SceneEntityQuery.h"
+#include "../../../engine/scene/ScenePrefabAnimationEvaluator.h"
 
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
-
-namespace {
-	SceneEntity* ResolveTrackTarget(
-		SceneDocument& document,
-		const SceneAnimationTrack& track,
-		uint64_t ownerEntityId
-	) {
-		if (track.targetEntityId != 0) {
-			if (SceneEntity* entity = document.FindEntity(track.targetEntityId)) {
-				return entity;
-			}
-		}
-		if (!track.targetEntityName.empty()) {
-			if (SceneEntity* entity =
-				document.FindEntityByName(track.targetEntityName)) {
-				return entity;
-			}
-		}
-		return document.FindEntity(ownerEntityId);
-	}
-
-	float ApplyEasing(float value, const std::string& easing) {
-		value = std::clamp(value, 0.0f, 1.0f);
-		return easing == "Linear" ? value : Math::SmoothStep(value);
-	}
-
-	Vector3 SampleTrack(const SceneAnimationTrack& track, float time) {
-		if (track.keyframes.empty()) {
-			return {};
-		}
-		if (time <= track.keyframes.front().time) {
-			return track.keyframes.front().value;
-		}
-		for (size_t index = 1; index < track.keyframes.size(); ++index) {
-			const SceneAnimationKeyframe& next = track.keyframes[index];
-			if (time > next.time) {
-				continue;
-			}
-			const SceneAnimationKeyframe& previous = track.keyframes[index - 1];
-			const float duration = (std::max)(next.time - previous.time, 0.0001f);
-			const float amount = ApplyEasing(
-				(time - previous.time) / duration,
-				track.easing
-			);
-			return {
-				Math::Lerp(previous.value.x, next.value.x, amount),
-				Math::Lerp(previous.value.y, next.value.y, amount),
-				Math::Lerp(previous.value.z, next.value.z, amount)
-			};
-		}
-		return track.keyframes.back().value;
-	}
-
-	Quaternion SampleRotation(const SceneAnimationTrack& track, float time) {
-		if (track.keyframes.empty()) {
-			return Quaternion{};
-		}
-		if (time <= track.keyframes.front().time) {
-			return MakeQuaternionFromEuler(track.keyframes.front().value);
-		}
-		for (size_t index = 1; index < track.keyframes.size(); ++index) {
-			const SceneAnimationKeyframe& next = track.keyframes[index];
-			if (time > next.time) {
-				continue;
-			}
-			const SceneAnimationKeyframe& previous = track.keyframes[index - 1];
-			const float duration = (std::max)(next.time - previous.time, 0.0001f);
-			const float amount = ApplyEasing(
-				(time - previous.time) / duration,
-				track.easing
-			);
-			return Slerp(
-				MakeQuaternionFromEuler(previous.value),
-				MakeQuaternionFromEuler(next.value),
-				amount
-			);
-		}
-		return MakeQuaternionFromEuler(track.keyframes.back().value);
-	}
-}
 
 void ScenePrefabAnimationSystem::Update(
 	SceneDocument& document,
@@ -131,28 +51,12 @@ void ScenePrefabAnimationSystem::Update(
 			runtime.playing = false;
 		}
 
-		for (const SceneAnimationTrack& track : clip.tracks) {
-			SceneEntity* target = ResolveTrackTarget(document, track, entity.id);
-			if (!target || track.keyframes.empty()) {
-				continue;
-			}
-			if (track.property == "LocalPosition") {
-				target->transform.translate = SampleTrack(track, runtime.time);
-			} else if (track.property == "LocalScale") {
-				target->transform.scale = SampleTrack(track, runtime.time);
-			} else if (track.property == "LocalRotation") {
-				target->transform.rotate = SampleRotation(track, runtime.time);
-			} else if (track.property == "Active") {
-				Vector3 value = track.keyframes.front().value;
-				for (const SceneAnimationKeyframe& keyframe : track.keyframes) {
-					if (keyframe.time > runtime.time) {
-						break;
-					}
-					value = keyframe.value;
-				}
-				target->active = value.x >= 0.5f;
-			}
-		}
+		ScenePrefabAnimationEvaluator::ApplyClip(
+			document,
+			entity.id,
+			clip,
+			runtime.time
+		);
 	}
 
 	for (auto iterator = runtimes_.begin(); iterator != runtimes_.end();) {

@@ -18,6 +18,7 @@ class SrvManager;
 class EditorSession;
 class PrefabEditorSession;
 class SceneCatalog;
+class SceneDocument;
 class SceneManager;
 class SceneTemplateRegistry;
 enum class SceneBuildConfiguration : uint8_t;
@@ -38,6 +39,22 @@ struct SceneAssetRequest {
 	std::string displayName;
 	std::string assetPath;
 	std::string templateId;
+};
+
+struct PrefabPreviewRequest {
+	const SceneDocument* document = nullptr;
+	std::string assetPath;
+	uint64_t revision = 0;
+	float yaw = 0.65f;
+	float pitch = 0.25f;
+	float zoom = 1.0f;
+	uint32_t width = 768;
+	uint32_t height = 432;
+	uint64_t selectedEntityId = 0;
+	bool showSkeleton = true;
+	bool showJointAxes = false;
+	bool showColliders = true;
+	bool showCombatVolumes = true;
 };
 
 enum class SceneInstanceOperation {
@@ -139,6 +156,16 @@ public:
 		float& pitch,
 		float& zoom
 	) const;
+	void SetPrefabPreviewTexture(
+		const std::string& assetPath,
+		uint64_t revision,
+		D3D12_GPU_DESCRIPTOR_HANDLE texture,
+		uint32_t width,
+		uint32_t height,
+		const Matrix4x4& viewMatrix,
+		const Matrix4x4& projectionMatrix
+	);
+	bool GetPrefabPreviewRequest(PrefabPreviewRequest& request) const;
 
 	// Communication with scenes
 	const std::string& GetSelectedProjectFile() const { return selectedProjectFile_; }
@@ -162,6 +189,28 @@ private:
 	void DrawConsoleWindow();
 	void DrawLoadedScenesWindow();
 	void DrawPrefabWindow();
+	void RequestOpenPrefab(const std::string& filePath, int historyIndex = -1);
+	bool OpenPrefab(const std::string& filePath, int historyIndex = -1);
+	void DrawPrefabOpenConfirmation();
+	void SelectPrefabAssetInProject(const std::string& filePath);
+	uint64_t InstantiatePrefabInEditScene(
+		const std::string& filePath,
+		uint64_t parentId,
+		const Vector3* rootTranslate = nullptr
+	);
+	void DrawProjectPrefabAccessPanel();
+	void DrawPrefabQuickOpenPopup();
+	const std::vector<std::string>& GetCachedPrefabAssetPaths();
+	void RefreshPrefabAssetPathCache();
+	void RecordRecentPrefab(const std::string& filePath);
+	bool IsFavoritePrefab(const std::string& filePath) const;
+	void ToggleFavoritePrefab(const std::string& filePath);
+	void DrawPrefabPreview();
+	void DrawPrefabAnimationTimeline();
+	void RebuildPrefabAnimationPreviewDocument();
+	const SceneDocument& GetPrefabStageDocument() const;
+	void DrawPrefabGizmo(float x, float y, float width, float height);
+	bool PickPrefabEntity(float x, float y, float width, float height);
 	void DrawPrefabHierarchy();
 	void DrawPrefabInspector();
 	void DrawPlaybackControls();
@@ -267,6 +316,13 @@ private:
 	PrefabEditorSession* prefabEditorSession_ = nullptr;
 	uint64_t prefabSelectedEntityId_ = 0;
 	bool prefabClosePopupRequested_ = false;
+	bool prefabOpenPopupRequested_ = false;
+	bool prefabFocusRequested_ = false;
+	std::string pendingPrefabOpenPath_;
+	int pendingPrefabHistoryIndex_ = -1;
+	std::vector<std::string> prefabNavigationHistory_;
+	int prefabNavigationIndex_ = -1;
+	std::string prefabNavigationStatus_;
 	SceneCatalog* sceneCatalog_ = nullptr;
 	SceneManager* sceneManager_ = nullptr;
 	const SceneTemplateRegistry* sceneTemplateRegistry_ = nullptr;
@@ -318,12 +374,20 @@ private:
 	// Dynamic asset browser state
 	std::string selectedProjectFolder_;
 	std::string selectedProjectFile_ = "";
+	bool projectFocusRequested_ = false;
 	bool projectGridView_ = true;
+	bool projectPrefabFilterEnabled_ = false;
+	bool prefabQuickOpenFocusRequested_ = false;
+	char prefabQuickOpenSearchBuffer_[128] = {};
 	float projectThumbnailSize_ = 80.0f;
 	std::unordered_set<std::string> projectPreviewLoadAttempted_;
 	bool assetPathCacheDirty_ = true;
 	std::vector<std::string> cachedModelAssetPaths_;
 	std::vector<std::string> cachedTextureAssetPaths_;
+	bool prefabAssetPathCacheDirty_ = true;
+	std::vector<std::string> cachedPrefabAssetPaths_;
+	std::vector<std::string> recentPrefabPaths_;
+	std::unordered_set<std::string> favoritePrefabPaths_;
 	bool projectDirectoryCacheDirty_ = true;
 	std::string cachedProjectFolder_;
 	std::vector<ProjectDirectoryEntry> cachedProjectEntries_;
@@ -337,6 +401,31 @@ private:
 	float modelPreviewYaw_ = 0.65f;
 	float modelPreviewPitch_ = 0.25f;
 	float modelPreviewZoom_ = 1.0f;
+	std::string prefabPreviewRenderedPath_;
+	uint64_t prefabPreviewRenderedRevision_ = 0;
+	D3D12_GPU_DESCRIPTOR_HANDLE prefabPreviewTexture_{};
+	uint32_t prefabPreviewTextureWidth_ = 1;
+	uint32_t prefabPreviewTextureHeight_ = 1;
+	Matrix4x4 prefabPreviewViewMatrix_ = MakeIdentity4x4();
+	Matrix4x4 prefabPreviewProjectionMatrix_ = MakeIdentity4x4();
+	bool prefabPreviewCameraValid_ = false;
+	uint32_t prefabPreviewRequestedWidth_ = 768;
+	uint32_t prefabPreviewRequestedHeight_ = 432;
+	float prefabPreviewYaw_ = 0.65f;
+	float prefabPreviewPitch_ = 0.25f;
+	float prefabPreviewZoom_ = 1.0f;
+	bool prefabPreviewShowSkeleton_ = true;
+	bool prefabPreviewShowJointAxes_ = false;
+	bool prefabPreviewShowColliders_ = true;
+	bool prefabPreviewShowCombatVolumes_ = true;
+	SceneDocument* prefabAnimationPreviewDocument_ = nullptr;
+	std::string prefabAnimationPreviewAssetPath_;
+	uint64_t prefabAnimationPreviewSourceRevision_ = 0;
+	uint64_t prefabAnimationPreviewOwnerEntityId_ = 0;
+	int prefabAnimationPreviewClipIndex_ = 0;
+	float prefabAnimationPreviewTime_ = 0.0f;
+	bool prefabAnimationPreviewPlaying_ = false;
+	bool prefabAnimationPreviewActive_ = false;
 	// ImGui 1.92以降はフォントデータをAtlasの寿命まで保持する必要がある。
 	std::vector<uint8_t> editorBaseFontData_;
 	std::vector<uint8_t> editorJapaneseFontData_;

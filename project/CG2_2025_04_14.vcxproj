@@ -177,6 +177,7 @@
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
     <ClCompile Include="engine\base\Framework.cpp" />
     <ClCompile Include="application\Game.cpp" />
+    <ClCompile Include="application\PrefabPreviewRenderer.cpp" />
     <ClCompile Include="application\scene\RuntimeScene.cpp" />
     <ClCompile Include="application\scene\system\SceneAgentSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneAttachmentSystem.cpp" />
@@ -234,6 +235,7 @@
     <ClCompile Include="engine\scene\SceneCatalog.cpp" />
     <ClCompile Include="engine\scene\SceneDocument.cpp" />
     <ClCompile Include="engine\scene\SceneEntityQuery.cpp" />
+	<ClCompile Include="engine\scene\ScenePrefabAnimationEvaluator.cpp" />
     <ClCompile Include="engine\scene\SceneTransformResolver.cpp" />
     <ClCompile Include="engine\scene\SceneTemplateRegistry.cpp" />
     <ClCompile Include="engine\scene\EditorSession.cpp" />
@@ -378,6 +380,7 @@
     <ClInclude Include="engine\base\ImGuiManager.h" />
     <ClInclude Include="engine\base\Framework.h" />
     <ClInclude Include="application\Game.h" />
+    <ClInclude Include="application\PrefabPreviewRenderer.h" />
     <ClInclude Include="application\scene\RuntimeScene.h" />
     <ClInclude Include="application\scene\SceneRuntimeObjectBinding.h" />
     <ClInclude Include="application\scene\system\SceneAgentSystem.h" />
@@ -412,6 +415,7 @@
     <ClInclude Include="engine\scene\SceneCatalog.h" />
     <ClInclude Include="engine\scene\SceneDocument.h" />
     <ClInclude Include="engine\scene\SceneEntityQuery.h" />
+	<ClInclude Include="engine\scene\ScenePrefabAnimationEvaluator.h" />
     <ClInclude Include="engine\scene\SceneSettings.h" />
     <ClInclude Include="engine\scene\SceneTransformResolver.h" />
     <ClInclude Include="engine\scene\SceneTemplateRegistry.h" />

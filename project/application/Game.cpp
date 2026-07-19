@@ -1,5 +1,6 @@
 // 役割: ゲーム全体の更新、描画、ポストプロセスとエディタ再生制御を実装する。
 #include "Game.h"
+#include "PrefabPreviewRenderer.h"
 #include "scene/EditorBootstrap.h"
 #include "scene/RuntimeBootstrap.h"
 #include "scene/SceneFactory.h"
@@ -339,6 +340,8 @@ void Game::Initialize() {
 		modelPreviewObject_->SetCamera(modelPreviewCamera_);
 		// Asset previews must not depend on the active scene's light bindings.
 		modelPreviewObject_->SetEnableLighting(false);
+		prefabPreviewRenderer_ = new PrefabPreviewRenderer();
+		prefabPreviewRenderer_->Initialize(dxCommon_, srvManager_);
 	}
 #endif
 	baseExposure_ = bloomParameters_.exposure;
@@ -1227,6 +1230,7 @@ void Game::Draw() {
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	DrawModelPreview();
+	DrawPrefabPreview();
 #endif
 
 	fullscreenCopy_->BeginFrame();
@@ -2040,6 +2044,48 @@ void Game::DrawModelPreview() {
 	);
 }
 
+void Game::DrawPrefabPreview() {
+	if (!imguiManager_ || !prefabPreviewRenderer_) {
+		return;
+	}
+	if (editorSession_ && !editorSession_->IsEditing()) {
+		return;
+	}
+
+	PrefabPreviewRequest request{};
+	if (
+		!imguiManager_->GetPrefabPreviewRequest(request) ||
+		!request.document
+	) {
+		return;
+	}
+
+	PrefabPreviewRenderer::OverlayOptions overlayOptions{};
+	overlayOptions.selectedEntityId = request.selectedEntityId;
+	overlayOptions.showSkeleton = request.showSkeleton;
+	overlayOptions.showJointAxes = request.showJointAxes;
+	overlayOptions.showColliders = request.showColliders;
+	overlayOptions.showCombatVolumes = request.showCombatVolumes;
+	prefabPreviewRenderer_->Render(
+		*request.document,
+		request.width,
+		request.height,
+		request.yaw,
+		request.pitch,
+		request.zoom,
+		overlayOptions
+	);
+	imguiManager_->SetPrefabPreviewTexture(
+		request.assetPath,
+		request.revision,
+		prefabPreviewRenderer_->GetTexture(),
+		prefabPreviewRenderer_->GetWidth(),
+		prefabPreviewRenderer_->GetHeight(),
+		prefabPreviewRenderer_->GetViewMatrix(),
+		prefabPreviewRenderer_->GetProjectionMatrix()
+	);
+}
+
 void Game::Finalize() {
 	if (Input* input = Input::GetInstance()) {
 		input->SetCursorCapture(false);
@@ -2057,6 +2103,8 @@ void Game::Finalize() {
 #endif
 	delete modelPreviewObject_;
 	modelPreviewObject_ = nullptr;
+	delete prefabPreviewRenderer_;
+	prefabPreviewRenderer_ = nullptr;
 	delete modelPreviewCamera_;
 	modelPreviewCamera_ = nullptr;
 	delete modelPreviewRenderTarget_;
