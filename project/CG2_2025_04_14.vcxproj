@@ -151,6 +151,7 @@
     <ClCompile Include="engine\collision\SphereCollider.cpp" />
     <ClCompile Include="engine\physics\PhysicsWorld.cpp" />
     <ClCompile Include="engine\debug\DebugRenderer.cpp" />
+    <ClCompile Include="engine\debug\EditorGridRenderer.cpp" />
     <ClCompile Include="engine\effect\LightningRenderer.cpp" />
     <ClCompile Include="engine\effect\WaterSurfaceRenderer.cpp" />
     <ClCompile Include="application\camera\ThirdPersonCameraController.cpp" />
@@ -233,6 +234,7 @@
     <ClCompile Include="engine\scene\SceneValidator.cpp" />
     <ClCompile Include="engine\scene\SceneAssetService.cpp" />
     <ClCompile Include="engine\scene\SceneCatalog.cpp" />
+    <ClCompile Include="engine\scene\PrefabAssetRegistry.cpp" />
     <ClCompile Include="engine\scene\SceneDocument.cpp" />
     <ClCompile Include="engine\scene\SceneEntityQuery.cpp" />
 	<ClCompile Include="engine\scene\ScenePrefabAnimationEvaluator.cpp" />
@@ -323,6 +325,7 @@
     <ClInclude Include="engine\physics\PhysicsBody.h" />
     <ClInclude Include="engine\physics\PhysicsWorld.h" />
     <ClInclude Include="engine\debug\DebugRenderer.h" />
+    <ClInclude Include="engine\debug\EditorGridRenderer.h" />
     <ClInclude Include="engine\effect\LightningRenderer.h" />
     <ClInclude Include="engine\effect\WaterSurfaceRenderer.h" />
     <ClInclude Include="application\camera\ThirdPersonCameraController.h" />
@@ -413,6 +416,7 @@
     <ClInclude Include="engine\scene\SceneValidator.h" />
     <ClInclude Include="engine\scene\SceneAssetService.h" />
     <ClInclude Include="engine\scene\SceneCatalog.h" />
+    <ClInclude Include="engine\scene\PrefabAssetRegistry.h" />
     <ClInclude Include="engine\scene\SceneDocument.h" />
     <ClInclude Include="engine\scene\SceneEntityQuery.h" />
 	<ClInclude Include="engine\scene\ScenePrefabAnimationEvaluator.h" />

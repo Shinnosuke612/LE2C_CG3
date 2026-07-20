@@ -34,6 +34,7 @@
 #include "../engine/particle/ParticleManager.h"
 #include "../engine/particle/ParticleEmitter.h"
 #include "../engine/debug/DebugRenderer.h"
+#include "../engine/debug/EditorGridRenderer.h"
 #include "../engine/utility/EditableResourcePath.h"
 #include "../engine/utility/Logger.h"
 #include "../engine/utility/StringUtility.h"
@@ -1222,6 +1223,14 @@ void Game::Draw() {
 	Object3dCommon::GetInstance()->SetCommonRenderState();
 	sceneManager_->Draw();
 #if defined(_DEBUG) || defined(DEVELOPMENT)
+	if (
+		editorSession_ &&
+		editorSession_->IsEditing() &&
+		imguiManager_ &&
+		imguiManager_->IsSceneGridVisible()
+	) {
+		EditorGridRenderer::AddGrid(*DebugRenderer::GetInstance());
+	}
 	DebugRenderer::GetInstance()->Draw(
 		Object3dCommon::GetInstance()->GetDefaultCamera()
 	);
@@ -2066,13 +2075,16 @@ void Game::DrawPrefabPreview() {
 	overlayOptions.showJointAxes = request.showJointAxes;
 	overlayOptions.showColliders = request.showColliders;
 	overlayOptions.showCombatVolumes = request.showCombatVolumes;
+	overlayOptions.showGrid = request.showGrid;
 	prefabPreviewRenderer_->Render(
+		request.assetPath,
 		*request.document,
 		request.width,
 		request.height,
 		request.yaw,
 		request.pitch,
 		request.zoom,
+		request.framingSerial,
 		overlayOptions
 	);
 	imguiManager_->SetPrefabPreviewTexture(

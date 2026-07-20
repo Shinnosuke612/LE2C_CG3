@@ -232,7 +232,7 @@ void SceneEnvironmentSystem::DrawEditor(SceneDocument& document) {
 	}
 	if (!targetEnvironment) {
 		SceneEntity& entity = document.CreateEntity("Environment");
-		entity.components.push_back(SceneComponent{ "Environment", true });
+		document.AddComponent(entity.id, "Environment");
 		targetEnvironment = &entity.components.back();
 	}
 	targetEnvironment->environmentSkyboxEnabled = true;

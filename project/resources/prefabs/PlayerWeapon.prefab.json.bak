@@ -1,5 +1,4 @@
 {
-  "assetId": "fa93a1e5-f5fb-4de2-9cb5-ac1c81c57eb7",
   "debug": {
     "showColliders": false,
     "showJointAxes": false,
@@ -42,35 +41,19 @@
                   "keyframes": [
                     {
                       "time": 0.0,
-                      "value": [
-                        0.0,
-                        0.0,
-                        0.0
-                      ]
+                      "value": [0.0, 0.0, 0.0]
                     },
                     {
                       "time": 0.12,
-                      "value": [
-                        1.0,
-                        0.0,
-                        0.0
-                      ]
+                      "value": [1.0, 0.0, 0.0]
                     },
                     {
                       "time": 0.34,
-                      "value": [
-                        0.0,
-                        0.0,
-                        0.0
-                      ]
+                      "value": [0.0, 0.0, 0.0]
                     },
                     {
                       "time": 0.64,
-                      "value": [
-                        0.0,
-                        0.0,
-                        0.0
-                      ]
+                      "value": [0.0, 0.0, 0.0]
                     }
                   ],
                   "property": "Active",
@@ -93,22 +76,9 @@
       "parentId": 0,
       "team": "",
       "transform": {
-        "rotation": [
-          0.0,
-          0.0,
-          0.0,
-          1.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "translate": [
-          0.0,
-          0.0,
-          0.0
-        ]
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 0.0, 0.0]
       }
     },
     {
@@ -116,29 +86,16 @@
       "components": [
         {
           "active": true,
-          "debugColor": [
-            1.0,
-            0.2,
-            0.1,
-            1.0
-          ],
+          "debugColor": [1.0, 0.2, 0.1, 1.0],
           "debugSegments": 16,
           "debugVisible": true,
           "enabled": true,
           "isTrigger": true,
           "layer": 4294967295,
           "mask": 4294967295,
-          "offset": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "offset": [0.0, 0.0, 0.0],
           "shape": "Box",
-          "sizeMultiplier": [
-            0.9,
-            0.8,
-            1.2
-          ],
+          "sizeMultiplier": [0.9, 0.8, 1.2],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
         },
@@ -173,22 +130,9 @@
       "parentId": 1,
       "team": "",
       "transform": {
-        "rotation": [
-          0.0,
-          0.0,
-          0.0,
-          1.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "translate": [
-          0.0,
-          0.0,
-          0.0
-        ]
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 0.0, 0.0]
       }
     }
   ],

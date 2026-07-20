@@ -1,5 +1,4 @@
 {
-  "assetId": "edf6fdec-9329-445d-a697-a310c24a08e2",
   "debug": {
     "jointAxisLength": 0.05999999865889549,
     "jointRadius": 0.017999999225139618,
@@ -23,6 +22,16 @@
           "materialOverrides": [],
           "modelPath": "Cube.obj",
           "type": "MeshRenderer"
+        },
+        {
+          "allowJump": true,
+          "cameraRelativeMove": true,
+          "dashMultiplier": 1.649999976158142,
+          "enabled": true,
+          "jumpVelocity": 37.20000076293945,
+          "moveSpeed": 19.799999237060547,
+          "turnResponsiveness": 0.017999999225139618,
+          "type": "PlayerBehavior"
         },
         {
           "active": true,
@@ -52,6 +61,66 @@
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
+        },
+        {
+          "enabled": true,
+          "farClip": 1000.0,
+          "fovY": 0.44999998807907104,
+          "invertPitch": false,
+          "invertYaw": false,
+          "isMain": true,
+          "nearClip": 0.10000000149011612,
+          "type": "Camera"
+        },
+        {
+          "aimDistance": 3.0,
+          "aimModeEnabled": true,
+          "aimTargetOffset": [
+            0.0,
+            1.5499999523162842,
+            0.0
+          ],
+          "allowMouseInput": true,
+          "distance": 8.0,
+          "enabled": true,
+          "invertPitch": true,
+          "invertYaw": false,
+          "maxPitch": 1.350000023841858,
+          "minPitch": -1.4500000476837158,
+          "mouseSensitivity": 0.004999999888241291,
+          "occlusionEnabled": true,
+          "occlusionMargin": 0.44999998807907104,
+          "positionSmoothTime": 0.11999999731779099,
+          "rotationSmoothTime": 0.07999999821186066,
+          "targetEntityId": 0,
+          "targetEntityName": "",
+          "targetOffset": [
+            0.0,
+            1.350000023841858,
+            0.0
+          ],
+          "type": "ThirdPersonCamera",
+          "yawReference": "World"
+        },
+        {
+          "bodyType": "Dynamic",
+          "drag": 0.0,
+          "enabled": true,
+          "freezePositionX": false,
+          "freezePositionY": false,
+          "freezePositionZ": false,
+          "friction": 0.0,
+          "gravityScale": 8.0,
+          "mass": 1.0,
+          "maxFallSpeed": 60.0,
+          "restitution": 0.0,
+          "type": "PhysicsBody",
+          "useGravity": true,
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
         }
       ],
       "folder": false,
@@ -59,7 +128,7 @@
       "id": 1,
       "locked": false,
       "modelPath": "Cube.obj",
-      "name": "Entity",
+      "name": "Player",
       "parentId": 0,
       "sprite": {
         "anchor": [
@@ -89,14 +158,14 @@
           1.0
         ],
         "scale": [
-          100.0,
           1.0,
-          100.0
+          1.0,
+          1.0
         ],
         "translate": [
           0.0,
-          -1.0,
-          0.0
+          0.8146223425865173,
+          -11.263381958007813
         ]
       }
     }
@@ -191,7 +260,7 @@
     ],
     "waterRefractionTintStrength": 0.11999999731779099
   },
-  "sceneName": "Entity",
+  "sceneName": "Player",
   "teams": [],
   "version": 27
 }

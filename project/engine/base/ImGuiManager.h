@@ -1,5 +1,6 @@
 // 役割: エディタのDockSpace、Hierarchy、Inspector、Project、Scene Viewを管理する。
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -8,6 +9,7 @@
 #include <unordered_set>
 #include "../Audio/Audio.h"
 #include "../math/Quaternion.h"
+#include "../scene/PrefabAssetRegistry.h"
 
 #include <d3d12.h>
 #include "../../externals/imgui/imgui.h"
@@ -55,6 +57,8 @@ struct PrefabPreviewRequest {
 	bool showJointAxes = false;
 	bool showColliders = true;
 	bool showCombatVolumes = true;
+	bool showGrid = true;
+	uint64_t framingSerial = 0;
 };
 
 enum class SceneInstanceOperation {
@@ -104,6 +108,7 @@ public:
 	float GetSceneViewMinY() const { return sceneViewMinY_; }
 	float GetSceneViewMaxX() const { return sceneViewMaxX_; }
 	float GetSceneViewMaxY() const { return sceneViewMaxY_; }
+	bool IsSceneGridVisible() const { return sceneGridVisible_; }
 	static bool IsSceneViewInputActive();
 	void SetEditorSession(EditorSession* editorSession) {
 		editorSession_ = editorSession;
@@ -180,6 +185,12 @@ public:
 	}
 
 private:
+	struct PrefabAssetValidationResult {
+		std::string filePath;
+		std::string message;
+		bool error = true;
+	};
+
 	// ドッキング用の土台を作成
 	void CreateDockSpace();
 	void BuildDefaultLayout();
@@ -200,17 +211,21 @@ private:
 	);
 	void DrawProjectPrefabAccessPanel();
 	void DrawPrefabQuickOpenPopup();
+	void RequestPrefabQuickOpen();
 	const std::vector<std::string>& GetCachedPrefabAssetPaths();
 	void RefreshPrefabAssetPathCache();
 	void RecordRecentPrefab(const std::string& filePath);
 	bool IsFavoritePrefab(const std::string& filePath) const;
 	void ToggleFavoritePrefab(const std::string& filePath);
+	void ToggleFavoritePrefab(const PrefabAssetReference& reference);
 	void DrawPrefabPreview();
 	void DrawPrefabAnimationTimeline();
 	void RebuildPrefabAnimationPreviewDocument();
 	const SceneDocument& GetPrefabStageDocument() const;
 	void DrawPrefabGizmo(float x, float y, float width, float height);
 	bool PickPrefabEntity(float x, float y, float width, float height);
+	void ValidateAllPrefabAssets();
+	void DrawPrefabDiagnostics();
 	void DrawPrefabHierarchy();
 	void DrawPrefabInspector();
 	void DrawPlaybackControls();
@@ -290,6 +305,8 @@ private:
 	bool showConsole_ = true;
 	bool showLoadedScenes_ = true;
 	bool showPrefab_ = false;
+	bool sceneGridVisible_ = true;
+	bool prefabGridVisible_ = true;
 	EditorFontPreset editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
 	float editorFontSize_ = 13.0f;
 	bool editorFontRebuildRequested_ = false;
@@ -320,7 +337,7 @@ private:
 	bool prefabFocusRequested_ = false;
 	std::string pendingPrefabOpenPath_;
 	int pendingPrefabHistoryIndex_ = -1;
-	std::vector<std::string> prefabNavigationHistory_;
+	std::vector<PrefabAssetReference> prefabNavigationHistory_;
 	int prefabNavigationIndex_ = -1;
 	std::string prefabNavigationStatus_;
 	SceneCatalog* sceneCatalog_ = nullptr;
@@ -378,6 +395,7 @@ private:
 	bool projectGridView_ = true;
 	bool projectPrefabFilterEnabled_ = false;
 	bool prefabQuickOpenFocusRequested_ = false;
+	bool prefabQuickOpenPopupRequested_ = false;
 	char prefabQuickOpenSearchBuffer_[128] = {};
 	float projectThumbnailSize_ = 80.0f;
 	std::unordered_set<std::string> projectPreviewLoadAttempted_;
@@ -386,8 +404,11 @@ private:
 	std::vector<std::string> cachedTextureAssetPaths_;
 	bool prefabAssetPathCacheDirty_ = true;
 	std::vector<std::string> cachedPrefabAssetPaths_;
-	std::vector<std::string> recentPrefabPaths_;
-	std::unordered_set<std::string> favoritePrefabPaths_;
+	bool prefabAssetValidationCompleted_ = false;
+	std::size_t prefabAssetValidationScannedCount_ = 0;
+	std::vector<PrefabAssetValidationResult> prefabAssetValidationResults_;
+	std::vector<PrefabAssetReference> recentPrefabReferences_;
+	std::vector<PrefabAssetReference> favoritePrefabReferences_;
 	bool projectDirectoryCacheDirty_ = true;
 	std::string cachedProjectFolder_;
 	std::vector<ProjectDirectoryEntry> cachedProjectEntries_;
@@ -414,10 +435,13 @@ private:
 	float prefabPreviewYaw_ = 0.65f;
 	float prefabPreviewPitch_ = 0.25f;
 	float prefabPreviewZoom_ = 1.0f;
+	uint64_t prefabPreviewFramingSerial_ = 1;
 	bool prefabPreviewShowSkeleton_ = true;
 	bool prefabPreviewShowJointAxes_ = false;
 	bool prefabPreviewShowColliders_ = true;
 	bool prefabPreviewShowCombatVolumes_ = true;
+	std::string prefabNestedTargetDocumentPath_;
+	uint64_t prefabNestedTargetRootId_ = 0;
 	SceneDocument* prefabAnimationPreviewDocument_ = nullptr;
 	std::string prefabAnimationPreviewAssetPath_;
 	uint64_t prefabAnimationPreviewSourceRevision_ = 0;

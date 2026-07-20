@@ -60,7 +60,9 @@ bool PrefabEditorSession::Save() {
 		return false;
 	}
 	if (!document_.Save(filePath_)) {
-		lastError_ = "Failed to save Prefab: " + filePath_;
+		lastError_ = document_.GetLastSaveError().empty()
+			? "Failed to save Prefab: " + filePath_
+			: document_.GetLastSaveError();
 		return false;
 	}
 	frameStartDocument_ = document_;

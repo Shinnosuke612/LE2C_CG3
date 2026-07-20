@@ -15,6 +15,15 @@
       "active": true,
       "components": [
         {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "materialOverrides": [],
+          "modelPath": "Cube.obj",
+          "type": "MeshRenderer"
+        },
+        {
           "active": true,
           "debugColor": [
             0.20000000298023224,
@@ -31,7 +40,7 @@
           "mask": 4294967295,
           "offset": [
             0.0,
-            1.0,
+            0.0,
             0.0
           ],
           "shape": "Box",
@@ -42,131 +51,13 @@
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
-        },
-        {
-          "cullMode": "Back",
-          "enabled": true,
-          "environmentReflectionIntensity": 0.30000001192092896,
-          "environmentReflectionOverride": false,
-          "materialOverrides": [
-            {
-              "color": [
-                1.0,
-                1.0,
-                1.0,
-                1.0
-              ],
-              "colorOverrideEnabled": false,
-              "enabled": false,
-              "materialName": "颜2",
-              "texturePath": ""
-            }
-          ],
-          "modelPath": "9y5Huh14gN/艾莲.pmx",
-          "type": "MeshRenderer"
-        },
-        {
-          "alignForwardToVelocity": true,
-          "alignmentRadius": 4.0,
-          "alignmentWeight": 0.800000011920929,
-          "attractorEntityId": 0,
-          "attractorTag": "",
-          "attractorWeight": 0.0,
-          "bankingStrength": 0.0,
-          "behaviorName": "Agent",
-          "boundsEntityId": 0,
-          "boundsName": "",
-          "boundsWeight": 3.0,
-          "cohesionRadius": 5.0,
-          "cohesionWeight": 0.8999999761581421,
-          "enableLighting": true,
-          "enabled": true,
-          "flockAcceleration": 4.0,
-          "flockDecisionInterval": 0.25,
-          "flockTurnRate": 1.5,
-          "forwardAxis": "-Z",
-          "groupName": "",
-          "maxSpeed": 3.0,
-          "memberCatchupSpeed": 2.0,
-          "memberCenterFollow": 1.5,
-          "memberJitterFollowSpeed": 2.0,
-          "memberJitterFrequency": 0.8999999761581421,
-          "memberJitterStrength": 0.3499999940395355,
-          "memberJitterUpdateInterval": 0.5,
-          "memberLeashDistance": 4.0,
-          "memberLeashStrength": 1.5,
-          "memberSeparationBlend": 0.5,
-          "memberSeparationUpdateInterval": 0.10000000149011612,
-          "memberSpeedVariation": 0.15000000596046448,
-          "minSpeed": 1.0,
-          "neighborLimit": 0,
-          "pitchFromVerticalVelocity": 1.0,
-          "profileName": "Default",
-          "randomSeed": 1,
-          "randomizeSeedOnPlay": true,
-          "rotateAxisX": false,
-          "rotateAxisY": true,
-          "rotateAxisZ": false,
-          "rotationFollowSpeed": 12.0,
-          "schooling": false,
-          "schoolingBlend": 1.0,
-          "schoolingUpdateInterval": 0.0,
-          "schoolingUpdateJitter": 0.0,
-          "separationRadius": 1.2000000476837158,
-          "separationWeight": 1.7999999523162842,
-          "teamHeadingDirection": [
-            0.0,
-            0.0,
-            1.0
-          ],
-          "teamHeadingFollowSpeed": 2.5,
-          "teamHeadingFromAverage": true,
-          "teamHeadingWeight": 0.75,
-          "teamRotationFollowSpeed": 4.0,
-          "teamRotationWeight": 0.6000000238418579,
-          "teamSettingsOverride": false,
-          "turnSpeed": 2.5,
-          "type": "AgentBehavior",
-          "useTeamHeading": false,
-          "useTeamRotation": false,
-          "useWaterBounds": false,
-          "visualColor": [
-            1.0,
-            1.0,
-            1.0,
-            1.0
-          ],
-          "wanderChangeInterval": 1.0,
-          "wanderDirectionRange": 1.100000023841858,
-          "wanderStrength": 0.800000011920929,
-          "wanderVerticalRange": 0.18000000715255737
-        },
-        {
-          "bodyType": "Dynamic",
-          "drag": 0.0,
-          "enabled": true,
-          "freezePositionX": false,
-          "freezePositionY": false,
-          "freezePositionZ": false,
-          "friction": 0.0,
-          "gravityScale": 1.0,
-          "mass": 1.0,
-          "maxFallSpeed": 100.0,
-          "restitution": 0.0,
-          "type": "PhysicsBody",
-          "useGravity": true,
-          "velocity": [
-            0.0,
-            0.0,
-            0.0
-          ]
         }
       ],
       "folder": false,
       "folderTeamEnabled": false,
       "id": 1,
       "locked": false,
-      "modelPath": "9y5Huh14gN/艾莲.pmx",
+      "modelPath": "Cube.obj",
       "name": "Entity",
       "parentId": 0,
       "sprite": {
@@ -197,13 +88,13 @@
           1.0
         ],
         "scale": [
+          100.0,
           1.0,
-          1.0,
-          1.0
+          100.0
         ],
         "translate": [
           0.0,
-          0.0,
+          -1.0,
           0.0
         ]
       }

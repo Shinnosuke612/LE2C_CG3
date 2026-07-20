@@ -12,6 +12,7 @@
 #include "../engine/collision/OBBCollider.h"
 #include "../engine/collision/SphereCollider.h"
 #include "../engine/debug/DebugRenderer.h"
+#include "../engine/debug/EditorGridRenderer.h"
 #include "../engine/math/Matrix4x4.h"
 #include "../engine/math/Math.h"
 #include "../engine/math/Quaternion.h"
@@ -109,12 +110,14 @@ void PrefabPreviewRenderer::Initialize(
 }
 
 void PrefabPreviewRenderer::Render(
+	const std::string& assetPath,
 	const SceneDocument& document,
 	uint32_t width,
 	uint32_t height,
 	float yaw,
 	float pitch,
 	float zoom,
+	uint64_t framingSerial,
 	const OverlayOptions& overlayOptions
 ) {
 	if (!renderTarget_ || !camera_ || !srvManager_) {
@@ -125,7 +128,18 @@ void PrefabPreviewRenderer::Render(
 	height = std::clamp(height, 180u, 900u);
 	renderTarget_->Resize(width, height);
 	SyncModels(document);
-	UpdateFraming(document, overlayOptions);
+	const bool framingRequested =
+		!framingInitialized_ ||
+		framedAssetPath_ != assetPath ||
+		appliedFramingSerial_ != framingSerial;
+	if (framingRequested) {
+		// Transform編集中にCameraまで追従すると、次FrameのGizmo操作量が
+		// 再計算されて移動が増幅するため、明示要求時だけFramingを更新する。
+		UpdateFraming(document, overlayOptions);
+		framedAssetPath_ = assetPath;
+		appliedFramingSerial_ = framingSerial;
+		framingInitialized_ = true;
+	}
 
 	camera_->SetAspectRatio(
 		static_cast<float>(renderTarget_->GetWidth()) /
@@ -164,6 +178,9 @@ void PrefabPreviewRenderer::Finalize() {
 	renderTarget_ = nullptr;
 	dxCommon_ = nullptr;
 	srvManager_ = nullptr;
+	framedAssetPath_.clear();
+	appliedFramingSerial_ = 0;
+	framingInitialized_ = false;
 	orbitTarget_ = {};
 	fitDistance_ = 5.0f;
 	viewMatrix_ = MakeIdentity4x4();
@@ -255,6 +272,11 @@ void PrefabPreviewRenderer::DrawEditorOverlays(
 	// Prefab Previewは通常SceneのDebug描画後に実行される。収集済み頂点を
 	// 持ち込むとScene側の形状までPrefab RenderTargetへ再描画されるため分離する。
 	debugRenderer->Clear();
+	if (options.showGrid) {
+		EditorGridSettings gridSettings{};
+		gridSettings.extent = std::clamp(fitDistance_ * 4.0f, 10.0f, 200.0f);
+		EditorGridRenderer::AddGrid(*debugRenderer, gridSettings);
+	}
 
 	if (options.showSkeleton) {
 		const float jointRadius = std::clamp(

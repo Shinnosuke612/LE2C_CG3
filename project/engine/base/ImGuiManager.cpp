@@ -29,6 +29,7 @@
 #include "../particle/ParticleEffectResource.h"
 #include "../particle/ParticleManager.h"
 #include "../scene/EditorSession.h"
+#include "../scene/PrefabAssetRegistry.h"
 #include "../scene/PrefabEditorSession.h"
 #include "../scene/SceneCatalog.h"
 #include "../scene/SceneDocument.h"
@@ -37,6 +38,7 @@
 #include "../scene/ScenePrefabAnimationEvaluator.h"
 #include "../scene/SceneTemplateRegistry.h"
 #include "../scene/SceneTransformResolver.h"
+#include "../scene/SceneValidator.h"
 #include "../utility/EditableResourcePath.h"
 #include "../utility/StringUtility.h"
 #include "../utility/SystemPerformanceMonitor.h"
@@ -258,11 +260,76 @@ namespace {
 		return PathToUtf8(path.filename()).ends_with(".prefab.json");
 	}
 
-	std::string ResolvePrefabAssetPath(const std::string& path) {
-		return PathToUtf8(
-			EditableResourcePath::ResolveResource(
-				PathFromUtf8(path)
-			).lexically_normal()
+	bool TryParsePrefabAssetReference(
+		const json& value,
+		PrefabAssetReference& reference
+	) {
+		if (value.is_string()) {
+			reference = PrefabAssetRegistry::CreateReference(
+				value.get<std::string>()
+			);
+		} else if (value.is_object()) {
+			reference.assetId = value.value("assetId", std::string{});
+			reference.fallbackPath = value.value(
+				"fallbackPath",
+				std::string{}
+			);
+			if (reference.assetId.empty()) {
+				reference = PrefabAssetRegistry::CreateReference(
+					reference.fallbackPath
+				);
+			}
+		} else {
+			return false;
+		}
+
+		const std::string resolvedPath =
+			PrefabAssetRegistry::ResolvePath(reference);
+		const std::string& validationPath = resolvedPath.empty()
+			? reference.fallbackPath
+			: resolvedPath;
+		if (!IsPrefabAssetPath(PathFromUtf8(validationPath))) {
+			return false;
+		}
+		if (!resolvedPath.empty()) {
+			reference.fallbackPath = resolvedPath;
+		}
+		return true;
+	}
+
+	json PrefabAssetReferenceToJson(
+		const PrefabAssetReference& source
+	) {
+		PrefabAssetReference reference = source;
+		if (reference.assetId.empty()) {
+			reference = PrefabAssetRegistry::CreateReference(
+				reference.fallbackPath
+			);
+		}
+		const std::string resolvedPath =
+			PrefabAssetRegistry::ResolvePath(reference);
+		if (!resolvedPath.empty()) {
+			reference.fallbackPath = resolvedPath;
+		}
+		return {
+			{ "assetId", reference.assetId },
+			{ "fallbackPath", reference.fallbackPath }
+		};
+	}
+
+	bool ContainsPrefabAssetReference(
+		const std::vector<PrefabAssetReference>& references,
+		const PrefabAssetReference& candidate
+	) {
+		return std::any_of(
+			references.begin(),
+			references.end(),
+			[&candidate](const PrefabAssetReference& reference) {
+				return PrefabAssetRegistry::IsSameAsset(
+					reference,
+					candidate
+				);
+			}
 		);
 	}
 
@@ -649,6 +716,8 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	// 旧PrefabはEditor起動時に一度だけIDを付与し、アクセス履歴を即時安定化する。
+	PrefabAssetRegistry::MigrateMissingAssetIds();
 	LoadEditorSettings();
 
 	ImGui::StyleColorsDark();
@@ -876,6 +945,18 @@ void ImGuiManager::LoadEditorSettings() {
 			startFullscreen_ = settings["startFullscreen"].get<bool>();
 		}
 		if (
+			settings.contains("sceneGridVisible") &&
+			settings["sceneGridVisible"].is_boolean()
+		) {
+			sceneGridVisible_ = settings["sceneGridVisible"].get<bool>();
+		}
+		if (
+			settings.contains("prefabGridVisible") &&
+			settings["prefabGridVisible"].is_boolean()
+		) {
+			prefabGridVisible_ = settings["prefabGridVisible"].get<bool>();
+		}
+		if (
 			settings.contains("componentFoldouts") &&
 			settings["componentFoldouts"].is_object()
 		) {
@@ -890,25 +971,19 @@ void ImGuiManager::LoadEditorSettings() {
 			settings.contains("recentPrefabs") &&
 			settings["recentPrefabs"].is_array()
 		) {
-			recentPrefabPaths_.clear();
+			recentPrefabReferences_.clear();
 			for (const json& value : settings["recentPrefabs"]) {
-				if (!value.is_string()) {
+				PrefabAssetReference reference{};
+				if (!TryParsePrefabAssetReference(value, reference)) {
 					continue;
 				}
-				const std::string resolvedPath = ResolvePrefabAssetPath(
-					value.get<std::string>()
-				);
-				if (
-					IsPrefabAssetPath(PathFromUtf8(resolvedPath)) &&
-					std::find(
-						recentPrefabPaths_.begin(),
-						recentPrefabPaths_.end(),
-						resolvedPath
-					) == recentPrefabPaths_.end()
-				) {
-					recentPrefabPaths_.push_back(resolvedPath);
+				if (!ContainsPrefabAssetReference(
+					recentPrefabReferences_,
+					reference
+				)) {
+					recentPrefabReferences_.push_back(std::move(reference));
 				}
-				if (recentPrefabPaths_.size() >= 12) {
+				if (recentPrefabReferences_.size() >= 12) {
 					break;
 				}
 			}
@@ -917,16 +992,17 @@ void ImGuiManager::LoadEditorSettings() {
 			settings.contains("favoritePrefabs") &&
 			settings["favoritePrefabs"].is_array()
 		) {
-			favoritePrefabPaths_.clear();
+			favoritePrefabReferences_.clear();
 			for (const json& value : settings["favoritePrefabs"]) {
-				if (!value.is_string()) {
+				PrefabAssetReference reference{};
+				if (!TryParsePrefabAssetReference(value, reference)) {
 					continue;
 				}
-				const std::string resolvedPath = ResolvePrefabAssetPath(
-					value.get<std::string>()
-				);
-				if (IsPrefabAssetPath(PathFromUtf8(resolvedPath))) {
-					favoritePrefabPaths_.insert(resolvedPath);
+				if (!ContainsPrefabAssetReference(
+					favoritePrefabReferences_,
+					reference
+				)) {
+					favoritePrefabReferences_.push_back(std::move(reference));
 				}
 			}
 		}
@@ -948,31 +1024,30 @@ void ImGuiManager::SaveEditorSettings() const {
 		componentFoldouts[key] = open;
 	}
 	json recentPrefabs = json::array();
-	for (const std::string& prefabPath : recentPrefabPaths_) {
-		recentPrefabs.push_back(PathToUtf8(
-			EditableResourcePath::ToProjectRelative(
-				PathFromUtf8(prefabPath)
-			)
-		));
+	for (const PrefabAssetReference& reference : recentPrefabReferences_) {
+		recentPrefabs.push_back(PrefabAssetReferenceToJson(reference));
 	}
-	std::vector<std::string> favoritePrefabPaths(
-		favoritePrefabPaths_.begin(),
-		favoritePrefabPaths_.end()
+	std::vector<PrefabAssetReference> favoritePrefabReferences =
+		favoritePrefabReferences_;
+	std::sort(
+		favoritePrefabReferences.begin(),
+		favoritePrefabReferences.end(),
+		[](const PrefabAssetReference& left, const PrefabAssetReference& right) {
+			return PrefabAssetRegistry::ResolvePath(left) <
+				PrefabAssetRegistry::ResolvePath(right);
+		}
 	);
-	std::sort(favoritePrefabPaths.begin(), favoritePrefabPaths.end());
 	json favoritePrefabs = json::array();
-	for (const std::string& prefabPath : favoritePrefabPaths) {
-		favoritePrefabs.push_back(PathToUtf8(
-			EditableResourcePath::ToProjectRelative(
-				PathFromUtf8(prefabPath)
-			)
-		));
+	for (const PrefabAssetReference& reference : favoritePrefabReferences) {
+		favoritePrefabs.push_back(PrefabAssetReferenceToJson(reference));
 	}
 
 	const json settings = {
 		{ "fontPreset", preset },
 		{ "fontSize", editorFontSize_ },
 		{ "startFullscreen", startFullscreen_ },
+		{ "sceneGridVisible", sceneGridVisible_ },
+		{ "prefabGridVisible", prefabGridVisible_ },
 		{ "componentFoldouts", std::move(componentFoldouts) },
 		{ "recentPrefabs", std::move(recentPrefabs) },
 		{ "favoritePrefabs", std::move(favoritePrefabs) }
@@ -1084,7 +1159,7 @@ void ImGuiManager::DrawEditorWorkspace(
 				entity.spriteTexturePath = GetProjectResourcePath(
 					PathToUtf8(texturePath)
 				);
-				entity.components = { "SpriteRenderer" };
+				document.AddComponent(entity.id, "SpriteRenderer");
 				entity.components.front().texturePath = entity.spriteTexturePath;
 				const ImVec2 mouse = ImGui::GetMousePos();
 				const float normalizedX = (mouse.x - sceneMin.x) /
@@ -1131,7 +1206,7 @@ void ImGuiManager::DrawEditorWorkspace(
 				entity.modelPath = GetModelPathRelativeToResources(
 					PathToUtf8(modelPath)
 				);
-				entity.components = { "MeshRenderer" };
+				document.AddComponent(entity.id, "MeshRenderer");
 				entity.components.front().modelPath = entity.modelPath;
 				Object3dCommon* object3dCommon = Object3dCommon::GetInstance();
 				if (Camera* camera = object3dCommon
@@ -1228,7 +1303,7 @@ void ImGuiManager::DrawEditorWorkspace(
 		const ImVec2 mouse = ImGui::GetMousePos();
 		const bool overSceneToolbar =
 			mouse.x >= sceneMin.x &&
-			mouse.x <= sceneMin.x + 280.0f &&
+			mouse.x <= sceneMin.x + 420.0f &&
 			mouse.y >= sceneMin.y &&
 			mouse.y <= sceneMin.y + 40.0f;
 		if (!overSceneToolbar) {
@@ -1377,34 +1452,53 @@ void ImGuiManager::RefreshPrefabAssetPathCache() {
 }
 
 void ImGuiManager::RecordRecentPrefab(const std::string& filePath) {
-	const std::string resolvedPath = ResolvePrefabAssetPath(filePath);
-	recentPrefabPaths_.erase(
-		std::remove(
-			recentPrefabPaths_.begin(),
-			recentPrefabPaths_.end(),
-			resolvedPath
+	const PrefabAssetReference reference =
+		PrefabAssetRegistry::CreateReference(filePath);
+	recentPrefabReferences_.erase(
+		std::remove_if(
+			recentPrefabReferences_.begin(),
+			recentPrefabReferences_.end(),
+			[&reference](const PrefabAssetReference& recent) {
+				return PrefabAssetRegistry::IsSameAsset(recent, reference);
+			}
 		),
-		recentPrefabPaths_.end()
+		recentPrefabReferences_.end()
 	);
-	recentPrefabPaths_.insert(recentPrefabPaths_.begin(), resolvedPath);
-	if (recentPrefabPaths_.size() > 12) {
-		recentPrefabPaths_.resize(12);
+	recentPrefabReferences_.insert(
+		recentPrefabReferences_.begin(),
+		reference
+	);
+	if (recentPrefabReferences_.size() > 12) {
+		recentPrefabReferences_.resize(12);
 	}
 	SaveEditorSettings();
 }
 
 bool ImGuiManager::IsFavoritePrefab(const std::string& filePath) const {
-	return
-		favoritePrefabPaths_.contains(filePath) ||
-		favoritePrefabPaths_.contains(ResolvePrefabAssetPath(filePath));
+	return ContainsPrefabAssetReference(
+		favoritePrefabReferences_,
+		PrefabAssetRegistry::CreateReference(filePath)
+	);
 }
 
 void ImGuiManager::ToggleFavoritePrefab(const std::string& filePath) {
-	const std::string resolvedPath = ResolvePrefabAssetPath(filePath);
-	if (favoritePrefabPaths_.contains(resolvedPath)) {
-		favoritePrefabPaths_.erase(resolvedPath);
+	ToggleFavoritePrefab(PrefabAssetRegistry::CreateReference(filePath));
+}
+
+void ImGuiManager::ToggleFavoritePrefab(
+	const PrefabAssetReference& reference
+) {
+	const auto found = std::find_if(
+		favoritePrefabReferences_.begin(),
+		favoritePrefabReferences_.end(),
+		[&reference](const PrefabAssetReference& favorite) {
+			return PrefabAssetRegistry::IsSameAsset(favorite, reference);
+		}
+	);
+	if (found != favoritePrefabReferences_.end()) {
+		favoritePrefabReferences_.erase(found);
 	} else {
-		favoritePrefabPaths_.insert(resolvedPath);
+		favoritePrefabReferences_.push_back(reference);
 	}
 	SaveEditorSettings();
 }
@@ -1418,6 +1512,10 @@ void ImGuiManager::RefreshAssetPathCache() {
 void ImGuiManager::InvalidateProjectCache() {
 	assetPathCacheDirty_ = true;
 	prefabAssetPathCacheDirty_ = true;
+	prefabAssetValidationCompleted_ = false;
+	prefabAssetValidationScannedCount_ = 0;
+	prefabAssetValidationResults_.clear();
+	PrefabAssetRegistry::Invalidate();
 	projectDirectoryCacheDirty_ = true;
 	projectTreeCacheDirty_ = true;
 	cachedProjectFolder_.clear();
@@ -1652,6 +1750,8 @@ bool ImGuiManager::GetPrefabPreviewRequest(
 	request.showJointAxes = prefabPreviewShowJointAxes_;
 	request.showColliders = prefabPreviewShowColliders_;
 	request.showCombatVolumes = prefabPreviewShowCombatVolumes_;
+	request.showGrid = prefabGridVisible_;
+	request.framingSerial = prefabPreviewFramingSerial_;
 	return true;
 }
 
@@ -1959,6 +2059,10 @@ void ImGuiManager::DrawSceneGizmo(
 			0.0f,
 			"%.2f"
 		);
+	}
+	ImGui::SameLine();
+	if (ImGui::Checkbox("Grid", &sceneGridVisible_)) {
+		SaveEditorSettings();
 	}
 	ImGui::EndGroup();
 	ImGui::PopStyleVar(2);
@@ -2649,6 +2753,10 @@ void ImGuiManager::DrawSettingsMenu() {
 		ImGui::MenuItem("Hierarchy", nullptr, &showHierarchy_);
 		ImGui::MenuItem("Inspector", nullptr, &showInspector_);
 		ImGui::MenuItem("Project", nullptr, &showProject_);
+		ImGui::MenuItem("Prefab", nullptr, &showPrefab_);
+		if (ImGui::MenuItem("Prefab Quick Open", "Ctrl+Shift+P")) {
+			RequestPrefabQuickOpen();
+		}
 		ImGui::MenuItem("Console", nullptr, &showConsole_);
 		ImGui::MenuItem("Loaded Scenes", nullptr, &showLoadedScenes_);
 		ImGui::Separator();
@@ -2657,7 +2765,6 @@ void ImGuiManager::DrawSettingsMenu() {
 		}
 		ImGui::EndMenu();
 	}
-
 	if (ImGui::BeginMenu("Application")) {
 		if (ImGui::MenuItem(
 			"Start in Fullscreen",
@@ -2765,10 +2872,35 @@ void ImGuiManager::CreateDockSpace(){
 
 	if (ImGui::BeginMenuBar()) {
 		DrawSceneMenu();
+		if (ImGui::BeginMenu("Prefab")) {
+			if (ImGui::MenuItem("Show Prefab Window")) {
+				showPrefab_ = true;
+				prefabFocusRequested_ = true;
+			}
+			if (ImGui::MenuItem("Quick Open...", "Ctrl+Shift+P")) {
+				RequestPrefabQuickOpen();
+			}
+			ImGui::EndMenu();
+		}
 		DrawSettingsMenu();
 		DrawPlaybackControls();
 		ImGui::EndMenuBar();
 	}
+	const ImGuiIO& dockSpaceIo = ImGui::GetIO();
+	if (
+		dockSpaceIo.KeyCtrl &&
+		dockSpaceIo.KeyShift &&
+		ImGui::IsKeyPressed(ImGuiKey_P, false)
+	) {
+		RequestPrefabQuickOpen();
+	}
+	if (prefabQuickOpenPopupRequested_) {
+		prefabQuickOpenSearchBuffer_[0] = '\0';
+		prefabQuickOpenFocusRequested_ = true;
+		ImGui::OpenPopup("Quick Open Prefab");
+		prefabQuickOpenPopupRequested_ = false;
+	}
+	DrawPrefabQuickOpenPopup();
 	DrawSceneSwitchConfirmation();
 	DrawSceneAssetDialogs();
 	DrawProjectSettingsDialogs();
@@ -3564,8 +3696,14 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				const SceneEntity* prefabRoot = prefabRootId != 0
 					? document.FindEntity(prefabRootId)
 					: nullptr;
-				if (prefabRoot && !prefabRoot->prefabSourcePath.empty()) {
-					RequestOpenPrefab(prefabRoot->prefabSourcePath);
+				const std::string prefabAssetPath = prefabRoot
+					? PrefabAssetRegistry::ResolvePath(
+						prefabRoot->prefabAssetId,
+						prefabRoot->prefabSourcePath
+					)
+					: std::string{};
+				if (!prefabAssetPath.empty()) {
+					RequestOpenPrefab(prefabAssetPath);
 				} else if (editable) {
 					hierarchyRenameEntityId_ = entity->id;
 					strncpy_s(
@@ -4098,7 +4236,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				entity.spriteTexturePath = GetProjectResourcePath(
 					PathToUtf8(path)
 				);
-				entity.components = { "SpriteRenderer" };
+				document.AddComponent(entity.id, "SpriteRenderer");
 				entity.components.front().texturePath = entity.spriteTexturePath;
 				entity.transform.translate = {
 					static_cast<float>(dxCommon_->GetClientWidth()) * 0.5f,
@@ -4209,7 +4347,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				SceneEntity& entity = document.CreateEntity(entityName);
 				entity.modelPath = relativePath;
-				entity.components = { "MeshRenderer" };
+				document.AddComponent(entity.id, "MeshRenderer");
 				entity.components.front().modelPath = entity.modelPath;
 				selectedEntityId_ = entity.id;
 				selectedProjectFile_.clear();
@@ -4242,7 +4380,24 @@ void ImGuiManager::DrawInspectorWindow() {
 		} 
 		else if (ext == ".json") {
 			if (fileName.ends_with(".prefab.json")) {
-				ImGui::Text("Type: Entity Prefab");
+				const PrefabAssetReference variantBase =
+					PrefabAssetRegistry::ReadVariantBase(selectedProjectFile_);
+				ImGui::Text(
+					"Type: %s",
+					variantBase.assetId.empty()
+						? "Entity Prefab"
+						: "Prefab Variant"
+				);
+				if (!variantBase.assetId.empty()) {
+					const std::string basePath =
+						PrefabAssetRegistry::ResolvePath(variantBase);
+					ImGui::TextWrapped(
+						"Base: %s",
+						basePath.empty()
+							? "Missing or ambiguous"
+							: basePath.c_str()
+					);
+				}
 				SceneDocument prefabPreview;
 				if (prefabPreview.Load(selectedProjectFile_)) {
 					ImGui::Text(
@@ -4428,9 +4583,16 @@ void ImGuiManager::DrawInspectorWindow() {
 		if (prefabInstanceRootId != 0) {
 			const SceneEntity* prefabRoot =
 				document.FindEntity(prefabInstanceRootId);
+			const std::string linkedPrefabAssetPath = prefabRoot
+				? PrefabAssetRegistry::ResolvePath(
+					prefabRoot->prefabAssetId,
+					prefabRoot->prefabSourcePath
+				)
+				: std::string{};
 			bool prefabEditConflict = false;
 			if (
 				prefabRoot &&
+				!linkedPrefabAssetPath.empty() &&
 				prefabEditorSession_ &&
 				prefabEditorSession_->IsOpen() &&
 				prefabEditorSession_->IsDirty()
@@ -4441,7 +4603,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 				const std::filesystem::path linkedPrefabPath =
 					EditableResourcePath::ResolveResource(
-						PathFromUtf8(prefabRoot->prefabSourcePath)
+						PathFromUtf8(linkedPrefabAssetPath)
 					);
 				std::error_code equivalentError;
 				prefabEditConflict = std::filesystem::equivalent(
@@ -4460,18 +4622,25 @@ void ImGuiManager::DrawInspectorWindow() {
 			bool unpackPrefabRequested = false;
 			ImGui::TextWrapped(
 				"Linked Asset: %s",
-				prefabRoot ? prefabRoot->prefabSourcePath.c_str() : "Unknown"
+				!linkedPrefabAssetPath.empty()
+					? linkedPrefabAssetPath.c_str()
+					: "Missing or ambiguous"
 			);
+			if (prefabRoot && !prefabRoot->prefabAssetId.empty()) {
+				ImGui::TextDisabled(
+					"Asset ID: %s",
+					prefabRoot->prefabAssetId.c_str()
+				);
+			}
 			if (ImGui::BeginPopupContextItem("PrefabInstanceContext")) {
-				const bool hasLinkedAsset =
-					prefabRoot && !prefabRoot->prefabSourcePath.empty();
+				const bool hasLinkedAsset = !linkedPrefabAssetPath.empty();
 				if (ImGui::MenuItem(
 					"Open Prefab",
 					nullptr,
 					false,
 					hasLinkedAsset
 				)) {
-					RequestOpenPrefab(prefabRoot->prefabSourcePath);
+					RequestOpenPrefab(linkedPrefabAssetPath);
 				}
 				if (ImGui::MenuItem(
 					"Select Asset",
@@ -4479,7 +4648,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					false,
 					hasLinkedAsset
 				)) {
-					SelectPrefabAssetInProject(prefabRoot->prefabSourcePath);
+					SelectPrefabAssetInProject(linkedPrefabAssetPath);
 				}
 				ImGui::Separator();
 				const bool canModifyInstance =
@@ -4517,15 +4686,13 @@ void ImGuiManager::DrawInspectorWindow() {
 				static_cast<unsigned long long>(prefabInstanceRootId),
 				static_cast<unsigned long long>(entity->prefabLocalId)
 			);
-			ImGui::BeginDisabled(
-				!prefabRoot || prefabRoot->prefabSourcePath.empty()
-			);
+			ImGui::BeginDisabled(linkedPrefabAssetPath.empty());
 			if (ImGui::Button("Open Prefab")) {
-				RequestOpenPrefab(prefabRoot->prefabSourcePath);
+				RequestOpenPrefab(linkedPrefabAssetPath);
 			}
 			ImGui::SameLine();
 			if (ImGui::Button("Select Asset")) {
-				SelectPrefabAssetInProject(prefabRoot->prefabSourcePath);
+				SelectPrefabAssetInProject(linkedPrefabAssetPath);
 			}
 			ImGui::EndDisabled();
 			static std::string prefabInstanceStatus;
@@ -6994,10 +7161,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						0.0f,
 						static_cast<float>(pointCount) * 5.0f
 					};
-					point.components.push_back(SceneComponent{
-						"CameraPathPoint",
-						true
-					});
+					document.AddComponent(point.id, "CameraPathPoint");
 					point.components.back().cameraPathPointDurationToNext = 1.0f;
 					point.components.back().cameraPathPointEasingToNext =
 						"SmoothStep";
@@ -9438,37 +9602,56 @@ void ImGuiManager::DrawInspectorWindow() {
 	ImGui::End();
 }
 
+void ImGuiManager::RequestPrefabQuickOpen() {
+	showProject_ = true;
+	prefabQuickOpenPopupRequested_ = true;
+}
+
 void ImGuiManager::DrawProjectPrefabAccessPanel() {
 	ImGui::SeparatorText("Prefabs");
 	if (ImGui::Button("Quick Open...", ImVec2(-1.0f, 0.0f))) {
-		prefabQuickOpenSearchBuffer_[0] = '\0';
-		prefabQuickOpenFocusRequested_ = true;
-		ImGui::OpenPopup("Quick Open Prefab");
+		RequestPrefabQuickOpen();
 	}
 
 	std::string openRequestedPath;
-	std::string toggleFavoritePath;
-	std::string removeRecentPath;
+	PrefabAssetReference toggleFavoriteReference{};
+	bool toggleFavoriteRequested = false;
+	PrefabAssetReference removeRecentReference{};
+	bool removeRecentRequested = false;
 	auto drawPrefabList = [&](
 		const char* label,
-		const std::vector<std::string>& paths,
+		const std::vector<PrefabAssetReference>& references,
 		bool recentList
 	) {
 		if (!ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_DefaultOpen)) {
 			return;
 		}
-		if (paths.empty()) {
+		if (references.empty()) {
 			ImGui::TextDisabled("None");
 		}
-		for (const std::string& prefabPath : paths) {
-			const std::filesystem::path path = PathFromUtf8(prefabPath);
+		for (const PrefabAssetReference& reference : references) {
+			const std::string resolvedProjectPath =
+				PrefabAssetRegistry::ResolvePath(reference);
+			const std::string displayProjectPath = resolvedProjectPath.empty()
+				? reference.fallbackPath
+				: resolvedProjectPath;
+			const std::filesystem::path path =
+				EditableResourcePath::ResolveResource(
+					PathFromUtf8(displayProjectPath)
+				).lexically_normal();
+			const std::string prefabPath = PathToUtf8(path);
 			const std::string fileName = PathToUtf8(path.filename());
 			std::error_code existsError;
-			const bool exists = std::filesystem::exists(path, existsError);
+			const bool exists =
+				!resolvedProjectPath.empty() &&
+				std::filesystem::exists(path, existsError);
 			const std::string itemLabel = exists
 				? fileName
 				: fileName + " [Missing]";
-			ImGui::PushID(prefabPath.c_str());
+			const std::string itemId = reference.assetId.empty()
+				? reference.fallbackPath
+				: reference.assetId + "|" + reference.fallbackPath;
+			ImGui::PushID(itemId.c_str());
 			const bool selected = selectedProjectFile_ == prefabPath;
 			if (ImGui::Selectable(itemLabel.c_str(), selected) && exists) {
 				SelectPrefabAssetInProject(prefabPath);
@@ -9481,26 +9664,28 @@ void ImGuiManager::DrawProjectPrefabAccessPanel() {
 				openRequestedPath = prefabPath;
 			}
 			if (ImGui::IsItemHovered()) {
-				const std::string relativePath = PathToUtf8(
-					EditableResourcePath::ToProjectRelative(path)
-				);
-				ImGui::SetTooltip("%s", relativePath.c_str());
+				ImGui::SetTooltip("%s", displayProjectPath.c_str());
 			}
 			if (ImGui::BeginPopupContextItem("PrefabAccessContext")) {
 				if (ImGui::MenuItem("Open Prefab", nullptr, false, exists)) {
 					openRequestedPath = prefabPath;
 				}
-				const bool favorite = IsFavoritePrefab(prefabPath);
+				const bool favorite = ContainsPrefabAssetReference(
+					favoritePrefabReferences_,
+					reference
+				);
 				if (ImGui::MenuItem(
 					favorite ? "Remove from Favorites" : "Add to Favorites"
 				)) {
-					toggleFavoritePath = prefabPath;
+					toggleFavoriteReference = reference;
+					toggleFavoriteRequested = true;
 				}
 				if (
 					recentList &&
 					ImGui::MenuItem("Remove from Recent")
 				) {
-					removeRecentPath = prefabPath;
+					removeRecentReference = reference;
+					removeRecentRequested = true;
 				}
 				ImGui::EndPopup();
 			}
@@ -9509,32 +9694,34 @@ void ImGuiManager::DrawProjectPrefabAccessPanel() {
 		ImGui::TreePop();
 	};
 
-	std::vector<std::string> favorites(
-		favoritePrefabPaths_.begin(),
-		favoritePrefabPaths_.end()
-	);
+	std::vector<PrefabAssetReference> favorites = favoritePrefabReferences_;
 	std::sort(
 		favorites.begin(),
 		favorites.end(),
-		[](const std::string& left, const std::string& right) {
-			return PathFromUtf8(left).filename() <
-				PathFromUtf8(right).filename();
+		[](const PrefabAssetReference& left, const PrefabAssetReference& right) {
+			return PathFromUtf8(PrefabAssetRegistry::ResolvePath(left)).filename() <
+				PathFromUtf8(PrefabAssetRegistry::ResolvePath(right)).filename();
 		}
 	);
 	drawPrefabList("Favorites", favorites, false);
-	drawPrefabList("Recent", recentPrefabPaths_, true);
+	drawPrefabList("Recent", recentPrefabReferences_, true);
 
-	if (!toggleFavoritePath.empty()) {
-		ToggleFavoritePrefab(toggleFavoritePath);
+	if (toggleFavoriteRequested) {
+		ToggleFavoritePrefab(toggleFavoriteReference);
 	}
-	if (!removeRecentPath.empty()) {
-		recentPrefabPaths_.erase(
-			std::remove(
-				recentPrefabPaths_.begin(),
-				recentPrefabPaths_.end(),
-				removeRecentPath
+	if (removeRecentRequested) {
+		recentPrefabReferences_.erase(
+			std::remove_if(
+				recentPrefabReferences_.begin(),
+				recentPrefabReferences_.end(),
+				[&removeRecentReference](const PrefabAssetReference& recent) {
+					return PrefabAssetRegistry::IsSameAsset(
+						recent,
+						removeRecentReference
+					);
+				}
 			),
-			recentPrefabPaths_.end()
+			recentPrefabReferences_.end()
 		);
 		SaveEditorSettings();
 	}
@@ -10028,7 +10215,6 @@ void ImGuiManager::DrawProjectWindow() {
 		}
 	}
 	ImGui::Columns(1);
-	DrawPrefabQuickOpenPopup();
 	ImGui::End();
 }
 
@@ -10094,6 +10280,8 @@ void ImGuiManager::RequestOpenPrefab(
 				historyIndex <
 					static_cast<int>(prefabNavigationHistory_.size())
 			) {
+				prefabNavigationHistory_[historyIndex] =
+					PrefabAssetRegistry::CreateReference(resolvedPath);
 				prefabNavigationIndex_ = historyIndex;
 			}
 			return;
@@ -10133,13 +10321,17 @@ bool ImGuiManager::OpenPrefab(
 	prefabSelectedEntityId_ = prefab.GetEntities().empty()
 		? 0
 		: prefab.GetEntities().front().id;
+	++prefabPreviewFramingSerial_;
 	prefabNavigationStatus_.clear();
 	RecordRecentPrefab(resolvedPath);
+	const PrefabAssetReference openedReference =
+		PrefabAssetRegistry::CreateReference(resolvedPath);
 
 	if (
 		historyIndex >= 0 &&
 		historyIndex < static_cast<int>(prefabNavigationHistory_.size())
 	) {
+		prefabNavigationHistory_[historyIndex] = openedReference;
 		prefabNavigationIndex_ = historyIndex;
 		return true;
 	}
@@ -10155,9 +10347,14 @@ bool ImGuiManager::OpenPrefab(
 	}
 	if (
 		prefabNavigationHistory_.empty() ||
-		prefabNavigationHistory_.back() != resolvedPath
+		!PrefabAssetRegistry::IsSameAsset(
+			prefabNavigationHistory_.back(),
+			openedReference
+		)
 	) {
-		prefabNavigationHistory_.push_back(resolvedPath);
+		prefabNavigationHistory_.push_back(openedReference);
+	} else {
+		prefabNavigationHistory_.back() = openedReference;
 	}
 	prefabNavigationIndex_ =
 		static_cast<int>(prefabNavigationHistory_.size()) - 1;
@@ -10265,6 +10462,502 @@ uint64_t ImGuiManager::InstantiatePrefabInEditScene(
 	return instanceId;
 }
 
+void ImGuiManager::ValidateAllPrefabAssets() {
+	prefabAssetValidationCompleted_ = false;
+	prefabAssetValidationScannedCount_ = 0;
+	prefabAssetValidationResults_.clear();
+	prefabAssetPathCacheDirty_ = true;
+	RefreshPrefabAssetPathCache();
+	PrefabAssetRegistry::Invalidate();
+
+	std::unordered_map<std::string, std::string> firstPathByAssetId;
+	std::unordered_set<std::string> reportedDuplicatePaths;
+	std::unordered_map<std::string, std::unordered_set<std::string>>
+		dependenciesByPath;
+	std::unordered_map<std::string, std::string> resultPathByResolvedPath;
+	auto resolveAbsolutePath = [](const std::string& path) {
+		return PathToUtf8(
+			EditableResourcePath::ResolveResource(
+				PathFromUtf8(path)
+			).lexically_normal()
+		);
+	};
+	auto addResult = [this](
+		const std::string& filePath,
+		bool error,
+		std::string message
+	) {
+		prefabAssetValidationResults_.push_back({
+			filePath,
+			std::move(message),
+			error
+		});
+	};
+
+	for (const std::string& prefabPath : cachedPrefabAssetPaths_) {
+		++prefabAssetValidationScannedCount_;
+		const std::string resolvedPrefabPath = resolveAbsolutePath(prefabPath);
+		dependenciesByPath.try_emplace(resolvedPrefabPath);
+		resultPathByResolvedPath[resolvedPrefabPath] = prefabPath;
+		const std::string rawAssetId =
+			PrefabAssetRegistry::ReadAssetId(prefabPath);
+		if (!rawAssetId.empty()) {
+			const auto [found, inserted] = firstPathByAssetId.emplace(
+				rawAssetId,
+				prefabPath
+			);
+			if (!inserted && found->second != prefabPath) {
+				const std::string message =
+					"Duplicate Prefab Asset ID: " + rawAssetId;
+				if (reportedDuplicatePaths.insert(found->second).second) {
+					addResult(found->second, true, message);
+				}
+				if (reportedDuplicatePaths.insert(prefabPath).second) {
+					addResult(prefabPath, true, message);
+				}
+			}
+		}
+		SceneDocument document;
+		if (!document.Load(prefabPath)) {
+			addResult(prefabPath, true, document.GetLastLoadError());
+			continue;
+		}
+		if (!document.GetLastLoadError().empty()) {
+			addResult(prefabPath, false, document.GetLastLoadError());
+		}
+		if (document.IsDirty()) {
+			addResult(
+				prefabPath,
+				false,
+				"Migrated or recovered data must be saved to persist the current format."
+			);
+		}
+
+		const std::string& assetId = document.GetAssetId();
+		if (assetId.empty()) {
+			addResult(prefabPath, true, "Prefab Asset ID is missing.");
+		}
+
+		const PrefabAssetReference currentAsset{ assetId, prefabPath };
+		if (document.IsPrefabVariant()) {
+			const std::string basePath = PrefabAssetRegistry::ResolvePath(
+				document.GetVariantBaseAssetId(),
+				document.GetVariantBasePath()
+			);
+			if (!basePath.empty()) {
+				dependenciesByPath[resolvedPrefabPath].insert(
+					resolveAbsolutePath(basePath)
+				);
+			}
+		}
+		std::unordered_set<std::string> dependencyKeys;
+		for (const SceneEntity& entity : document.GetEntities()) {
+			for (size_t linkIndex = 0;
+				linkIndex < entity.prefabLinks.size();
+				++linkIndex) {
+				const ScenePrefabLink& link = entity.prefabLinks[linkIndex];
+				const PrefabAssetReference source{
+					link.assetId,
+					link.sourcePath
+				};
+				const std::string key = !source.assetId.empty()
+					? "id:" + source.assetId
+					: !source.fallbackPath.empty()
+						? "path:" + source.fallbackPath
+						: "invalid:" + std::to_string(entity.id) + ":" +
+							std::to_string(linkIndex);
+				if (!dependencyKeys.insert(key).second) {
+					continue;
+				}
+				if (PrefabAssetRegistry::IsSameAsset(currentAsset, source)) {
+					dependenciesByPath[resolvedPrefabPath].insert(
+						resolvedPrefabPath
+					);
+					continue;
+				}
+				const std::string resolvedPath =
+					PrefabAssetRegistry::ResolvePath(source);
+				if (resolvedPath.empty()) {
+					std::string message =
+						"Nested Prefab reference cannot be resolved";
+					if (!entity.name.empty()) {
+						message += " (Entity: " + entity.name + ")";
+					}
+					if (!source.fallbackPath.empty()) {
+						message += ": " + source.fallbackPath;
+					}
+					addResult(prefabPath, true, std::move(message));
+				} else {
+					dependenciesByPath[resolvedPrefabPath].insert(
+						resolveAbsolutePath(resolvedPath)
+					);
+					if (source.assetId.empty()) {
+						addResult(
+							prefabPath,
+							false,
+							"Nested Prefab uses a legacy Path-only reference: " +
+								resolvedPath
+						);
+					}
+				}
+			}
+		}
+	}
+
+	std::unordered_map<std::string, uint8_t> visitStates;
+	std::vector<std::string> dependencyStack;
+	std::unordered_set<std::string> reportedCyclePaths;
+	std::function<void(const std::string&)> visitDependency;
+	visitDependency = [&](const std::string& path) {
+		visitStates[path] = 1;
+		dependencyStack.push_back(path);
+		const auto dependencies = dependenciesByPath.find(path);
+		if (dependencies != dependenciesByPath.end()) {
+			for (const std::string& dependency : dependencies->second) {
+				const uint8_t dependencyState = visitStates[dependency];
+				if (dependencyState == 0) {
+					visitDependency(dependency);
+					continue;
+				}
+				if (dependencyState != 1) {
+					continue;
+				}
+				const auto cycleStart = std::find(
+					dependencyStack.begin(),
+					dependencyStack.end(),
+					dependency
+				);
+				std::string cycleLabel;
+				for (auto cyclePath = cycleStart;
+					cyclePath != dependencyStack.end();
+					++cyclePath) {
+					if (!cycleLabel.empty()) {
+						cycleLabel += " -> ";
+					}
+					cycleLabel += PathToUtf8(
+						PathFromUtf8(*cyclePath).filename()
+					);
+				}
+				cycleLabel += " -> " + PathToUtf8(
+					PathFromUtf8(dependency).filename()
+				);
+				for (auto cyclePath = cycleStart;
+					cyclePath != dependencyStack.end();
+					++cyclePath) {
+					if (!reportedCyclePaths.insert(*cyclePath).second) {
+						continue;
+					}
+					const auto resultPath =
+						resultPathByResolvedPath.find(*cyclePath);
+					addResult(
+						resultPath == resultPathByResolvedPath.end()
+							? *cyclePath
+							: resultPath->second,
+						true,
+						"Prefab dependency cycle detected: " + cycleLabel
+					);
+				}
+			}
+		}
+		dependencyStack.pop_back();
+		visitStates[path] = 2;
+	};
+	for (const auto& [path, dependencies] : dependenciesByPath) {
+		(void)dependencies;
+		if (visitStates[path] == 0) {
+			visitDependency(path);
+		}
+	}
+	prefabAssetValidationCompleted_ = true;
+}
+
+void ImGuiManager::DrawPrefabDiagnostics() {
+	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
+		return;
+	}
+
+	const SceneDocument& document = prefabEditorSession_->GetDocument();
+	const std::string& filePath = prefabEditorSession_->GetFilePath();
+	std::vector<SceneValidationIssue> issues;
+	SceneValidator::ValidateDocument(document, nullptr, {}, filePath, issues);
+
+	struct DependencyStatus {
+		PrefabAssetReference reference;
+		std::string resolvedPath;
+		uint64_t entityId = 0;
+	};
+	std::vector<DependencyStatus> dependencies;
+	std::unordered_set<std::string> dependencyKeys;
+	const PrefabAssetReference currentAsset{
+		document.GetAssetId(),
+		filePath
+	};
+	for (const SceneEntity& entity : document.GetEntities()) {
+		for (size_t linkIndex = 0;
+			linkIndex < entity.prefabLinks.size();
+			++linkIndex) {
+			const ScenePrefabLink& link = entity.prefabLinks[linkIndex];
+			const PrefabAssetReference source{ link.assetId, link.sourcePath };
+			if (PrefabAssetRegistry::IsSameAsset(currentAsset, source)) {
+				continue;
+			}
+			const std::string key = !source.assetId.empty()
+				? "id:" + source.assetId
+				: !source.fallbackPath.empty()
+					? "path:" + source.fallbackPath
+					: "invalid:" + std::to_string(entity.id) + ":" +
+						std::to_string(linkIndex);
+			if (!dependencyKeys.insert(key).second) {
+				continue;
+			}
+			dependencies.push_back({
+				source,
+				PrefabAssetRegistry::ResolvePath(source),
+				entity.id
+			});
+		}
+	}
+
+	const bool assetIdMissing = document.GetAssetId().empty();
+	const bool isVariant = document.IsPrefabVariant();
+	const std::string variantBasePath = isVariant
+		? PrefabAssetRegistry::ResolvePath(
+			document.GetVariantBaseAssetId(),
+			document.GetVariantBasePath()
+		)
+		: std::string{};
+	const bool variantBaseMissing = isVariant && variantBasePath.empty();
+	size_t errorCount = 0;
+	if (assetIdMissing) {
+		++errorCount;
+	}
+	if (variantBaseMissing) {
+		++errorCount;
+	}
+	size_t warningCount = 0;
+	for (const DependencyStatus& dependency : dependencies) {
+		if (dependency.resolvedPath.empty()) {
+			++errorCount;
+		} else if (dependency.reference.assetId.empty()) {
+			++warningCount;
+		}
+	}
+	for (const SceneValidationIssue& issue : issues) {
+		if (issue.severity == SceneValidationSeverity::Error) {
+			++errorCount;
+		} else {
+			++warningCount;
+		}
+	}
+	if (prefabAssetValidationCompleted_) {
+		for (const PrefabAssetValidationResult& result :
+			prefabAssetValidationResults_) {
+			if (result.error) {
+				++errorCount;
+			} else {
+				++warningCount;
+			}
+		}
+	}
+
+	const std::string headerLabel = errorCount == 0 && warningCount == 0
+		? "Diagnostics: OK###PrefabDiagnostics"
+		: "Diagnostics: " + std::to_string(errorCount) + " error(s), " +
+			std::to_string(warningCount) + " warning(s)###PrefabDiagnostics";
+	const ImGuiTreeNodeFlags headerFlags =
+		errorCount > 0 || !prefabAssetValidationCompleted_
+		? ImGuiTreeNodeFlags_DefaultOpen
+		: ImGuiTreeNodeFlags_None;
+	if (!ImGui::CollapsingHeader(headerLabel.c_str(), headerFlags)) {
+		return;
+	}
+
+	size_t componentCount = 0;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		componentCount += entity.components.size();
+	}
+	ImGui::Text("Type: %s", isVariant ? "Prefab Variant" : "Prefab");
+	ImGui::SameLine();
+	ImGui::TextDisabled(
+		"Entities: %zu  Components: %zu",
+		document.GetEntities().size(),
+		componentCount
+	);
+	if (assetIdMissing) {
+		ImGui::TextColored(
+			ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+			"Asset ID: Missing"
+		);
+	} else {
+		ImGui::TextWrapped("Asset ID: %s", document.GetAssetId().c_str());
+	}
+	if (isVariant) {
+		if (variantBaseMissing) {
+			ImGui::TextColored(
+				ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+				"Variant Base: Missing or ambiguous"
+			);
+		} else {
+			ImGui::TextWrapped("Variant Base: %s", variantBasePath.c_str());
+		}
+	}
+
+	ImGui::SeparatorText("Project Prefab Validation");
+	if (ImGui::Button("Validate All Prefabs")) {
+		ValidateAllPrefabAssets();
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled(
+		"Read-only validation of saved resources/**/*.prefab.json"
+	);
+	if (!prefabAssetValidationCompleted_) {
+		ImGui::TextDisabled("Not validated in this Editor session.");
+	} else {
+		size_t projectErrorCount = 0;
+		size_t projectWarningCount = 0;
+		for (const PrefabAssetValidationResult& result :
+			prefabAssetValidationResults_) {
+			if (result.error) {
+				++projectErrorCount;
+			} else {
+				++projectWarningCount;
+			}
+		}
+		ImGui::Text(
+			"Scanned: %zu  Errors: %zu  Warnings: %zu",
+			prefabAssetValidationScannedCount_,
+			projectErrorCount,
+			projectWarningCount
+		);
+		if (prefabAssetValidationResults_.empty()) {
+			ImGui::TextColored(
+				ImVec4(0.35f, 0.85f, 0.45f, 1.0f),
+				"All Prefab assets passed load and reference validation."
+			);
+		} else {
+			if (ImGui::BeginChild(
+				"PrefabAssetValidationResults",
+				ImVec2(0.0f, 200.0f),
+				ImGuiChildFlags_Borders
+			)) {
+				for (size_t resultIndex = 0;
+					resultIndex < prefabAssetValidationResults_.size();
+					++resultIndex) {
+					const PrefabAssetValidationResult& result =
+						prefabAssetValidationResults_[resultIndex];
+					const std::string fileName = PathToUtf8(
+						PathFromUtf8(result.filePath).filename()
+					);
+					ImGui::PushID(static_cast<int>(resultIndex));
+					if (ImGui::SmallButton("Select Asset")) {
+						SelectPrefabAssetInProject(result.filePath);
+					}
+					ImGui::SameLine();
+					ImGui::TextColored(
+						result.error
+							? ImVec4(0.95f, 0.35f, 0.3f, 1.0f)
+							: ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+						"[%s] %s",
+						result.error ? "Error" : "Warning",
+						fileName.c_str()
+					);
+					ImGui::TextWrapped("%s", result.message.c_str());
+					ImGui::PopID();
+				}
+			}
+			ImGui::EndChild();
+		}
+	}
+
+	ImGui::SeparatorText("Nested Sources");
+	if (dependencies.empty()) {
+		ImGui::TextDisabled("No Nested Prefab dependencies.");
+	}
+	ImGui::PushID("PrefabDiagnosticDependencies");
+	for (size_t dependencyIndex = 0;
+		dependencyIndex < dependencies.size();
+		++dependencyIndex) {
+		const DependencyStatus& dependency = dependencies[dependencyIndex];
+		const std::string displayPath = dependency.resolvedPath.empty()
+			? dependency.reference.fallbackPath
+			: dependency.resolvedPath;
+		const std::string displayName = displayPath.empty()
+			? "Missing Prefab"
+			: PathToUtf8(PathFromUtf8(displayPath).filename());
+		ImGui::PushID(static_cast<int>(dependencyIndex));
+		if (document.FindEntity(dependency.entityId)) {
+			if (ImGui::SmallButton("Select")) {
+				prefabSelectedEntityId_ = dependency.entityId;
+			}
+			ImGui::SameLine();
+		}
+		if (dependency.resolvedPath.empty()) {
+			ImGui::TextColored(
+				ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+				"[Error] %s: missing or ambiguous",
+				displayName.c_str()
+			);
+		} else {
+			ImGui::TextUnformatted(displayName.c_str());
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip("%s", dependency.resolvedPath.c_str());
+			}
+			if (dependency.reference.assetId.empty()) {
+				ImGui::SameLine();
+				ImGui::TextColored(
+					ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+					"[Warning] Path-only reference"
+				);
+			}
+		}
+		ImGui::PopID();
+	}
+	ImGui::PopID();
+
+	ImGui::SeparatorText("Document Validation");
+	if (issues.empty() && !assetIdMissing && !variantBaseMissing) {
+		ImGui::TextColored(
+			ImVec4(0.35f, 0.85f, 0.45f, 1.0f),
+			"No document validation issues."
+		);
+		return;
+	}
+	if (assetIdMissing) {
+		ImGui::TextColored(
+			ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+			"[Error] Prefab Asset ID is missing."
+		);
+	}
+	if (variantBaseMissing) {
+		ImGui::TextColored(
+			ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+			"[Error] Variant Base cannot be resolved."
+		);
+	}
+	ImGui::PushID("PrefabDiagnosticIssues");
+	for (size_t issueIndex = 0; issueIndex < issues.size(); ++issueIndex) {
+		const SceneValidationIssue& issue = issues[issueIndex];
+		ImGui::PushID(static_cast<int>(issueIndex));
+		if (issue.entityId != 0 && document.FindEntity(issue.entityId)) {
+			if (ImGui::SmallButton("Select")) {
+				prefabSelectedEntityId_ = issue.entityId;
+			}
+			ImGui::SameLine();
+		}
+		const bool isError = issue.severity == SceneValidationSeverity::Error;
+		ImGui::TextColored(
+			isError
+				? ImVec4(0.95f, 0.35f, 0.3f, 1.0f)
+				: ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+			"[%s] %s",
+			isError ? "Error" : "Warning",
+			issue.message.c_str()
+		);
+		ImGui::PopID();
+	}
+	ImGui::PopID();
+}
+
 void ImGuiManager::DrawPrefabWindow() {
 	if (!prefabEditorSession_) {
 		showPrefab_ = false;
@@ -10299,26 +10992,37 @@ void ImGuiManager::DrawPrefabWindow() {
 	ImGui::BeginDisabled(!canNavigateBack);
 	if (ImGui::Button("<##PrefabBack")) {
 		const int targetIndex = prefabNavigationIndex_ - 1;
-		RequestOpenPrefab(
-			prefabNavigationHistory_[targetIndex],
-			targetIndex
+		const std::string targetPath = PrefabAssetRegistry::ResolvePath(
+			prefabNavigationHistory_[targetIndex]
 		);
+		if (targetPath.empty()) {
+			prefabNavigationStatus_ =
+				"Unable to resolve the previous Prefab asset.";
+		} else {
+			RequestOpenPrefab(targetPath, targetIndex);
+		}
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
 	ImGui::BeginDisabled(!canNavigateForward);
 	if (ImGui::Button(">##PrefabForward")) {
 		const int targetIndex = prefabNavigationIndex_ + 1;
-		RequestOpenPrefab(
-			prefabNavigationHistory_[targetIndex],
-			targetIndex
+		const std::string targetPath = PrefabAssetRegistry::ResolvePath(
+			prefabNavigationHistory_[targetIndex]
 		);
+		if (targetPath.empty()) {
+			prefabNavigationStatus_ =
+				"Unable to resolve the next Prefab asset.";
+		} else {
+			RequestOpenPrefab(targetPath, targetIndex);
+		}
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
 	if (ImGui::Button("Scene")) {
 		ImGui::SetWindowFocus("Scene");
 	}
+	std::string nestedBreadcrumbOpenPath;
 	if (prefabEditorSession_->IsOpen()) {
 		ImGui::SameLine();
 		ImGui::TextDisabled(">");
@@ -10336,6 +11040,69 @@ void ImGuiManager::DrawPrefabWindow() {
 		if (ImGui::IsItemHovered()) {
 			ImGui::SetTooltip("Select this Prefab in Project");
 		}
+
+		const SceneDocument& prefabDocument =
+			prefabEditorSession_->GetDocument();
+		const SceneEntity* selectedPrefabEntity =
+			prefabDocument.FindEntity(prefabSelectedEntityId_);
+		if (selectedPrefabEntity) {
+			const PrefabAssetReference currentPrefab{
+				prefabDocument.GetAssetId(),
+				prefabEditorSession_->GetFilePath()
+			};
+			std::unordered_set<std::string> displayedSources;
+			for (size_t linkIndex = 0;
+				linkIndex < selectedPrefabEntity->prefabLinks.size();
+				++linkIndex) {
+				const ScenePrefabLink& link =
+					selectedPrefabEntity->prefabLinks[linkIndex];
+				const PrefabAssetReference source{
+					link.assetId,
+					link.sourcePath
+				};
+				if (PrefabAssetRegistry::IsSameAsset(currentPrefab, source)) {
+					continue;
+				}
+				const std::string sourceKey = !link.assetId.empty()
+					? "id:" + link.assetId
+					: "path:" + link.sourcePath;
+				if (!displayedSources.insert(sourceKey).second) {
+					continue;
+				}
+				const std::string sourcePath =
+					PrefabAssetRegistry::ResolvePath(source);
+				const std::string displayPath = sourcePath.empty()
+					? link.sourcePath
+					: sourcePath;
+				const std::string displayName = displayPath.empty()
+					? "Missing Prefab"
+					: PathToUtf8(PathFromUtf8(displayPath).filename());
+				ImGui::SameLine();
+				ImGui::TextDisabled(">");
+				ImGui::SameLine();
+				ImGui::PushID(static_cast<int>(linkIndex));
+				ImGui::BeginDisabled(sourcePath.empty());
+				if (ImGui::Button(displayName.c_str())) {
+					nestedBreadcrumbOpenPath = sourcePath;
+				}
+				ImGui::EndDisabled();
+				if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+					ImGui::SetTooltip(
+						"%s",
+						sourcePath.empty()
+							? "Prefab asset is missing or ambiguous."
+							: sourcePath.c_str()
+					);
+				}
+				ImGui::PopID();
+			}
+		}
+	}
+	if (!nestedBreadcrumbOpenPath.empty()) {
+		RequestOpenPrefab(nestedBreadcrumbOpenPath);
+		ImGui::End();
+		DrawPrefabOpenConfirmation();
+		return;
 	}
 	ImGui::Separator();
 
@@ -10355,6 +11122,9 @@ void ImGuiManager::DrawPrefabWindow() {
 		return;
 	}
 
+	std::string variantOpenRequest;
+	static char variantFileName[192]{};
+	static std::string variantOperationStatus;
 	prefabEditorSession_->BeginEditFrame();
 	ImGui::TextUnformatted(prefabEditorSession_->GetFilePath().c_str());
 	if (prefabEditorSession_->IsDirty()) {
@@ -10362,7 +11132,9 @@ void ImGuiManager::DrawPrefabWindow() {
 		ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.25f, 1.0f), "Unsaved");
 	}
 	if (ImGui::Button("Save")) {
-		prefabEditorSession_->Save();
+		if (prefabEditorSession_->Save()) {
+			InvalidateProjectCache();
+		}
 	}
 	ImGui::SameLine();
 	ImGui::BeginDisabled(!prefabEditorSession_->CanUndo());
@@ -10384,11 +11156,132 @@ void ImGuiManager::DrawPrefabWindow() {
 		prefabSelectedEntityId_ = document.GetEntities().empty()
 			? 0
 			: document.GetEntities().front().id;
+		++prefabPreviewFramingSerial_;
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
 	if (ImGui::Button("Close")) {
 		windowOpen = false;
+	}
+	ImGui::SameLine();
+	ImGui::BeginDisabled(prefabEditorSession_->IsDirty());
+	if (ImGui::Button("Create Variant")) {
+		std::string sourceName = PathToUtf8(
+			PathFromUtf8(prefabEditorSession_->GetFilePath()).filename()
+		);
+		if (sourceName.ends_with(".prefab.json")) {
+			sourceName.resize(
+				sourceName.size() - std::string(".prefab.json").size()
+			);
+		}
+		const std::string defaultName = sourceName + " Variant.prefab.json";
+		strncpy_s(
+			variantFileName,
+			sizeof(variantFileName),
+			defaultName.c_str(),
+			_TRUNCATE
+		);
+		variantOperationStatus.clear();
+		ImGui::OpenPopup("Create Prefab Variant");
+	}
+	ImGui::EndDisabled();
+	if (ImGui::BeginPopupModal(
+		"Create Prefab Variant",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize
+	)) {
+		ImGui::TextUnformatted(
+			"Create a Variant that inherits from the open Prefab."
+		);
+		ImGui::SetNextItemWidth(360.0f);
+		ImGui::InputText(
+			"File Name",
+			variantFileName,
+			sizeof(variantFileName)
+		);
+		if (ImGui::Button("Create")) {
+			std::string fileName = variantFileName;
+			for (char& character : fileName) {
+				if (
+					static_cast<unsigned char>(character) < 32 ||
+					std::strchr("<>:\"/\\|?*", character)
+				) {
+					character = '_';
+				}
+			}
+			if (!fileName.ends_with(".prefab.json")) {
+				fileName += ".prefab.json";
+			}
+			const std::filesystem::path sourcePath =
+				EditableResourcePath::ResolveResource(
+					PathFromUtf8(prefabEditorSession_->GetFilePath())
+				).lexically_normal();
+			const std::filesystem::path targetPath =
+				sourcePath.parent_path() / PathFromUtf8(fileName);
+			std::error_code existsError;
+			if (std::filesystem::exists(targetPath, existsError)) {
+				variantOperationStatus =
+					"A Prefab with that file name already exists.";
+			} else if (prefabEditorSession_->GetDocument().SaveAsPrefabVariant(
+				PathToUtf8(targetPath),
+				prefabEditorSession_->GetFilePath()
+			)) {
+				InvalidateProjectCache();
+				variantOpenRequest = PathToUtf8(targetPath);
+				variantOperationStatus.clear();
+				ImGui::CloseCurrentPopup();
+			} else {
+				variantOperationStatus = "Failed to create Prefab Variant.";
+			}
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel")) {
+			variantOperationStatus.clear();
+			ImGui::CloseCurrentPopup();
+		}
+		if (!variantOperationStatus.empty()) {
+			ImGui::TextColored(
+				ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+				"%s",
+				variantOperationStatus.c_str()
+			);
+		}
+		ImGui::EndPopup();
+	}
+
+	SceneDocument& openPrefabDocument =
+		prefabEditorSession_->GetDocument();
+	if (openPrefabDocument.IsPrefabVariant()) {
+		const std::string basePath = PrefabAssetRegistry::ResolvePath(
+			openPrefabDocument.GetVariantBaseAssetId(),
+			openPrefabDocument.GetVariantBasePath()
+		);
+		ImGui::TextDisabled(
+			"Variant Base: %s",
+			basePath.empty() ? "Missing or ambiguous" : basePath.c_str()
+		);
+		ImGui::SameLine();
+		ImGui::BeginDisabled(basePath.empty());
+		if (ImGui::SmallButton("Open Base")) {
+			variantOpenRequest = basePath;
+		}
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Revert to Base")) {
+			if (openPrefabDocument.RevertPrefabVariantToBase()) {
+				prefabSelectedEntityId_ =
+					openPrefabDocument.GetEntities().empty()
+						? 0
+						: openPrefabDocument.GetEntities().front().id;
+				++prefabPreviewFramingSerial_;
+				variantOperationStatus = "Reverted all Variant overrides.";
+			} else {
+				variantOperationStatus = "Failed to reload the Variant Base.";
+			}
+		}
+		ImGui::EndDisabled();
+	}
+	if (!variantOperationStatus.empty()) {
+		ImGui::TextWrapped("%s", variantOperationStatus.c_str());
 	}
 	if (!prefabEditorSession_->GetLastError().empty()) {
 		ImGui::TextColored(
@@ -10398,9 +11291,17 @@ void ImGuiManager::DrawPrefabWindow() {
 		);
 	}
 
+	DrawPrefabDiagnostics();
 	ImGui::Separator();
 	DrawPrefabPreview();
 	ImGui::Separator();
+	// Keep the pane height independent from the parent scroll offset. Component
+	// collapsing then changes only the Inspector child's own scroll range.
+	const float prefabWorkspaceHeight = std::clamp(
+		ImGui::GetWindowHeight() * 0.5f,
+		260.0f,
+		640.0f
+	);
 	if (ImGui::BeginTable(
 		"PrefabWorkspace",
 		2,
@@ -10411,9 +11312,25 @@ void ImGuiManager::DrawPrefabWindow() {
 		ImGui::TableSetupColumn("Hierarchy", ImGuiTableColumnFlags_WidthFixed, 250.0f);
 		ImGui::TableSetupColumn("Inspector", ImGuiTableColumnFlags_WidthStretch);
 		ImGui::TableNextColumn();
-		DrawPrefabHierarchy();
+		if (ImGui::BeginChild(
+			"PrefabHierarchyPane",
+			ImVec2(0.0f, prefabWorkspaceHeight),
+			ImGuiChildFlags_AlwaysUseWindowPadding
+		)) {
+			ImGui::SeparatorText("Hierarchy");
+			DrawPrefabHierarchy();
+		}
+		ImGui::EndChild();
 		ImGui::TableNextColumn();
-		DrawPrefabInspector();
+		if (ImGui::BeginChild(
+			"PrefabInspectorPane",
+			ImVec2(0.0f, prefabWorkspaceHeight),
+			ImGuiChildFlags_AlwaysUseWindowPadding
+		)) {
+			ImGui::SeparatorText("Inspector");
+			DrawPrefabInspector();
+		}
+		ImGui::EndChild();
 		ImGui::EndTable();
 	}
 
@@ -10425,6 +11342,9 @@ void ImGuiManager::DrawPrefabWindow() {
 		ImGuizmo::IsUsing();
 	prefabEditorSession_->EndEditFrame(!editingInteractionActive);
 	ImGui::End();
+	if (!variantOpenRequest.empty()) {
+		RequestOpenPrefab(variantOpenRequest);
+	}
 
 	if (!windowOpen) {
 		if (prefabEditorSession_->IsDirty()) {
@@ -10496,6 +11416,7 @@ void ImGuiManager::DrawPrefabPreview() {
 		prefabPreviewYaw_ = 0.65f;
 		prefabPreviewPitch_ = 0.25f;
 		prefabPreviewZoom_ = 1.0f;
+		++prefabPreviewFramingSerial_;
 	}
 	ImGui::SameLine();
 	ImGui::PushID("PrefabStageTools");
@@ -10553,6 +11474,10 @@ void ImGuiManager::DrawPrefabPreview() {
 	ImGui::Checkbox("Colliders", &prefabPreviewShowColliders_);
 	ImGui::SameLine();
 	ImGui::Checkbox("Hit/Hurt", &prefabPreviewShowCombatVolumes_);
+	ImGui::SameLine();
+	if (ImGui::Checkbox("Grid", &prefabGridVisible_)) {
+		SaveEditorSettings();
+	}
 	ImGui::PopID();
 
 	const float availableWidth = (std::max)(
@@ -10564,17 +11489,40 @@ void ImGuiManager::DrawPrefabPreview() {
 		220.0f,
 		440.0f
 	);
+	// Wheel scrolling is resolved before widgets are submitted. Keep this child
+	// scrollable as the wheel target, then reset it so only Stage zoom changes.
+	ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
 	if (!ImGui::BeginChild(
 		"PrefabStagePreview",
 		ImVec2(0.0f, previewHeight),
 		ImGuiChildFlags_Borders,
-		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
+		ImGuiWindowFlags_NoScrollbar
 	)) {
 		ImGui::EndChild();
 		return;
 	}
 
 	const ImVec2 imageSize = ImGui::GetContentRegionAvail();
+	const float imageStartCursorY = ImGui::GetCursorPosY();
+	const bool stageHovered = ImGui::IsWindowHovered(
+		ImGuiHoveredFlags_AllowWhenBlockedByActiveItem
+	);
+	if (stageHovered) {
+		// Image has no Item ID, so use a stable Stage ID to own the wheel.
+		ImGui::SetKeyOwner(
+			ImGuiKey_MouseWheelY,
+			ImGui::GetID("PrefabStageWheelOwner"),
+			ImGuiInputFlags_LockThisFrame
+		);
+		const float wheel = ImGui::GetIO().MouseWheel;
+		if (wheel != 0.0f) {
+			prefabPreviewZoom_ = std::clamp(
+				prefabPreviewZoom_ * (1.0f - wheel * 0.1f),
+				0.15f,
+				8.0f
+			);
+		}
+	}
 	const ImVec2 framebufferScale = ImGui::GetIO().DisplayFramebufferScale;
 	prefabPreviewRequestedWidth_ = static_cast<uint32_t>(std::clamp(
 		imageSize.x * framebufferScale.x,
@@ -10609,13 +11557,6 @@ void ImGuiManager::DrawPrefabPreview() {
 					1.45f
 				);
 			}
-			if (io.MouseWheel != 0.0f) {
-				prefabPreviewZoom_ = std::clamp(
-					prefabPreviewZoom_ * (1.0f - io.MouseWheel * 0.1f),
-					0.15f,
-					8.0f
-				);
-			}
 		}
 		DrawPrefabGizmo(imageMin.x, imageMin.y, imageSize.x, imageSize.y);
 		if (&GetPrefabStageDocument() != &document) {
@@ -10644,6 +11585,10 @@ void ImGuiManager::DrawPrefabPreview() {
 		});
 		ImGui::TextDisabled("%s", message);
 	}
+	// A tiny hidden overflow makes this child the ImGui wheel target. Its scroll
+	// is reset before BeginChild, so the preview image and Gizmo never shift.
+	ImGui::SetCursorPosY(imageStartCursorY + imageSize.y + 1.0f);
+	ImGui::Dummy(ImVec2(0.0f, 1.0f));
 	ImGui::EndChild();
 	DrawPrefabAnimationTimeline();
 }
@@ -10832,10 +11777,36 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		ImGui::GetContentRegionAvail().x,
 		280.0f
 	);
-	const float labelWidth = std::clamp(
-		timelineWidth * 0.28f,
+	const auto makeTrackLabel = [&](const SceneAnimationTrack& track) {
+		const SceneEntity* target = track.targetEntityId != 0
+			? document.FindEntity(track.targetEntityId)
+			: nullptr;
+		if (!target && !track.targetEntityName.empty()) {
+			target = document.FindEntityByName(track.targetEntityName);
+		}
+		if (!target) {
+			target = animatorEntry.entity;
+		}
+		const std::string targetName = target
+			? target->name
+			: std::string("Missing Target");
+		return targetName + " / " + track.property;
+	};
+	float desiredLabelWidth = 120.0f;
+	for (const SceneAnimationTrack& track : clip.tracks) {
+		desiredLabelWidth = (std::max)(
+			desiredLabelWidth,
+			ImGui::CalcTextSize(makeTrackLabel(track).c_str()).x + 12.0f
+		);
+	}
+	const float maximumLabelWidth = (std::max)(
 		120.0f,
-		220.0f
+		(std::min)(280.0f, timelineWidth - 160.0f)
+	);
+	const float labelWidth = std::clamp(
+		desiredLabelWidth,
+		120.0f,
+		maximumLabelWidth
 	);
 	const float headerHeight = 24.0f;
 	const float rowHeight = 24.0f;
@@ -10863,7 +11834,10 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		prefabAnimationPreviewPlaying_ = false;
 		prefabAnimationPreviewActive_ = true;
 	}
-	if (ImGui::IsItemHovered()) {
+	if (
+		ImGui::IsItemHovered() &&
+		ImGui::GetMousePos().x >= trackLeft
+	) {
 		ImGui::SetItemTooltip(
 			"Drag to seek | %.3f / %.3f s",
 			prefabAnimationPreviewTime_,
@@ -10920,15 +11894,19 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		if (!target) {
 			target = animatorEntry.entity;
 		}
-		const std::string targetName = target
-			? target->name
-			: std::string("Missing Target");
-		const std::string rowLabel = targetName + " / " + track.property;
+		const std::string rowLabel = makeTrackLabel(track);
+		const ImVec2 labelMin(timelineOrigin.x, rowTop);
+		const ImVec2 labelMax(trackLeft - 4.0f, rowTop + rowHeight);
+		drawList->PushClipRect(labelMin, labelMax, true);
 		drawList->AddText(
 			ImVec2(timelineOrigin.x + 5.0f, rowTop + 4.0f),
 			IM_COL32(215, 220, 228, 255),
 			rowLabel.c_str()
 		);
+		drawList->PopClipRect();
+		if (ImGui::IsMouseHoveringRect(labelMin, labelMax)) {
+			ImGui::SetTooltip("%s", rowLabel.c_str());
+		}
 
 		ImU32 keyColor = IM_COL32(75, 170, 255, 255);
 		ImU32 activeColor = IM_COL32(80, 205, 120, 190);
@@ -11296,6 +12274,10 @@ void ImGuiManager::DrawPrefabHierarchy() {
 		return;
 	}
 	SceneDocument& document = prefabEditorSession_->GetDocument();
+	static std::string nestedPrefabStatus;
+	std::string nestedPrefabDropPath;
+	uint64_t nestedPrefabDropParentId = 0;
+	std::string nestedPrefabOpenPath;
 	const uint64_t selectedParentId = document.FindEntity(prefabSelectedEntityId_)
 		? prefabSelectedEntityId_
 		: 0;
@@ -11325,6 +12307,9 @@ void ImGuiManager::DrawPrefabHierarchy() {
 	}
 	ImGui::EndDisabled();
 	ImGui::Separator();
+	if (!nestedPrefabStatus.empty()) {
+		ImGui::TextWrapped("%s", nestedPrefabStatus.c_str());
+	}
 
 	std::function<void(uint64_t)> drawEntity;
 	drawEntity = [&](uint64_t entityId) {
@@ -11349,16 +12334,45 @@ void ImGuiManager::DrawPrefabHierarchy() {
 		if (prefabSelectedEntityId_ == entityId) {
 			flags |= ImGuiTreeNodeFlags_Selected;
 		}
+		const char* prefabLabel = entity->prefabLinks.size() > 1
+			? "[Nested] "
+			: entity->prefabInstanceRootId != 0
+				? "[Prefab] "
+				: "";
 		ImGui::PushID(static_cast<int>(entityId));
 		const bool open = ImGui::TreeNodeEx(
 			"##PrefabEntity",
 			flags,
-			"%s%s",
+			"%s%s%s",
 			entity->active ? "" : "(inactive) ",
+			prefabLabel,
 			entity->name.c_str()
 		);
 		if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
 			prefabSelectedEntityId_ = entityId;
+		}
+		if (ImGui::IsItemHovered() &&
+			ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+			if (!entity->prefabLinks.empty()) {
+				// The last Link is the most specific Nested Prefab source.
+				const ScenePrefabLink& source = entity->prefabLinks.back();
+				nestedPrefabOpenPath = PrefabAssetRegistry::ResolvePath(
+					source.assetId,
+					source.sourcePath
+				);
+			}
+		}
+		if (ImGui::BeginDragDropTarget()) {
+			if (const ImGuiPayload* payload =
+				ImGui::AcceptDragDropPayload("PROJECT_PREFAB_PATH")) {
+				const char* droppedPath =
+					static_cast<const char*>(payload->Data);
+				if (droppedPath && droppedPath[0] != '\0') {
+					nestedPrefabDropPath = droppedPath;
+					nestedPrefabDropParentId = entityId;
+				}
+			}
+			ImGui::EndDragDropTarget();
 		}
 		if (hasChildren && open) {
 			for (const SceneEntity& child : document.GetEntities()) {
@@ -11376,6 +12390,24 @@ void ImGuiManager::DrawPrefabHierarchy() {
 			drawEntity(entity.id);
 		}
 	}
+	if (!nestedPrefabDropPath.empty()) {
+		const uint64_t instanceId = document.InstantiatePrefab(
+			nestedPrefabDropPath,
+			nestedPrefabDropParentId
+		);
+		if (instanceId != 0) {
+			prefabSelectedEntityId_ = instanceId;
+			nestedPrefabStatus = "Nested Prefab added: " +
+				nestedPrefabDropPath;
+		} else {
+			nestedPrefabStatus =
+				"Failed to add Nested Prefab (missing asset or cycle): " +
+				nestedPrefabDropPath;
+		}
+	}
+	if (!nestedPrefabOpenPath.empty()) {
+		RequestOpenPrefab(nestedPrefabOpenPath);
+	}
 }
 
 void ImGuiManager::DrawPrefabInspector() {
@@ -11387,6 +12419,417 @@ void ImGuiManager::DrawPrefabInspector() {
 	if (!entity) {
 		ImGui::TextDisabled("Select a Prefab Entity.");
 		return;
+	}
+
+	if (document.IsPrefabVariant()) {
+		static std::string variantStatusDocumentPath;
+		static std::string variantOverrideStatus;
+		if (variantStatusDocumentPath != prefabEditorSession_->GetFilePath()) {
+			variantStatusDocumentPath = prefabEditorSession_->GetFilePath();
+			variantOverrideStatus.clear();
+		}
+		const std::string basePath = PrefabAssetRegistry::ResolvePath(
+			document.GetVariantBaseAssetId(),
+			document.GetVariantBasePath()
+		);
+		std::vector<ScenePrefabPropertyOverride> variantOverrides =
+			document.CollectPrefabVariantOverrides();
+		int applyVariantOverrideIndex = -1;
+		int revertVariantOverrideIndex = -1;
+		ImGui::SeparatorText("Variant Overrides");
+		ImGui::TextDisabled(
+			"Base: %s",
+			basePath.empty() ? "Missing or ambiguous" : basePath.c_str()
+		);
+		ImGui::PushID("PrefabVariantOverrides");
+		if (ImGui::TreeNodeEx(
+			"Overrides",
+			ImGuiTreeNodeFlags_DefaultOpen
+		)) {
+			for (size_t index = 0; index < variantOverrides.size(); ++index) {
+				const ScenePrefabPropertyOverride& overrideValue =
+					variantOverrides[index];
+				const uint64_t targetEntityId =
+					overrideValue.instanceEntityId != 0
+						? overrideValue.instanceEntityId
+						: overrideValue.entityLocalId;
+				const SceneEntity* targetEntity =
+					document.FindEntity(targetEntityId);
+				const bool canModify =
+					!basePath.empty() &&
+					(!targetEntity || !targetEntity->locked);
+				ImGui::PushID(static_cast<int>(index));
+				ImGui::BulletText("%s", overrideValue.label.c_str());
+				ImGui::Indent();
+				ImGui::BeginDisabled(!canModify);
+				if (ImGui::SmallButton("Apply to Base")) {
+					applyVariantOverrideIndex = static_cast<int>(index);
+				}
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Revert")) {
+					revertVariantOverrideIndex = static_cast<int>(index);
+				}
+				ImGui::EndDisabled();
+				ImGui::Unindent();
+				ImGui::PopID();
+			}
+			if (variantOverrides.empty()) {
+				ImGui::TextDisabled("No Entity or Component overrides.");
+			}
+			ImGui::TreePop();
+		}
+		ImGui::PopID();
+
+		if (applyVariantOverrideIndex >= 0) {
+			const ScenePrefabPropertyOverride overrideValue =
+				variantOverrides[applyVariantOverrideIndex];
+			if (document.ApplyPrefabVariantOverrideToBase(overrideValue)) {
+				variantOverrideStatus = "Applied to Base: " +
+					overrideValue.label;
+				InvalidateProjectCache();
+			} else {
+				variantOverrideStatus = "Failed to apply to Base: " +
+					overrideValue.label;
+			}
+		}
+		if (revertVariantOverrideIndex >= 0) {
+			const ScenePrefabPropertyOverride overrideValue =
+				variantOverrides[revertVariantOverrideIndex];
+			const uint64_t selectedId = entity->id;
+			const bool removesSelectedBranch =
+				overrideValue.kind == ScenePrefabOverrideKind::AddedEntity &&
+				(
+					selectedId == overrideValue.instanceEntityId ||
+					document.IsDescendantOf(
+						selectedId,
+						overrideValue.instanceEntityId
+					)
+				);
+			if (document.RevertPrefabVariantOverride(overrideValue)) {
+				variantOverrideStatus = "Reverted: " + overrideValue.label;
+				if (removesSelectedBranch ||
+					!document.FindEntity(selectedId)) {
+					const auto root = std::find_if(
+						document.GetEntities().begin(),
+						document.GetEntities().end(),
+						[](const SceneEntity& candidate) {
+							return candidate.parentId == 0;
+						}
+					);
+					prefabSelectedEntityId_ =
+						root == document.GetEntities().end() ? 0 : root->id;
+				}
+				return;
+			}
+			variantOverrideStatus = "Failed to revert: " +
+				overrideValue.label;
+		}
+		if (!variantOverrideStatus.empty()) {
+			ImGui::TextWrapped("%s", variantOverrideStatus.c_str());
+		}
+	}
+
+	if (!entity->prefabLinks.empty()) {
+		std::string nestedSourceOpenPath;
+		ImGui::SeparatorText("Prefab Sources");
+		for (size_t linkIndex = 0;
+			linkIndex < entity->prefabLinks.size();
+			++linkIndex) {
+			const ScenePrefabLink& link = entity->prefabLinks[linkIndex];
+			const std::string sourcePath = PrefabAssetRegistry::ResolvePath(
+				link.assetId,
+				link.sourcePath
+			);
+			const std::string displayPath = sourcePath.empty()
+				? link.sourcePath
+				: sourcePath;
+			const std::string displayName = displayPath.empty()
+				? "Missing Prefab"
+				: PathToUtf8(PathFromUtf8(displayPath).filename());
+			ImGui::PushID(static_cast<int>(linkIndex));
+			ImGui::Text(
+				"%zu. %s%s",
+				linkIndex + 1,
+				link.instanceRootId == entity->id ? "[Root] " : "",
+				displayName.c_str()
+			);
+			ImGui::Indent();
+			ImGui::TextDisabled(
+				"Instance Root: %llu / Local Entity: %llu",
+				static_cast<unsigned long long>(link.instanceRootId),
+				static_cast<unsigned long long>(link.localId)
+			);
+			ImGui::BeginDisabled(sourcePath.empty());
+			if (ImGui::SmallButton("Open")) {
+				nestedSourceOpenPath = sourcePath;
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Select Asset")) {
+				SelectPrefabAssetInProject(sourcePath);
+			}
+			ImGui::EndDisabled();
+			if (sourcePath.empty()) {
+				ImGui::SameLine();
+				ImGui::TextColored(
+					ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+					"Missing or ambiguous asset"
+				);
+			}
+			ImGui::Unindent();
+			ImGui::PopID();
+		}
+		if (!nestedSourceOpenPath.empty()) {
+			RequestOpenPrefab(nestedSourceOpenPath);
+			return;
+		}
+	}
+
+	const std::vector<uint64_t> nestedInstanceRoots =
+		document.CollectPrefabInstanceRoots(entity->id);
+	if (
+		prefabNestedTargetDocumentPath_ !=
+			prefabEditorSession_->GetFilePath() ||
+		std::find(
+			nestedInstanceRoots.begin(),
+			nestedInstanceRoots.end(),
+			prefabNestedTargetRootId_
+		) == nestedInstanceRoots.end()
+	) {
+		prefabNestedTargetDocumentPath_ =
+			prefabEditorSession_->GetFilePath();
+		prefabNestedTargetRootId_ = nestedInstanceRoots.empty()
+			? 0
+			: nestedInstanceRoots.front();
+	}
+	const uint64_t nestedInstanceRootId = prefabNestedTargetRootId_;
+	if (nestedInstanceRootId != 0) {
+		auto findInstanceLink = [](
+			const SceneEntity* root,
+			uint64_t rootId
+		) -> const ScenePrefabLink* {
+			if (!root) {
+				return nullptr;
+			}
+			const auto found = std::find_if(
+				root->prefabLinks.begin(),
+				root->prefabLinks.end(),
+				[rootId](const ScenePrefabLink& link) {
+					return link.instanceRootId == rootId;
+				}
+			);
+			return found == root->prefabLinks.end() ? nullptr : &(*found);
+		};
+		const SceneEntity* nestedInstanceRoot =
+			document.FindEntity(nestedInstanceRootId);
+		const ScenePrefabLink* nestedInstanceLink =
+			findInstanceLink(nestedInstanceRoot, nestedInstanceRootId);
+		const std::string nestedSourcePath = nestedInstanceLink
+			? PrefabAssetRegistry::ResolvePath(
+				nestedInstanceLink->assetId,
+				nestedInstanceLink->sourcePath
+			)
+			: std::string{};
+		static std::string nestedStatusDocumentPath;
+		static uint64_t nestedStatusRootId = 0;
+		static std::string nestedInstanceStatus;
+		if (
+			nestedStatusDocumentPath != prefabEditorSession_->GetFilePath() ||
+			nestedStatusRootId != nestedInstanceRootId
+		) {
+			nestedStatusDocumentPath = prefabEditorSession_->GetFilePath();
+			nestedStatusRootId = nestedInstanceRootId;
+			nestedInstanceStatus.clear();
+		}
+
+		ImGui::SeparatorText("Nested Prefab Instance");
+		if (nestedInstanceRoots.size() > 1) {
+			const std::string currentTargetLabel = nestedSourcePath.empty()
+				? "Missing Prefab"
+				: PathToUtf8(PathFromUtf8(nestedSourcePath).filename());
+			if (ImGui::BeginCombo("Apply Target", currentTargetLabel.c_str())) {
+				for (uint64_t targetRootId : nestedInstanceRoots) {
+					const SceneEntity* targetRoot =
+						document.FindEntity(targetRootId);
+					const ScenePrefabLink* targetLink =
+						findInstanceLink(targetRoot, targetRootId);
+					const std::string targetPath = targetLink
+						? PrefabAssetRegistry::ResolvePath(
+							targetLink->assetId,
+							targetLink->sourcePath
+						)
+						: std::string{};
+					const std::string targetName = targetPath.empty()
+						? "Missing Prefab"
+						: PathToUtf8(PathFromUtf8(targetPath).filename());
+					const std::string targetLabel = targetName +
+						" / Root " + std::to_string(targetRootId);
+					const bool selected =
+						targetRootId == nestedInstanceRootId;
+					ImGui::PushID(static_cast<int>(targetRootId));
+					if (ImGui::Selectable(targetLabel.c_str(), selected)) {
+						prefabNestedTargetRootId_ = targetRootId;
+					}
+					if (selected) {
+						ImGui::SetItemDefaultFocus();
+					}
+					ImGui::PopID();
+				}
+				ImGui::EndCombo();
+			}
+		}
+		ImGui::TextWrapped(
+			"Target: %s",
+			nestedSourcePath.empty()
+				? "Missing or ambiguous asset"
+				: nestedSourcePath.c_str()
+		);
+		ImGui::TextDisabled(
+			"Instance Root: %llu",
+			static_cast<unsigned long long>(nestedInstanceRootId)
+		);
+
+		std::vector<ScenePrefabPropertyOverride> nestedOverrides;
+		int applyNestedOverrideIndex = -1;
+		int revertNestedOverrideIndex = -1;
+		ImGui::PushID("NestedPrefabInstance");
+		if (ImGui::TreeNode("Overrides")) {
+			const std::vector<std::string> overrideSummary =
+				document.CollectPrefabInstanceOverrides(
+					nestedInstanceRootId
+				);
+			nestedOverrides = document.CollectPrefabPropertyOverrides(
+				nestedInstanceRootId
+			);
+			bool hasStatusMessage = false;
+			for (const std::string& message : overrideSummary) {
+				if (
+					message.starts_with("Modified Entity:") ||
+					message.starts_with("Added Entity:") ||
+					message.starts_with("Removed Entity:") ||
+					message.starts_with("Stale Entity:")
+				) {
+					continue;
+				}
+				hasStatusMessage = true;
+				ImGui::BulletText("%s", message.c_str());
+			}
+			const bool canModifyNested =
+				nestedInstanceRoot &&
+				nestedInstanceLink &&
+				!nestedInstanceRoot->locked &&
+				!entity->locked &&
+				!nestedSourcePath.empty();
+			for (size_t index = 0; index < nestedOverrides.size(); ++index) {
+				const ScenePrefabPropertyOverride& overrideValue =
+					nestedOverrides[index];
+				ImGui::PushID(static_cast<int>(index));
+				ImGui::BulletText("%s", overrideValue.label.c_str());
+				ImGui::Indent();
+				ImGui::BeginDisabled(!canModifyNested);
+				if (ImGui::SmallButton("Apply")) {
+					applyNestedOverrideIndex = static_cast<int>(index);
+				}
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Revert")) {
+					revertNestedOverrideIndex = static_cast<int>(index);
+				}
+				ImGui::EndDisabled();
+				ImGui::Unindent();
+				ImGui::PopID();
+			}
+			if (nestedOverrides.empty() && !hasStatusMessage) {
+				ImGui::TextDisabled("No overrides.");
+			}
+			ImGui::TreePop();
+		}
+
+		if (applyNestedOverrideIndex >= 0) {
+			const ScenePrefabPropertyOverride overrideValue =
+				nestedOverrides[applyNestedOverrideIndex];
+			if (document.ApplyPrefabPropertyOverride(
+				nestedInstanceRootId,
+				overrideValue
+			)) {
+				nestedInstanceStatus = "Applied: " + overrideValue.label;
+				InvalidateProjectCache();
+				ImGui::PopID();
+				return;
+			}
+			nestedInstanceStatus = "Failed to apply: " + overrideValue.label;
+		}
+		if (revertNestedOverrideIndex >= 0) {
+			const ScenePrefabPropertyOverride overrideValue =
+				nestedOverrides[revertNestedOverrideIndex];
+			const uint64_t selectedId = entity->id;
+			const bool removesSelectedBranch =
+				(
+					overrideValue.kind == ScenePrefabOverrideKind::AddedEntity ||
+					overrideValue.kind == ScenePrefabOverrideKind::StaleEntity
+				) &&
+				(
+					selectedId == overrideValue.instanceEntityId ||
+					document.IsDescendantOf(
+						selectedId,
+						overrideValue.instanceEntityId
+					)
+				);
+			if (document.RevertPrefabPropertyOverride(
+				nestedInstanceRootId,
+				overrideValue
+			)) {
+				nestedInstanceStatus = "Reverted: " + overrideValue.label;
+				prefabSelectedEntityId_ = removesSelectedBranch
+					? nestedInstanceRootId
+					: selectedId;
+				ImGui::PopID();
+				return;
+			}
+			nestedInstanceStatus = "Failed to revert: " + overrideValue.label;
+		}
+
+		const bool canModifyNested =
+			nestedInstanceRoot &&
+			nestedInstanceLink &&
+			!nestedInstanceRoot->locked &&
+			!entity->locked &&
+			!nestedSourcePath.empty();
+		ImGui::BeginDisabled(!canModifyNested);
+		if (ImGui::Button("Apply Instance")) {
+			if (document.ApplyPrefabInstance(nestedInstanceRootId)) {
+				nestedInstanceStatus =
+					"Applied the Nested instance to its Prefab asset.";
+				InvalidateProjectCache();
+				ImGui::EndDisabled();
+				ImGui::PopID();
+				return;
+			}
+			nestedInstanceStatus = "Failed to apply the Nested instance.";
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Revert Instance")) {
+			if (document.RevertPrefabInstance(nestedInstanceRootId)) {
+				nestedInstanceStatus =
+					"Reverted the Nested instance from its Prefab asset.";
+				prefabSelectedEntityId_ = nestedInstanceRootId;
+				ImGui::EndDisabled();
+				ImGui::PopID();
+				return;
+			}
+			nestedInstanceStatus = "Failed to revert the Nested instance.";
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Unpack")) {
+			if (document.UnpackPrefabInstance(nestedInstanceRootId)) {
+				nestedInstanceStatus = "Unpacked the Nested instance.";
+			} else {
+				nestedInstanceStatus = "Failed to unpack the Nested instance.";
+			}
+		}
+		ImGui::EndDisabled();
+		ImGui::PopID();
+		if (!nestedInstanceStatus.empty()) {
+			ImGui::TextWrapped("%s", nestedInstanceStatus.c_str());
+		}
 	}
 
 	bool entityChanged = false;

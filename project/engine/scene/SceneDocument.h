@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -435,6 +436,13 @@ struct SceneComponent {
 	float projectileHomingStrength = 0.0f;
 };
 
+struct ScenePrefabLink {
+	std::string assetId;
+	std::string sourcePath;
+	uint64_t instanceRootId = 0;
+	uint64_t localId = 0;
+};
+
 struct SceneEntity {
 	uint64_t id = 0;
 	uint64_t parentId = 0;
@@ -444,11 +452,14 @@ struct SceneEntity {
 	bool active = true;
 	bool locked = false;
 	bool runtimeOnly = false;
-	// Prefab内の安定IDとScene上のInstance Rootを分けて保持する。
+	// 最外層Prefab Linkの互換表示。実体はprefabLinksへ保持する。
 	// 元アセットとの対応がない通常Entityは全て既定値のままにする。
+	std::string prefabAssetId;
 	std::string prefabSourcePath;
 	uint64_t prefabInstanceRootId = 0;
 	uint64_t prefabLocalId = 0;
+	// 外側から内側の順にPrefab Instance境界を保持する。
+	std::vector<ScenePrefabLink> prefabLinks;
 	std::string teamName;
 	QuaternionTransform transform{};
 	std::string modelPath;
@@ -492,7 +503,24 @@ public:
 	SceneEntity& CreateEntity(const std::string& name, uint64_t parentId = 0);
 	bool RemoveEntity(uint64_t id);
 	uint64_t DuplicateEntity(uint64_t id);
-	bool SaveEntityBranchAsPrefab(uint64_t id, const std::string& filePath) const;
+	bool SaveEntityBranchAsPrefab(
+		uint64_t id,
+		const std::string& filePath,
+		uint64_t sourceInstanceRootId = 0
+	) const;
+	bool SaveAsPrefabVariant(
+		const std::string& filePath,
+		const std::string& basePrefabPath
+	) const;
+	bool RevertPrefabVariantToBase();
+	std::vector<ScenePrefabPropertyOverride> CollectPrefabVariantOverrides()
+		const;
+	bool ApplyPrefabVariantOverrideToBase(
+		const ScenePrefabPropertyOverride& overrideValue
+	);
+	bool RevertPrefabVariantOverride(
+		const ScenePrefabPropertyOverride& overrideValue
+	);
 	uint64_t InstantiatePrefab(
 		const std::string& filePath,
 		uint64_t parentId = 0,
@@ -502,6 +530,7 @@ public:
 	bool RevertPrefabInstance(uint64_t rootId);
 	bool UnpackPrefabInstance(uint64_t rootId);
 	uint64_t FindPrefabInstanceRoot(uint64_t entityId) const;
+	std::vector<uint64_t> CollectPrefabInstanceRoots(uint64_t entityId) const;
 	std::vector<std::string> CollectPrefabInstanceOverrides(uint64_t rootId) const;
 	std::vector<ScenePrefabPropertyOverride> CollectPrefabPropertyOverrides(
 		uint64_t rootId
@@ -567,7 +596,16 @@ public:
 		MarkDirty();
 	}
 	bool IsDirty() const { return dirty_; }
+	const std::string& GetAssetId() const { return assetId_; }
+	bool IsPrefabVariant() const { return !variantBaseAssetId_.empty(); }
+	const std::string& GetVariantBaseAssetId() const {
+		return variantBaseAssetId_;
+	}
+	const std::string& GetVariantBasePath() const {
+		return variantBasePath_;
+	}
 	const std::string& GetLastLoadError() const { return lastLoadError_; }
+	const std::string& GetLastSaveError() const { return lastSaveError_; }
 	uint64_t GetRevision() const { return revision_; }
 	void MarkDirty() {
 		dirty_ = true;
@@ -581,6 +619,10 @@ private:
 	void ValidateHierarchy();
 
 	std::string sceneName_;
+	std::string assetId_;
+	std::string variantBaseAssetId_;
+	std::string variantBasePath_;
+	std::shared_ptr<const SceneDocument> variantBaseSnapshot_;
 	std::vector<SceneEntity> entities_;
 	std::vector<SceneTeamSettings> teams_;
 	SceneLightingSettings lightingSettings_{};
@@ -590,4 +632,5 @@ private:
 	bool dirty_ = false;
 	uint64_t revision_ = 0;
 	std::string lastLoadError_;
+	std::string lastSaveError_;
 };

@@ -26,6 +26,7 @@ public:
 		bool showJointAxes = false;
 		bool showColliders = true;
 		bool showCombatVolumes = true;
+		bool showGrid = true;
 	};
 
 	PrefabPreviewRenderer() = default;
@@ -33,12 +34,14 @@ public:
 
 	void Initialize(DirectXCommon* dxCommon, SrvManager* srvManager);
 	void Render(
+		const std::string& assetPath,
 		const SceneDocument& document,
 		uint32_t width,
 		uint32_t height,
 		float yaw,
 		float pitch,
 		float zoom,
+		uint64_t framingSerial,
 		const OverlayOptions& overlayOptions
 	);
 	void Finalize();
@@ -70,6 +73,9 @@ private:
 	SceneRenderTarget* renderTarget_ = nullptr;
 	Camera* camera_ = nullptr;
 	std::unordered_map<uint64_t, ModelRuntime> models_;
+	std::string framedAssetPath_;
+	uint64_t appliedFramingSerial_ = 0;
+	bool framingInitialized_ = false;
 	Vector3 orbitTarget_{};
 	float fitDistance_ = 5.0f;
 	Matrix4x4 viewMatrix_ = MakeIdentity4x4();

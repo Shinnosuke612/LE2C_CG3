@@ -31,6 +31,13 @@ public:
 		const Vector3& end,
 		const Vector4& color
 	);
+	// モデル等のDepth Bufferで遮蔽されるEditor補助線を追加する。
+	// 既存AddLineの常時前面表示とは別Queue／Pipelineで描画する。
+	void AddDepthTestedLine(
+		const Vector3& start,
+		const Vector3& end,
+		const Vector4& color
+	);
 	void AddSphere(
 		const Vector3& center,
 		float radius,
@@ -87,16 +94,21 @@ private:
 	DirectXCommon* dxCommon_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> depthTestedPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> solidPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> depthTestedVertexResource_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> solidVertexResource_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> cameraResource_;
 	Vertex* mappedVertices_ = nullptr;
+	Vertex* mappedDepthTestedVertices_ = nullptr;
 	Vertex* mappedSolidVertices_ = nullptr;
 	CameraData* cameraData_ = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView_{};
+	D3D12_VERTEX_BUFFER_VIEW depthTestedVertexBufferView_{};
 	D3D12_VERTEX_BUFFER_VIEW solidVertexBufferView_{};
 	std::vector<Vertex> vertices_;
+	std::vector<Vertex> depthTestedVertices_;
 	std::vector<Vertex> solidVertices_;
 	uint32_t maxVertexCount_ = 0;
 	bool isInitialized_ = false;

@@ -1,5 +1,6 @@
 // 役割: SceneDocumentのJSON入出力、Hierarchy操作、Component検証を実装する。
 #include "SceneDocument.h"
+#include "PrefabAssetRegistry.h"
 #include "SceneDocumentMigrator.h"
 #include "SceneEntityQuery.h"
 #include "SceneTransformResolver.h"
@@ -9,8 +10,10 @@
 #include "../utility/StringUtility.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -26,6 +29,239 @@ namespace {
 	using json = nlohmann::json;
 	using SceneEntityQuery::FindComponent;
 	using SceneTransformResolver::ResolveSceneWorldMatrix;
+
+	bool IsPrefabDocumentPath(const std::string& filePath) {
+		std::string fileName = StringUtility::ToUtf8(
+			StringUtility::ToPath(filePath).filename()
+		);
+		std::transform(
+			fileName.begin(),
+			fileName.end(),
+			fileName.begin(),
+			[](unsigned char character) {
+				return static_cast<char>(std::tolower(character));
+			}
+		);
+		return fileName.ends_with(".prefab.json");
+	}
+
+	uint64_t MakeVariantLocalId(
+		const std::string& assetId,
+		const std::string& salt
+	) {
+		// Variant追加要素をBaseの連番IDから分離し、Base更新後の衝突を避ける。
+		uint64_t hash = 1469598103934665603ull;
+		for (unsigned char character : assetId + ":" + salt) {
+			hash ^= character;
+			hash *= 1099511628211ull;
+		}
+		return
+			(hash & 0x0fffffffffffffffull) |
+			(uint64_t{ 1 } << 63);
+	}
+
+	bool HasPrefabAssetLink(const SceneEntity& entity) {
+		return
+			!entity.prefabLinks.empty() ||
+			!entity.prefabAssetId.empty() ||
+			!entity.prefabSourcePath.empty();
+	}
+
+	void EnsurePrefabLinkStack(SceneEntity& entity) {
+		if (
+			!entity.prefabLinks.empty() ||
+			(
+				entity.prefabAssetId.empty() &&
+				entity.prefabSourcePath.empty() &&
+				entity.prefabInstanceRootId == 0 &&
+				entity.prefabLocalId == 0
+			)
+		) {
+			return;
+		}
+		entity.prefabLinks.push_back({
+			entity.prefabAssetId,
+			entity.prefabSourcePath,
+			entity.prefabInstanceRootId,
+			entity.prefabLocalId
+		});
+	}
+
+	void SynchronizeActivePrefabLink(SceneEntity& entity) {
+		if (entity.prefabLinks.empty()) {
+			entity.prefabAssetId.clear();
+			entity.prefabSourcePath.clear();
+			entity.prefabInstanceRootId = 0;
+			entity.prefabLocalId = 0;
+			return;
+		}
+		const ScenePrefabLink& active = entity.prefabLinks.front();
+		entity.prefabAssetId = active.assetId;
+		entity.prefabSourcePath = active.sourcePath;
+		entity.prefabInstanceRootId = active.instanceRootId;
+		entity.prefabLocalId = active.localId;
+	}
+
+	const ScenePrefabLink* FindPrefabLink(
+		const SceneEntity& entity,
+		uint64_t instanceRootId
+	) {
+		const auto found = std::find_if(
+			entity.prefabLinks.begin(),
+			entity.prefabLinks.end(),
+			[instanceRootId](const ScenePrefabLink& link) {
+				return link.instanceRootId == instanceRootId;
+			}
+		);
+		return found == entity.prefabLinks.end() ? nullptr : &(*found);
+	}
+
+	ScenePrefabLink* FindPrefabLink(
+		SceneEntity& entity,
+		uint64_t instanceRootId
+	) {
+		EnsurePrefabLinkStack(entity);
+		return const_cast<ScenePrefabLink*>(FindPrefabLink(
+			static_cast<const SceneEntity&>(entity),
+			instanceRootId
+		));
+	}
+
+	size_t FindPrefabLinkDepth(
+		const SceneEntity& entity,
+		uint64_t instanceRootId
+	) {
+		const auto found = std::find_if(
+			entity.prefabLinks.begin(),
+			entity.prefabLinks.end(),
+			[instanceRootId](const ScenePrefabLink& link) {
+				return link.instanceRootId == instanceRootId;
+			}
+		);
+		return found == entity.prefabLinks.end()
+			? entity.prefabLinks.size()
+			: static_cast<size_t>(found - entity.prefabLinks.begin());
+	}
+
+	size_t FindPrefabLinkInsertionDepth(
+		const SceneEntity& entity,
+		const SceneEntity& instanceRoot,
+		uint64_t targetRootId
+	) {
+		size_t insertionDepth = 0;
+		for (const ScenePrefabLink& outerLink : instanceRoot.prefabLinks) {
+			if (outerLink.instanceRootId == targetRootId) {
+				break;
+			}
+			if (
+				insertionDepth < entity.prefabLinks.size() &&
+				entity.prefabLinks[insertionDepth].instanceRootId ==
+					outerLink.instanceRootId
+			) {
+				++insertionDepth;
+			}
+		}
+		return insertionDepth;
+	}
+
+	void SetPrefabLink(
+		SceneEntity& entity,
+		const ScenePrefabLink& link
+	) {
+		EnsurePrefabLinkStack(entity);
+		ScenePrefabLink* existing = FindPrefabLink(
+			entity,
+			link.instanceRootId
+		);
+		if (existing) {
+			*existing = link;
+		} else {
+			entity.prefabLinks.insert(entity.prefabLinks.begin(), link);
+		}
+		SynchronizeActivePrefabLink(entity);
+	}
+
+	void SetPrefabLinkAtDepth(
+		SceneEntity& entity,
+		const ScenePrefabLink& link,
+		size_t depth
+	) {
+		EnsurePrefabLinkStack(entity);
+		ScenePrefabLink* existing = FindPrefabLink(
+			entity,
+			link.instanceRootId
+		);
+		if (existing) {
+			*existing = link;
+		} else {
+			const size_t insertionDepth = (std::min)(
+				depth,
+				entity.prefabLinks.size()
+			);
+			entity.prefabLinks.insert(
+				entity.prefabLinks.begin() + insertionDepth,
+				link
+			);
+		}
+		SynchronizeActivePrefabLink(entity);
+	}
+
+	void RemovePrefabLink(SceneEntity& entity, uint64_t instanceRootId) {
+		EnsurePrefabLinkStack(entity);
+		entity.prefabLinks.erase(
+			std::remove_if(
+				entity.prefabLinks.begin(),
+				entity.prefabLinks.end(),
+				[instanceRootId](const ScenePrefabLink& link) {
+					return link.instanceRootId == instanceRootId;
+				}
+			),
+			entity.prefabLinks.end()
+		);
+		SynchronizeActivePrefabLink(entity);
+	}
+
+	void RemapPrefabLinkRoots(
+		SceneEntity& entity,
+		const std::unordered_map<uint64_t, uint64_t>& idMap
+	) {
+		EnsurePrefabLinkStack(entity);
+		for (ScenePrefabLink& link : entity.prefabLinks) {
+			const auto remapped = idMap.find(link.instanceRootId);
+			if (remapped != idMap.end()) {
+				link.instanceRootId = remapped->second;
+			}
+		}
+		SynchronizeActivePrefabLink(entity);
+	}
+
+	std::string ResolvePrefabAssetPath(const SceneEntity& entity) {
+		return PrefabAssetRegistry::ResolvePath(
+			entity.prefabAssetId,
+			entity.prefabSourcePath
+		);
+	}
+
+	std::string ResolvePrefabAssetPath(const ScenePrefabLink& link) {
+		return PrefabAssetRegistry::ResolvePath(
+			link.assetId,
+			link.sourcePath
+		);
+	}
+
+	bool MatchesPrefabInstanceLink(
+		const SceneEntity& entity,
+		uint64_t rootId,
+		const ScenePrefabLink& rootLink
+	) {
+		const ScenePrefabLink* entityLink = FindPrefabLink(entity, rootId);
+		if (!entityLink) {
+			return false;
+		}
+		return rootLink.assetId.empty()
+			? entityLink->sourcePath == rootLink.sourcePath
+			: entityLink->assetId == rootLink.assetId;
+	}
 
 	json VectorToJson(const Vector3& value) {
 		return json::array({ value.x, value.y, value.z });
@@ -1565,69 +1801,85 @@ namespace {
 
 	uint64_t RemapEntityId(
 		uint64_t id,
-		const std::unordered_map<uint64_t, uint64_t>& idMap
+		const std::unordered_map<uint64_t, uint64_t>& idMap,
+		bool preserveUnmappedId = false
 	) {
 		const auto found = idMap.find(id);
-		// Prefab外のScene固有IDは持ち越さず、名前参照のfallbackに任せる。
-		return found == idMap.end() ? 0 : found->second;
+		// Prefab変換は外部IDを破棄し、Scene内複製はブランチ外参照を維持する。
+		return found == idMap.end()
+			? (preserveUnmappedId ? id : 0)
+			: found->second;
 	}
 
 	void RemapComponentEntityReferences(
 		SceneComponent& component,
-		const std::unordered_map<uint64_t, uint64_t>& idMap
+		const std::unordered_map<uint64_t, uint64_t>& idMap,
+		bool preserveUnmappedIds = false
 	) {
 		component.monitorCameraEntityId = RemapEntityId(
-			component.monitorCameraEntityId, idMap
+			component.monitorCameraEntityId, idMap, preserveUnmappedIds
 		);
 		component.thirdPersonTargetEntityId = RemapEntityId(
-			component.thirdPersonTargetEntityId, idMap
+			component.thirdPersonTargetEntityId, idMap, preserveUnmappedIds
 		);
 		for (SceneCameraSwitchEntry& entry : component.cameraSwitchEntries) {
-			entry.cameraEntityId = RemapEntityId(entry.cameraEntityId, idMap);
+			entry.cameraEntityId = RemapEntityId(
+				entry.cameraEntityId, idMap, preserveUnmappedIds
+			);
 		}
 		component.agentBoundsEntityId = RemapEntityId(
-			component.agentBoundsEntityId, idMap
+			component.agentBoundsEntityId, idMap, preserveUnmappedIds
 		);
 		component.agentAttractorEntityId = RemapEntityId(
-			component.agentAttractorEntityId, idMap
+			component.agentAttractorEntityId, idMap, preserveUnmappedIds
 		);
 		if (component.entityReferenceTarget.sceneId.empty()) {
 			component.entityReferenceTarget.entityId = RemapEntityId(
-				component.entityReferenceTarget.entityId, idMap
+				component.entityReferenceTarget.entityId,
+				idMap,
+				preserveUnmappedIds
 			);
 		}
 		component.hitBoxOwnerEntityId = RemapEntityId(
-			component.hitBoxOwnerEntityId, idMap
+			component.hitBoxOwnerEntityId, idMap, preserveUnmappedIds
 		);
 		component.hurtBoxStatsEntityId = RemapEntityId(
-			component.hurtBoxStatsEntityId, idMap
+			component.hurtBoxStatsEntityId, idMap, preserveUnmappedIds
 		);
 		for (SceneStateDefinition& state : component.stateMachineStates) {
 			for (SceneStateParameter& parameter : state.parameters) {
-				parameter.entityId = RemapEntityId(parameter.entityId, idMap);
+				parameter.entityId = RemapEntityId(
+					parameter.entityId, idMap, preserveUnmappedIds
+				);
 			}
 		}
 		component.boneAttachmentTargetEntityId = RemapEntityId(
-			component.boneAttachmentTargetEntityId, idMap
+			component.boneAttachmentTargetEntityId, idMap, preserveUnmappedIds
 		);
 		component.enemyTargetEntityId = RemapEntityId(
-			component.enemyTargetEntityId, idMap
+			component.enemyTargetEntityId, idMap, preserveUnmappedIds
 		);
 		component.enemyAttackHitBoxEntityId = RemapEntityId(
-			component.enemyAttackHitBoxEntityId, idMap
+			component.enemyAttackHitBoxEntityId, idMap, preserveUnmappedIds
 		);
 		component.projectileHomingTargetEntityId = RemapEntityId(
-			component.projectileHomingTargetEntityId, idMap
+			component.projectileHomingTargetEntityId, idMap, preserveUnmappedIds
 		);
 		for (SceneEventBinding& binding : component.eventBindings) {
-			binding.targetEntityId = RemapEntityId(binding.targetEntityId, idMap);
+			binding.targetEntityId = RemapEntityId(
+				binding.targetEntityId, idMap, preserveUnmappedIds
+			);
 			for (SceneEventAction& action : binding.actions) {
-				action.targetEntityId = RemapEntityId(action.targetEntityId, idMap);
+				action.targetEntityId = RemapEntityId(
+					action.targetEntityId, idMap, preserveUnmappedIds
+				);
 			}
 		}
 		for (ScenePrefabAnimationClip& clip : component.prefabAnimationClips) {
 			for (SceneAnimationTrack& track : clip.tracks) {
-				track.targetEntityId = RemapEntityId(track.targetEntityId, idMap);
+				track.targetEntityId = RemapEntityId(
+					track.targetEntityId, idMap, preserveUnmappedIds
+				);
 			}
 		}
 	}
@@ -3301,10 +3553,398 @@ namespace {
 		return true;
 	}
 
+	json SceneEntityToJson(const SceneEntity& entity) {
+		const SceneComponent* meshRenderer = FindComponent(
+			entity,
+			"MeshRenderer"
+		);
+		const SceneComponent* spriteRenderer = FindComponent(
+			entity,
+			"SpriteRenderer"
+		);
+		json components = json::array();
+		for (const SceneComponent& component : entity.components) {
+			components.push_back(ComponentToJson(component));
+		}
+		json value = {
+			{ "id", entity.id },
+			{ "parentId", entity.parentId },
+			{ "name", entity.name },
+			{ "folder", entity.folder },
+			{ "folderTeamEnabled", entity.folderTeamEnabled },
+			{ "active", entity.active },
+			{ "locked", entity.locked },
+			{ "team", entity.teamName },
+			{ "transform", {
+				{ "scale", VectorToJson(entity.transform.scale) },
+				{ "rotation", QuaternionToJson(entity.transform.rotate) },
+				{ "translate", VectorToJson(entity.transform.translate) }
+			} },
+			{ "modelPath", meshRenderer
+				? meshRenderer->modelPath
+				: entity.modelPath },
+			{ "sprite", {
+				{ "texturePath", spriteRenderer
+					? spriteRenderer->texturePath
+					: entity.spriteTexturePath },
+				{ "size", VectorToJson(spriteRenderer
+					? spriteRenderer->spriteSize
+					: entity.spriteSize) },
+				{ "anchor", VectorToJson(spriteRenderer
+					? spriteRenderer->spriteAnchor
+					: entity.spriteAnchor) },
+				{ "color", VectorToJson(spriteRenderer
+					? spriteRenderer->spriteColor
+					: entity.spriteColor) },
+				{ "flipX", spriteRenderer
+					? spriteRenderer->spriteFlipX
+					: entity.spriteFlipX },
+				{ "flipY", spriteRenderer
+					? spriteRenderer->spriteFlipY
+					: entity.spriteFlipY }
+			} },
+			{ "components", std::move(components) }
+		};
+		if (HasPrefabAssetLink(entity) || entity.prefabInstanceRootId != 0 ||
+			entity.prefabLocalId != 0) {
+			json links = json::array();
+			if (!entity.prefabLinks.empty()) {
+				for (const ScenePrefabLink& link : entity.prefabLinks) {
+					links.push_back({
+						{ "assetId", link.assetId },
+						{ "sourcePath", link.sourcePath },
+						{ "instanceRootId", link.instanceRootId },
+						{ "localId", link.localId }
+					});
+				}
+			} else {
+				links.push_back({
+					{ "assetId", entity.prefabAssetId },
+					{ "sourcePath", entity.prefabSourcePath },
+					{ "instanceRootId", entity.prefabInstanceRootId },
+					{ "localId", entity.prefabLocalId }
+				});
+			}
+			value["prefab"] = {
+				{ "assetId", entity.prefabAssetId },
+				{ "sourcePath", entity.prefabSourcePath },
+				{ "instanceRootId", entity.prefabInstanceRootId },
+				{ "localId", entity.prefabLocalId },
+				{ "links", std::move(links) }
+			};
+		}
+		return value;
+	}
+
+	bool SceneEntityFromJson(
+		const json& source,
+		SceneEntity& entity,
+		std::string& errorMessage
+	) {
+		if (!source.is_object()) {
+			errorMessage = "Variant contains an invalid Entity entry";
+			return false;
+		}
+		if (source.contains("transform") &&
+			!source.at("transform").is_object()) {
+			errorMessage = "Variant Entity transform must be an object";
+			return false;
+		}
+		if (source.contains("sprite") && !source.at("sprite").is_object()) {
+			errorMessage = "Variant Entity sprite must be an object";
+			return false;
+		}
+		if (source.contains("prefab") && !source.at("prefab").is_object()) {
+			errorMessage = "Variant Entity prefab metadata must be an object";
+			return false;
+		}
+		if (!source.contains("components") ||
+			!source.at("components").is_array()) {
+			errorMessage = "Variant Entity components must be an array";
+			return false;
+		}
+
+		entity = {};
+		entity.id = source.value("id", uint64_t{});
+		entity.parentId = source.value("parentId", uint64_t{});
+		entity.name = source.value("name", std::string("Entity"));
+		entity.folder = source.value("folder", false);
+		entity.folderTeamEnabled = source.value("folderTeamEnabled", false);
+		entity.active = source.value("active", true);
+		entity.locked = source.value("locked", false);
+		entity.teamName = source.value("team", std::string{});
+		entity.modelPath = source.value("modelPath", std::string{});
+		if (source.contains("prefab")) {
+			const json& prefab = source.at("prefab");
+			entity.prefabAssetId = prefab.value("assetId", std::string{});
+			entity.prefabSourcePath = prefab.value("sourcePath", std::string{});
+			entity.prefabInstanceRootId = prefab.value(
+				"instanceRootId",
+				uint64_t{}
+			);
+			entity.prefabLocalId = prefab.value("localId", uint64_t{});
+			if (prefab.contains("links")) {
+				if (!prefab.at("links").is_array()) {
+					errorMessage = "Variant Entity prefab links must be an array";
+					return false;
+				}
+				for (const json& linkValue : prefab.at("links")) {
+					if (!linkValue.is_object()) {
+						errorMessage = "Variant Entity contains an invalid Prefab link";
+						return false;
+					}
+					entity.prefabLinks.push_back({
+						linkValue.value("assetId", std::string{}),
+						linkValue.value("sourcePath", std::string{}),
+						linkValue.value("instanceRootId", uint64_t{}),
+						linkValue.value("localId", uint64_t{})
+					});
+				}
+			}
+			EnsurePrefabLinkStack(entity);
+			SynchronizeActivePrefabLink(entity);
+		}
+		if (source.contains("sprite")) {
+			const json& sprite = source.at("sprite");
+			entity.spriteTexturePath = sprite.value(
+				"texturePath",
+				std::string{}
+			);
+			if (sprite.contains("size")) {
+				entity.spriteSize = JsonToVector(
+					sprite.at("size"),
+					entity.spriteSize
+				);
+			}
+			if (sprite.contains("anchor")) {
+				entity.spriteAnchor = JsonToVector(
+					sprite.at("anchor"),
+					entity.spriteAnchor
+				);
+			}
+			if (sprite.contains("color")) {
+				entity.spriteColor = JsonToVector(
+					sprite.at("color"),
+					entity.spriteColor
+				);
+			}
+			entity.spriteFlipX = sprite.value("flipX", false);
+			entity.spriteFlipY = sprite.value("flipY", false);
+		}
+		entity.components = ComponentsFromJson(source.at("components"));
+		if (source.contains("transform")) {
+			const json& transform = source.at("transform");
+			if (transform.contains("scale")) {
+				entity.transform.scale = JsonToVector(
+					transform.at("scale"),
+					entity.transform.scale
+				);
+			}
+			if (transform.contains("rotation")) {
+				entity.transform.rotate = JsonToQuaternion(
+					transform.at("rotation"),
+					entity.transform.rotate
+				);
+			}
+			if (transform.contains("translate")) {
+				entity.transform.translate = JsonToVector(
+					transform.at("translate"),
+					entity.transform.translate
+				);
+			}
+		}
+		SynchronizeLegacyRendererFields(entity);
+		return true;
+	}
+
+	json BuildJsonPropertyPatch(const json& base, const json& current) {
+		std::vector<std::string> differences;
+		CollectJsonPropertyDifferences(
+			base,
+			current,
+			{},
+			false,
+			differences
+		);
+		json patch = json::array();
+		for (const std::string& path : differences) {
+			try {
+				const json::json_pointer pointer(path);
+				patch.push_back({
+					{ "path", path },
+					{ "value", current.at(pointer) }
+				});
+			}
+			catch (const json::exception&) {
+				patch.push_back({
+					{ "path", path },
+					{ "remove", true }
+				});
+			}
+		}
+		return patch;
+	}
+
+	bool RemoveJsonProperty(json& target, const std::string& path) {
+		if (path.empty() || path.front() != '/') {
+			return false;
+		}
+		const size_t separator = path.find_last_of('/');
+		const std::string parentPath = path.substr(0, separator);
+		std::string token = path.substr(separator + 1);
+		std::string decodedToken;
+		for (size_t index = 0; index < token.size(); ++index) {
+			if (token[index] == '~' && index + 1 < token.size()) {
+				if (token[index + 1] == '0') {
+					decodedToken += '~';
+					++index;
+					continue;
+				}
+				if (token[index + 1] == '1') {
+					decodedToken += '/';
+					++index;
+					continue;
+				}
+			}
+			decodedToken += token[index];
+		}
+		try {
+			json& parent = parentPath.empty()
+				? target
+				: target.at(json::json_pointer(parentPath));
+			if (parent.is_object()) {
+				parent.erase(decodedToken);
+				return true;
+			}
+			if (parent.is_array()) {
+				const size_t index = static_cast<size_t>(std::stoull(decodedToken));
+				if (index >= parent.size()) {
+					return false;
+				}
+				parent.erase(parent.begin() + index);
+				return true;
+			}
+		}
+		catch (const std::exception&) {
+			return false;
+		}
+		return false;
+	}
+
+	bool ApplyJsonPropertyPatch(json& target, const json& patch) {
+		if (!patch.is_array()) {
+			return false;
+		}
+		try {
+			for (const json& operation : patch) {
+				if (
+					!operation.is_object() ||
+					!operation.contains("path") ||
+					!operation.at("path").is_string()
+				) {
+					return false;
+				}
+				const std::string path =
+					operation.at("path").get<std::string>();
+				if (operation.value("remove", false)) {
+					if (!RemoveJsonProperty(target, path)) {
+						return false;
+					}
+					continue;
+				}
+				if (!operation.contains("value")) {
+					return false;
+				}
+				const json::json_pointer pointer(
+					path
+				);
+				target[pointer] = operation.at("value");
+			}
+		}
+		catch (const json::exception&) {
+			return false;
+		}
+		return true;
+	}
+
+	bool BuildVariantComparisonDocument(
+		const SceneDocument& variant,
+		SceneDocument& comparison,
+		SceneDocument& base,
+		uint64_t& comparisonRootId
+	) {
+		if (!variant.IsPrefabVariant()) {
+			return false;
+		}
+		const std::string basePath = PrefabAssetRegistry::ResolvePath(
+			variant.GetVariantBaseAssetId(),
+			variant.GetVariantBasePath()
+		);
+		if (basePath.empty() || !base.Load(basePath) ||
+			base.GetAssetId() != variant.GetVariantBaseAssetId()) {
+			return false;
+		}
+		const auto root = std::find_if(
+			base.GetEntities().begin(),
+			base.GetEntities().end(),
+			[](const SceneEntity& entity) { return entity.parentId == 0; }
+		);
+		if (root == base.GetEntities().end() ||
+			!variant.FindEntity(root->id)) {
+			return false;
+		}
+
+		comparison = variant;
+		comparisonRootId = root->id;
+		for (SceneEntity& entity : comparison.GetEntities()) {
+			if (!base.FindEntity(entity.id)) {
+				continue;
+			}
+			// 比較用のBase境界を最外側へ一時挿入する。既存Nested境界は保持する。
+			EnsurePrefabLinkStack(entity);
+			entity.prefabLinks.insert(
+				entity.prefabLinks.begin(),
+				ScenePrefabLink{
+					variant.GetVariantBaseAssetId(),
+					basePath,
+					comparisonRootId,
+					entity.id
+				}
+			);
+			SynchronizeActivePrefabLink(entity);
+		}
+		return true;
+	}
+
+	void RestoreVariantPrefabMetadata(
+		SceneDocument& result,
+		const SceneDocument& original,
+		const SceneDocument& base
+	) {
+		for (SceneEntity& entity : result.GetEntities()) {
+			const SceneEntity* metadataSource = original.FindEntity(entity.id);
+			if (!metadataSource) {
+				metadataSource = base.FindEntity(entity.id);
+			}
+			if (!metadataSource) {
+				continue;
+			}
+			entity.prefabAssetId = metadataSource->prefabAssetId;
+			entity.prefabSourcePath = metadataSource->prefabSourcePath;
+			entity.prefabInstanceRootId = metadataSource->prefabInstanceRootId;
+			entity.prefabLocalId = metadataSource->prefabLocalId;
+			entity.prefabLinks = metadataSource->prefabLinks;
+		}
+	}
+
 }
 
 void SceneDocument::Clear(const std::string& sceneName) {
 	sceneName_ = sceneName;
+	assetId_.clear();
+	variantBaseAssetId_.clear();
+	variantBasePath_.clear();
+	variantBaseSnapshot_.reset();
 	entities_.clear();
 	teams_.clear();
 	lightingSettings_ = {};
@@ -3314,6 +3954,7 @@ void SceneDocument::Clear(const std::string& sceneName) {
 	dirty_ = false;
 	revision_ = 0;
 	lastLoadError_.clear();
+	lastSaveError_.clear();
 }
 
 bool SceneDocument::Load(const std::string& filePath) {
@@ -3336,6 +3977,14 @@ bool SceneDocument::Load(const std::string& filePath) {
 }
 
 bool SceneDocument::Save(const std::string& filePath) {
+	lastSaveError_.clear();
+	const bool isPrefabDocument = IsPrefabDocumentPath(filePath);
+	if (isPrefabDocument && assetId_.empty()) {
+		assetId_ = PrefabAssetRegistry::ReadAssetId(filePath);
+		if (assetId_.empty()) {
+			assetId_ = PrefabAssetRegistry::CreateAssetId();
+		}
+	}
 	for (SceneEntity& entity : entities_) {
 		if (!entity.runtimeOnly) {
 			EnsureComponentLocalIds(entity);
@@ -3344,6 +3993,9 @@ bool SceneDocument::Save(const std::string& filePath) {
 	json root;
 	root["version"] = SceneDocumentMigrator::kCurrentVersion;
 	root["sceneName"] = sceneName_;
+	if (!assetId_.empty()) {
+		root["assetId"] = assetId_;
+	}
 	root["lighting"] = LightingSettingsToJson(lightingSettings_);
 	root["postProcess"] = PostProcessToJson(postProcessSettings_);
 	root["debug"] = DebugSettingsToJson(debugSettings_);
@@ -3410,17 +4062,228 @@ bool SceneDocument::Save(const std::string& filePath) {
 			{ "components", components }
 		};
 		if (
+			!entity.prefabLinks.empty() ||
+			!entity.prefabAssetId.empty() ||
 			!entity.prefabSourcePath.empty() ||
 			entity.prefabInstanceRootId != 0 ||
 			entity.prefabLocalId != 0
 		) {
+			json prefabLinks = json::array();
+			if (!entity.prefabLinks.empty()) {
+				for (const ScenePrefabLink& link : entity.prefabLinks) {
+					prefabLinks.push_back({
+						{ "assetId", link.assetId },
+						{ "sourcePath", link.sourcePath },
+						{ "instanceRootId", link.instanceRootId },
+						{ "localId", link.localId }
+					});
+				}
+			} else {
+				prefabLinks.push_back({
+					{ "assetId", entity.prefabAssetId },
+					{ "sourcePath", entity.prefabSourcePath },
+					{ "instanceRootId", entity.prefabInstanceRootId },
+					{ "localId", entity.prefabLocalId }
+				});
+			}
 			entityValue["prefab"] = {
+				{ "assetId", entity.prefabAssetId },
 				{ "sourcePath", entity.prefabSourcePath },
 				{ "instanceRootId", entity.prefabInstanceRootId },
-				{ "localId", entity.prefabLocalId }
+				{ "localId", entity.prefabLocalId },
+				{ "links", std::move(prefabLinks) }
 			};
 		}
 		root["entities"].push_back(std::move(entityValue));
+	}
+
+	if (!variantBaseAssetId_.empty()) {
+		// Variantは有効Document全体ではなく、読込時Baseとの差分だけを保存する。
+		const std::string basePath = PrefabAssetRegistry::ResolvePath(
+			variantBaseAssetId_,
+			variantBasePath_
+		);
+		if (basePath.empty() || basePath == filePath ||
+			variantBaseAssetId_ == assetId_) {
+			lastSaveError_ =
+				"Prefab Variant Base is missing, ambiguous, or self-referencing.";
+			return false;
+		}
+		SceneDocument latestBase;
+		if (!latestBase.LoadInternal(basePath) ||
+			latestBase.GetAssetId() != variantBaseAssetId_) {
+			lastSaveError_ = "Failed to load the latest Prefab Variant Base.";
+			return false;
+		}
+		// 開いた時点のBaseとの差だけを明示Overrideとし、外部Base更新を固定しない。
+		const SceneDocument& base = variantBaseSnapshot_
+			? *variantBaseSnapshot_
+			: latestBase;
+
+		auto settingsToJson = [](const SceneDocument& document) {
+			json teams = json::array();
+			for (const SceneTeamSettings& team : document.teams_) {
+				teams.push_back(TeamToJson(team));
+			}
+			return json{
+				{ "sceneName", document.sceneName_ },
+				{ "lighting", LightingSettingsToJson(
+					document.lightingSettings_
+				) },
+				{ "postProcess", PostProcessToJson(
+					document.postProcessSettings_
+				) },
+				{ "debug", DebugSettingsToJson(document.debugSettings_) },
+				{ "teams", std::move(teams) }
+			};
+		};
+
+		std::unordered_map<uint64_t, json> baseEntities;
+		std::unordered_map<uint64_t, json> currentEntities;
+		for (const SceneEntity& entity : base.entities_) {
+			if (!entity.runtimeOnly) {
+				baseEntities.emplace(entity.id, SceneEntityToJson(entity));
+			}
+		}
+		for (const json& entityValue : root.at("entities")) {
+			currentEntities.emplace(
+				entityValue.value("id", uint64_t{}),
+				entityValue
+			);
+		}
+
+		json removedEntityIds = json::array();
+		json addedEntities = json::array();
+		json entityOverrides = json::array();
+		for (const auto& [entityId, baseValue] : baseEntities) {
+			const auto currentEntry = currentEntities.find(entityId);
+			if (currentEntry == currentEntities.end()) {
+				const uint64_t parentId = baseValue.value(
+					"parentId",
+					uint64_t{}
+				);
+				if (parentId == 0 || currentEntities.contains(parentId)) {
+					removedEntityIds.push_back(entityId);
+				}
+				continue;
+			}
+
+			json baseProperties = baseValue;
+			json currentProperties = currentEntry->second;
+			const json baseComponents = baseProperties.value(
+				"components",
+				json::array()
+			);
+			const json currentComponents = currentProperties.value(
+				"components",
+				json::array()
+			);
+			baseProperties.erase("components");
+			currentProperties.erase("components");
+
+			json entityOverride = {
+				{ "entityId", entityId }
+			};
+			const json propertyPatch = BuildJsonPropertyPatch(
+				baseProperties,
+				currentProperties
+			);
+			if (!propertyPatch.empty()) {
+				entityOverride["properties"] = propertyPatch;
+			}
+
+			std::unordered_map<uint64_t, json> baseComponentsById;
+			std::unordered_map<uint64_t, json> currentComponentsById;
+			for (const json& component : baseComponents) {
+				baseComponentsById.emplace(
+					component.value("localId", uint64_t{}),
+					component
+				);
+			}
+			for (const json& component : currentComponents) {
+				currentComponentsById.emplace(
+					component.value("localId", uint64_t{}),
+					component
+				);
+			}
+
+			json removedComponentIds = json::array();
+			json addedComponents = json::array();
+			json componentOverrides = json::array();
+			for (const auto& [componentId, baseComponent] :
+				baseComponentsById) {
+				const auto currentComponent =
+					currentComponentsById.find(componentId);
+				if (
+					currentComponent == currentComponentsById.end() ||
+					currentComponent->second.value("type", std::string{}) !=
+						baseComponent.value("type", std::string{})
+				) {
+					removedComponentIds.push_back(componentId);
+					continue;
+				}
+				const json componentPatch = BuildJsonPropertyPatch(
+					baseComponent,
+					currentComponent->second
+				);
+				if (!componentPatch.empty()) {
+					componentOverrides.push_back({
+						{ "componentId", componentId },
+						{ "properties", componentPatch }
+					});
+				}
+			}
+			for (const auto& [componentId, currentComponent] :
+				currentComponentsById) {
+				const auto baseComponent = baseComponentsById.find(componentId);
+				if (
+					baseComponent == baseComponentsById.end() ||
+					baseComponent->second.value("type", std::string{}) !=
+						currentComponent.value("type", std::string{})
+				) {
+					addedComponents.push_back(currentComponent);
+				}
+			}
+			if (!removedComponentIds.empty()) {
+				entityOverride["removedComponentIds"] =
+					std::move(removedComponentIds);
+			}
+			if (!addedComponents.empty()) {
+				entityOverride["addedComponents"] = std::move(addedComponents);
+			}
+			if (!componentOverrides.empty()) {
+				entityOverride["componentOverrides"] =
+					std::move(componentOverrides);
+			}
+			if (entityOverride.size() > 1) {
+				entityOverrides.push_back(std::move(entityOverride));
+			}
+		}
+		for (const auto& [entityId, currentValue] : currentEntities) {
+			if (!baseEntities.contains(entityId)) {
+				addedEntities.push_back(currentValue);
+			}
+		}
+
+		json variant = {
+			{ "base", {
+				{ "assetId", variantBaseAssetId_ },
+				{ "fallbackPath", basePath }
+			} },
+			{ "rootOverrides", BuildJsonPropertyPatch(
+				settingsToJson(base),
+				settingsToJson(*this)
+			) },
+			{ "entityOverrides", std::move(entityOverrides) },
+			{ "addedEntities", std::move(addedEntities) },
+			{ "removedEntityIds", std::move(removedEntityIds) }
+		};
+		root = {
+			{ "version", SceneDocumentMigrator::kCurrentVersion },
+			{ "sceneName", sceneName_ },
+			{ "assetId", assetId_ },
+			{ "variant", std::move(variant) }
+		};
 	}
 
 	const std::filesystem::path target = StringUtility::ToPath(filePath);
@@ -3450,6 +4313,20 @@ bool SceneDocument::Save(const std::string& filePath) {
 		}
 	}
 
+	const bool savingVariant = !variantBaseAssetId_.empty();
+	SceneDocument rebasedVariant;
+	if (savingVariant) {
+		// 置換前に最新BaseへOverrideを適用し、欠損Target等のRebase競合を検出する。
+		if (!rebasedVariant.LoadInternal(StringUtility::ToUtf8(temporary))) {
+			lastSaveError_ = "Failed to rebase Prefab Variant: " +
+				rebasedVariant.GetLastLoadError();
+			std::filesystem::remove(temporary, error);
+			return false;
+		}
+		rebasedVariant.revision_ = revision_ + 1;
+		rebasedVariant.MarkClean();
+	}
+
 	if (std::filesystem::exists(target, error) && !error) {
 		std::filesystem::copy_file(
 			target,
@@ -3472,7 +4349,15 @@ bool SceneDocument::Save(const std::string& filePath) {
 		return false;
 	}
 
-	dirty_ = false;
+	if (isPrefabDocument) {
+		PrefabAssetRegistry::Invalidate();
+	}
+	if (savingVariant) {
+		*this = std::move(rebasedVariant);
+	} else {
+		dirty_ = false;
+	}
+	lastSaveError_.clear();
 	return true;
 }
 
@@ -3481,7 +4366,17 @@ SceneEntity& SceneDocument::CreateEntity(
 	uint64_t parentId
 ) {
 	SceneEntity entity{};
-	entity.id = nextId_++;
+	if (variantBaseAssetId_.empty()) {
+		entity.id = nextId_++;
+	} else {
+		entity.id = MakeVariantLocalId(
+			assetId_,
+			std::to_string(nextId_++)
+		);
+		while (FindEntity(entity.id)) {
+			++entity.id;
+		}
+	}
 	entity.parentId = FindEntity(parentId) ? parentId : 0;
 	entity.name = name.empty() ? "Entity" : name;
 	entities_.push_back(entity);
@@ -3534,8 +4429,14 @@ uint64_t SceneDocument::DuplicateEntity(uint64_t id) {
 	}
 
 	const std::vector<SceneEntity> sourceEntities = entities_;
+	std::unordered_map<uint64_t, uint64_t> duplicatedIds;
 	std::function<uint64_t(uint64_t, uint64_t, bool)> duplicateBranch;
-	duplicateBranch = [this, &sourceEntities, &duplicateBranch](
+	duplicateBranch = [
+		this,
+		&sourceEntities,
+		&duplicatedIds,
+		&duplicateBranch
+	](
 		uint64_t sourceId,
 		uint64_t newParentId,
 		bool isRoot
@@ -3556,6 +4457,7 @@ uint64_t SceneDocument::DuplicateEntity(uint64_t id) {
 			newParentId
 		);
 		const uint64_t duplicateId = duplicate.id;
+		duplicatedIds.emplace(sourceId, duplicateId);
 		duplicate.folder = found->folder;
 		duplicate.folderTeamEnabled = found->folderTeamEnabled;
 		duplicate.active = found->active;
@@ -3578,12 +4480,32 @@ uint64_t SceneDocument::DuplicateEntity(uint64_t id) {
 		return duplicateId;
 	};
 
-	return duplicateBranch(id, source->parentId, true);
+	const uint64_t duplicatedRootId = duplicateBranch(
+		id,
+		source->parentId,
+		true
+	);
+	if (duplicatedRootId == 0) {
+		return 0;
+	}
+	for (const auto& [sourceId, duplicateId] : duplicatedIds) {
+		(void)sourceId;
+		SceneEntity* duplicate = FindEntity(duplicateId);
+		if (!duplicate) {
+			continue;
+		}
+		for (SceneComponent& component : duplicate->components) {
+			// 複製ブランチ内のAttachment等だけ新IDへ向け、外部参照は維持する。
+			RemapComponentEntityReferences(component, duplicatedIds, true);
+		}
+	}
+	return duplicatedRootId;
 }
 
 bool SceneDocument::SaveEntityBranchAsPrefab(
 	uint64_t id,
-	const std::string& filePath
+	const std::string& filePath,
+	uint64_t sourceInstanceRootId
 ) const {
 	const SceneEntity* root = FindEntity(id);
 	if (!root || filePath.empty()) {
@@ -3599,12 +4521,31 @@ bool SceneDocument::SaveEntityBranchAsPrefab(
 	if (branch.empty()) {
 		return false;
 	}
+	if (sourceInstanceRootId == 0) {
+		sourceInstanceRootId = root->prefabInstanceRootId;
+	}
+	std::unordered_set<uint64_t> removedBoundaryRoots;
+	if (sourceInstanceRootId != 0) {
+		for (const ScenePrefabLink& link : root->prefabLinks) {
+			removedBoundaryRoots.insert(link.instanceRootId);
+			if (link.instanceRootId == sourceInstanceRootId) {
+				break;
+			}
+		}
+	}
 
 	std::unordered_map<uint64_t, uint64_t> idMap;
 	std::unordered_set<uint64_t> usedLocalIds;
 	uint64_t nextLocalId = 1;
 	for (const SceneEntity* entity : branch) {
-		uint64_t localId = entity->prefabLocalId;
+		const ScenePrefabLink* sourceLink = sourceInstanceRootId != 0
+			? FindPrefabLink(*entity, sourceInstanceRootId)
+			: nullptr;
+		uint64_t localId = sourceLink
+			? sourceLink->localId
+			: sourceInstanceRootId == 0
+				? entity->prefabLocalId
+				: uint64_t{};
 		if (localId == 0 || !usedLocalIds.insert(localId).second) {
 			while (usedLocalIds.contains(nextLocalId)) {
 				++nextLocalId;
@@ -3624,10 +4565,24 @@ bool SceneDocument::SaveEntityBranchAsPrefab(
 			? 0
 			: RemapEntityId(source->parentId, idMap);
 		entity.runtimeOnly = false;
-		// Prefabアセット自身へScene Instanceのリンク情報を持ち込まない。
-		entity.prefabSourcePath.clear();
-		entity.prefabInstanceRootId = 0;
-		entity.prefabLocalId = 0;
+		// 保存対象より外側のInstance境界はAssetへ持ち込まず、内側だけを維持する。
+		EnsurePrefabLinkStack(entity);
+		if (!removedBoundaryRoots.empty()) {
+			entity.prefabLinks.erase(
+				std::remove_if(
+					entity.prefabLinks.begin(),
+					entity.prefabLinks.end(),
+					[&removedBoundaryRoots](const ScenePrefabLink& link) {
+						return removedBoundaryRoots.contains(
+							link.instanceRootId
+						);
+					}
+				),
+				entity.prefabLinks.end()
+			);
+			SynchronizeActivePrefabLink(entity);
+		}
+		RemapPrefabLinkRoots(entity, idMap);
 		entity.teamName.clear();
 		for (SceneComponent& component : entity.components) {
 			RemapComponentEntityReferences(component, idMap);
@@ -3636,7 +4591,225 @@ bool SceneDocument::SaveEntityBranchAsPrefab(
 	}
 	const std::filesystem::path resolvedPath =
 		EditableResourcePath::ResolveResource(StringUtility::ToPath(filePath));
-	return prefab.Save(StringUtility::ToUtf8(resolvedPath));
+	const std::string resolvedFilePath = StringUtility::ToUtf8(resolvedPath);
+	const PrefabAssetReference variantBase =
+		PrefabAssetRegistry::ReadVariantBase(resolvedFilePath);
+	if (!variantBase.assetId.empty()) {
+		// Instance全体ApplyでもVariantを通常Prefabへ置き換えず継承を維持する。
+		const std::string resolvedVariantBase =
+			PrefabAssetRegistry::ResolvePath(variantBase);
+		if (resolvedVariantBase.empty()) {
+			return false;
+		}
+		prefab.assetId_ = PrefabAssetRegistry::ReadAssetId(resolvedFilePath);
+		prefab.variantBaseAssetId_ = variantBase.assetId;
+		prefab.variantBasePath_ = resolvedVariantBase;
+	}
+	return prefab.Save(resolvedFilePath);
+}
+
+bool SceneDocument::SaveAsPrefabVariant(
+	const std::string& filePath,
+	const std::string& basePrefabPath
+) const {
+	if (
+		filePath.empty() ||
+		basePrefabPath.empty() ||
+		!IsPrefabDocumentPath(filePath) ||
+		!IsPrefabDocumentPath(basePrefabPath)
+	) {
+		return false;
+	}
+	const PrefabAssetReference baseReference =
+		PrefabAssetRegistry::CreateReference(basePrefabPath);
+	const std::string resolvedBasePath =
+		PrefabAssetRegistry::ResolvePath(baseReference);
+	if (baseReference.assetId.empty() || resolvedBasePath.empty()) {
+		return false;
+	}
+	const std::filesystem::path resolvedTarget =
+		EditableResourcePath::ResolveResource(
+			StringUtility::ToPath(filePath)
+		).lexically_normal();
+	const std::filesystem::path resolvedBase =
+		EditableResourcePath::ResolveResource(
+			StringUtility::ToPath(resolvedBasePath)
+		).lexically_normal();
+	if (resolvedTarget == resolvedBase) {
+		return false;
+	}
+	SceneDocument baseSnapshot;
+	if (!baseSnapshot.LoadInternal(resolvedBasePath) ||
+		baseSnapshot.GetAssetId() != baseReference.assetId) {
+		return false;
+	}
+
+	SceneDocument variant = *this;
+	variant.assetId_ = PrefabAssetRegistry::CreateAssetId();
+	variant.variantBaseAssetId_ = baseReference.assetId;
+	variant.variantBasePath_ = resolvedBasePath;
+	variant.variantBaseSnapshot_ =
+		std::make_shared<SceneDocument>(std::move(baseSnapshot));
+	std::string variantName = StringUtility::ToUtf8(
+		resolvedTarget.filename()
+	);
+	if (variantName.ends_with(".prefab.json")) {
+		variantName.resize(variantName.size() - std::string(".prefab.json").size());
+	}
+	if (!variantName.empty()) {
+		variant.sceneName_ = variantName;
+	}
+	variant.dirty_ = true;
+	return variant.Save(StringUtility::ToUtf8(resolvedTarget));
+}
+
+bool SceneDocument::RevertPrefabVariantToBase() {
+	if (variantBaseAssetId_.empty()) {
+		return false;
+	}
+	const std::string basePath = PrefabAssetRegistry::ResolvePath(
+		variantBaseAssetId_,
+		variantBasePath_
+	);
+	if (basePath.empty()) {
+		return false;
+	}
+	SceneDocument base;
+	if (!base.LoadInternal(basePath) ||
+		base.GetAssetId() != variantBaseAssetId_) {
+		return false;
+	}
+	const std::shared_ptr<const SceneDocument> baseSnapshot =
+		std::make_shared<SceneDocument>(base);
+	const std::string variantAssetId = assetId_;
+	const std::string baseAssetId = variantBaseAssetId_;
+	*this = std::move(base);
+	assetId_ = variantAssetId;
+	variantBaseAssetId_ = baseAssetId;
+	variantBasePath_ = basePath;
+	variantBaseSnapshot_ = baseSnapshot;
+	MarkDirty();
+	return true;
+}
+
+std::vector<ScenePrefabPropertyOverride>
+SceneDocument::CollectPrefabVariantOverrides() const {
+	SceneDocument comparison;
+	SceneDocument base;
+	uint64_t comparisonRootId = 0;
+	if (!BuildVariantComparisonDocument(
+		*this,
+		comparison,
+		base,
+		comparisonRootId
+	)) {
+		return {};
+	}
+	return comparison.CollectPrefabPropertyOverrides(comparisonRootId);
+}
+
+bool SceneDocument::ApplyPrefabVariantOverrideToBase(
+	const ScenePrefabPropertyOverride& overrideValue
+) {
+	if (overrideValue.kind == ScenePrefabOverrideKind::AddedEntity) {
+		const std::string basePath = PrefabAssetRegistry::ResolvePath(
+			variantBaseAssetId_,
+			variantBasePath_
+		);
+		SceneDocument base;
+		const SceneEntity* branchRoot = FindEntity(
+			overrideValue.instanceEntityId
+		);
+		if (basePath.empty() || !branchRoot || branchRoot->parentId == 0 ||
+			!base.Load(basePath) || base.GetAssetId() != variantBaseAssetId_) {
+			return false;
+		}
+		std::vector<const SceneEntity*> branch;
+		std::unordered_set<uint64_t> branchIds;
+		for (const SceneEntity& entity : entities_) {
+			if (entity.id == branchRoot->id ||
+				IsDescendantOf(entity.id, branchRoot->id)) {
+				if (base.FindEntity(entity.id)) {
+					return false;
+				}
+				branch.push_back(&entity);
+				branchIds.insert(entity.id);
+			}
+		}
+		for (const SceneEntity* entity : branch) {
+			if (entity->parentId != 0 &&
+				!branchIds.contains(entity->parentId) &&
+				!base.FindEntity(entity->parentId)) {
+				return false;
+			}
+		}
+		for (const SceneEntity* source : branch) {
+			SceneEntity entity = *source;
+			entity.runtimeOnly = false;
+			base.GetEntities().push_back(std::move(entity));
+		}
+		base.MarkDirty();
+		if (!base.Save(basePath)) {
+			return false;
+		}
+		// Baseへ移した同一ID Branchを次回SaveでVariant差分から除去する。
+		MarkDirty();
+		return true;
+	}
+
+	SceneDocument comparison;
+	SceneDocument base;
+	uint64_t comparisonRootId = 0;
+	if (!BuildVariantComparisonDocument(
+		*this,
+		comparison,
+		base,
+		comparisonRootId
+	)) {
+		return false;
+	}
+	if (!comparison.ApplyPrefabPropertyOverride(
+		comparisonRootId,
+		overrideValue
+	)) {
+		return false;
+	}
+	// Baseへ吸収された冗長Overrideを次回SaveでVariant JSONから除去する。
+	MarkDirty();
+	return true;
+}
+
+bool SceneDocument::RevertPrefabVariantOverride(
+	const ScenePrefabPropertyOverride& overrideValue
+) {
+	if (overrideValue.kind == ScenePrefabOverrideKind::AddedEntity) {
+		const SceneEntity* branchRoot = FindEntity(
+			overrideValue.instanceEntityId
+		);
+		return branchRoot && branchRoot->parentId != 0
+			? RemoveEntity(branchRoot->id)
+			: false;
+	}
+
+	SceneDocument comparison;
+	SceneDocument base;
+	uint64_t comparisonRootId = 0;
+	if (!BuildVariantComparisonDocument(
+		*this,
+		comparison,
+		base,
+		comparisonRootId
+	) || !comparison.RevertPrefabPropertyOverride(
+		comparisonRootId,
+		overrideValue
+	)) {
+		return false;
+	}
+	// 比較用Linkを永続化しない。復元EntityはBaseのNested境界へ戻す。
+	RestoreVariantPrefabMetadata(comparison, *this, base);
+	*this = std::move(comparison);
+	MarkDirty();
+	return true;
 }
 
 uint64_t SceneDocument::InstantiatePrefab(
@@ -3661,6 +4834,47 @@ uint64_t SceneDocument::InstantiatePrefab(
 		prefab.GetEntities().empty()
 	) {
 		return 0;
+	}
+	std::string sourceAssetId = prefab.GetAssetId();
+	if (sourceAssetId.empty() && !runtimeOnly) {
+		// 旧Prefabは編集時の初回利用でAsset ID付きへ移行する。
+		if (!prefab.Save(StringUtility::ToUtf8(resolvedPath))) {
+			return 0;
+		}
+		sourceAssetId = prefab.GetAssetId();
+	}
+	if (!assetId_.empty()) {
+		if (sourceAssetId == assetId_) {
+			return 0;
+		}
+		PrefabAssetReference variantBase =
+			PrefabAssetRegistry::ReadVariantBase(sourcePath);
+		std::unordered_set<std::string> visitedVariantBases;
+		while (!variantBase.assetId.empty()) {
+			if (variantBase.assetId == assetId_ ||
+				!visitedVariantBases.insert(variantBase.assetId).second) {
+				return 0;
+			}
+			const std::string variantBasePath =
+				PrefabAssetRegistry::ResolvePath(variantBase);
+			if (variantBasePath.empty()) {
+				return 0;
+			}
+			variantBase = PrefabAssetRegistry::ReadVariantBase(
+				variantBasePath
+			);
+		}
+		for (const SceneEntity& source : prefab.GetEntities()) {
+			if (std::any_of(
+				source.prefabLinks.begin(),
+				source.prefabLinks.end(),
+				[this](const ScenePrefabLink& link) {
+					return !link.assetId.empty() && link.assetId == assetId_;
+				}
+			)) {
+				return 0;
+			}
+		}
 	}
 	if (std::count_if(
 		prefab.GetEntities().begin(),
@@ -3693,9 +4907,17 @@ uint64_t SceneDocument::InstantiatePrefab(
 			? parentId
 			: RemapEntityId(source.parentId, idMap);
 		destination->runtimeOnly = runtimeOnly;
-		destination->prefabSourcePath = sourcePath;
-		destination->prefabInstanceRootId = rootId;
-		destination->prefabLocalId = source.id;
+		RemapPrefabLinkRoots(*destination, idMap);
+		destination->prefabLinks.insert(
+			destination->prefabLinks.begin(),
+			ScenePrefabLink{
+				sourceAssetId,
+				sourcePath,
+				rootId,
+				source.id
+			}
+		);
+		SynchronizeActivePrefabLink(*destination);
 		for (SceneComponent& component : destination->components) {
 			RemapComponentEntityReferences(component, idMap);
 		}
@@ -3719,7 +4941,7 @@ uint64_t SceneDocument::FindPrefabInstanceRoot(uint64_t entityId) const {
 		if (
 			root &&
 			root->prefabInstanceRootId == rootId &&
-			!root->prefabSourcePath.empty()
+			HasPrefabAssetLink(*root)
 		) {
 			return rootId;
 		}
@@ -3728,23 +4950,70 @@ uint64_t SceneDocument::FindPrefabInstanceRoot(uint64_t entityId) const {
 	return 0;
 }
 
+std::vector<uint64_t> SceneDocument::CollectPrefabInstanceRoots(
+	uint64_t entityId
+) const {
+	std::vector<uint64_t> roots;
+	std::unordered_set<uint64_t> addedRoots;
+	std::unordered_set<uint64_t> visitedEntities;
+	const SceneEntity* current = FindEntity(entityId);
+	while (current && visitedEntities.insert(current->id).second) {
+		for (const ScenePrefabLink& link : current->prefabLinks) {
+			if (!addedRoots.insert(link.instanceRootId).second) {
+				continue;
+			}
+			const SceneEntity* root = FindEntity(link.instanceRootId);
+			if (
+				root &&
+				FindPrefabLink(*root, link.instanceRootId)
+			) {
+				roots.push_back(link.instanceRootId);
+			}
+		}
+		current = FindEntity(current->parentId);
+	}
+	std::stable_sort(
+		roots.begin(),
+		roots.end(),
+		[this](uint64_t leftRootId, uint64_t rightRootId) {
+			const SceneEntity* leftRoot = FindEntity(leftRootId);
+			const SceneEntity* rightRoot = FindEntity(rightRootId);
+			const size_t leftDepth = leftRoot
+				? FindPrefabLinkDepth(*leftRoot, leftRootId)
+				: 0;
+			const size_t rightDepth = rightRoot
+				? FindPrefabLinkDepth(*rightRoot, rightRootId)
+				: 0;
+			return leftDepth < rightDepth;
+		}
+	);
+	return roots;
+}
+
 std::vector<std::string> SceneDocument::CollectPrefabInstanceOverrides(
 	uint64_t rootId
 ) const {
 	std::vector<std::string> overrides;
 	const SceneEntity* instanceRoot = FindEntity(rootId);
+	const ScenePrefabLink* instanceRootLink = instanceRoot
+		? FindPrefabLink(*instanceRoot, rootId)
+		: nullptr;
 	if (
 		!instanceRoot ||
-		instanceRoot->prefabInstanceRootId != rootId ||
-		instanceRoot->prefabSourcePath.empty()
+		!instanceRootLink
 	) {
 		return overrides;
 	}
 
+	const std::string sourcePath = ResolvePrefabAssetPath(*instanceRootLink);
+	if (sourcePath.empty()) {
+		overrides.push_back("Unable to resolve the linked Prefab asset.");
+		return overrides;
+	}
 	SceneDocument prefab;
 	const std::filesystem::path resolvedPath =
 		EditableResourcePath::ResolveResource(
-			StringUtility::ToPath(instanceRoot->prefabSourcePath)
+			StringUtility::ToPath(sourcePath)
 		);
 	if (!prefab.Load(StringUtility::ToUtf8(resolvedPath))) {
 		overrides.push_back("Unable to load the linked Prefab asset.");
@@ -3754,13 +5023,14 @@ std::vector<std::string> SceneDocument::CollectPrefabInstanceOverrides(
 	std::unordered_map<uint64_t, const SceneEntity*> instanceByLocalId;
 	std::unordered_map<uint64_t, uint64_t> sceneToLocalId;
 	for (const SceneEntity& entity : entities_) {
+		const ScenePrefabLink* entityLink = FindPrefabLink(entity, rootId);
 		if (
-			entity.prefabInstanceRootId == rootId &&
-			entity.prefabSourcePath == instanceRoot->prefabSourcePath &&
-			entity.prefabLocalId != 0
+			entityLink &&
+			MatchesPrefabInstanceLink(entity, rootId, *instanceRootLink) &&
+			entityLink->localId != 0
 		) {
-			instanceByLocalId.emplace(entity.prefabLocalId, &entity);
-			sceneToLocalId.emplace(entity.id, entity.prefabLocalId);
+			instanceByLocalId.emplace(entityLink->localId, &entity);
+			sceneToLocalId.emplace(entity.id, entityLink->localId);
 		}
 	}
 
@@ -3834,7 +5104,11 @@ std::vector<std::string> SceneDocument::CollectPrefabInstanceOverrides(
 	for (const SceneEntity& entity : entities_) {
 		if (
 			entity.id != rootId &&
-			entity.prefabInstanceRootId == 0 &&
+			!MatchesPrefabInstanceLink(
+				entity,
+				rootId,
+				*instanceRootLink
+			) &&
 			IsDescendantOf(entity.id, rootId)
 		) {
 			overrides.push_back("Added Entity: " + entity.name);
@@ -3847,18 +5121,24 @@ std::vector<ScenePrefabPropertyOverride>
 SceneDocument::CollectPrefabPropertyOverrides(uint64_t rootId) const {
 	std::vector<ScenePrefabPropertyOverride> overrides;
 	const SceneEntity* instanceRoot = FindEntity(rootId);
+	const ScenePrefabLink* instanceRootLink = instanceRoot
+		? FindPrefabLink(*instanceRoot, rootId)
+		: nullptr;
 	if (
 		!instanceRoot ||
-		instanceRoot->prefabInstanceRootId != rootId ||
-		instanceRoot->prefabSourcePath.empty()
+		!instanceRootLink
 	) {
 		return overrides;
 	}
 
+	const std::string sourcePath = ResolvePrefabAssetPath(*instanceRootLink);
+	if (sourcePath.empty()) {
+		return overrides;
+	}
 	SceneDocument prefab;
 	const std::filesystem::path resolvedPath =
 		EditableResourcePath::ResolveResource(
-			StringUtility::ToPath(instanceRoot->prefabSourcePath)
+			StringUtility::ToPath(sourcePath)
 		);
 	if (!prefab.Load(StringUtility::ToUtf8(resolvedPath))) {
 		return overrides;
@@ -3867,13 +5147,14 @@ SceneDocument::CollectPrefabPropertyOverrides(uint64_t rootId) const {
 	std::unordered_map<uint64_t, const SceneEntity*> instanceByLocalId;
 	std::unordered_map<uint64_t, uint64_t> sceneToLocalId;
 	for (const SceneEntity& entity : entities_) {
+		const ScenePrefabLink* entityLink = FindPrefabLink(entity, rootId);
 		if (
-			entity.prefabInstanceRootId == rootId &&
-			entity.prefabSourcePath == instanceRoot->prefabSourcePath &&
-			entity.prefabLocalId != 0
+			entityLink &&
+			MatchesPrefabInstanceLink(entity, rootId, *instanceRootLink) &&
+			entityLink->localId != 0
 		) {
-			instanceByLocalId.emplace(entity.prefabLocalId, &entity);
-			sceneToLocalId.emplace(entity.id, entity.prefabLocalId);
+			instanceByLocalId.emplace(entityLink->localId, &entity);
+			sceneToLocalId.emplace(entity.id, entityLink->localId);
 		}
 	}
 
@@ -4011,12 +5292,18 @@ SceneDocument::CollectPrefabPropertyOverrides(uint64_t rootId) const {
 			continue;
 		}
 		const SceneEntity* parent = FindEntity(instance->parentId);
+		const ScenePrefabLink* parentLink = parent
+			? FindPrefabLink(*parent, rootId)
+			: nullptr;
 		const bool parentIsAlsoStale =
-			parent &&
-			parent->prefabInstanceRootId == rootId &&
-			parent->prefabSourcePath == instanceRoot->prefabSourcePath &&
-			parent->prefabLocalId != 0 &&
-			!sourceLocalIds.contains(parent->prefabLocalId);
+			parentLink &&
+			MatchesPrefabInstanceLink(
+				*parent,
+				rootId,
+				*instanceRootLink
+			) &&
+			parentLink->localId != 0 &&
+			!sourceLocalIds.contains(parentLink->localId);
 		if (parentIsAlsoStale) {
 			continue;
 		}
@@ -4032,7 +5319,11 @@ SceneDocument::CollectPrefabPropertyOverrides(uint64_t rootId) const {
 	for (const SceneEntity& entity : entities_) {
 		if (
 			entity.id == rootId ||
-			entity.prefabInstanceRootId != 0 ||
+			MatchesPrefabInstanceLink(
+				entity,
+				rootId,
+				*instanceRootLink
+			) ||
 			!IsDescendantOf(entity.id, rootId)
 		) {
 			continue;
@@ -4041,7 +5332,11 @@ SceneDocument::CollectPrefabPropertyOverrides(uint64_t rootId) const {
 		const bool parentIsAlsoAdded =
 			parent &&
 			parent->id != rootId &&
-			parent->prefabInstanceRootId == 0 &&
+			!MatchesPrefabInstanceLink(
+				*parent,
+				rootId,
+				*instanceRootLink
+			) &&
 			IsDescendantOf(parent->id, rootId);
 		if (parentIsAlsoAdded) {
 			continue;
@@ -4061,32 +5356,99 @@ bool SceneDocument::ApplyPrefabPropertyOverride(
 	const ScenePrefabPropertyOverride& overrideValue
 ) {
 	SceneEntity* instanceRoot = FindEntity(rootId);
+	ScenePrefabLink* instanceRootLink = instanceRoot
+		? FindPrefabLink(*instanceRoot, rootId)
+		: nullptr;
 	if (
 		!instanceRoot ||
-		instanceRoot->prefabInstanceRootId != rootId ||
-		instanceRoot->prefabSourcePath.empty()
+		!instanceRootLink
 	) {
 		return false;
 	}
+	const size_t targetLinkDepth = FindPrefabLinkDepth(
+		*instanceRoot,
+		rootId
+	);
+	std::unordered_set<uint64_t> outerBoundaryRoots;
+	for (const ScenePrefabLink& link : instanceRoot->prefabLinks) {
+		outerBoundaryRoots.insert(link.instanceRootId);
+		if (link.instanceRootId == rootId) {
+			break;
+		}
+	}
 
-	const std::string sourcePath = instanceRoot->prefabSourcePath;
+	const std::string sourcePath = ResolvePrefabAssetPath(*instanceRootLink);
+	if (sourcePath.empty()) {
+		return false;
+	}
 	SceneDocument prefab;
 	const std::filesystem::path resolvedPath =
 		EditableResourcePath::ResolveResource(StringUtility::ToPath(sourcePath));
 	if (!prefab.Load(StringUtility::ToUtf8(resolvedPath))) {
 		return false;
 	}
+	const std::string originalAssetId = instanceRootLink->assetId;
+	const std::string originalSourcePath = instanceRootLink->sourcePath;
+	auto belongsToInstance = [
+		rootId,
+		originalAssetId,
+		originalSourcePath
+	](const SceneEntity& entity) {
+		const ScenePrefabLink* link = FindPrefabLink(entity, rootId);
+		if (!link) {
+			return false;
+		}
+		return originalAssetId.empty()
+			? link->sourcePath == originalSourcePath
+			: link->assetId == originalAssetId;
+	};
+	auto savePrefabAndRefreshLink = [&]() {
+		if (!prefab.Save(StringUtility::ToUtf8(resolvedPath))) {
+			return false;
+		}
+		bool metadataChanged = false;
+		for (SceneEntity& entity : entities_) {
+			if (!belongsToInstance(entity)) {
+				continue;
+			}
+			const ScenePrefabLink* currentLink = FindPrefabLink(
+				entity,
+				rootId
+			);
+			if (!currentLink) {
+				continue;
+			}
+			metadataChanged |=
+				currentLink->assetId != prefab.GetAssetId() ||
+				currentLink->sourcePath != sourcePath;
+			SetPrefabLinkAtDepth(
+				entity,
+				ScenePrefabLink{
+					prefab.GetAssetId(),
+					sourcePath,
+					rootId,
+					currentLink->localId
+				},
+				targetLinkDepth
+			);
+		}
+		if (metadataChanged) {
+			MarkDirty();
+		}
+		return true;
+	};
 	SceneEntity* sourceEntity = prefab.FindEntity(overrideValue.entityLocalId);
 	SceneEntity* instanceEntity = nullptr;
 	std::unordered_map<uint64_t, uint64_t> sceneToLocalId;
 	for (SceneEntity& entity : entities_) {
+		const ScenePrefabLink* entityLink = FindPrefabLink(entity, rootId);
 		if (
-			entity.prefabInstanceRootId == rootId &&
-			entity.prefabSourcePath == sourcePath &&
-			entity.prefabLocalId != 0
+			belongsToInstance(entity) &&
+			entityLink &&
+			entityLink->localId != 0
 		) {
-			sceneToLocalId.emplace(entity.id, entity.prefabLocalId);
-			if (entity.prefabLocalId == overrideValue.entityLocalId) {
+			sceneToLocalId.emplace(entity.id, entityLink->localId);
+			if (entityLink->localId == overrideValue.entityLocalId) {
 				instanceEntity = &entity;
 			}
 		}
@@ -4103,7 +5465,7 @@ bool SceneDocument::ApplyPrefabPropertyOverride(
 		if (!prefab.RemoveEntity(sourceEntity->id)) {
 			return false;
 		}
-		return prefab.Save(StringUtility::ToUtf8(resolvedPath));
+		return savePrefabAndRefreshLink();
 	}
 
 	if (
@@ -4126,10 +5488,7 @@ bool SceneDocument::ApplyPrefabPropertyOverride(
 		}
 		if (
 			overrideValue.kind == ScenePrefabOverrideKind::StaleEntity &&
-			(
-				branchRoot->prefabInstanceRootId != rootId ||
-				branchRoot->prefabSourcePath != sourcePath
-			)
+			!belongsToInstance(*branchRoot)
 		) {
 			return false;
 		}
@@ -4144,13 +5503,17 @@ bool SceneDocument::ApplyPrefabPropertyOverride(
 			}
 			const bool validAddedEntity =
 				overrideValue.kind == ScenePrefabOverrideKind::AddedEntity &&
-				entity.prefabInstanceRootId == 0;
+				entity.prefabLinks.empty();
+			const ScenePrefabLink* entityLink = FindPrefabLink(
+				entity,
+				rootId
+			);
 			const bool validStaleEntity =
 				overrideValue.kind == ScenePrefabOverrideKind::StaleEntity &&
-				entity.prefabInstanceRootId == rootId &&
-				entity.prefabSourcePath == sourcePath &&
-				entity.prefabLocalId != 0 &&
-				!prefab.FindEntity(entity.prefabLocalId);
+				belongsToInstance(entity) &&
+				entityLink &&
+				entityLink->localId != 0 &&
+				!prefab.FindEntity(entityLink->localId);
 			if (!validAddedEntity && !validStaleEntity) {
 				// 異なるPrefab境界を含むBranchは全体Applyへ委ねる。
 				return false;
@@ -4172,10 +5535,17 @@ bool SceneDocument::ApplyPrefabPropertyOverride(
 		std::unordered_map<uint64_t, uint64_t> branchLocalIds;
 		uint64_t nextLocalId = 1;
 		for (const SceneEntity* entity : branch) {
-			uint64_t localId =
-				overrideValue.kind == ScenePrefabOverrideKind::StaleEntity
-				? entity->prefabLocalId
-				: uint64_t{};
+			const ScenePrefabLink* entityLink = FindPrefabLink(
+				*entity,
+				rootId
+			);
+			uint64_t localId = 0;
+			if (
+				overrideValue.kind == ScenePrefabOverrideKind::StaleEntity &&
+				entityLink
+			) {
+				localId = entityLink->localId;
+			}
 			if (localId == 0 || !usedLocalIds.insert(localId).second) {
 				while (usedLocalIds.contains(nextLocalId)) {
 					++nextLocalId;
@@ -4214,29 +5584,56 @@ bool SceneDocument::ApplyPrefabPropertyOverride(
 				? 0
 				: allSceneToLocal.at(source->parentId);
 			entity.runtimeOnly = false;
-			entity.prefabSourcePath.clear();
-			entity.prefabInstanceRootId = 0;
-			entity.prefabLocalId = 0;
+			entity.prefabLinks.erase(
+				std::remove_if(
+					entity.prefabLinks.begin(),
+					entity.prefabLinks.end(),
+					[&outerBoundaryRoots](const ScenePrefabLink& link) {
+						return outerBoundaryRoots.contains(
+							link.instanceRootId
+						);
+					}
+				),
+				entity.prefabLinks.end()
+			);
+			SynchronizeActivePrefabLink(entity);
+			RemapPrefabLinkRoots(entity, allSceneToLocal);
 			entity.teamName.clear();
 			for (SceneComponent& component : entity.components) {
 				RemapComponentEntityReferences(component, allSceneToLocal);
 			}
 			prefab.GetEntities().push_back(std::move(entity));
 		}
-		if (!prefab.Save(StringUtility::ToUtf8(resolvedPath))) {
+		if (!savePrefabAndRefreshLink()) {
 			return false;
 		}
 
 		bool metadataChanged = componentIdsChanged;
 		for (SceneEntity* entity : branch) {
 			const uint64_t localId = branchLocalIds.at(entity->id);
+			const ScenePrefabLink* currentLink = FindPrefabLink(
+				*entity,
+				rootId
+			);
 			metadataChanged |=
-				entity->prefabSourcePath != sourcePath ||
-				entity->prefabInstanceRootId != rootId ||
-				entity->prefabLocalId != localId;
-			entity->prefabSourcePath = sourcePath;
-			entity->prefabInstanceRootId = rootId;
-			entity->prefabLocalId = localId;
+				!currentLink ||
+				currentLink->assetId != prefab.GetAssetId() ||
+				currentLink->sourcePath != sourcePath ||
+				currentLink->localId != localId;
+			SetPrefabLinkAtDepth(
+				*entity,
+				ScenePrefabLink{
+					prefab.GetAssetId(),
+					sourcePath,
+					rootId,
+					localId
+				},
+				FindPrefabLinkInsertionDepth(
+					*entity,
+					*instanceRoot,
+					rootId
+				)
+			);
 		}
 		if (metadataChanged) {
 			MarkDirty();
@@ -4374,7 +5771,7 @@ bool SceneDocument::ApplyPrefabPropertyOverride(
 	}
 
 	SynchronizeLegacyRendererFields(*sourceEntity);
-	return prefab.Save(StringUtility::ToUtf8(resolvedPath));
+	return savePrefabAndRefreshLink();
 }
 
 bool SceneDocument::RevertPrefabPropertyOverride(
@@ -4382,34 +5779,88 @@ bool SceneDocument::RevertPrefabPropertyOverride(
 	const ScenePrefabPropertyOverride& overrideValue
 ) {
 	SceneEntity* instanceRoot = FindEntity(rootId);
+	ScenePrefabLink* instanceRootLink = instanceRoot
+		? FindPrefabLink(*instanceRoot, rootId)
+		: nullptr;
 	if (
 		!instanceRoot ||
-		instanceRoot->prefabInstanceRootId != rootId ||
-		instanceRoot->prefabSourcePath.empty()
+		!instanceRootLink
 	) {
 		return false;
 	}
+	const size_t targetLinkDepth = FindPrefabLinkDepth(
+		*instanceRoot,
+		rootId
+	);
 
-	const std::string sourcePath = instanceRoot->prefabSourcePath;
+	const std::string sourcePath = ResolvePrefabAssetPath(*instanceRootLink);
+	if (sourcePath.empty()) {
+		return false;
+	}
 	SceneDocument prefab;
 	const std::filesystem::path resolvedPath =
 		EditableResourcePath::ResolveResource(StringUtility::ToPath(sourcePath));
 	if (!prefab.Load(StringUtility::ToUtf8(resolvedPath))) {
 		return false;
 	}
+	const std::string originalAssetId = instanceRootLink->assetId;
+	const std::string originalSourcePath = instanceRootLink->sourcePath;
+	auto belongsToInstance = [
+		rootId,
+		originalAssetId,
+		originalSourcePath
+	](const SceneEntity& entity) {
+		const ScenePrefabLink* link = FindPrefabLink(entity, rootId);
+		if (!link) {
+			return false;
+		}
+		return originalAssetId.empty()
+			? link->sourcePath == originalSourcePath
+			: link->assetId == originalAssetId;
+	};
+	auto refreshSceneLink = [&]() {
+		bool changed = false;
+		for (SceneEntity& entity : entities_) {
+			if (!belongsToInstance(entity)) {
+				continue;
+			}
+			const ScenePrefabLink* currentLink = FindPrefabLink(
+				entity,
+				rootId
+			);
+			if (!currentLink) {
+				continue;
+			}
+			changed |=
+				currentLink->assetId != prefab.GetAssetId() ||
+				currentLink->sourcePath != sourcePath;
+			SetPrefabLinkAtDepth(
+				entity,
+				ScenePrefabLink{
+					prefab.GetAssetId(),
+					sourcePath,
+					rootId,
+					currentLink->localId
+				},
+				targetLinkDepth
+			);
+		}
+		return changed;
+	};
 	const SceneEntity* sourceEntity = prefab.FindEntity(
 		overrideValue.entityLocalId
 	);
 	SceneEntity* instanceEntity = nullptr;
 	std::unordered_map<uint64_t, uint64_t> localToSceneId;
 	for (SceneEntity& entity : entities_) {
+		const ScenePrefabLink* entityLink = FindPrefabLink(entity, rootId);
 		if (
-			entity.prefabInstanceRootId == rootId &&
-			entity.prefabSourcePath == sourcePath &&
-			entity.prefabLocalId != 0
+			belongsToInstance(entity) &&
+			entityLink &&
+			entityLink->localId != 0
 		) {
-			localToSceneId.emplace(entity.prefabLocalId, entity.id);
-			if (entity.prefabLocalId == overrideValue.entityLocalId) {
+			localToSceneId.emplace(entityLink->localId, entity.id);
+			if (entityLink->localId == overrideValue.entityLocalId) {
 				instanceEntity = &entity;
 			}
 		}
@@ -4429,13 +5880,17 @@ bool SceneDocument::RevertPrefabPropertyOverride(
 		}
 		const bool validAddedEntity =
 			overrideValue.kind == ScenePrefabOverrideKind::AddedEntity &&
-			branchRoot->prefabInstanceRootId == 0;
+			!belongsToInstance(*branchRoot);
+		const ScenePrefabLink* branchRootLink = FindPrefabLink(
+			*branchRoot,
+			rootId
+		);
 		const bool validStaleEntity =
 			overrideValue.kind == ScenePrefabOverrideKind::StaleEntity &&
-			branchRoot->prefabInstanceRootId == rootId &&
-			branchRoot->prefabSourcePath == sourcePath &&
-			branchRoot->prefabLocalId != 0 &&
-			!prefab.FindEntity(branchRoot->prefabLocalId);
+			belongsToInstance(*branchRoot) &&
+			branchRootLink &&
+			branchRootLink->localId != 0 &&
+			!prefab.FindEntity(branchRootLink->localId);
 		if (!validAddedEntity && !validStaleEntity) {
 			return false;
 		}
@@ -4448,18 +5903,26 @@ bool SceneDocument::RevertPrefabPropertyOverride(
 			}
 			const bool validAddedBranchEntity =
 				overrideValue.kind == ScenePrefabOverrideKind::AddedEntity &&
-				entity.prefabInstanceRootId == 0;
+				!belongsToInstance(entity);
+			const ScenePrefabLink* entityLink = FindPrefabLink(
+				entity,
+				rootId
+			);
 			const bool validStaleBranchEntity =
 				overrideValue.kind == ScenePrefabOverrideKind::StaleEntity &&
-				entity.prefabInstanceRootId == rootId &&
-				entity.prefabSourcePath == sourcePath &&
-				entity.prefabLocalId != 0 &&
-				!prefab.FindEntity(entity.prefabLocalId);
+				belongsToInstance(entity) &&
+				entityLink &&
+				entityLink->localId != 0 &&
+				!prefab.FindEntity(entityLink->localId);
 			if (!validAddedBranchEntity && !validStaleBranchEntity) {
 				return false;
 			}
 		}
-		return RemoveEntity(branchRoot->id);
+		if (!RemoveEntity(branchRoot->id)) {
+			return false;
+		}
+		refreshSceneLink();
+		return true;
 	}
 
 	if (overrideValue.kind == ScenePrefabOverrideKind::RemovedEntity) {
@@ -4515,14 +5978,23 @@ bool SceneDocument::RevertPrefabPropertyOverride(
 				? 0
 				: localToSceneId.at(source->parentId);
 			destination->runtimeOnly = runtimeOnly;
-			destination->prefabSourcePath = sourcePath;
-			destination->prefabInstanceRootId = rootId;
-			destination->prefabLocalId = source->id;
+			RemapPrefabLinkRoots(*destination, localToSceneId);
+			SetPrefabLinkAtDepth(
+				*destination,
+				ScenePrefabLink{
+					prefab.GetAssetId(),
+					sourcePath,
+					rootId,
+					source->id
+				},
+				0
+			);
 			for (SceneComponent& component : destination->components) {
 				RemapComponentEntityReferences(component, localToSceneId);
 			}
 			SynchronizeLegacyRendererFields(*destination);
 		}
+		refreshSceneLink();
 		MarkDirty();
 		return true;
 	}
@@ -4648,20 +6120,22 @@ bool SceneDocument::RevertPrefabPropertyOverride(
 	}
 
 	SynchronizeLegacyRendererFields(*instanceEntity);
+	refreshSceneLink();
 	MarkDirty();
 	return true;
 }
 
 bool SceneDocument::ApplyPrefabInstance(uint64_t rootId) {
 	SceneEntity* root = FindEntity(rootId);
+	ScenePrefabLink* rootLink = root
+		? FindPrefabLink(*root, rootId)
+		: nullptr;
 	if (
 		!root ||
-		root->prefabInstanceRootId != rootId ||
-		root->prefabSourcePath.empty()
+		!rootLink
 	) {
 		return false;
 	}
-
 	std::vector<SceneEntity*> branch;
 	for (SceneEntity& entity : entities_) {
 		if (entity.id == rootId || IsDescendantOf(entity.id, rootId)) {
@@ -4672,7 +6146,11 @@ bool SceneDocument::ApplyPrefabInstance(uint64_t rootId) {
 	std::unordered_set<uint64_t> usedLocalIds;
 	uint64_t nextLocalId = 1;
 	for (SceneEntity* entity : branch) {
-		uint64_t localId = entity->prefabLocalId;
+		const ScenePrefabLink* entityLink = FindPrefabLink(
+			*entity,
+			rootId
+		);
+		uint64_t localId = entityLink ? entityLink->localId : 0;
 		if (localId == 0 || !usedLocalIds.insert(localId).second) {
 			while (usedLocalIds.contains(nextLocalId)) {
 				++nextLocalId;
@@ -4682,21 +6160,31 @@ bool SceneDocument::ApplyPrefabInstance(uint64_t rootId) {
 		}
 		localIds.emplace(entity->id, localId);
 	}
-	const std::string sourcePath = root->prefabSourcePath;
-	if (!SaveEntityBranchAsPrefab(rootId, sourcePath)) {
+	const std::string sourcePath = ResolvePrefabAssetPath(*rootLink);
+	if (sourcePath.empty()) {
 		return false;
 	}
+	if (!SaveEntityBranchAsPrefab(rootId, sourcePath, rootId)) {
+		return false;
+	}
+	const std::string sourceAssetId = PrefabAssetRegistry::ReadAssetId(
+		sourcePath
+	);
 
 	bool metadataChanged = false;
 	for (SceneEntity* entity : branch) {
 		const uint64_t localId = localIds.at(entity->id);
+		const ScenePrefabLink* currentLink = FindPrefabLink(*entity, rootId);
 		metadataChanged |=
-			entity->prefabSourcePath != sourcePath ||
-			entity->prefabInstanceRootId != rootId ||
-			entity->prefabLocalId != localId;
-		entity->prefabSourcePath = sourcePath;
-		entity->prefabInstanceRootId = rootId;
-		entity->prefabLocalId = localId;
+			!currentLink ||
+			currentLink->assetId != sourceAssetId ||
+			currentLink->sourcePath != sourcePath ||
+			currentLink->localId != localId;
+		SetPrefabLinkAtDepth(
+			*entity,
+			ScenePrefabLink{ sourceAssetId, sourcePath, rootId, localId },
+			FindPrefabLinkInsertionDepth(*entity, *root, rootId)
+		);
 	}
 	if (metadataChanged) {
 		MarkDirty();
@@ -4706,15 +6194,35 @@ bool SceneDocument::ApplyPrefabInstance(uint64_t rootId) {
 
 bool SceneDocument::RevertPrefabInstance(uint64_t rootId) {
 	SceneEntity* instanceRoot = FindEntity(rootId);
+	ScenePrefabLink* instanceRootLink = instanceRoot
+		? FindPrefabLink(*instanceRoot, rootId)
+		: nullptr;
 	if (
 		!instanceRoot ||
-		instanceRoot->prefabInstanceRootId != rootId ||
-		instanceRoot->prefabSourcePath.empty()
+		!instanceRootLink
 	) {
 		return false;
 	}
 
-	const std::string sourcePath = instanceRoot->prefabSourcePath;
+	const std::string sourcePath = ResolvePrefabAssetPath(*instanceRootLink);
+	if (sourcePath.empty()) {
+		return false;
+	}
+	const std::string originalAssetId = instanceRootLink->assetId;
+	const std::string originalSourcePath = instanceRootLink->sourcePath;
+	auto belongsToInstance = [
+		rootId,
+		originalAssetId,
+		originalSourcePath
+	](const SceneEntity& entity) {
+		const ScenePrefabLink* link = FindPrefabLink(entity, rootId);
+		if (!link) {
+			return false;
+		}
+		return originalAssetId.empty()
+			? link->sourcePath == originalSourcePath
+			: link->assetId == originalAssetId;
+	};
 	SceneDocument prefab;
 	const std::filesystem::path resolvedPath =
 		EditableResourcePath::ResolveResource(StringUtility::ToPath(sourcePath));
@@ -4748,12 +6256,13 @@ bool SceneDocument::RevertPrefabInstance(uint64_t rootId) {
 
 	std::unordered_map<uint64_t, uint64_t> localToSceneId;
 	for (const SceneEntity& entity : entities_) {
+		const ScenePrefabLink* entityLink = FindPrefabLink(entity, rootId);
 		if (
-			entity.prefabInstanceRootId == rootId &&
-			entity.prefabSourcePath == sourcePath &&
-			entity.prefabLocalId != 0
+			belongsToInstance(entity) &&
+			entityLink &&
+			entityLink->localId != 0
 		) {
-			localToSceneId.emplace(entity.prefabLocalId, entity.id);
+			localToSceneId.emplace(entityLink->localId, entity.id);
 		}
 	}
 	localToSceneId[prefabRoot->id] = rootId;
@@ -4773,6 +6282,17 @@ bool SceneDocument::RevertPrefabInstance(uint64_t rootId) {
 		if (!destination) {
 			continue;
 		}
+		std::vector<ScenePrefabLink> preservedOuterLinks;
+		if (FindPrefabLink(*destination, rootId)) {
+			const size_t destinationDepth = FindPrefabLinkDepth(
+				*destination,
+				rootId
+			);
+			preservedOuterLinks.assign(
+				destination->prefabLinks.begin(),
+				destination->prefabLinks.begin() + destinationDepth
+			);
+		}
 		const uint64_t destinationId = destination->id;
 		*destination = source;
 		destination->id = destinationId;
@@ -4780,9 +6300,22 @@ bool SceneDocument::RevertPrefabInstance(uint64_t rootId) {
 			? preservedParentId
 			: RemapEntityId(source.parentId, localToSceneId);
 		destination->runtimeOnly = preservedRuntimeOnly;
-		destination->prefabSourcePath = sourcePath;
-		destination->prefabInstanceRootId = rootId;
-		destination->prefabLocalId = source.id;
+		RemapPrefabLinkRoots(*destination, localToSceneId);
+		destination->prefabLinks.insert(
+			destination->prefabLinks.begin(),
+			preservedOuterLinks.begin(),
+			preservedOuterLinks.end()
+		);
+		SetPrefabLinkAtDepth(
+			*destination,
+			ScenePrefabLink{
+				prefab.GetAssetId(),
+				sourcePath,
+				rootId,
+				source.id
+			},
+			preservedOuterLinks.size()
+		);
 		for (SceneComponent& component : destination->components) {
 			RemapComponentEntityReferences(component, localToSceneId);
 		}
@@ -4793,14 +6326,15 @@ bool SceneDocument::RevertPrefabInstance(uint64_t rootId) {
 
 	std::unordered_set<uint64_t> removeIds;
 	for (const SceneEntity& entity : entities_) {
+		const ScenePrefabLink* entityLink = FindPrefabLink(entity, rootId);
 		const bool removedFromPrefab =
 			entity.id != rootId &&
-			entity.prefabInstanceRootId == rootId &&
-			entity.prefabSourcePath == sourcePath &&
-			!sourceLocalIds.contains(entity.prefabLocalId);
+			belongsToInstance(entity) &&
+			entityLink &&
+			!sourceLocalIds.contains(entityLink->localId);
 		const bool addedToInstance =
 			entity.id != rootId &&
-			entity.prefabInstanceRootId == 0 &&
+			!belongsToInstance(entity) &&
 			IsDescendantOf(entity.id, rootId);
 		if (removedFromPrefab || addedToInstance) {
 			removeIds.insert(entity.id);
@@ -4818,17 +6352,16 @@ bool SceneDocument::RevertPrefabInstance(uint64_t rootId) {
 }
 
 bool SceneDocument::UnpackPrefabInstance(uint64_t rootId) {
-	if (FindPrefabInstanceRoot(rootId) != rootId) {
+	const SceneEntity* root = FindEntity(rootId);
+	if (!root || !FindPrefabLink(*root, rootId)) {
 		return false;
 	}
 	bool changed = false;
 	for (SceneEntity& entity : entities_) {
-		if (entity.prefabInstanceRootId != rootId) {
+		if (!FindPrefabLink(entity, rootId)) {
 			continue;
 		}
-		entity.prefabSourcePath.clear();
-		entity.prefabInstanceRootId = 0;
-		entity.prefabLocalId = 0;
+		RemovePrefabLink(entity, rootId);
 		changed = true;
 	}
 	if (changed) {
@@ -5736,7 +7269,17 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		return true;
 	}
 	SceneComponent component{ type, true };
-	component.localId = NextComponentLocalId(*entity);
+	if (variantBaseAssetId_.empty()) {
+		component.localId = NextComponentLocalId(*entity);
+	} else {
+		component.localId = MakeVariantLocalId(
+			assetId_,
+			std::to_string(entity->id) + ":" + type
+		);
+		while (FindComponentByLocalId(*entity, component.localId)) {
+			++component.localId;
+		}
+	}
 	if (type == "MeshRenderer") {
 		component.modelPath = entity->modelPath;
 		component.meshCullMode = "Back";
@@ -6124,6 +7667,346 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 	bool migrated = false;
 	try {
 		json root = json::parse(input);
+		if (root.contains("variant")) {
+			// Baseを先に展開し、安定ID単位のOverrideだけを有効Documentへ重ねる。
+			if (!root.at("variant").is_object()) {
+				lastLoadError_ = "Prefab Variant metadata must be an object";
+				return false;
+			}
+			const json& variant = root.at("variant");
+			if (!variant.contains("base") || !variant.at("base").is_object()) {
+				lastLoadError_ = "Prefab Variant requires a Base reference";
+				return false;
+			}
+			const PrefabAssetReference baseReference =
+				PrefabAssetRegistry::ReadVariantBase(filePath);
+			if (baseReference.assetId.empty()) {
+				lastLoadError_ = "Prefab Variant Base requires an Asset ID";
+				return false;
+			}
+			const std::string basePath =
+				PrefabAssetRegistry::ResolvePath(baseReference);
+			if (basePath.empty()) {
+				lastLoadError_ =
+					"Prefab Variant Base asset is missing or ambiguous";
+				return false;
+			}
+
+			static thread_local std::vector<std::string> variantLoadStack;
+			const std::string resolvedCurrentPath = StringUtility::ToUtf8(
+				EditableResourcePath::ResolveResource(
+					StringUtility::ToPath(filePath)
+				).lexically_normal()
+			);
+			if (std::find(
+				variantLoadStack.begin(),
+				variantLoadStack.end(),
+				resolvedCurrentPath
+			) != variantLoadStack.end()) {
+				lastLoadError_ = "Prefab Variant dependency cycle detected";
+				return false;
+			}
+			variantLoadStack.push_back(resolvedCurrentPath);
+			struct VariantLoadGuard {
+				std::vector<std::string>& stack;
+				~VariantLoadGuard() { stack.pop_back(); }
+			} variantLoadGuard{ variantLoadStack };
+
+			SceneDocument base;
+			if (!base.LoadInternal(basePath)) {
+				lastLoadError_ = "Failed to load Prefab Variant Base: " +
+					base.GetLastLoadError();
+				return false;
+			}
+			if (base.GetAssetId() != baseReference.assetId) {
+				lastLoadError_ =
+					"Prefab Variant Base Asset ID does not match";
+				return false;
+			}
+			const std::shared_ptr<const SceneDocument> baseSnapshot =
+				std::make_shared<SceneDocument>(base);
+			*this = std::move(base);
+			assetId_ = root.value("assetId", std::string{});
+			if (assetId_.empty()) {
+				assetId_ = PrefabAssetRegistry::CreateAssetId();
+				migrated = true;
+			}
+			if (assetId_ == baseReference.assetId) {
+				lastLoadError_ =
+					"Prefab Variant and Base must use different Asset IDs";
+				return false;
+			}
+			variantBaseAssetId_ = baseReference.assetId;
+			variantBasePath_ = basePath;
+			variantBaseSnapshot_ = baseSnapshot;
+
+			json rootSettings = {
+				{ "sceneName", sceneName_ },
+				{ "lighting", LightingSettingsToJson(lightingSettings_) },
+				{ "postProcess", PostProcessToJson(postProcessSettings_) },
+				{ "debug", DebugSettingsToJson(debugSettings_) },
+				{ "teams", json::array() }
+			};
+			for (const SceneTeamSettings& team : teams_) {
+				rootSettings["teams"].push_back(TeamToJson(team));
+			}
+			if (variant.contains("rootOverrides")) {
+				if (!ApplyJsonPropertyPatch(
+					rootSettings,
+					variant.at("rootOverrides")
+				)) {
+					lastLoadError_ =
+						"Prefab Variant contains invalid Root overrides";
+					return false;
+				}
+			}
+			sceneName_ = rootSettings.value("sceneName", sceneName_);
+			lightingSettings_ = LightingSettingsFromJson(
+				rootSettings.value("lighting", json::object()),
+				lightingSettings_
+			);
+			postProcessSettings_ = PostProcessFromJson(
+				rootSettings.value("postProcess", json::object()),
+				postProcessSettings_
+			);
+			debugSettings_ = DebugSettingsFromJson(
+				rootSettings.value("debug", json::object()),
+				debugSettings_
+			);
+			if (!rootSettings.contains("teams") ||
+				!rootSettings.at("teams").is_array()) {
+				lastLoadError_ = "Prefab Variant teams must be an array";
+				return false;
+			}
+			teams_.clear();
+			for (const json& teamValue : rootSettings.at("teams")) {
+				if (!teamValue.is_object()) {
+					lastLoadError_ = "Prefab Variant contains an invalid Team";
+					return false;
+				}
+				teams_.push_back(TeamFromJson(teamValue));
+			}
+
+			if (variant.contains("removedEntityIds")) {
+				if (!variant.at("removedEntityIds").is_array()) {
+					lastLoadError_ =
+						"Prefab Variant removedEntityIds must be an array";
+					return false;
+				}
+				std::unordered_set<uint64_t> removedIds;
+				for (const json& idValue : variant.at("removedEntityIds")) {
+					removedIds.insert(idValue.get<uint64_t>());
+				}
+				bool foundRemovedChild = true;
+				while (foundRemovedChild) {
+					foundRemovedChild = false;
+					for (const SceneEntity& entity : entities_) {
+						if (
+							removedIds.contains(entity.parentId) &&
+							removedIds.insert(entity.id).second
+						) {
+							foundRemovedChild = true;
+						}
+					}
+				}
+				entities_.erase(
+					std::remove_if(
+						entities_.begin(),
+						entities_.end(),
+						[&removedIds](const SceneEntity& entity) {
+							return removedIds.contains(entity.id);
+						}
+					),
+					entities_.end()
+				);
+			}
+
+			if (variant.contains("entityOverrides")) {
+				if (!variant.at("entityOverrides").is_array()) {
+					lastLoadError_ =
+						"Prefab Variant entityOverrides must be an array";
+					return false;
+				}
+				for (const json& overrideValue :
+					variant.at("entityOverrides")) {
+					if (!overrideValue.is_object()) {
+						lastLoadError_ =
+							"Prefab Variant contains an invalid Entity override";
+						return false;
+					}
+					const uint64_t entityId = overrideValue.value(
+						"entityId",
+						uint64_t{}
+					);
+					SceneEntity* entity = FindEntity(entityId);
+					if (!entity) {
+						lastLoadError_ =
+							"Prefab Variant Entity override target is missing";
+						return false;
+					}
+
+					if (overrideValue.contains("properties")) {
+						json entityJson = SceneEntityToJson(*entity);
+						const json components = entityJson.at("components");
+						entityJson.erase("components");
+						if (!ApplyJsonPropertyPatch(
+							entityJson,
+							overrideValue.at("properties")
+						)) {
+							lastLoadError_ =
+								"Prefab Variant contains invalid Entity properties";
+							return false;
+						}
+						entityJson["components"] = components;
+						SceneEntity replacement{};
+						if (!SceneEntityFromJson(
+							entityJson,
+							replacement,
+							lastLoadError_
+						) || replacement.id != entityId) {
+							return false;
+						}
+						*entity = std::move(replacement);
+					}
+
+					if (overrideValue.contains("removedComponentIds")) {
+						if (!overrideValue.at("removedComponentIds").is_array()) {
+							lastLoadError_ =
+								"Prefab Variant removedComponentIds must be an array";
+							return false;
+						}
+						std::unordered_set<uint64_t> removedComponentIds;
+						for (const json& idValue :
+							overrideValue.at("removedComponentIds")) {
+							removedComponentIds.insert(idValue.get<uint64_t>());
+						}
+						entity->components.erase(
+							std::remove_if(
+								entity->components.begin(),
+								entity->components.end(),
+								[&removedComponentIds](
+									const SceneComponent& component
+								) {
+									return removedComponentIds.contains(
+										component.localId
+									);
+								}
+							),
+							entity->components.end()
+						);
+					}
+
+					if (overrideValue.contains("componentOverrides")) {
+						if (!overrideValue.at("componentOverrides").is_array()) {
+							lastLoadError_ =
+								"Prefab Variant componentOverrides must be an array";
+							return false;
+						}
+						for (const json& componentOverride :
+							overrideValue.at("componentOverrides")) {
+							const uint64_t componentId = componentOverride.value(
+								"componentId",
+								uint64_t{}
+							);
+							SceneComponent* component = FindComponentByLocalId(
+								*entity,
+								componentId
+							);
+							if (!component ||
+								!componentOverride.contains("properties")) {
+								lastLoadError_ =
+									"Prefab Variant Component override target is missing";
+								return false;
+							}
+							json componentJson = ComponentToJson(*component);
+							if (!ApplyJsonPropertyPatch(
+								componentJson,
+								componentOverride.at("properties")
+							)) {
+								lastLoadError_ =
+									"Prefab Variant contains invalid Component properties";
+								return false;
+							}
+							SceneComponent replacement{};
+							if (!ComponentFromJson(componentJson, replacement) ||
+								replacement.localId != componentId) {
+								lastLoadError_ =
+									"Prefab Variant produced an invalid Component";
+								return false;
+							}
+							*component = std::move(replacement);
+						}
+					}
+
+					if (overrideValue.contains("addedComponents")) {
+						if (!overrideValue.at("addedComponents").is_array()) {
+							lastLoadError_ =
+								"Prefab Variant addedComponents must be an array";
+							return false;
+						}
+						for (const json& componentValue :
+							overrideValue.at("addedComponents")) {
+							SceneComponent component{};
+							if (!ComponentFromJson(componentValue, component) ||
+								FindComponentByLocalId(
+									*entity,
+									component.localId
+								) ||
+								FindComponent(*entity, component.type.c_str())) {
+								lastLoadError_ =
+									"Prefab Variant contains a duplicate Component";
+								return false;
+							}
+							entity->components.push_back(std::move(component));
+						}
+					}
+					SynchronizeLegacyRendererFields(*entity);
+				}
+			}
+
+			if (variant.contains("addedEntities")) {
+				if (!variant.at("addedEntities").is_array()) {
+					lastLoadError_ =
+						"Prefab Variant addedEntities must be an array";
+					return false;
+				}
+				for (const json& entityValue : variant.at("addedEntities")) {
+					SceneEntity entity{};
+					if (!SceneEntityFromJson(
+						entityValue,
+						entity,
+						lastLoadError_
+					) || entity.id == 0 || FindEntity(entity.id)) {
+						if (lastLoadError_.empty()) {
+							lastLoadError_ =
+								"Prefab Variant contains a duplicate Entity ID";
+						}
+						return false;
+					}
+					entities_.push_back(std::move(entity));
+				}
+			}
+
+			std::vector<SceneValidationIssue> issues;
+			if (!SceneValidator::ValidateDocument(
+				*this,
+				nullptr,
+				{},
+				filePath,
+				issues
+			)) {
+				lastLoadError_ = SceneValidator::FormatIssues(issues);
+				return false;
+			}
+			RebuildNextId();
+			ValidateHierarchy();
+			dirty_ = migrated;
+			if (migrated) {
+				++revision_;
+			}
+			lastLoadError_.clear();
+			return true;
+		}
 		std::string migrationError;
 		if (!SceneDocumentMigrator::Migrate(
 			root,
@@ -6174,6 +8057,10 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 		}
 
 		sceneName_ = root.value("sceneName", std::string{});
+		assetId_ = root.value("assetId", std::string{});
+		variantBaseAssetId_.clear();
+		variantBasePath_.clear();
+		variantBaseSnapshot_.reset();
 		entities_.clear();
 		teams_.clear();
 		lightingSettings_ = LightingSettingsFromJson(
@@ -6213,6 +8100,14 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 				lastLoadError_ = "Entity prefab metadata must be an object";
 				return false;
 			}
+			if (
+				source.contains("prefab") &&
+				source.at("prefab").contains("links") &&
+				!source.at("prefab").at("links").is_array()
+			) {
+				lastLoadError_ = "Entity prefab links must be an array";
+				return false;
+			}
 			if (source.contains("components")) {
 				if (!source.at("components").is_array()) {
 					lastLoadError_ = "Entity components must be an array";
@@ -6242,6 +8137,10 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 			entity.locked = source.value("locked", false);
 			if (source.contains("prefab")) {
 				const json& prefab = source.at("prefab");
+				entity.prefabAssetId = prefab.value(
+					"assetId",
+					std::string{}
+				);
 				entity.prefabSourcePath = prefab.value(
 					"sourcePath",
 					std::string{}
@@ -6254,6 +8153,41 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 					"localId",
 					uint64_t{}
 				);
+				if (prefab.contains("links")) {
+					for (const json& linkValue : prefab.at("links")) {
+						if (!linkValue.is_object()) {
+							lastLoadError_ =
+								"Entity contains an invalid Prefab link";
+							return false;
+						}
+						ScenePrefabLink link{};
+						link.assetId = linkValue.value(
+							"assetId",
+							std::string{}
+						);
+						link.sourcePath = linkValue.value(
+							"sourcePath",
+							std::string{}
+						);
+						link.instanceRootId = linkValue.value(
+							"instanceRootId",
+							uint64_t{}
+						);
+						link.localId = linkValue.value(
+							"localId",
+							uint64_t{}
+						);
+						entity.prefabLinks.push_back(std::move(link));
+					}
+				}
+				if (entity.prefabLinks.empty()) {
+					EnsurePrefabLinkStack(entity);
+					if (!entity.prefabLinks.empty()) {
+						migrated = true;
+					}
+				} else {
+					SynchronizeActivePrefabLink(entity);
+				}
 			}
 			entity.teamName = source.value("team", std::string{});
 			entity.modelPath = source.value("modelPath", std::string{});
@@ -6278,7 +8212,8 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 			if (source.contains("components")) {
 				entity.components = ComponentsFromJson(source.at("components"));
 			}
-			EnsureComponentLocalIds(entity);
+			// 旧Component IDの補完はメモリ内だけで終わらせず、次回保存対象にする。
+			migrated |= EnsureComponentLocalIds(entity);
 			if (source.contains("transform")) {
 				const json& transform = source.at("transform");
 				if (transform.contains("scale")) {
@@ -6307,8 +8242,34 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 			SynchronizeLegacyRendererFields(entity);
 			entities_.push_back(std::move(entity));
 		}
+		std::unordered_map<std::string, std::string> assetIdsByPath;
+		for (SceneEntity& entity : entities_) {
+			EnsurePrefabLinkStack(entity);
+			for (ScenePrefabLink& link : entity.prefabLinks) {
+				if (!link.assetId.empty() || link.sourcePath.empty()) {
+					continue;
+				}
+				auto [entry, inserted] = assetIdsByPath.try_emplace(
+					link.sourcePath
+				);
+				if (inserted) {
+					entry->second = PrefabAssetRegistry::ReadAssetId(
+						link.sourcePath
+					);
+				}
+				if (!entry->second.empty()) {
+					link.assetId = entry->second;
+					migrated = true;
+				}
+			}
+			SynchronizeActivePrefabLink(entity);
+		}
 	}
 	catch (const json::exception& exception) {
+		assetId_.clear();
+		variantBaseAssetId_.clear();
+		variantBasePath_.clear();
+		variantBaseSnapshot_.reset();
 		entities_.clear();
 		teams_.clear();
 		lastLoadError_ = "Scene JSON is invalid: ";
@@ -6325,6 +8286,10 @@ bool SceneDocument::LoadInternal(const std::string& filePath) {
 		issues
 	)) {
 		lastLoadError_ = SceneValidator::FormatIssues(issues);
+		assetId_.clear();
+		variantBaseAssetId_.clear();
+		variantBasePath_.clear();
+		variantBaseSnapshot_.reset();
 		entities_.clear();
 		teams_.clear();
 		return false;

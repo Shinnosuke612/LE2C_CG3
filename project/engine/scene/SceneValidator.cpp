@@ -84,13 +84,36 @@ bool SceneValidator::ValidateDocument(
 				"Parent Entity does not exist: " + std::to_string(entity.parentId)
 			);
 		}
+		std::unordered_set<uint64_t> componentLocalIds;
+		for (const SceneComponent& component : entity.components) {
+			if (component.localId == 0) {
+				addIssue(
+					SceneValidationSeverity::Error,
+					entity.id,
+					"Component local ID must be greater than zero: " +
+						component.type
+				);
+			} else if (!componentLocalIds.insert(component.localId).second) {
+				addIssue(
+					SceneValidationSeverity::Error,
+					entity.id,
+					"Entity contains a duplicate Component local ID: " +
+						std::to_string(component.localId)
+				);
+			}
+		}
 		const bool hasPrefabMetadata =
+			!entity.prefabLinks.empty() ||
+			!entity.prefabAssetId.empty() ||
 			!entity.prefabSourcePath.empty() ||
 			entity.prefabInstanceRootId != 0 ||
 			entity.prefabLocalId != 0;
 		if (hasPrefabMetadata) {
 			if (
-				entity.prefabSourcePath.empty() ||
+				(
+					entity.prefabAssetId.empty() &&
+					entity.prefabSourcePath.empty()
+				) ||
 				entity.prefabInstanceRootId == 0 ||
 				entity.prefabLocalId == 0
 			) {
@@ -108,15 +131,23 @@ bool SceneValidator::ValidateDocument(
 						"Prefab instance root does not exist: " +
 						std::to_string(entity.prefabInstanceRootId)
 					);
-				} else if (
-					root->second->prefabInstanceRootId != entity.prefabInstanceRootId ||
-					root->second->prefabSourcePath != entity.prefabSourcePath
-				) {
+				} else {
+					const bool assetLinkMatches = !entity.prefabAssetId.empty()
+						? root->second->prefabAssetId == entity.prefabAssetId
+						: root->second->prefabAssetId.empty() &&
+							root->second->prefabSourcePath ==
+								entity.prefabSourcePath;
+					if (
+						root->second->prefabInstanceRootId !=
+							entity.prefabInstanceRootId ||
+						!assetLinkMatches
+					) {
 					addIssue(
 						SceneValidationSeverity::Error,
 						entity.id,
 						"Prefab instance root metadata does not match"
 					);
+					}
 				}
 				if (!prefabLocalIds[entity.prefabInstanceRootId].insert(
 					entity.prefabLocalId
@@ -125,6 +156,78 @@ bool SceneValidator::ValidateDocument(
 						SceneValidationSeverity::Error,
 						entity.id,
 						"Prefab instance contains a duplicate local Entity ID"
+					);
+				}
+			}
+		}
+		if (!entity.prefabLinks.empty()) {
+			const ScenePrefabLink& active = entity.prefabLinks.front();
+			if (
+				active.assetId != entity.prefabAssetId ||
+				active.sourcePath != entity.prefabSourcePath ||
+				active.instanceRootId != entity.prefabInstanceRootId ||
+				active.localId != entity.prefabLocalId
+			) {
+				addIssue(
+					SceneValidationSeverity::Error,
+					entity.id,
+					"Active Prefab link does not match compatibility metadata"
+				);
+			}
+			for (size_t linkIndex = 1;
+				linkIndex < entity.prefabLinks.size();
+				++linkIndex) {
+				const ScenePrefabLink& link = entity.prefabLinks[linkIndex];
+				if (
+					(link.assetId.empty() && link.sourcePath.empty()) ||
+					link.instanceRootId == 0 ||
+					link.localId == 0
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"Nested Prefab link metadata is incomplete"
+					);
+					continue;
+				}
+				const auto root = entitiesById.find(link.instanceRootId);
+				if (root == entitiesById.end()) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"Nested Prefab instance root does not exist: " +
+						std::to_string(link.instanceRootId)
+					);
+				} else {
+					const auto rootLink = std::find_if(
+						root->second->prefabLinks.begin(),
+						root->second->prefabLinks.end(),
+						[&link](const ScenePrefabLink& candidate) {
+							return candidate.instanceRootId ==
+								link.instanceRootId;
+						}
+					);
+					const bool assetMatches =
+						rootLink != root->second->prefabLinks.end() &&
+						(!link.assetId.empty()
+							? rootLink->assetId == link.assetId
+							: rootLink->assetId.empty() &&
+								rootLink->sourcePath == link.sourcePath);
+					if (!assetMatches) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"Nested Prefab root metadata does not match"
+						);
+					}
+				}
+				if (!prefabLocalIds[link.instanceRootId].insert(
+					link.localId
+				).second) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"Nested Prefab contains a duplicate local Entity ID"
 					);
 				}
 			}

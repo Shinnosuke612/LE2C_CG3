@@ -53,6 +53,7 @@ void DebugRenderer::Initialize(
 	dxCommon_ = dxCommon;
 	maxVertexCount_ = maxVertexCount;
 	vertices_.reserve(maxVertexCount_);
+	depthTestedVertices_.reserve(maxVertexCount_);
 	solidVertices_.reserve(maxVertexCount_);
 
 	CreateRootSignature();
@@ -63,16 +64,21 @@ void DebugRenderer::Initialize(
 
 void DebugRenderer::Finalize() {
 	vertices_.clear();
+	depthTestedVertices_.clear();
 	solidVertices_.clear();
 	vertices_.shrink_to_fit();
+	depthTestedVertices_.shrink_to_fit();
 	solidVertices_.shrink_to_fit();
 	mappedVertices_ = nullptr;
+	mappedDepthTestedVertices_ = nullptr;
 	mappedSolidVertices_ = nullptr;
 	cameraData_ = nullptr;
 	vertexResource_.Reset();
+	depthTestedVertexResource_.Reset();
 	solidVertexResource_.Reset();
 	cameraResource_.Reset();
 	pipelineState_.Reset();
+	depthTestedPipelineState_.Reset();
 	solidPipelineState_.Reset();
 	rootSignature_.Reset();
 	dxCommon_ = nullptr;
@@ -82,6 +88,7 @@ void DebugRenderer::Finalize() {
 
 void DebugRenderer::Clear() {
 	vertices_.clear();
+	depthTestedVertices_.clear();
 	solidVertices_.clear();
 }
 
@@ -96,6 +103,22 @@ void DebugRenderer::AddLine(
 
 	vertices_.push_back({ start, color });
 	vertices_.push_back({ end, color });
+}
+
+void DebugRenderer::AddDepthTestedLine(
+	const Vector3& start,
+	const Vector3& end,
+	const Vector4& color
+) {
+	if (
+		!isInitialized_ ||
+		depthTestedVertices_.size() + 2 > maxVertexCount_
+	) {
+		return;
+	}
+
+	depthTestedVertices_.push_back({ start, color });
+	depthTestedVertices_.push_back({ end, color });
 }
 
 void DebugRenderer::AddSphere(
@@ -316,7 +339,9 @@ void DebugRenderer::Draw(const Camera* camera) {
 	if (
 		!isInitialized_ ||
 		!camera ||
-		vertices_.empty() && solidVertices_.empty()
+		vertices_.empty() &&
+		depthTestedVertices_.empty() &&
+		solidVertices_.empty()
 	) {
 		return;
 	}
@@ -329,6 +354,19 @@ void DebugRenderer::Draw(const Camera* camera) {
 	);
 	if (vertexCount > 0) {
 		std::memcpy(mappedVertices_, vertices_.data(), sizeof(Vertex) * vertexCount);
+	}
+	const uint32_t depthTestedVertexCount = static_cast<uint32_t>(
+		(std::min)(
+			depthTestedVertices_.size(),
+			static_cast<size_t>(maxVertexCount_)
+		)
+	);
+	if (depthTestedVertexCount > 0) {
+		std::memcpy(
+			mappedDepthTestedVertices_,
+			depthTestedVertices_.data(),
+			sizeof(Vertex) * depthTestedVertexCount
+		);
 	}
 	const uint32_t solidVertexCount = static_cast<uint32_t>(
 		(std::min)(solidVertices_.size(), static_cast<size_t>(maxVertexCount_))
@@ -346,6 +384,16 @@ void DebugRenderer::Draw(const Camera* camera) {
 		0,
 		cameraResource_->GetGPUVirtualAddress()
 	);
+	if (depthTestedVertexCount > 0) {
+		commandList->SetPipelineState(depthTestedPipelineState_.Get());
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+		commandList->IASetVertexBuffers(
+			0,
+			1,
+			&depthTestedVertexBufferView_
+		);
+		commandList->DrawInstanced(depthTestedVertexCount, 1, 0, 0);
+	}
 	if (solidVertexCount > 0) {
 		commandList->SetPipelineState(solidPipelineState_.Get());
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -481,6 +529,19 @@ void DebugRenderer::CreateGraphicsPipeline() {
 			IID_PPV_ARGS(&solidPipelineState_)
 		);
 	assert(SUCCEEDED(solidResult));
+
+	// GridなどWorld内に存在する補助線だけがDepth Testを使用する。
+	// 既存のCollider／Skeleton用Pipelineは常時前面表示のまま維持する。
+	depthStencilDesc.DepthEnable = TRUE;
+	pipelineDesc.DepthStencilState = depthStencilDesc;
+	pipelineDesc.PrimitiveTopologyType =
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+	const HRESULT depthTestedResult =
+		dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+			&pipelineDesc,
+			IID_PPV_ARGS(&depthTestedPipelineState_)
+		);
+	assert(SUCCEEDED(depthTestedResult));
 }
 
 void DebugRenderer::CreateResources() {
@@ -498,6 +559,20 @@ void DebugRenderer::CreateResources() {
 	vertexBufferView_.SizeInBytes =
 		static_cast<UINT>(sizeof(Vertex) * maxVertexCount_);
 	vertexBufferView_.StrideInBytes = sizeof(Vertex);
+
+	depthTestedVertexResource_ = dxCommon_->CreateBufferResource(
+		sizeof(Vertex) * maxVertexCount_
+	);
+	depthTestedVertexResource_->Map(
+		0,
+		nullptr,
+		reinterpret_cast<void**>(&mappedDepthTestedVertices_)
+	);
+	depthTestedVertexBufferView_.BufferLocation =
+		depthTestedVertexResource_->GetGPUVirtualAddress();
+	depthTestedVertexBufferView_.SizeInBytes =
+		static_cast<UINT>(sizeof(Vertex) * maxVertexCount_);
+	depthTestedVertexBufferView_.StrideInBytes = sizeof(Vertex);
 
 	solidVertexResource_ = dxCommon_->CreateBufferResource(
 		sizeof(Vertex) * maxVertexCount_

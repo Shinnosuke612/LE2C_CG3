@@ -1,5 +1,4 @@
 {
-  "assetId": "50154724-3a2b-4385-a2ec-867b136df541",
   "debug": {
     "showColliders": false,
     "showJointAxes": false,
@@ -21,28 +20,15 @@
         },
         {
           "active": true,
-          "debugColor": [
-            0.9,
-            0.3,
-            0.25,
-            1.0
-          ],
+          "debugColor": [0.9, 0.3, 0.25, 1.0],
           "debugVisible": true,
           "enabled": true,
           "isTrigger": false,
           "layer": 4294967295,
           "mask": 4294967295,
-          "offset": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "offset": [0.0, 0.0, 0.0],
           "shape": "Box",
-          "sizeMultiplier": [
-            1.0,
-            1.0,
-            1.0
-          ],
+          "sizeMultiplier": [1.0, 1.0, 1.0],
           "type": "OBBCollider"
         },
         {
@@ -56,11 +42,7 @@
           "restitution": 0.0,
           "type": "PhysicsBody",
           "useGravity": true,
-          "velocity": [
-            0.0,
-            0.0,
-            0.0
-          ]
+          "velocity": [0.0, 0.0, 0.0]
         },
         {
           "enabled": true,
@@ -108,22 +90,9 @@
       "parentId": 0,
       "team": "",
       "transform": {
-        "rotation": [
-          0.0,
-          0.0,
-          0.0,
-          1.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "translate": [
-          0.0,
-          1.0,
-          0.0
-        ]
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 1.0, 0.0]
       }
     },
     {
@@ -131,28 +100,15 @@
       "components": [
         {
           "active": true,
-          "debugColor": [
-            1.0,
-            0.6,
-            0.2,
-            1.0
-          ],
+          "debugColor": [1.0, 0.6, 0.2, 1.0],
           "debugVisible": true,
           "enabled": true,
           "isTrigger": true,
           "layer": 4294967295,
           "mask": 4294967295,
-          "offset": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "offset": [0.0, 0.0, 0.0],
           "shape": "Box",
-          "sizeMultiplier": [
-            1.0,
-            1.0,
-            1.0
-          ],
+          "sizeMultiplier": [1.0, 1.0, 1.0],
           "type": "OBBCollider"
         },
         {
@@ -173,22 +129,9 @@
       "parentId": 1,
       "team": "",
       "transform": {
-        "rotation": [
-          0.0,
-          0.0,
-          0.0,
-          1.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "translate": [
-          0.0,
-          0.0,
-          0.0
-        ]
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 0.0, 0.0]
       }
     },
     {
@@ -196,28 +139,15 @@
       "components": [
         {
           "active": true,
-          "debugColor": [
-            1.0,
-            0.1,
-            0.1,
-            1.0
-          ],
+          "debugColor": [1.0, 0.1, 0.1, 1.0],
           "debugVisible": true,
           "enabled": true,
           "isTrigger": true,
           "layer": 4294967295,
           "mask": 4294967295,
-          "offset": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "offset": [0.0, 0.0, 0.0],
           "shape": "Box",
-          "sizeMultiplier": [
-            0.8,
-            0.8,
-            1.0
-          ],
+          "sizeMultiplier": [0.8, 0.8, 1.0],
           "type": "OBBCollider"
         },
         {
@@ -241,22 +171,9 @@
       "parentId": 1,
       "team": "",
       "transform": {
-        "rotation": [
-          0.0,
-          0.0,
-          0.0,
-          1.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "translate": [
-          0.0,
-          0.0,
-          1.4
-        ]
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translate": [0.0, 0.0, 1.4]
       }
     }
   ],
