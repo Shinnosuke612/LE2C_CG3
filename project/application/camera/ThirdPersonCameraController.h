@@ -43,6 +43,10 @@ public:
 	}
 	void SetPitchLimit(float minPitch, float maxPitch);
 	void SetOcclusionMargin(float margin) { occlusionMargin_ = margin; }
+	void SetOcclusionSmoothTimes(float pullInSeconds, float recoverySeconds) {
+		occlusionPullInSmoothTime_ = pullInSeconds;
+		occlusionRecoverySmoothTime_ = recoverySeconds;
+	}
 	void SetPositionSmoothTime(float seconds) { positionSmoothTime_ = seconds; }
 	void SetRotationSmoothTime(float seconds) { rotationSmoothTime_ = seconds; }
 	void SetFollowTargetYaw(bool enabled) {
@@ -96,11 +100,16 @@ private:
 	float positionSmoothTime_ = 0.12f;
 	float rotationSmoothTime_ = 0.08f;
 	float occlusionMargin_ = 0.45f;
+	float occlusionPullInSmoothTime_ = 0.04f;
+	float occlusionRecoverySmoothTime_ = 0.18f;
+	float occlusionDistance_ = 8.0f;
 	float cameraBodyRadius_ = 0.12f;
 	bool isAimMode_ = false;
 	bool focusInitialized_ = false;
 	bool followTargetYaw_ = false;
 	bool targetYawInitialized_ = false;
+	bool occlusionDistanceInitialized_ = false;
+	bool occlusionActive_ = false;
 	bool occlusionEnabled_ = true;
 	bool aimModeEnabled_ = true;
 	bool invertYaw_ = false;

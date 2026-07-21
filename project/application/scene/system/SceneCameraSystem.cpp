@@ -476,6 +476,10 @@ bool SceneCameraSystem::UpdateThirdPersonCamera(
 	playerCameraController_.SetOcclusionMargin(
 		thirdPerson->thirdPersonOcclusionMargin
 	);
+	playerCameraController_.SetOcclusionSmoothTimes(
+		thirdPerson->thirdPersonOcclusionPullInSmoothTime,
+		thirdPerson->thirdPersonOcclusionRecoverySmoothTime
+	);
 	playerCameraController_.SetPositionSmoothTime(
 		thirdPerson->thirdPersonPositionSmoothTime
 	);
@@ -500,10 +504,22 @@ bool SceneCameraSystem::UpdateThirdPersonCamera(
 	std::vector<OBBCollider*> obstacles;
 	obstacles.reserve(bindings.size());
 	for (const SceneRuntimeObjectBinding& binding : bindings) {
+		// 以前はTarget自身だけを除外していたため、子のHurtBoxや武器HitBoxが
+		// Camera Rayを遮っていた。TriggerとTarget階層は遮蔽物に含めない。
 		if (
 			!binding.entity ||
 			!binding.collider ||
+			!binding.collider->IsActive() ||
+			binding.collider->IsTrigger() ||
 			binding.entity->id == targetEntity->id ||
+			document.IsDescendantOf(
+				binding.entity->id,
+				targetEntity->id
+			) ||
+			(
+				binding.collider->GetCollisionAttribute() &
+				thirdPerson->thirdPersonOcclusionMask
+			) == 0 ||
 			!IsEntityActiveInHierarchy(document, *binding.entity)
 		) {
 			continue;

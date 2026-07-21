@@ -5,6 +5,7 @@
 #include "../math/Math.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 	SceneEntity* ResolveTrackTarget(
@@ -28,10 +29,37 @@ namespace {
 
 	float ApplyEasing(float value, const std::string& easing) {
 		value = std::clamp(value, 0.0f, 1.0f);
-		return easing == "Linear" ? value : Math::SmoothStep(value);
+		if (easing == "Linear") {
+			return value;
+		}
+		if (easing == "EaseIn") {
+			return value * value * value;
+		}
+		if (easing == "EaseOut") {
+			return Math::EaseOutCubic(value);
+		}
+		if (easing == "EaseInOut") {
+			return value < 0.5f
+				? 4.0f * value * value * value
+				: 1.0f - std::pow(-2.0f * value + 2.0f, 3.0f) * 0.5f;
+		}
+		return Math::SmoothStep(value);
 	}
 
-	Vector3 SampleTrack(const SceneAnimationTrack& track, float time) {
+	const std::string& ResolveSegmentEasing(
+		const SceneAnimationTrack& track,
+		const SceneAnimationKeyframe& startKey
+	) {
+		return startKey.easingToNext.empty()
+			? track.easing
+			: startKey.easingToNext;
+	}
+
+	Vector3 SampleTrack(
+		const SceneAnimationTrack& track,
+		float time,
+		bool applyPositionBulge
+	) {
 		if (track.keyframes.empty()) {
 			return {};
 		}
@@ -50,13 +78,22 @@ namespace {
 			);
 			const float amount = ApplyEasing(
 				(time - previous.time) / duration,
-				track.easing
+				ResolveSegmentEasing(track, previous)
 			);
-			return {
+			Vector3 result{
 				Math::Lerp(previous.value.x, next.value.x, amount),
 				Math::Lerp(previous.value.y, next.value.y, amount),
 				Math::Lerp(previous.value.z, next.value.z, amount)
 			};
+			if (applyPositionBulge) {
+				// 4t(1-t) makes positionBulge the exact offset at the
+				// interpolation midpoint while preserving both Pose endpoints.
+				const float bulgeAmount = 4.0f * amount * (1.0f - amount);
+				result.x += previous.positionBulge.x * bulgeAmount;
+				result.y += previous.positionBulge.y * bulgeAmount;
+				result.z += previous.positionBulge.z * bulgeAmount;
+			}
+			return result;
 		}
 		return track.keyframes.back().value;
 	}
@@ -80,7 +117,7 @@ namespace {
 			);
 			const float amount = ApplyEasing(
 				(time - previous.time) / duration,
-				track.easing
+				ResolveSegmentEasing(track, previous)
 			);
 			return Slerp(
 				MakeQuaternionFromEuler(previous.value),
@@ -108,9 +145,9 @@ void ScenePrefabAnimationEvaluator::ApplyClip(
 			continue;
 		}
 		if (track.property == "LocalPosition") {
-			target->transform.translate = SampleTrack(track, time);
+			target->transform.translate = SampleTrack(track, time, true);
 		} else if (track.property == "LocalScale") {
-			target->transform.scale = SampleTrack(track, time);
+			target->transform.scale = SampleTrack(track, time, false);
 		} else if (track.property == "LocalRotation") {
 			target->transform.rotate = SampleRotation(track, time);
 		} else if (track.property == "Active") {

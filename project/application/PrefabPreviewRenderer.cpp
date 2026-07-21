@@ -271,7 +271,7 @@ void PrefabPreviewRenderer::DrawEditorOverlays(
 	DebugRenderer* debugRenderer = DebugRenderer::GetInstance();
 	// Prefab Previewは通常SceneのDebug描画後に実行される。収集済み頂点を
 	// 持ち込むとScene側の形状までPrefab RenderTargetへ再描画されるため分離する。
-	debugRenderer->Clear();
+	debugRenderer->ClearGeometry();
 	if (options.showGrid) {
 		EditorGridSettings gridSettings{};
 		gridSettings.extent = std::clamp(fitDistance_ * 4.0f, 10.0f, 200.0f);
@@ -400,7 +400,7 @@ void PrefabPreviewRenderer::DrawEditorOverlays(
 	}
 
 	debugRenderer->Draw(camera_);
-	debugRenderer->Clear();
+	debugRenderer->ClearGeometry();
 #else
 	(void)document;
 	(void)options;

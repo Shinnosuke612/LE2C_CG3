@@ -21,7 +21,7 @@ struct SceneStateDefinition;
 class StateContext {
 public:
 	SceneEntity& GetEntity() const;
-	Object3d* GetObject() const { return object_; }
+	Object3d* GetRuntimeObject() const { return object_; }
 	PhysicsBody* GetPhysicsBody() const { return body_; }
 	float GetStateTime() const { return stateTime_; }
 
@@ -46,7 +46,8 @@ public:
 	bool PlayPrefabAnimation(
 		SceneEntity* target,
 		const std::string& clipName,
-		bool restart = true
+		bool restart = true,
+		float transitionDuration = 0.0f
 	);
 	void RequestState(const std::string& stateName);
 

@@ -1,8 +1,13 @@
 {
   "assetId": "fa93a1e5-f5fb-4de2-9cb5-ac1c81c57eb7",
   "debug": {
+    "jointAxisLength": 0.05999999865889549,
+    "jointRadius": 0.017999999225139618,
+    "showCameraDirection": false,
+    "showCameraPath": true,
+    "showCameraPathPointCameraDirection": true,
     "showColliders": false,
-    "showJointAxes": false,
+    "showJointAxes": true,
     "showJointNames": false,
     "showSkeleton": false
   },
@@ -13,30 +18,157 @@
         {
           "cullMode": "Back",
           "enabled": true,
-          "environmentReflectionIntensity": 0.3,
+          "environmentReflectionIntensity": 0.30000001192092896,
           "environmentReflectionOverride": false,
+          "localId": 1,
           "materialOverrides": [],
           "modelPath": "9y5Huh14gN/武器.pmx",
           "type": "MeshRenderer"
         },
         {
-          "alignmentMode": "MatchSourceBone",
-          "enabled": true,
-          "inheritScale": true,
-          "jointName": "右ダミー",
-          "sourceJointName": "Ctr_Wpn_A",
-          "targetEntityId": 0,
-          "targetEntityName": "",
-          "type": "BoneAttachment"
-        },
-        {
           "clips": [
             {
-              "duration": 0.64,
+              "duration": 1.0,
+              "loop": true,
+              "name": "Idle",
+              "playOnStart": true,
+              "tracks": [
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.006000000052154064,
+                        1.0396881103515625,
+                        -2.5
+                      ]
+                    },
+                    {
+                      "time": 1.0,
+                      "value": [
+                        0.006000000052154064,
+                        1.0499999523162842,
+                        -2.5
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        1.5657933950424194,
+                        4.949979484081268e-06,
+                        3.140000104904175
+                      ]
+                    },
+                    {
+                      "time": 1.0,
+                      "value": [
+                        1.565999984741211,
+                        0.0,
+                        3.140000104904175
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    }
+                  ],
+                  "property": "Active",
+                  "targetEntityId": 2,
+                  "targetEntityName": "PlayerWeaponHitBox"
+                }
+              ]
+            },
+            {
+              "duration": 0.8999999761581421,
               "loop": false,
-              "name": "Attack",
+              "name": "Attack1",
               "playOnStart": false,
               "tracks": [
+                {
+                  "easing": "EaseInOut",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        2.5,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.4099999964237213,
+                      "value": [
+                        0.0,
+                        2.8420591354370117,
+                        -0.7670941948890686
+                      ]
+                    },
+                    {
+                      "time": 0.5199999809265137,
+                      "value": [
+                        0.0,
+                        0.6499999761581421,
+                        2.0899999141693115
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "EaseInOut",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        1.5707964897155762,
+                        0.0,
+                        3.141472816467285
+                      ]
+                    },
+                    {
+                      "time": 0.4099999964237213,
+                      "value": [
+                        1.1524107456207275,
+                        -0.08360686153173447,
+                        -2.9109408855438232
+                      ]
+                    },
+                    {
+                      "time": 0.5199999809265137,
+                      "value": [
+                        3.047461986541748,
+                        -8.409818263999114e-08,
+                        3.141592502593994
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
                 {
                   "easing": "Linear",
                   "keyframes": [
@@ -49,7 +181,7 @@
                       ]
                     },
                     {
-                      "time": 0.12,
+                      "time": 0.30000001192092896,
                       "value": [
                         1.0,
                         0.0,
@@ -57,7 +189,7 @@
                       ]
                     },
                     {
-                      "time": 0.34,
+                      "time": 0.5799999833106995,
                       "value": [
                         0.0,
                         0.0,
@@ -65,7 +197,334 @@
                       ]
                     },
                     {
-                      "time": 0.64,
+                      "time": 0.8999999761581421,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    }
+                  ],
+                  "property": "Active",
+                  "targetEntityId": 2,
+                  "targetEntityName": "PlayerWeaponHitBox"
+                },
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [],
+                  "property": "LocalScale",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                }
+              ]
+            },
+            {
+              "duration": 0.800000011920929,
+              "loop": false,
+              "name": "Attack2",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        2.200000047683716,
+                        1.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        0.0,
+                        1.0,
+                        2.200000047683716
+                      ]
+                    },
+                    {
+                      "time": 0.7200000286102295,
+                      "value": [
+                        -2.200000047683716,
+                        1.0,
+                        0.0
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        -1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        -3.1415927410125732,
+                        0.0,
+                        -1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.7200000286102295,
+                      "value": [
+                        -2.335184944968205e-05,
+                        1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.1599999964237213,
+                      "value": [
+                        1.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.5,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.800000011920929,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    }
+                  ],
+                  "property": "Active",
+                  "targetEntityId": 2,
+                  "targetEntityName": "PlayerWeaponHitBox"
+                },
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    }
+                  ],
+                  "property": "LocalScale",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                }
+              ]
+            },
+            {
+              "duration": 1.25,
+              "loop": false,
+              "name": "Attack3",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "EaseInOut",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        -0.550000011920929,
+                        1.0499999523162842,
+                        -0.8500000238418579
+                      ]
+                    },
+                    {
+                      "time": 0.25,
+                      "value": [
+                        -0.699999988079071,
+                        1.0,
+                        -0.5
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        1.0,
+                        1.100000023841858,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.5199999809265137,
+                      "value": [
+                        0.0,
+                        1.0499999523162842,
+                        1.0
+                      ]
+                    },
+                    {
+                      "time": 0.699999988079071,
+                      "value": [
+                        -1.0,
+                        1.0499999523162842,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.8799999952316284,
+                      "value": [
+                        0.0,
+                        1.0499999523162842,
+                        -0.800000011920929
+                      ]
+                    },
+                    {
+                      "time": 0.9800000190734863,
+                      "value": [
+                        0.800000011920929,
+                        1.0499999523162842,
+                        0.20000000298023224
+                      ]
+                    },
+                    {
+                      "time": 1.25,
+                      "value": [
+                        -0.550000011920929,
+                        1.0499999523162842,
+                        -0.8500000238418579
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.25,
+                        0.0,
+                        0.7799999713897705
+                      ]
+                    },
+                    {
+                      "time": 0.25,
+                      "value": [
+                        0.25,
+                        0.0,
+                        0.7799999713897705
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        0.0,
+                        -1.5700000524520874,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.5199999809265137,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.699999988079071,
+                      "value": [
+                        0.0,
+                        1.5700000524520874,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.8799999952316284,
+                      "value": [
+                        0.0,
+                        3.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.9800000190734863,
+                      "value": [
+                        0.0,
+                        -1.5700000524520874,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 1.25,
+                      "value": [
+                        0.25,
+                        0.0,
+                        0.7799999713897705
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        1.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.9800000190734863,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 1.25,
                       "value": [
                         0.0,
                         0.0,
@@ -81,6 +540,7 @@
             }
           ],
           "enabled": true,
+          "localId": 2,
           "type": "PrefabAnimator"
         }
       ],
@@ -91,6 +551,25 @@
       "modelPath": "9y5Huh14gN/武器.pmx",
       "name": "PlayerWeapon",
       "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
       "team": "",
       "transform": {
         "rotation": [
@@ -105,9 +584,9 @@
           1.0
         ],
         "translate": [
-          0.0,
-          0.0,
-          0.0
+          -0.550000011920929,
+          1.0499999523162842,
+          -0.8500000238418579
         ]
       }
     },
@@ -118,15 +597,17 @@
           "active": true,
           "debugColor": [
             1.0,
-            0.2,
-            0.1,
+            0.20000000298023224,
+            0.10000000149011612,
             1.0
           ],
+          "debugDrawMode": "Wireframe",
           "debugSegments": 16,
           "debugVisible": true,
           "enabled": true,
           "isTrigger": true,
           "layer": 4294967295,
+          "localId": 1,
           "mask": 4294967295,
           "offset": [
             0.0,
@@ -135,9 +616,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            0.9,
-            0.8,
-            1.2
+            0.8999999761581421,
+            0.800000011920929,
+            1.2000000476837158
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -147,6 +628,7 @@
           "damageStatId": "hp",
           "enabled": true,
           "ignoreSameFaction": true,
+          "localId": 2,
           "ownerEntityId": 0,
           "ownerEntityName": "Player",
           "poiseDamage": 0.0,
@@ -158,6 +640,7 @@
           "enabled": true,
           "inheritScale": true,
           "jointName": "Ctr_Wpn_A",
+          "localId": 3,
           "sourceJointName": "",
           "targetEntityId": 1,
           "targetEntityName": "PlayerWeapon",
@@ -171,6 +654,25 @@
       "modelPath": "",
       "name": "PlayerWeaponHitBox",
       "parentId": 1,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
       "team": "",
       "transform": {
         "rotation": [
@@ -193,9 +695,95 @@
     }
   ],
   "lighting": {
-    "shadowMapSize": 1024
+    "shadowMapSize": 4096
   },
-  "postProcess": {},
+  "postProcess": {
+    "baseExposure": 1.0,
+    "bloomBlurIterations": 4,
+    "bloomBlurRadius": 1.0,
+    "bloomDownsampleScale": 2,
+    "bloomEnabled": true,
+    "bloomIntensity": 0.699999988079071,
+    "bloomSoftKnee": 0.5,
+    "bloomThreshold": 1.0,
+    "boxBlurEnabled": false,
+    "boxBlurKernelSize": 3,
+    "boxBlurStrength": 1.0,
+    "depthOfFieldBlurStrength": 1.0,
+    "depthOfFieldEnabled": false,
+    "depthOfFieldFarStrength": 1.0,
+    "depthOfFieldFocusDistance": 10.0,
+    "depthOfFieldFocusRange": 2.0,
+    "depthOfFieldMaxRadius": 4.0,
+    "depthOfFieldNearStrength": 0.0,
+    "dissolveEdgeColor": [
+      1.0,
+      0.4000000059604645,
+      0.30000001192092896,
+      1.0
+    ],
+    "dissolveEdgeWidth": 0.029999999329447746,
+    "dissolveEnabled": false,
+    "dissolveMaskIndex": 0,
+    "dissolveThreshold": 0.0,
+    "gaussianBlurEnabled": false,
+    "gaussianBlurKernelSize": 3,
+    "gaussianBlurSigma": 1.0,
+    "gaussianBlurStrength": 1.0,
+    "grayscaleEnabled": false,
+    "noiseAmount": 0.25,
+    "noiseAnimate": true,
+    "noiseEnabled": false,
+    "noiseScale": 1.0,
+    "noiseSeed": 0.0,
+    "noiseSpeed": 1.0,
+    "outlineColor": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "outlineDepthEnabled": true,
+    "outlineDepthWeight": 1.0,
+    "outlineEnabled": false,
+    "outlineLuminanceEnabled": false,
+    "outlineLuminanceWeight": 1.0,
+    "outlineSoftness": 0.05000000074505806,
+    "outlineThickness": 1.0,
+    "outlineThreshold": 0.10000000149011612,
+    "radialBlurCenter": [
+      0.5,
+      0.5
+    ],
+    "radialBlurEnabled": false,
+    "radialBlurSamples": 10,
+    "radialBlurWidth": 0.009999999776482582,
+    "toneMapMode": 0,
+    "underwaterDistortion": 0.012000000104308128,
+    "underwaterEnabled": false,
+    "underwaterFogDensity": 0.03500000014901161,
+    "underwaterIntensity": 0.6499999761581421,
+    "underwaterTintColor": [
+      0.019999999552965164,
+      0.44999998807907104,
+      0.6800000071525574,
+      1.0
+    ],
+    "vignetteEnabled": false,
+    "vignetteIntensity": 1.0,
+    "vignettePower": 0.800000011920929,
+    "vignetteScale": 16.0,
+    "waterRefractionEdgeSoftness": 0.07999999821186066,
+    "waterRefractionEnabled": false,
+    "waterRefractionStrength": 0.017999999225139618,
+    "waterRefractionTintColor": [
+      0.019999999552965164,
+      0.550000011920929,
+      0.8199999928474426,
+      1.0
+    ],
+    "waterRefractionTintStrength": 0.11999999731779099
+  },
   "sceneName": "PlayerWeapon",
   "teams": [],
   "version": 27

@@ -1,10 +1,11 @@
-// 役割: State遷移を遅延確定し、組み込みIdle/Move/MeleeAttack行動を提供する。
+// 役割: State遷移を遅延確定し、組み込みIdle/Move/MeleeAttack/Combo行動を提供する。
 #include "SceneStateMachineSystem.h"
 
 #include "ScenePrefabAnimationSystem.h"
 #include "../../../engine/3d/Object3d.h"
 #include "../../../engine/io/Input.h"
 #include "../../../engine/math/Math.h"
+#include "../../../engine/math/Quaternion.h"
 #include "../../../engine/physics/PhysicsBody.h"
 #include "../../../engine/scene/SceneDocument.h"
 #include "../../../engine/scene/SceneEntityQuery.h"
@@ -100,6 +101,60 @@ namespace {
 			: input;
 	}
 
+	float ApplyStateEasing(float value, const std::string& easing) {
+		value = std::clamp(value, 0.0f, 1.0f);
+		if (easing == "Linear") {
+			return value;
+		}
+		if (easing == "EaseIn") {
+			return value * value * value;
+		}
+		if (easing == "EaseOut") {
+			return Math::EaseOutCubic(value);
+		}
+		if (easing == "EaseInOut") {
+			return value < 0.5f
+				? 4.0f * value * value * value
+				: 1.0f - std::pow(-2.0f * value + 2.0f, 3.0f) * 0.5f;
+		}
+		return Math::SmoothStep(value);
+	}
+
+	void ResolvePlanarAttackAxes(
+		StateContext& context,
+		Vector3& forward,
+		Vector3& right
+	) {
+		Matrix4x4 rotation = MakeRotateMatrix(context.GetEntity().transform.rotate);
+		const Matrix4x4& basis = context.GetRuntimeObject()
+			? context.GetRuntimeObject()->GetWorldMatrix()
+			: rotation;
+		forward = { basis.m[2][0], 0.0f, basis.m[2][2] };
+		right = { basis.m[0][0], 0.0f, basis.m[0][2] };
+		forward = Math::Length(forward) > 0.0001f
+			? Math::Normalize(forward)
+			: Vector3{ 0.0f, 0.0f, 1.0f };
+		right = Math::Length(right) > 0.0001f
+			? Math::Normalize(right)
+			: Vector3{ 1.0f, 0.0f, 0.0f };
+	}
+
+	void PlayReturnPrefabAnimation(StateContext& context) {
+		SceneEntity* animationTarget =
+			context.GetEntityParameter("AnimationTarget");
+		const std::string returnAnimation =
+			context.GetString("ReturnAnimation", "Idle");
+		if (!animationTarget || returnAnimation.empty()) {
+			return;
+		}
+		context.PlayPrefabAnimation(
+			animationTarget,
+			returnAnimation,
+			true,
+			(std::max)(context.GetFloat("ReturnAnimationBlend", 0.15f), 0.0f)
+		);
+	}
+
 	const SceneStateDefinition* FindState(
 		const SceneComponent& machine,
 		const std::string& stateName
@@ -178,7 +233,15 @@ namespace {
 				SceneEntity* animationTarget =
 					context.GetEntityParameter("AnimationTarget");
 				if (animationTarget) {
-					context.PlayPrefabAnimation(animationTarget, animation, true);
+					context.PlayPrefabAnimation(
+						animationTarget,
+						animation,
+						true,
+						(std::max)(
+							context.GetFloat("AnimationBlendIn", 0.1f),
+							0.0f
+						)
+					);
 				} else {
 					context.PlayAnimation(animation, true);
 				}
@@ -200,6 +263,7 @@ namespace {
 				time >= windup && time < windup + activeTime
 			);
 			if (time >= windup + activeTime + recovery) {
+				PlayReturnPrefabAnimation(context);
 				context.RequestState(context.GetString("ReturnState", "Idle"));
 			}
 		}
@@ -207,6 +271,142 @@ namespace {
 		void Exit(StateContext& context) override {
 			context.SetEntityActive(context.GetEntityParameter("HitBox"), false);
 		}
+	};
+
+	class BuiltinMeleeComboAttackState final : public IEntityStateAction {
+	public:
+		void Enter(StateContext& context) override {
+			comboQueued_ = false;
+			lastMotionAmount_ = 0.0f;
+			// 攻撃中のCamera操作で突進軌道が曲がらないよう、開始時の向きを固定する。
+			ResolvePlanarAttackAxes(context, forward_, right_);
+			context.SetEntityActive(context.GetEntityParameter("HitBox"), false);
+			const std::string animation = context.GetString("Animation");
+			if (animation.empty()) {
+				return;
+			}
+			SceneEntity* animationTarget =
+				context.GetEntityParameter("AnimationTarget");
+			if (animationTarget) {
+				context.PlayPrefabAnimation(
+					animationTarget,
+					animation,
+					true,
+					(std::max)(
+						context.GetFloat("AnimationBlendIn", 0.1f),
+						0.0f
+					)
+				);
+			} else {
+				context.PlayAnimation(animation, true);
+			}
+		}
+
+		void Update(StateContext& context, float deltaTime) override {
+			context.StopHorizontalMovement();
+			const float windup = (std::max)(
+				context.GetFloat("Windup", 0.15f), 0.0f
+			);
+			const float activeTime = (std::max)(
+				context.GetFloat("ActiveTime", 0.2f), 0.0f
+			);
+			const float recovery = (std::max)(
+				context.GetFloat("Recovery", 0.35f), 0.0f
+			);
+			const float stateDuration = windup + activeTime + recovery;
+			const float time = context.GetStateTime();
+			SceneEntity* hitBox = context.GetEntityParameter("HitBox");
+			if (!context.GetBool("AnimateHitBox", false)) {
+				context.SetEntityActive(
+					hitBox,
+					time >= windup && time < windup + activeTime
+				);
+			}
+
+			const float motionStart = (std::max)(
+				context.GetFloat("MotionStart", 0.0f), 0.0f
+			);
+			const float motionDuration = (std::max)(
+				context.GetFloat("MotionDuration", stateDuration), 0.0001f
+			);
+			const float motionProgress = ApplyStateEasing(
+				(time - motionStart) / motionDuration,
+				context.GetString("MotionEasing", "SmoothStep")
+			);
+			const float motionDelta = motionProgress - lastMotionAmount_;
+			lastMotionAmount_ = motionProgress;
+			if (deltaTime > 0.0001f && std::abs(motionDelta) > 0.000001f) {
+				// Transformを直接進めず速度へ変換し、既存Physicsの衝突解決を維持する。
+				const Vector3 displacement = Math::Add(
+					Math::Multiply(
+						forward_,
+						context.GetFloat("ForwardDistance") * motionDelta
+					),
+					Math::Multiply(
+						right_,
+						context.GetFloat("SideDistance") * motionDelta
+					)
+				);
+				context.SetHorizontalVelocity(
+					displacement.x / deltaTime,
+					displacement.z / deltaTime
+				);
+			}
+
+			const float transitionTime = (std::max)(
+				context.GetFloat("ComboTransitionTime", stateDuration),
+				0.0f
+			);
+			const float windowStart = std::clamp(
+				context.GetFloat("ComboWindowStart", windup),
+				0.0f,
+				transitionTime
+			);
+			const float windowEnd = std::clamp(
+				context.GetFloat("ComboWindowEnd", transitionTime),
+				windowStart,
+				transitionTime
+			);
+			const float inputBuffer = (std::max)(
+				context.GetFloat("ComboInputBuffer", 0.15f),
+				0.0f
+			);
+			const float inputStart = (std::max)(
+				windowStart - inputBuffer,
+				0.0f
+			);
+			const std::string nextState = context.GetString("NextState");
+			if (
+				!nextState.empty() &&
+				time >= inputStart &&
+				time <= windowEnd &&
+				context.IsInputTriggered(GetAttackInput(context))
+			) {
+				comboQueued_ = true;
+			}
+			if (time < transitionTime) {
+				return;
+			}
+
+			if (comboQueued_ && !nextState.empty()) {
+				context.RequestState(nextState);
+				return;
+			}
+			// 入力予約がない場合だけIdle Clipへ戻す。次段予約時は現在Poseから
+			// 次Attack Clipへ直接Cross Fadeし、コンボの連続性を維持する。
+			PlayReturnPrefabAnimation(context);
+			context.RequestState(context.GetString("ReturnState", "Idle"));
+		}
+
+		void Exit(StateContext& context) override {
+			context.SetEntityActive(context.GetEntityParameter("HitBox"), false);
+		}
+
+	private:
+		bool comboQueued_ = false;
+		float lastMotionAmount_ = 0.0f;
+		Vector3 forward_{ 0.0f, 0.0f, 1.0f };
+		Vector3 right_{ 1.0f, 0.0f, 0.0f };
 	};
 
 	void RegisterBuiltinStates() {
@@ -219,6 +419,11 @@ namespace {
 		}
 		if (!registry.Contains("Builtin.MeleeAttack")) {
 			registry.Register<BuiltinMeleeAttackState>("Builtin.MeleeAttack");
+		}
+		if (!registry.Contains("Builtin.MeleeComboAttack")) {
+			registry.Register<BuiltinMeleeComboAttackState>(
+				"Builtin.MeleeComboAttack"
+			);
 		}
 	}
 }
@@ -361,10 +566,11 @@ bool StateContext::PlayAnimation(const std::string& clipName, bool restart) {
 bool StateContext::PlayPrefabAnimation(
 	SceneEntity* target,
 	const std::string& clipName,
-	bool restart
+	bool restart,
+	float transitionDuration
 ) {
 	return target && prefabAnimationSystem_.Play(
-		document_, target->id, clipName, restart
+		document_, target->id, clipName, restart, transitionDuration
 	);
 }
 

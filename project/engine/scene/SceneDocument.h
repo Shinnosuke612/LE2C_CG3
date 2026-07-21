@@ -122,6 +122,11 @@ struct SceneEventBinding {
 struct SceneAnimationKeyframe {
 	float time = 0.0f;
 	Vector3 value{};
+	// Empty inherits the owning Track setting. The start Key owns the segment
+	// from itself to the next Key.
+	std::string easingToNext;
+	// LocalPosition-only midpoint offset. Zero keeps the segment straight.
+	Vector3 positionBulge{};
 };
 
 struct SceneAnimationTrack {
@@ -228,6 +233,9 @@ struct SceneComponent {
 	float thirdPersonMinPitch = -1.45f;
 	float thirdPersonMaxPitch = 1.35f;
 	float thirdPersonOcclusionMargin = 0.45f;
+	uint32_t thirdPersonOcclusionMask = 0xffffffffu;
+	float thirdPersonOcclusionPullInSmoothTime = 0.04f;
+	float thirdPersonOcclusionRecoverySmoothTime = 0.18f;
 	float thirdPersonPositionSmoothTime = 0.12f;
 	float thirdPersonRotationSmoothTime = 0.08f;
 	std::string thirdPersonYawReference = "World";

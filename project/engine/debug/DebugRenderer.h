@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include <d3d12.h>
@@ -17,6 +18,12 @@ class DirectXCommon;
 
 class DebugRenderer {
 public:
+	struct WorldLabel {
+		Vector3 position{};
+		Vector4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
+		std::string text;
+	};
+
 	static DebugRenderer* GetInstance();
 
 	void Initialize(
@@ -25,6 +32,8 @@ public:
 	);
 	void Finalize();
 	void Clear();
+	// RenderTargetごとの3D形状分離に使用し、Scene View用Labelは保持する。
+	void ClearGeometry();
 
 	void AddLine(
 		const Vector3& start,
@@ -63,10 +72,23 @@ public:
 		const Vector4& color
 	);
 	void AddAxis(const Matrix4x4& worldMatrix, float length);
+	void AddWorldLabel(
+		const Vector3& position,
+		const std::string& text,
+		const Vector4& color = { 1.0f, 1.0f, 1.0f, 1.0f }
+	);
+	const std::vector<WorldLabel>& GetWorldLabels() const {
+		return worldLabels_;
+	}
 
 	void Draw(const Camera* camera);
 
 private:
+	// SceneとPrefab Previewが同一Command List内で描画しても、後のUploadが
+	// 先に記録したDrawのVertex／Camera内容を上書きしない数を確保する。
+	static constexpr uint32_t kDrawSlotCount = 2;
+	static constexpr uint32_t kCameraSlotSize = 256;
+
 	struct Vertex {
 		Vector3 position;
 		Vector4 color;
@@ -103,13 +125,15 @@ private:
 	Vertex* mappedVertices_ = nullptr;
 	Vertex* mappedDepthTestedVertices_ = nullptr;
 	Vertex* mappedSolidVertices_ = nullptr;
-	CameraData* cameraData_ = nullptr;
+	uint8_t* mappedCameraData_ = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView_{};
 	D3D12_VERTEX_BUFFER_VIEW depthTestedVertexBufferView_{};
 	D3D12_VERTEX_BUFFER_VIEW solidVertexBufferView_{};
 	std::vector<Vertex> vertices_;
 	std::vector<Vertex> depthTestedVertices_;
 	std::vector<Vertex> solidVertices_;
+	std::vector<WorldLabel> worldLabels_;
 	uint32_t maxVertexCount_ = 0;
+	uint32_t drawSlotIndex_ = 0;
 	bool isInitialized_ = false;
 };

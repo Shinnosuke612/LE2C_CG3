@@ -23,6 +23,7 @@
 #include "../3d/ModelFormat.h"
 #include "../3d/Object3dCommon.h"
 #include "../3d/Camera.h"
+#include "../debug/DebugRenderer.h"
 #include "../io/Input.h"
 #include "../math/Matrix4x4.h"
 #include "../math/Math.h"
@@ -716,6 +717,7 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 	// 旧PrefabはEditor起動時に一度だけIDを付与し、アクセス履歴を即時安定化する。
 	PrefabAssetRegistry::MigrateMissingAssetIds();
 	LoadEditorSettings();
@@ -957,6 +959,18 @@ void ImGuiManager::LoadEditorSettings() {
 			prefabGridVisible_ = settings["prefabGridVisible"].get<bool>();
 		}
 		if (
+			settings.contains("sceneAxisVisible") &&
+			settings["sceneAxisVisible"].is_boolean()
+		) {
+			sceneAxisVisible_ = settings["sceneAxisVisible"].get<bool>();
+		}
+		if (
+			settings.contains("prefabAxisVisible") &&
+			settings["prefabAxisVisible"].is_boolean()
+		) {
+			prefabAxisVisible_ = settings["prefabAxisVisible"].get<bool>();
+		}
+		if (
 			settings.contains("componentFoldouts") &&
 			settings["componentFoldouts"].is_object()
 		) {
@@ -1048,6 +1062,8 @@ void ImGuiManager::SaveEditorSettings() const {
 		{ "startFullscreen", startFullscreen_ },
 		{ "sceneGridVisible", sceneGridVisible_ },
 		{ "prefabGridVisible", prefabGridVisible_ },
+		{ "sceneAxisVisible", sceneAxisVisible_ },
+		{ "prefabAxisVisible", prefabAxisVisible_ },
 		{ "componentFoldouts", std::move(componentFoldouts) },
 		{ "recentPrefabs", std::move(recentPrefabs) },
 		{ "favoritePrefabs", std::move(favoritePrefabs) }
@@ -1079,6 +1095,12 @@ void ImGuiManager::ApplyPendingEditorFont() {
 void ImGuiManager::EndFrame(){
 	ImGui::Render();
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), dxCommon_->GetCommandList());
+	if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+		// Platform WindowはBackend側のSwapChainとCommand Queueで描画する。
+		// メインDraw Dataの後に更新し、Dock解除したWindowをアプリ外にも表示する。
+		ImGui::UpdatePlatformWindows();
+		ImGui::RenderPlatformWindowsDefault();
+	}
 }
 
 void ImGuiManager::DrawEditorWorkspace(
@@ -1087,6 +1109,7 @@ void ImGuiManager::DrawEditorWorkspace(
 	uint32_t textureHeight,
 	const char* sceneName
 ) {
+	prefabKeyboardFocusThisFrame_ = false;
 	if (editorSession_) {
 		const ImGuiIO& io = ImGui::GetIO();
 		const bool mayEditThisFrame =
@@ -1134,6 +1157,15 @@ void ImGuiManager::DrawEditorWorkspace(
 	sceneViewMinY_ = sceneMin.y;
 	sceneViewMaxX_ = sceneMax.x;
 	sceneViewMaxY_ = sceneMax.y;
+	if (Camera* camera = Object3dCommon::GetInstance()
+		? Object3dCommon::GetInstance()->GetDefaultCamera()
+		: nullptr) {
+		DrawSceneDebugLabels(
+			sceneMin,
+			sceneMax,
+			camera->GetViewProjectionMatrix()
+		);
+	}
 	if (
 		editorSession_ &&
 		editorSession_->IsEditing() &&
@@ -1291,6 +1323,18 @@ void ImGuiManager::DrawEditorWorkspace(
 		textureWidth,
 		textureHeight
 	);
+	if (sceneAxisVisible_) {
+		Camera* camera = Object3dCommon::GetInstance()
+			? Object3dCommon::GetInstance()->GetDefaultCamera()
+			: nullptr;
+		if (camera) {
+			DrawWorldAxisIndicator(
+				sceneMin,
+				sceneMax,
+				camera->GetViewMatrix()
+			);
+		}
+	}
 
 	if (
 		sceneImageHovered &&
@@ -1367,6 +1411,7 @@ void ImGuiManager::DrawEditorWorkspace(
 			ImGuizmo::IsUsing();
 		editorSession_->EndEditFrame(!editingInteractionActive);
 	}
+	HandleEditShortcuts();
 
 	(void)textureWidth;
 	(void)textureHeight;
@@ -2064,6 +2109,10 @@ void ImGuiManager::DrawSceneGizmo(
 	if (ImGui::Checkbox("Grid", &sceneGridVisible_)) {
 		SaveEditorSettings();
 	}
+	ImGui::SameLine();
+	if (ImGui::Checkbox("Axis", &sceneAxisVisible_)) {
+		SaveEditorSettings();
+	}
 	ImGui::EndGroup();
 	ImGui::PopStyleVar(2);
 
@@ -2754,6 +2803,18 @@ void ImGuiManager::DrawSettingsMenu() {
 		ImGui::MenuItem("Inspector", nullptr, &showInspector_);
 		ImGui::MenuItem("Project", nullptr, &showProject_);
 		ImGui::MenuItem("Prefab", nullptr, &showPrefab_);
+		bool prefabInspectorVisible = showPrefabInspector_;
+		if (ImGui::MenuItem(
+			"Prefab Inspector",
+			nullptr,
+			&prefabInspectorVisible
+		)) {
+			showPrefabInspector_ = prefabInspectorVisible;
+			if (showPrefabInspector_) {
+				showPrefab_ = true;
+				prefabInspectorFocusRequested_ = true;
+			}
+		}
 		if (ImGui::MenuItem("Prefab Quick Open", "Ctrl+Shift+P")) {
 			RequestPrefabQuickOpen();
 		}
@@ -2877,6 +2938,11 @@ void ImGuiManager::CreateDockSpace(){
 				showPrefab_ = true;
 				prefabFocusRequested_ = true;
 			}
+			if (ImGui::MenuItem("Show Prefab Inspector")) {
+				showPrefab_ = true;
+				showPrefabInspector_ = true;
+				prefabInspectorFocusRequested_ = true;
+			}
 			if (ImGui::MenuItem("Quick Open...", "Ctrl+Shift+P")) {
 				RequestPrefabQuickOpen();
 			}
@@ -2951,11 +3017,7 @@ void ImGuiManager::DrawPlaybackControls() {
 	ImGui::BeginDisabled(!editorSession_->IsEditing());
 	const bool saveRequested = ImGui::SmallButton("Save Scene");
 	ImGui::EndDisabled();
-	const ImGuiIO& io = ImGui::GetIO();
-	if (
-		editorSession_->IsEditing() &&
-		(saveRequested || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)))
-	) {
+	if (editorSession_->IsEditing() && saveRequested) {
 		editorSession_->Save();
 	}
 
@@ -2973,16 +3035,10 @@ void ImGuiManager::DrawPlaybackControls() {
 	);
 	const bool redoRequested = ImGui::SmallButton("Redo");
 	ImGui::EndDisabled();
-	if (
-		editorSession_->IsEditing() &&
-		(undoRequested || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)))
-	) {
+	if (editorSession_->IsEditing() && undoRequested) {
 		editorSession_->Undo();
 	}
-	if (
-		editorSession_->IsEditing() &&
-		(redoRequested || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)))
-	) {
+	if (editorSession_->IsEditing() && redoRequested) {
 		editorSession_->Redo();
 	}
 
@@ -3039,6 +3095,7 @@ void ImGuiManager::BuildDefaultLayout() {
 	ImGui::DockBuilderDockWindow("Prefab", centerId);
 	ImGui::DockBuilderDockWindow("Hierarchy", leftId);
 	ImGui::DockBuilderDockWindow("Inspector", rightId);
+	ImGui::DockBuilderDockWindow("Prefab Inspector", rightId);
 	ImGui::DockBuilderDockWindow("Scene Controls", rightId);
 	ImGui::DockBuilderDockWindow("Title Scene", rightId);
 	ImGui::DockBuilderDockWindow("Particle Effect Editor", rightId);
@@ -6938,6 +6995,30 @@ void ImGuiManager::DrawInspectorWindow() {
 					"Occlusion Enabled",
 					&component.thirdPersonOcclusionEnabled
 				);
+				thirdPersonChanged |= ImGui::InputScalar(
+					"Occlusion Layer Mask",
+					ImGuiDataType_U32,
+					&component.thirdPersonOcclusionMask
+				);
+				ImGui::TextDisabled(
+					"Only non-trigger colliders on matching layers block the camera."
+				);
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Occlusion Pull-In Smooth Time",
+					&component.thirdPersonOcclusionPullInSmoothTime,
+					0.01f,
+					0.0f,
+					5.0f,
+					"%.2f s"
+				);
+				thirdPersonChanged |= ImGui::DragFloat(
+					"Occlusion Recovery Smooth Time",
+					&component.thirdPersonOcclusionRecoverySmoothTime,
+					0.01f,
+					0.0f,
+					5.0f,
+					"%.2f s"
+				);
 				thirdPersonChanged |= ImGui::DragFloat(
 					"Position Smooth Time",
 					&component.thirdPersonPositionSmoothTime,
@@ -6983,6 +7064,14 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				if (component.thirdPersonOcclusionMargin < 0.0f) {
 					component.thirdPersonOcclusionMargin = 0.0f;
+					thirdPersonChanged = true;
+				}
+				if (component.thirdPersonOcclusionPullInSmoothTime < 0.0f) {
+					component.thirdPersonOcclusionPullInSmoothTime = 0.0f;
+					thirdPersonChanged = true;
+				}
+				if (component.thirdPersonOcclusionRecoverySmoothTime < 0.0f) {
+					component.thirdPersonOcclusionRecoverySmoothTime = 0.0f;
 					thirdPersonChanged = true;
 				}
 				if (component.thirdPersonPositionSmoothTime < 0.0f) {
@@ -7610,7 +7699,8 @@ void ImGuiManager::DrawInspectorWindow() {
 						);
 						if (ImGui::BeginCombo("Built-in Action", state.actionId.c_str())) {
 							for (const char* actionId : {
-								"Builtin.Idle", "Builtin.Move", "Builtin.MeleeAttack"
+								"Builtin.Idle", "Builtin.Move", "Builtin.MeleeAttack",
+								"Builtin.MeleeComboAttack"
 							}) {
 								if (ImGui::Selectable(
 									actionId, state.actionId == actionId
@@ -8038,8 +8128,16 @@ void ImGuiManager::DrawInspectorWindow() {
 									ImGui::EndCombo();
 								}
 								if (track.property != "Active") {
-									if (ImGui::BeginCombo("Easing", track.easing.c_str())) {
-										for (const char* easing : { "Linear", "SmoothStep" }) {
+									if (ImGui::BeginCombo(
+										"Easing",
+										track.easing.empty()
+											? "SmoothStep"
+											: track.easing.c_str()
+									)) {
+										for (const char* easing : {
+											"Linear", "EaseIn", "EaseOut", "EaseInOut",
+											"SmoothStep"
+										}) {
 											if (ImGui::Selectable(
 												easing,
 												track.easing == easing
@@ -10969,8 +11067,25 @@ void ImGuiManager::DrawPrefabWindow() {
 		prefabFocusRequested_ = false;
 	}
 	bool windowOpen = true;
-	if (!ImGui::Begin("Prefab", &windowOpen)) {
+	const bool prefabWindowContentsVisible = ImGui::Begin(
+		"Prefab",
+		&windowOpen
+	);
+	prefabKeyboardFocusThisFrame_ |= ImGui::IsWindowFocused(
+		ImGuiFocusedFlags_RootAndChildWindows
+	);
+	if (!prefabWindowContentsVisible) {
 		ImGui::End();
+		if (windowOpen && prefabEditorSession_->IsOpen()) {
+			prefabEditorSession_->BeginEditFrame();
+			DrawPrefabInspectorWindow();
+			const bool editingInteractionActive =
+				ImGui::IsAnyItemActive() ||
+				ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
+				ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
+				ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+			prefabEditorSession_->EndEditFrame(!editingInteractionActive);
+		}
 		if (!windowOpen) {
 			if (prefabEditorSession_->IsDirty()) {
 				prefabClosePopupRequested_ = true;
@@ -10979,6 +11094,9 @@ void ImGuiManager::DrawPrefabWindow() {
 				showPrefab_ = false;
 				prefabSelectedEntityId_ = 0;
 			}
+		}
+		if (!prefabEditorSession_->IsOpen()) {
+			DrawPrefabInspectorWindow();
 		}
 		DrawPrefabOpenConfirmation();
 		return;
@@ -11118,6 +11236,7 @@ void ImGuiManager::DrawPrefabWindow() {
 			);
 		}
 		ImGui::End();
+		DrawPrefabInspectorWindow();
 		DrawPrefabOpenConfirmation();
 		return;
 	}
@@ -11159,6 +11278,11 @@ void ImGuiManager::DrawPrefabWindow() {
 		++prefabPreviewFramingSerial_;
 	}
 	ImGui::EndDisabled();
+	ImGui::SameLine();
+	if (ImGui::Button("Inspector")) {
+		showPrefabInspector_ = true;
+		prefabInspectorFocusRequested_ = true;
+	}
 	ImGui::SameLine();
 	if (ImGui::Button("Close")) {
 		windowOpen = false;
@@ -11295,45 +11419,24 @@ void ImGuiManager::DrawPrefabWindow() {
 	ImGui::Separator();
 	DrawPrefabPreview();
 	ImGui::Separator();
-	// Keep the pane height independent from the parent scroll offset. Component
-	// collapsing then changes only the Inspector child's own scroll range.
-	const float prefabWorkspaceHeight = std::clamp(
+	const float prefabHierarchyHeight = std::clamp(
 		ImGui::GetWindowHeight() * 0.5f,
 		260.0f,
 		640.0f
 	);
-	if (ImGui::BeginTable(
-		"PrefabWorkspace",
-		2,
-		ImGuiTableFlags_Resizable |
-			ImGuiTableFlags_BordersInnerV |
-			ImGuiTableFlags_SizingStretchProp
+	if (ImGui::BeginChild(
+		"PrefabHierarchyPane",
+		ImVec2(0.0f, prefabHierarchyHeight),
+		ImGuiChildFlags_AlwaysUseWindowPadding |
+			ImGuiChildFlags_Borders
 	)) {
-		ImGui::TableSetupColumn("Hierarchy", ImGuiTableColumnFlags_WidthFixed, 250.0f);
-		ImGui::TableSetupColumn("Inspector", ImGuiTableColumnFlags_WidthStretch);
-		ImGui::TableNextColumn();
-		if (ImGui::BeginChild(
-			"PrefabHierarchyPane",
-			ImVec2(0.0f, prefabWorkspaceHeight),
-			ImGuiChildFlags_AlwaysUseWindowPadding
-		)) {
-			ImGui::SeparatorText("Hierarchy");
-			DrawPrefabHierarchy();
-		}
-		ImGui::EndChild();
-		ImGui::TableNextColumn();
-		if (ImGui::BeginChild(
-			"PrefabInspectorPane",
-			ImVec2(0.0f, prefabWorkspaceHeight),
-			ImGuiChildFlags_AlwaysUseWindowPadding
-		)) {
-			ImGui::SeparatorText("Inspector");
-			DrawPrefabInspector();
-		}
-		ImGui::EndChild();
-		ImGui::EndTable();
+		ImGui::SeparatorText("Hierarchy");
+		DrawPrefabHierarchy();
 	}
+	ImGui::EndChild();
 
+	ImGui::End();
+	DrawPrefabInspectorWindow();
 	const bool editingInteractionActive =
 		ImGui::IsAnyItemActive() ||
 		ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
@@ -11341,7 +11444,6 @@ void ImGuiManager::DrawPrefabWindow() {
 		ImGui::IsMouseDown(ImGuiMouseButton_Middle) ||
 		ImGuizmo::IsUsing();
 	prefabEditorSession_->EndEditFrame(!editingInteractionActive);
-	ImGui::End();
 	if (!variantOpenRequest.empty()) {
 		RequestOpenPrefab(variantOpenRequest);
 	}
@@ -11387,6 +11489,44 @@ void ImGuiManager::DrawPrefabWindow() {
 		ImGui::EndPopup();
 	}
 	DrawPrefabOpenConfirmation();
+}
+
+void ImGuiManager::DrawPrefabInspectorWindow() {
+	if (!showPrefabInspector_) {
+		return;
+	}
+
+	if (prefabInspectorFocusRequested_) {
+		ImGui::SetNextWindowFocus();
+		prefabInspectorFocusRequested_ = false;
+	}
+	bool windowOpen = true;
+	const bool inspectorContentsVisible = ImGui::Begin(
+		"Prefab Inspector",
+		&windowOpen
+	);
+	prefabKeyboardFocusThisFrame_ |= ImGui::IsWindowFocused(
+		ImGuiFocusedFlags_RootAndChildWindows
+	);
+	if (!inspectorContentsVisible) {
+		ImGui::End();
+		showPrefabInspector_ = windowOpen;
+		return;
+	}
+
+	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
+		ImGui::TextDisabled("Open a Prefab to inspect its Entities.");
+	} else {
+		const std::string prefabFileName = PathToUtf8(
+			PathFromUtf8(prefabEditorSession_->GetFilePath()).filename()
+		);
+		ImGui::TextDisabled("%s", prefabFileName.c_str());
+		ImGui::Separator();
+		DrawPrefabInspector();
+	}
+
+	ImGui::End();
+	showPrefabInspector_ = windowOpen;
 }
 
 void ImGuiManager::DrawPrefabPreview() {
@@ -11478,6 +11618,10 @@ void ImGuiManager::DrawPrefabPreview() {
 	if (ImGui::Checkbox("Grid", &prefabGridVisible_)) {
 		SaveEditorSettings();
 	}
+	ImGui::SameLine();
+	if (ImGui::Checkbox("Axis", &prefabAxisVisible_)) {
+		SaveEditorSettings();
+	}
 	ImGui::PopID();
 
 	const float availableWidth = (std::max)(
@@ -11559,11 +11703,21 @@ void ImGuiManager::DrawPrefabPreview() {
 			}
 		}
 		DrawPrefabGizmo(imageMin.x, imageMin.y, imageSize.x, imageSize.y);
-		if (&GetPrefabStageDocument() != &document) {
+		if (prefabAxisVisible_) {
+			DrawWorldAxisIndicator(
+				imageMin,
+				ImVec2(
+					imageMin.x + imageSize.x,
+					imageMin.y + imageSize.y
+				),
+				prefabPreviewViewMatrix_
+			);
+		}
+		if (prefabAnimationPreviewActive_) {
 			ImGui::GetWindowDrawList()->AddText(
 				ImVec2(imageMin.x + 8.0f, imageMin.y + 8.0f),
-				IM_COL32(255, 210, 90, 255),
-				"Animation Preview: Transform Gizmo is disabled."
+				IM_COL32(130, 220, 150, 255),
+				"Animation Preview: Gizmo writes a key at the current time."
 			);
 		}
 		if (
@@ -11593,6 +11747,193 @@ void ImGuiManager::DrawPrefabPreview() {
 	DrawPrefabAnimationTimeline();
 }
 
+void ImGuiManager::DrawWorldAxisIndicator(
+	const ImVec2& imageMin,
+	const ImVec2& imageMax,
+	const Matrix4x4& viewMatrix
+) const {
+	const float width = imageMax.x - imageMin.x;
+	const float height = imageMax.y - imageMin.y;
+	if (width < 80.0f || height < 80.0f) {
+		return;
+	}
+
+	// View MatrixでWorld軸をCamera空間へ変換するため、Cameraを回しても
+	// 色とラベルが常にWorld X/Y/Zの向きを示す。表示専用で入力は受け取らない。
+	const ImVec2 center(imageMax.x - 34.0f, imageMax.y - 34.0f);
+	constexpr float kAxisLength = 22.0f;
+	constexpr float kBackgroundRadius = 27.0f;
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->AddCircleFilled(center, kBackgroundRadius, IM_COL32(12, 15, 19, 190));
+	drawList->AddCircle(center, kBackgroundRadius, IM_COL32(210, 220, 230, 170));
+
+	struct AxisStyle {
+		const char* label;
+		ImU32 color;
+		Vector3 worldDirection;
+	};
+	const AxisStyle axes[] = {
+		{ "X", IM_COL32(235, 78, 78, 255), { 1.0f, 0.0f, 0.0f } },
+		{ "Y", IM_COL32(98, 210, 105, 255), { 0.0f, 1.0f, 0.0f } },
+		{ "Z", IM_COL32(83, 145, 245, 255), { 0.0f, 0.0f, 1.0f } }
+	};
+	for (const AxisStyle& axis : axes) {
+		const float viewX =
+			axis.worldDirection.x * viewMatrix.m[0][0] +
+			axis.worldDirection.y * viewMatrix.m[1][0] +
+			axis.worldDirection.z * viewMatrix.m[2][0];
+		const float viewY =
+			axis.worldDirection.x * viewMatrix.m[0][1] +
+			axis.worldDirection.y * viewMatrix.m[1][1] +
+			axis.worldDirection.z * viewMatrix.m[2][1];
+		const ImVec2 direction(viewX, -viewY);
+		const float directionLength = std::sqrt(
+			direction.x * direction.x + direction.y * direction.y
+		);
+		const ImVec2 endpoint(
+			center.x + direction.x * kAxisLength,
+			center.y + direction.y * kAxisLength
+		);
+		drawList->AddLine(center, endpoint, axis.color, 2.5f);
+		drawList->AddCircleFilled(endpoint, 3.5f, axis.color);
+
+		const ImVec2 labelSize = ImGui::CalcTextSize(axis.label);
+		const ImVec2 labelOffset = directionLength > 0.001f
+			? ImVec2(
+				direction.x / directionLength * 5.0f,
+				direction.y / directionLength * 5.0f
+			)
+			: ImVec2(4.0f, 4.0f);
+		drawList->AddText(
+			ImVec2(
+				endpoint.x + labelOffset.x - labelSize.x * 0.5f,
+				endpoint.y + labelOffset.y - labelSize.y * 0.5f
+			),
+			axis.color,
+			axis.label
+		);
+	}
+}
+
+void ImGuiManager::HandleEditShortcuts() {
+	const ImGuiIO& io = ImGui::GetIO();
+	if (
+		!io.KeyCtrl ||
+		io.WantTextInput ||
+		ImGui::IsAnyItemActive()
+	) {
+		return;
+	}
+
+	const bool saveRequested = ImGui::IsKeyPressed(ImGuiKey_S, false);
+	const bool undoRequested =
+		!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false);
+	const bool redoRequested =
+		ImGui::IsKeyPressed(ImGuiKey_Y, false) ||
+		(io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false));
+	if (!saveRequested && !undoRequested && !redoRequested) {
+		return;
+	}
+
+	if (
+		prefabKeyboardFocusThisFrame_ &&
+		prefabEditorSession_ &&
+		prefabEditorSession_->IsOpen()
+	) {
+		if (saveRequested && prefabEditorSession_->Save()) {
+			InvalidateProjectCache();
+		}
+		if (undoRequested) {
+			prefabEditorSession_->Undo();
+		}
+		if (redoRequested) {
+			prefabEditorSession_->Redo();
+		}
+		return;
+	}
+
+	if (!editorSession_ || !editorSession_->IsEditing()) {
+		return;
+	}
+	if (saveRequested) {
+		editorSession_->Save();
+	}
+	if (undoRequested) {
+		editorSession_->Undo();
+	}
+	if (redoRequested) {
+		editorSession_->Redo();
+	}
+}
+
+void ImGuiManager::DrawSceneDebugLabels(
+	const ImVec2& imageMin,
+	const ImVec2& imageMax,
+	const Matrix4x4& viewProjectionMatrix
+) const {
+	const float width = imageMax.x - imageMin.x;
+	const float height = imageMax.y - imageMin.y;
+	if (width <= 1.0f || height <= 1.0f) {
+		return;
+	}
+
+	const std::vector<DebugRenderer::WorldLabel>& labels =
+		DebugRenderer::GetInstance()->GetWorldLabels();
+	if (labels.empty()) {
+		return;
+	}
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->PushClipRect(imageMin, imageMax, true);
+	for (const DebugRenderer::WorldLabel& label : labels) {
+		const Vector3& position = label.position;
+		const float clipX =
+			position.x * viewProjectionMatrix.m[0][0] +
+			position.y * viewProjectionMatrix.m[1][0] +
+			position.z * viewProjectionMatrix.m[2][0] +
+			viewProjectionMatrix.m[3][0];
+		const float clipY =
+			position.x * viewProjectionMatrix.m[0][1] +
+			position.y * viewProjectionMatrix.m[1][1] +
+			position.z * viewProjectionMatrix.m[2][1] +
+			viewProjectionMatrix.m[3][1];
+		const float clipZ =
+			position.x * viewProjectionMatrix.m[0][2] +
+			position.y * viewProjectionMatrix.m[1][2] +
+			position.z * viewProjectionMatrix.m[2][2] +
+			viewProjectionMatrix.m[3][2];
+		const float clipW =
+			position.x * viewProjectionMatrix.m[0][3] +
+			position.y * viewProjectionMatrix.m[1][3] +
+			position.z * viewProjectionMatrix.m[2][3] +
+			viewProjectionMatrix.m[3][3];
+		if (clipW <= 0.0001f || clipZ < 0.0f || clipZ > clipW) {
+			continue;
+		}
+
+		const float ndcX = clipX / clipW;
+		const float ndcY = clipY / clipW;
+		if (ndcX < -1.0f || ndcX > 1.0f || ndcY < -1.0f || ndcY > 1.0f) {
+			continue;
+		}
+		const ImVec2 screenPosition{
+			imageMin.x + (ndcX + 1.0f) * 0.5f * width,
+			imageMin.y + (1.0f - ndcY) * 0.5f * height
+		};
+		drawList->AddText(
+			ImVec2(screenPosition.x + 7.0f, screenPosition.y - 7.0f),
+			ImGui::ColorConvertFloat4ToU32(ImVec4(
+				label.color.x,
+				label.color.y,
+				label.color.z,
+				label.color.w
+			)),
+			label.text.c_str()
+		);
+	}
+	drawList->PopClipRect();
+}
+
 void ImGuiManager::DrawPrefabAnimationTimeline() {
 	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
 		return;
@@ -11607,6 +11948,8 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		prefabAnimationPreviewTime_ = 0.0f;
 		prefabAnimationPreviewPlaying_ = false;
 		prefabAnimationPreviewActive_ = false;
+		prefabTransformPoseAddTime_ = 0.0f;
+		prefabTransformPoseStatus_.clear();
 	}
 
 	const SceneDocument& document = prefabEditorSession_->GetDocument();
@@ -11644,6 +11987,8 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		prefabAnimationPreviewTime_ = 0.0f;
 		prefabAnimationPreviewPlaying_ = false;
 		prefabAnimationPreviewActive_ = false;
+		prefabTransformPoseAddTime_ = 0.0f;
+		prefabTransformPoseStatus_.clear();
 	}
 
 	if (ImGui::BeginCombo(
@@ -11665,6 +12010,8 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 				prefabAnimationPreviewPlaying_ = false;
 				prefabAnimationPreviewActive_ =
 					!animators[index].component->prefabAnimationClips.empty();
+				prefabTransformPoseAddTime_ = 0.0f;
+				prefabTransformPoseStatus_.clear();
 			}
 			ImGui::PopID();
 		}
@@ -11703,6 +12050,8 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 				prefabAnimationPreviewTime_ = 0.0f;
 				prefabAnimationPreviewPlaying_ = false;
 				prefabAnimationPreviewActive_ = true;
+				prefabTransformPoseAddTime_ = 0.0f;
+				prefabTransformPoseStatus_.clear();
 			}
 			ImGui::PopID();
 		}
@@ -11980,6 +12329,655 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 	RebuildPrefabAnimationPreviewDocument();
 }
 
+void ImGuiManager::DrawPrefabTransformPoseInspector(SceneEntity& entity) {
+	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
+		return;
+	}
+
+	SceneDocument& document = prefabEditorSession_->GetDocument();
+	SceneEntity* owner = document.FindEntity(
+		prefabAnimationPreviewOwnerEntityId_
+	);
+	SceneComponent* animator = owner
+		? FindComponent(*owner, "PrefabAnimator")
+		: nullptr;
+	if (
+		!animator ||
+		!animator->enabled ||
+		prefabAnimationPreviewClipIndex_ < 0 ||
+		prefabAnimationPreviewClipIndex_ >=
+			static_cast<int>(animator->prefabAnimationClips.size())
+	) {
+		return;
+	}
+
+	ScenePrefabAnimationClip& clip =
+		animator->prefabAnimationClips[prefabAnimationPreviewClipIndex_];
+	const float duration = (std::max)(clip.duration, 0.001f);
+	constexpr float kKeyTimeTolerance = 0.005f;
+	constexpr float kRadiansToDegrees = 57.2957795f;
+	constexpr float kDegreesToRadians = 0.0174532925f;
+
+	const auto resolveTrackTargetId = [&](const SceneAnimationTrack& track) {
+		if (track.targetEntityId != 0) {
+			if (const SceneEntity* byId =
+				document.FindEntity(track.targetEntityId)) {
+				return byId->id;
+			}
+		}
+		if (!track.targetEntityName.empty()) {
+			if (const SceneEntity* byName =
+				document.FindEntityByName(track.targetEntityName)) {
+				return byName->id;
+			}
+		}
+		return owner->id;
+	};
+	const auto propertyIndex = [](const std::string& property) {
+		if (property == "LocalPosition") {
+			return 0;
+		}
+		if (property == "LocalRotation") {
+			return 1;
+		}
+		if (property == "LocalScale") {
+			return 2;
+		}
+		return -1;
+	};
+	const auto propertyName = [](int index) -> const char* {
+		return index == 0
+			? "LocalPosition"
+			: index == 1 ? "LocalRotation" : "LocalScale";
+	};
+
+	struct PoseKeyRef {
+		int trackIndex = -1;
+		int keyIndex = -1;
+	};
+	struct TransformPose {
+		float time = 0.0f;
+		PoseKeyRef keys[3];
+	};
+	struct TimedKeyRef {
+		float time = 0.0f;
+		int property = -1;
+		int trackIndex = -1;
+		int keyIndex = -1;
+	};
+
+	std::vector<TimedKeyRef> transformKeys;
+	for (size_t trackIndex = 0; trackIndex < clip.tracks.size(); ++trackIndex) {
+		const SceneAnimationTrack& track = clip.tracks[trackIndex];
+		const int property = propertyIndex(track.property);
+		if (property < 0 || resolveTrackTargetId(track) != entity.id) {
+			continue;
+		}
+		for (size_t keyIndex = 0; keyIndex < track.keyframes.size(); ++keyIndex) {
+			transformKeys.push_back({
+				track.keyframes[keyIndex].time,
+				property,
+				static_cast<int>(trackIndex),
+				static_cast<int>(keyIndex)
+			});
+		}
+	}
+	std::stable_sort(
+		transformKeys.begin(),
+		transformKeys.end(),
+		[](const TimedKeyRef& left, const TimedKeyRef& right) {
+			return left.time < right.time;
+		}
+	);
+
+	std::vector<TransformPose> poses;
+	for (const TimedKeyRef& key : transformKeys) {
+		if (
+			poses.empty() ||
+			std::abs(poses.back().time - key.time) > kKeyTimeTolerance
+		) {
+			poses.push_back({});
+			poses.back().time = key.time;
+		}
+		PoseKeyRef& destination = poses.back().keys[key.property];
+		if (destination.trackIndex < 0) {
+			destination.trackIndex = key.trackIndex;
+			destination.keyIndex = key.keyIndex;
+		}
+	}
+
+	const auto authoringValue = [&](int property) {
+		return property == 0
+			? entity.transform.translate
+			: property == 1
+				? MakeEulerFromQuaternion(entity.transform.rotate)
+				: entity.transform.scale;
+	};
+	const auto resolvePoseValue = [&](const TransformPose& pose, int property) {
+		const PoseKeyRef& key = pose.keys[property];
+		if (key.trackIndex >= 0 && key.keyIndex >= 0) {
+			return clip.tracks[key.trackIndex].keyframes[key.keyIndex].value;
+		}
+
+		Vector3 value = authoringValue(property);
+		float latestTime = -1.0f;
+		for (size_t trackIndex = 0;
+			trackIndex < clip.tracks.size();
+			++trackIndex) {
+			const SceneAnimationTrack& track = clip.tracks[trackIndex];
+			if (
+				propertyIndex(track.property) != property ||
+				resolveTrackTargetId(track) != entity.id
+			) {
+				continue;
+			}
+			for (const SceneAnimationKeyframe& keyframe : track.keyframes) {
+				if (
+					keyframe.time <= pose.time + kKeyTimeTolerance &&
+					keyframe.time > latestTime
+				) {
+					latestTime = keyframe.time;
+					value = keyframe.value;
+				}
+			}
+		}
+		return value;
+	};
+	const auto ensureTrack = [&](int property) {
+		for (size_t trackIndex = 0;
+			trackIndex < clip.tracks.size();
+			++trackIndex) {
+			SceneAnimationTrack& track = clip.tracks[trackIndex];
+			if (
+				track.property == propertyName(property) &&
+				resolveTrackTargetId(track) == entity.id
+			) {
+				return static_cast<int>(trackIndex);
+			}
+		}
+		SceneAnimationTrack track{};
+		track.targetEntityId = entity.id;
+		track.targetEntityName = entity.name;
+		track.property = propertyName(property);
+		clip.tracks.push_back(std::move(track));
+		return static_cast<int>(clip.tracks.size() - 1);
+	};
+	const auto upsertKey = [&](int property, float time, const Vector3& value) {
+		SceneAnimationTrack& track = clip.tracks[ensureTrack(property)];
+		for (SceneAnimationKeyframe& keyframe : track.keyframes) {
+			if (std::abs(keyframe.time - time) <= kKeyTimeTolerance) {
+				keyframe.value = value;
+				return;
+			}
+		}
+		track.keyframes.push_back({ time, value });
+		std::stable_sort(
+			track.keyframes.begin(),
+			track.keyframes.end(),
+			[](const SceneAnimationKeyframe& left,
+				const SceneAnimationKeyframe& right) {
+				return left.time < right.time;
+			}
+		);
+	};
+	const auto sortTrack = [&](int trackIndex) {
+		if (trackIndex < 0) {
+			return;
+		}
+		std::stable_sort(
+			clip.tracks[trackIndex].keyframes.begin(),
+			clip.tracks[trackIndex].keyframes.end(),
+			[](const SceneAnimationKeyframe& left,
+				const SceneAnimationKeyframe& right) {
+				return left.time < right.time;
+			}
+		);
+	};
+	const auto activatePreviewAt = [&](float time) {
+		prefabAnimationPreviewTime_ = std::clamp(time, 0.0f, duration);
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = true;
+	};
+
+	ImGui::SeparatorText("Transform Poses");
+	ImGui::TextDisabled("Model Forward: -Z");
+	ImGui::SameLine();
+	ImGui::TextDisabled("%s / %s", owner->name.c_str(), clip.name.c_str());
+	prefabTransformPoseAddTime_ = std::clamp(
+		prefabTransformPoseAddTime_,
+		0.0f,
+		duration
+	);
+	ImGui::SetNextItemWidth(120.0f);
+	if (ImGui::DragFloat(
+		"New Pose Time",
+		&prefabTransformPoseAddTime_,
+		0.01f,
+		0.0f,
+		duration,
+		"%.3f s"
+	)) {
+		prefabTransformPoseStatus_.clear();
+	}
+	ImGui::SameLine();
+	if (ImGui::SmallButton("Use Preview Time")) {
+		prefabTransformPoseAddTime_ = std::clamp(
+			prefabAnimationPreviewTime_,
+			0.0f,
+			duration
+		);
+		prefabTransformPoseStatus_.clear();
+	}
+	if (ImGui::Button("Add Pose")) {
+		const float time = std::clamp(
+			prefabTransformPoseAddTime_,
+			0.0f,
+			duration
+		);
+		const TransformPose* existingPose = nullptr;
+		for (const TransformPose& pose : poses) {
+			if (std::abs(pose.time - time) <= kKeyTimeTolerance) {
+				existingPose = &pose;
+				break;
+			}
+		}
+		if (existingPose) {
+			char message[160]{};
+			std::snprintf(
+				message,
+				sizeof(message),
+				"A Pose already exists at %.3f s. Choose another time or use Complete Pose.",
+				existingPose->time
+			);
+			prefabTransformPoseStatus_ = message;
+			activatePreviewAt(existingPose->time);
+		} else {
+			TransformPose newPose{};
+			newPose.time = time;
+			for (int property = 0; property < 3; ++property) {
+				upsertKey(property, time, resolvePoseValue(newPose, property));
+			}
+			document.MarkDirty();
+			activatePreviewAt(time);
+			char message[96]{};
+			std::snprintf(
+				message,
+				sizeof(message),
+				"Added Transform Pose at %.3f s.",
+				time
+			);
+			prefabTransformPoseStatus_ = message;
+		}
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled("Adds Position, Rotation, and Scale at New Pose Time.");
+	if (!prefabTransformPoseStatus_.empty()) {
+		ImGui::TextWrapped("%s", prefabTransformPoseStatus_.c_str());
+	}
+	std::string interpolationPreview;
+	bool hasTransformTrack = false;
+	bool mixedInterpolation = false;
+	for (const SceneAnimationTrack& track : clip.tracks) {
+		if (
+			propertyIndex(track.property) < 0 ||
+			resolveTrackTargetId(track) != entity.id
+		) {
+			continue;
+		}
+		const std::string easing = track.easing.empty()
+			? "SmoothStep"
+			: track.easing;
+		if (!hasTransformTrack) {
+			interpolationPreview = easing;
+			hasTransformTrack = true;
+		} else if (interpolationPreview != easing) {
+			mixedInterpolation = true;
+		}
+	}
+	if (mixedInterpolation) {
+		interpolationPreview = "Mixed";
+	}
+	ImGui::BeginDisabled(!hasTransformTrack);
+	if (ImGui::BeginCombo(
+		"Default Easing (Transform Tracks)",
+		interpolationPreview.empty() ? "SmoothStep" : interpolationPreview.c_str()
+	)) {
+		for (const char* easing : {
+			"Linear", "EaseIn", "EaseOut", "EaseInOut", "SmoothStep"
+		}) {
+			if (ImGui::Selectable(easing, interpolationPreview == easing)) {
+				for (SceneAnimationTrack& track : clip.tracks) {
+					if (
+						propertyIndex(track.property) >= 0 &&
+						resolveTrackTargetId(track) == entity.id
+					) {
+						track.easing = easing;
+					}
+				}
+				document.MarkDirty();
+			}
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::EndDisabled();
+
+	if (poses.empty()) {
+		ImGui::TextDisabled("No Transform Pose keys for the selected Entity.");
+		return;
+	}
+
+	for (size_t poseIndex = 0; poseIndex < poses.size(); ++poseIndex) {
+		const TransformPose& pose = poses[poseIndex];
+		const bool complete =
+			pose.keys[0].trackIndex >= 0 &&
+			pose.keys[1].trackIndex >= 0 &&
+			pose.keys[2].trackIndex >= 0;
+		const bool hasNextPose = poseIndex + 1 < poses.size();
+		const bool nextComplete = hasNextPose &&
+			poses[poseIndex + 1].keys[0].trackIndex >= 0 &&
+			poses[poseIndex + 1].keys[1].trackIndex >= 0 &&
+			poses[poseIndex + 1].keys[2].trackIndex >= 0;
+		ImGui::PushID(static_cast<int>(poseIndex));
+		const char* state = complete ? "Transform Pose" : "Partial Pose";
+		if (ImGui::TreeNodeEx(
+			"Pose",
+			ImGuiTreeNodeFlags_DefaultOpen,
+			"%s  %.3f s",
+			state,
+			pose.time
+		)) {
+			float editedTime = pose.time;
+			if (ImGui::DragFloat(
+				"Time", &editedTime, 0.01f, 0.0f, duration, "%.3f s"
+			)) {
+				editedTime = std::clamp(editedTime, 0.0f, duration);
+				for (const PoseKeyRef& key : pose.keys) {
+					if (key.trackIndex >= 0 && key.keyIndex >= 0) {
+						clip.tracks[key.trackIndex].keyframes[key.keyIndex].time = editedTime;
+						sortTrack(key.trackIndex);
+					}
+				}
+				document.MarkDirty();
+				prefabAnimationPreviewTime_ = editedTime;
+				prefabAnimationPreviewPlaying_ = false;
+				prefabAnimationPreviewActive_ = true;
+			}
+
+			Vector3 position = resolvePoseValue(pose, 0);
+			Vector3 rotationDegrees = resolvePoseValue(pose, 1);
+			rotationDegrees.x *= kRadiansToDegrees;
+			rotationDegrees.y *= kRadiansToDegrees;
+			rotationDegrees.z *= kRadiansToDegrees;
+			Vector3 scale = resolvePoseValue(pose, 2);
+			if (ImGui::DragFloat3("Position", &position.x, 0.01f)) {
+				upsertKey(0, pose.time, position);
+				document.MarkDirty();
+				activatePreviewAt(pose.time);
+			}
+			if (ImGui::DragFloat3("Rotation (Degrees)", &rotationDegrees.x, 0.1f)) {
+				rotationDegrees.x *= kDegreesToRadians;
+				rotationDegrees.y *= kDegreesToRadians;
+				rotationDegrees.z *= kDegreesToRadians;
+				upsertKey(1, pose.time, rotationDegrees);
+				document.MarkDirty();
+				activatePreviewAt(pose.time);
+			}
+			if (ImGui::DragFloat3("Scale", &scale.x, 0.01f)) {
+				upsertKey(2, pose.time, scale);
+				document.MarkDirty();
+				activatePreviewAt(pose.time);
+			}
+
+			if (hasNextPose) {
+				const TransformPose& nextPose = poses[poseIndex + 1];
+				ImGui::SeparatorText("To Next Pose");
+				ImGui::TextDisabled(
+					"%.3f s -> %.3f s",
+					pose.time,
+					nextPose.time
+				);
+				if (!complete || !nextComplete) {
+					ImGui::TextDisabled(
+						"Complete both Poses to edit this interval."
+					);
+				} else {
+					std::string segmentEasing;
+					bool segmentEasingInitialized = false;
+					bool mixedSegmentEasing = false;
+					for (const PoseKeyRef& key : pose.keys) {
+						const std::string& easing = clip.tracks[key.trackIndex]
+							.keyframes[key.keyIndex].easingToNext;
+						if (!segmentEasingInitialized) {
+							segmentEasing = easing;
+							segmentEasingInitialized = true;
+						} else if (segmentEasing != easing) {
+							mixedSegmentEasing = true;
+						}
+					}
+					const char* segmentEasingPreview = mixedSegmentEasing
+						? "Mixed"
+						: segmentEasing.empty()
+							? "Track Default"
+							: segmentEasing.c_str();
+					if (ImGui::BeginCombo(
+						"Easing To Next",
+						segmentEasingPreview
+					)) {
+						if (ImGui::Selectable(
+							"Track Default",
+							!mixedSegmentEasing && segmentEasing.empty()
+						)) {
+							for (const PoseKeyRef& key : pose.keys) {
+								clip.tracks[key.trackIndex]
+									.keyframes[key.keyIndex].easingToNext.clear();
+							}
+							document.MarkDirty();
+							activatePreviewAt((pose.time + nextPose.time) * 0.5f);
+						}
+						for (const char* easing : {
+							"Linear", "EaseIn", "EaseOut", "EaseInOut", "SmoothStep"
+						}) {
+							if (ImGui::Selectable(
+								easing,
+								!mixedSegmentEasing && segmentEasing == easing
+							)) {
+								for (const PoseKeyRef& key : pose.keys) {
+									clip.tracks[key.trackIndex]
+										.keyframes[key.keyIndex].easingToNext = easing;
+								}
+								document.MarkDirty();
+								activatePreviewAt((pose.time + nextPose.time) * 0.5f);
+							}
+						}
+						ImGui::EndCombo();
+					}
+
+					SceneAnimationKeyframe& positionStartKey =
+						clip.tracks[pose.keys[0].trackIndex]
+							.keyframes[pose.keys[0].keyIndex];
+					ImGui::SetNextItemWidth(220.0f);
+					if (ImGui::DragFloat3(
+						"Position Bulge Offset",
+						&positionStartKey.positionBulge.x,
+						0.01f
+					)) {
+						document.MarkDirty();
+						activatePreviewAt((pose.time + nextPose.time) * 0.5f);
+					}
+					if (ImGui::SmallButton("Reset Bulge")) {
+						positionStartKey.positionBulge = {};
+						document.MarkDirty();
+						activatePreviewAt((pose.time + nextPose.time) * 0.5f);
+					}
+					ImGui::TextDisabled(
+						"Local offset from the straight path at the interpolation midpoint."
+					);
+				}
+			}
+
+			if (!complete && ImGui::SmallButton("Complete Pose")) {
+				for (int property = 0; property < 3; ++property) {
+					if (pose.keys[property].trackIndex < 0) {
+						upsertKey(
+							property,
+							pose.time,
+							resolvePoseValue(pose, property)
+						);
+					}
+				}
+				document.MarkDirty();
+				activatePreviewAt(pose.time);
+			}
+			if (!complete) {
+				ImGui::SameLine();
+				ImGui::TextDisabled("Missing Transform keys are kept unchanged.");
+			}
+
+			if (ImGui::SmallButton("Edit with Gizmo")) {
+				prefabAnimationPreviewTime_ = pose.time;
+				prefabAnimationPreviewPlaying_ = false;
+				prefabAnimationPreviewActive_ = true;
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Duplicate")) {
+				float duplicateTime = (std::min)(pose.time + 0.1f, duration);
+				if (std::abs(duplicateTime - pose.time) <= kKeyTimeTolerance) {
+					duplicateTime = (std::max)(pose.time - 0.1f, 0.0f);
+				}
+				if (std::abs(duplicateTime - pose.time) > kKeyTimeTolerance) {
+					for (int property = 0; property < 3; ++property) {
+						upsertKey(
+							property,
+							duplicateTime,
+							resolvePoseValue(pose, property)
+						);
+					}
+					document.MarkDirty();
+					prefabAnimationPreviewTime_ = duplicateTime;
+					prefabAnimationPreviewPlaying_ = false;
+					prefabAnimationPreviewActive_ = true;
+				}
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Delete")) {
+				for (int property = 0; property < 3; ++property) {
+					const PoseKeyRef& key = pose.keys[property];
+					if (key.trackIndex >= 0 && key.keyIndex >= 0) {
+						std::vector<SceneAnimationKeyframe>& keys =
+							clip.tracks[key.trackIndex].keyframes;
+						keys.erase(keys.begin() + key.keyIndex);
+					}
+				}
+				document.MarkDirty();
+			}
+			ImGui::TreePop();
+		}
+		ImGui::PopID();
+	}
+
+	ImGui::TextDisabled(
+		"Track Default is used when an interval has no Easing To Next override."
+	);
+}
+
+bool ImGuiManager::WritePrefabAnimationGizmoKey(
+	uint64_t entityId,
+	const std::string& property,
+	const Vector3& value
+) {
+	if (
+		!prefabAnimationPreviewActive_ ||
+		!prefabEditorSession_ ||
+		!prefabEditorSession_->IsOpen()
+	) {
+		return false;
+	}
+
+	SceneDocument& document = prefabEditorSession_->GetDocument();
+	SceneEntity* targetEntity = document.FindEntity(entityId);
+	SceneEntity* owner = document.FindEntity(
+		prefabAnimationPreviewOwnerEntityId_
+	);
+	SceneComponent* animator = owner
+		? FindComponent(*owner, "PrefabAnimator")
+		: nullptr;
+	if (
+		!targetEntity ||
+		!animator ||
+		!animator->enabled ||
+		prefabAnimationPreviewClipIndex_ < 0 ||
+		prefabAnimationPreviewClipIndex_ >=
+			static_cast<int>(animator->prefabAnimationClips.size())
+	) {
+		return false;
+	}
+
+	ScenePrefabAnimationClip& clip =
+		animator->prefabAnimationClips[prefabAnimationPreviewClipIndex_];
+	auto resolveTrackTargetId = [&](const SceneAnimationTrack& track) {
+		if (track.targetEntityId != 0) {
+			if (const SceneEntity* byId =
+				document.FindEntity(track.targetEntityId)) {
+				return byId->id;
+			}
+		}
+		if (!track.targetEntityName.empty()) {
+			if (const SceneEntity* byName =
+				document.FindEntityByName(track.targetEntityName)) {
+				return byName->id;
+			}
+		}
+		return owner->id;
+	};
+
+	SceneAnimationTrack* destinationTrack = nullptr;
+	for (SceneAnimationTrack& track : clip.tracks) {
+		if (
+			track.property == property &&
+			resolveTrackTargetId(track) == entityId
+		) {
+			destinationTrack = &track;
+			break;
+		}
+	}
+	if (!destinationTrack) {
+		SceneAnimationTrack track{};
+		track.targetEntityId = targetEntity->id;
+		track.targetEntityName = targetEntity->name;
+		track.property = property;
+		clip.tracks.push_back(std::move(track));
+		destinationTrack = &clip.tracks.back();
+	}
+
+	const float keyTime = std::clamp(
+		prefabAnimationPreviewTime_,
+		0.0f,
+		(std::max)(clip.duration, 0.0f)
+	);
+	constexpr float kKeyTimeTolerance = 0.005f;
+	for (SceneAnimationKeyframe& keyframe : destinationTrack->keyframes) {
+		if (std::abs(keyframe.time - keyTime) > kKeyTimeTolerance) {
+			continue;
+		}
+		prefabAnimationPreviewTime_ = keyframe.time;
+		keyframe.value = value;
+		document.MarkDirty();
+		return true;
+	}
+
+	destinationTrack->keyframes.push_back({ keyTime, value });
+	std::stable_sort(
+		destinationTrack->keyframes.begin(),
+		destinationTrack->keyframes.end(),
+		[](const SceneAnimationKeyframe& left,
+			const SceneAnimationKeyframe& right) {
+			return left.time < right.time;
+		}
+	);
+	document.MarkDirty();
+	return true;
+}
+
 void ImGuiManager::DrawPrefabGizmo(
 	float x,
 	float y,
@@ -11989,7 +12987,6 @@ void ImGuiManager::DrawPrefabGizmo(
 	if (
 		!prefabEditorSession_ ||
 		!prefabEditorSession_->IsOpen() ||
-		&GetPrefabStageDocument() != &prefabEditorSession_->GetDocument() ||
 		!prefabPreviewCameraValid_ ||
 		prefabSelectedEntityId_ == 0 ||
 		width <= 1.0f ||
@@ -11998,17 +12995,26 @@ void ImGuiManager::DrawPrefabGizmo(
 		return;
 	}
 
-	SceneDocument& document = prefabEditorSession_->GetDocument();
-	SceneEntity* entity = document.FindEntity(prefabSelectedEntityId_);
-	if (!entity || entity->locked) {
+	SceneDocument& sourceDocument = prefabEditorSession_->GetDocument();
+	const SceneDocument& stageDocument = GetPrefabStageDocument();
+	SceneEntity* sourceEntity = sourceDocument.FindEntity(prefabSelectedEntityId_);
+	const SceneEntity* stageEntity = stageDocument.FindEntity(
+		prefabSelectedEntityId_
+	);
+	if (!sourceEntity || !stageEntity || sourceEntity->locked) {
 		return;
 	}
 
-	const SceneEntity* parentEntity = document.FindEntity(entity->parentId);
+	const SceneEntity* parentEntity = stageDocument.FindEntity(
+		stageEntity->parentId
+	);
 	const Matrix4x4 parentWorld = parentEntity
-		? ResolveSceneWorldMatrix(document, *parentEntity)
+		? ResolveSceneWorldMatrix(stageDocument, *parentEntity)
 		: MakeIdentity4x4();
-	Matrix4x4 worldMatrix = ResolveSceneWorldMatrix(document, *entity);
+	Matrix4x4 worldMatrix = ResolveSceneWorldMatrix(
+		stageDocument,
+		*stageEntity
+	);
 	const ImGuizmo::OPERATION operation = gizmoOperation_ == 0
 		? ImGuizmo::TRANSLATE
 		: gizmoOperation_ == 1
@@ -12068,14 +13074,35 @@ void ImGuiManager::DrawPrefabGizmo(
 	)) {
 		return;
 	}
-	if (gizmoOperation_ == 0) {
-		entity->transform.translate = localTranslate;
-	} else if (gizmoOperation_ == 1) {
-		entity->transform.rotate = localRotate;
-	} else {
-		entity->transform.scale = localScale;
+	if (prefabAnimationPreviewActive_) {
+		// Preview Documentは一時表示専用。操作値はSource Clipの現在時刻へ
+		// 書き戻し、次のPreview再構築で表示へ反映する。
+		prefabAnimationPreviewPlaying_ = false;
+		const std::string property = gizmoOperation_ == 0
+			? "LocalPosition"
+			: gizmoOperation_ == 1
+				? "LocalRotation"
+				: "LocalScale";
+		const Vector3 value = gizmoOperation_ == 0
+			? localTranslate
+			: gizmoOperation_ == 1
+				? MakeEulerFromQuaternion(localRotate)
+				: localScale;
+		WritePrefabAnimationGizmoKey(
+			sourceEntity->id,
+			property,
+			value
+		);
+		return;
 	}
-	document.MarkDirty();
+	if (gizmoOperation_ == 0) {
+		sourceEntity->transform.translate = localTranslate;
+	} else if (gizmoOperation_ == 1) {
+		sourceEntity->transform.rotate = localRotate;
+	} else {
+		sourceEntity->transform.scale = localScale;
+	}
+	sourceDocument.MarkDirty();
 }
 
 bool ImGuiManager::PickPrefabEntity(
@@ -12850,6 +13877,7 @@ void ImGuiManager::DrawPrefabInspector() {
 	if (entityChanged) {
 		document.MarkDirty();
 	}
+	DrawPrefabTransformPoseInspector(*entity);
 
 	if (const SceneComponent* meshRenderer =
 		FindEnabledComponent(*entity, "MeshRenderer")) {
@@ -13131,18 +14159,50 @@ void ImGuiManager::DrawPrefabInspector() {
 								}
 								ImGui::EndCombo();
 							}
+							if (track.property != "Active" && ImGui::BeginCombo(
+								"Easing",
+								track.easing.empty() ? "SmoothStep" : track.easing.c_str()
+							)) {
+								for (const char* easing : {
+									"Linear", "EaseIn", "EaseOut", "EaseInOut",
+									"SmoothStep"
+								}) {
+									if (ImGui::Selectable(easing, track.easing == easing)) {
+										track.easing = easing;
+										changed = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
 							int removeKeyIndex = -1;
+							bool keyframeTimeChanged = false;
 							for (size_t keyIndex = 0;
 								keyIndex < track.keyframes.size();
 								++keyIndex) {
 								SceneAnimationKeyframe& key = track.keyframes[keyIndex];
 								ImGui::PushID(static_cast<int>(keyIndex));
-								changed |= ImGui::DragFloat(
+								if (ImGui::DragFloat(
 									"Time", &key.time, 0.01f, 0.0f, clip.duration
-								);
-								changed |= ImGui::DragFloat3(
-									"Value", &key.value.x, 0.01f
-								);
+								)) {
+									key.time = std::clamp(key.time, 0.0f, clip.duration);
+									keyframeTimeChanged = true;
+									changed = true;
+								}
+								if (track.property == "Active") {
+									bool activeValue = key.value.x >= 0.5f;
+									if (ImGui::Checkbox("Active Value", &activeValue)) {
+										key.value.x = activeValue ? 1.0f : 0.0f;
+										changed = true;
+									}
+								} else {
+									changed |= ImGui::DragFloat3(
+										track.property == "LocalRotation"
+											? "Euler Value (Radians)"
+											: "Value",
+										&key.value.x,
+										0.01f
+									);
+								}
 								ImGui::SameLine();
 								if (ImGui::SmallButton("X")) {
 									removeKeyIndex = static_cast<int>(keyIndex);
@@ -13155,8 +14215,26 @@ void ImGuiManager::DrawPrefabInspector() {
 								);
 								changed = true;
 							}
+							if (keyframeTimeChanged) {
+								std::stable_sort(
+									track.keyframes.begin(),
+									track.keyframes.end(),
+									[](const SceneAnimationKeyframe& left,
+										const SceneAnimationKeyframe& right) {
+										return left.time < right.time;
+									}
+								);
+							}
 							if (ImGui::SmallButton("Add Keyframe")) {
-								track.keyframes.push_back(SceneAnimationKeyframe{});
+								SceneAnimationKeyframe keyframe = track.keyframes.empty()
+									? SceneAnimationKeyframe{}
+									: track.keyframes.back();
+								keyframe.time = track.keyframes.empty()
+									? 0.0f
+									: (std::min)(keyframe.time + 0.1f, clip.duration);
+								keyframe.easingToNext.clear();
+								keyframe.positionBulge = {};
+								track.keyframes.push_back(keyframe);
 								changed = true;
 							}
 							ImGui::SameLine();

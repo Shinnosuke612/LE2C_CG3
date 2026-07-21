@@ -1113,10 +1113,23 @@ namespace {
 			for (const SceneAnimationTrack& track : clip.tracks) {
 				json keyframes = json::array();
 				for (const SceneAnimationKeyframe& keyframe : track.keyframes) {
-					keyframes.push_back({
+					json keyframeValue = {
 						{ "time", keyframe.time },
 						{ "value", VectorToJson(keyframe.value) }
-					});
+					};
+					if (!keyframe.easingToNext.empty()) {
+						keyframeValue["easingToNext"] = keyframe.easingToNext;
+					}
+					if (
+						keyframe.positionBulge.x != 0.0f ||
+						keyframe.positionBulge.y != 0.0f ||
+						keyframe.positionBulge.z != 0.0f
+					) {
+						keyframeValue["positionBulge"] = VectorToJson(
+							keyframe.positionBulge
+						);
+					}
+					keyframes.push_back(std::move(keyframeValue));
 				}
 				tracks.push_back({
 					{ "targetEntityId", track.targetEntityId },
@@ -1295,6 +1308,11 @@ namespace {
 			result["minPitch"] = component.thirdPersonMinPitch;
 			result["maxPitch"] = component.thirdPersonMaxPitch;
 			result["occlusionMargin"] = component.thirdPersonOcclusionMargin;
+			result["occlusionMask"] = component.thirdPersonOcclusionMask;
+			result["occlusionPullInSmoothTime"] =
+				component.thirdPersonOcclusionPullInSmoothTime;
+			result["occlusionRecoverySmoothTime"] =
+				component.thirdPersonOcclusionRecoverySmoothTime;
 			result["positionSmoothTime"] =
 				component.thirdPersonPositionSmoothTime;
 			result["rotationSmoothTime"] =
@@ -1731,6 +1749,16 @@ namespace {
 								keyframe.value = JsonToVector(
 									keyframeValue.at("value"),
 									keyframe.value
+								);
+							}
+							keyframe.easingToNext = keyframeValue.value(
+								"easingToNext",
+								keyframe.easingToNext
+							);
+							if (keyframeValue.contains("positionBulge")) {
+								keyframe.positionBulge = JsonToVector(
+									keyframeValue.at("positionBulge"),
+									keyframe.positionBulge
 								);
 							}
 							track.keyframes.push_back(keyframe);
@@ -2196,6 +2224,24 @@ namespace {
 				component.thirdPersonOcclusionMargin = value.value(
 					"occlusionMargin",
 					component.thirdPersonOcclusionMargin
+				);
+				component.thirdPersonOcclusionMask = value.value(
+					"occlusionMask",
+					component.thirdPersonOcclusionMask
+				);
+				component.thirdPersonOcclusionPullInSmoothTime = (std::max)(
+					value.value(
+						"occlusionPullInSmoothTime",
+						component.thirdPersonOcclusionPullInSmoothTime
+					),
+					0.0f
+				);
+				component.thirdPersonOcclusionRecoverySmoothTime = (std::max)(
+					value.value(
+						"occlusionRecoverySmoothTime",
+						component.thirdPersonOcclusionRecoverySmoothTime
+					),
+					0.0f
 				);
 				component.thirdPersonPositionSmoothTime = (std::max)(
 					value.value(
@@ -6886,6 +6932,14 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->thirdPersonOcclusionMargin = 0.0f;
 				changed = true;
 			}
+			if (found->thirdPersonOcclusionPullInSmoothTime < 0.0f) {
+				found->thirdPersonOcclusionPullInSmoothTime = 0.0f;
+				changed = true;
+			}
+			if (found->thirdPersonOcclusionRecoverySmoothTime < 0.0f) {
+				found->thirdPersonOcclusionRecoverySmoothTime = 0.0f;
+				changed = true;
+			}
 			if (found->thirdPersonPositionSmoothTime < 0.0f) {
 				found->thirdPersonPositionSmoothTime = 0.0f;
 				changed = true;
@@ -7350,6 +7404,9 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.thirdPersonMinPitch = -1.45f;
 		component.thirdPersonMaxPitch = 1.35f;
 		component.thirdPersonOcclusionMargin = 0.45f;
+		component.thirdPersonOcclusionMask = 0xffffffffu;
+		component.thirdPersonOcclusionPullInSmoothTime = 0.04f;
+		component.thirdPersonOcclusionRecoverySmoothTime = 0.18f;
 		component.thirdPersonPositionSmoothTime = 0.12f;
 		component.thirdPersonRotationSmoothTime = 0.08f;
 		component.thirdPersonYawReference = "World";

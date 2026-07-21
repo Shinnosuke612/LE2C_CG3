@@ -31,6 +31,8 @@ void ThirdPersonCameraController::Initialize(Camera* camera) {
 	focusInitialized_ = false;
 	isAimMode_ = false;
 	targetYawInitialized_ = false;
+	occlusionDistanceInitialized_ = false;
+	occlusionActive_ = false;
 	distance_ = normalDistance_;
 	targetDistance_ = normalDistance_;
 	if (camera_) {
@@ -74,6 +76,9 @@ void ThirdPersonCameraController::SyncFromCameraPose(
 	distance_ = std::clamp(distance, minDistance_, maxDistance_);
 	targetDistance_ = distance_;
 	normalDistance_ = distance_;
+	occlusionDistance_ = distance_;
+	occlusionDistanceInitialized_ = true;
+	occlusionActive_ = false;
 }
 
 Vector3 ThirdPersonCameraController::GetForwardDirection() const {
@@ -92,6 +97,9 @@ void ThirdPersonCameraController::SetDistance(float distance) {
 	normalDistance_ = std::clamp(distance, minDistance_, maxDistance_);
 	targetDistance_ = normalDistance_;
 	distance_ = normalDistance_;
+	occlusionDistance_ = distance_;
+	occlusionDistanceInitialized_ = false;
+	occlusionActive_ = false;
 }
 
 void ThirdPersonCameraController::SetAimDistance(float distance) {
@@ -211,16 +219,63 @@ void ThirdPersonCameraController::Update(
 	Vector3 ray = Math::Subtract(desiredCameraPosition, currentFocus_);
 	const float rayLength = Math::Length(ray);
 	Vector3 cameraPosition = desiredCameraPosition;
-	if (occlusionEnabled_ && rayLength > 0.0001f) {
+	if (rayLength > 0.0001f) {
 		const Vector3 direction = Math::Multiply(ray, 1.0f / rayLength);
-		const float safeDistance = ResolveOcclusionDistance(
-			currentFocus_,
-			desiredCameraPosition,
-			obstacleColliders
-		);
+		float cameraDistance = rayLength;
+		if (occlusionEnabled_) {
+			const float safeDistance = ResolveOcclusionDistance(
+				currentFocus_,
+				desiredCameraPosition,
+				obstacleColliders
+			);
+			if (!occlusionDistanceInitialized_) {
+				occlusionDistance_ = rayLength;
+				occlusionDistanceInitialized_ = true;
+			}
+
+			const bool obstructed = safeDistance < rayLength - 0.0001f;
+			if (obstructed) {
+				occlusionActive_ = true;
+			}
+			if (obstructed || occlusionActive_) {
+				// 以前は安全距離を即時適用していたため、ColliderがRayへ入った
+				// 1FrameでCameraが跳ねた。寄りと復帰を別速度で補間する。
+				const float desiredOcclusionDistance = obstructed
+					? safeDistance
+					: rayLength;
+				const float smoothTime =
+					desiredOcclusionDistance < occlusionDistance_
+					? occlusionPullInSmoothTime_
+					: occlusionRecoverySmoothTime_;
+				occlusionDistance_ +=
+					(desiredOcclusionDistance - occlusionDistance_) * SmoothAlpha(
+						smoothTime, deltaTime
+					);
+				if (
+					!obstructed &&
+					std::abs(rayLength - occlusionDistance_) <= 0.001f
+				) {
+					occlusionDistance_ = rayLength;
+					occlusionActive_ = false;
+				}
+			} else {
+				// 通常Zoomの補間へ二重に遅延を加えない。
+				occlusionDistance_ = rayLength;
+			}
+			occlusionDistance_ = std::clamp(
+				occlusionDistance_,
+				minDistance_,
+				rayLength
+			);
+			cameraDistance = occlusionDistance_;
+		} else {
+			occlusionDistance_ = rayLength;
+			occlusionDistanceInitialized_ = true;
+			occlusionActive_ = false;
+		}
 		cameraPosition = Math::Add(
 			currentFocus_,
-			Math::Multiply(direction, safeDistance)
+			Math::Multiply(direction, cameraDistance)
 		);
 	}
 

@@ -11,10 +11,6 @@
 #include <algorithm>
 #include <cmath>
 
-#if defined(_DEBUG) || defined(DEVELOPMENT)
-#include "../../externals/imgui/imgui.h"
-#endif
-
 namespace {
 
 Vector4 MultiplyColor(const Vector4& left, const Vector4& right) {
@@ -30,42 +26,6 @@ bool IsSameColor(const Vector4& left, const Vector4& right) {
 	return left.x == right.x && left.y == right.y &&
 		left.z == right.z && left.w == right.w;
 }
-
-#if defined(_DEBUG) || defined(DEVELOPMENT)
-bool ProjectSkeletonPoint(
-	const Matrix4x4& skeletonSpaceMatrix,
-	const Matrix4x4& objectWorldMatrix,
-	const Matrix4x4& viewProjectionMatrix,
-	const ImGuiViewport& viewport,
-	ImVec2& screenPosition
-) {
-	const Matrix4x4 worldMatrix = Multiply(
-		skeletonSpaceMatrix,
-		objectWorldMatrix
-	);
-	const Matrix4x4 worldViewProjectionMatrix = Multiply(
-		worldMatrix,
-		viewProjectionMatrix
-	);
-
-	const float clipX = worldViewProjectionMatrix.m[3][0];
-	const float clipY = worldViewProjectionMatrix.m[3][1];
-	const float clipZ = worldViewProjectionMatrix.m[3][2];
-	const float clipW = worldViewProjectionMatrix.m[3][3];
-
-	if (clipW <= 0.0001f || clipZ < 0.0f || clipZ > clipW) {
-		return false;
-	}
-
-	const float ndcX = clipX / clipW;
-	const float ndcY = clipY / clipW;
-	screenPosition = {
-		viewport.Pos.x + (ndcX + 1.0f) * 0.5f * viewport.Size.x,
-		viewport.Pos.y + (1.0f - ndcY) * 0.5f * viewport.Size.y
-	};
-	return true;
-}
-#endif
 
 } // namespace
 
@@ -332,7 +292,6 @@ void Object3d::DrawSkeletonDebug(
 	const Vector4 lineColor = { 1.0f, 0.65f, 0.12f, 1.0f };
 	const Vector4 jointColor = { 0.2f, 0.85f, 1.0f, 1.0f };
 	const Vector4 rootColor = { 1.0f, 0.95f, 0.35f, 1.0f };
-	const Matrix4x4& viewProjection = camera->GetViewProjectionMatrix();
 	const Matrix4x4& objectWorldMatrix = objectWorldMatrix_;
 
 	std::vector<Matrix4x4> jointWorldMatrices(skeleton_.joints.size());
@@ -359,6 +318,14 @@ void Object3d::DrawSkeletonDebug(
 				: jointRadius,
 			joint.index == skeleton_.root ? rootColor : jointColor
 		);
+		if (drawJointNames) {
+			// Screen座標への投影はScene画像Rectを所有するImGuiManagerへ委譲する。
+			debugRenderer->AddWorldLabel(
+				jointPosition,
+				joint.name,
+				{ 1.0f, 1.0f, 1.0f, 1.0f }
+			);
+		}
 
 		if (drawJointAxes) {
 			debugRenderer->AddAxis(jointWorldMatrix, axisLength);
@@ -380,33 +347,6 @@ void Object3d::DrawSkeletonDebug(
 		}
 	}
 
-	if (drawJointNames) {
-		ImGuiViewport* viewport = ImGui::GetMainViewport();
-		if (viewport) {
-			ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
-			for (const Joint& joint : skeleton_.joints) {
-				ImVec2 screenPosition{};
-				if (!ProjectSkeletonPoint(
-					joint.skeletonSpaceMatrix,
-					objectWorldMatrix,
-					viewProjection,
-					*viewport,
-					screenPosition
-				)) {
-					continue;
-				}
-
-			drawList->AddText(
-				{
-					screenPosition.x + 7.0f,
-					screenPosition.y - 7.0f
-				},
-				IM_COL32_WHITE,
-				joint.name.c_str()
-			);
-			}
-		}
-	}
 #else
 	(void)drawJointNames;
 	(void)drawJointAxes;

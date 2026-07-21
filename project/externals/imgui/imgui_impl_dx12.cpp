@@ -1095,6 +1095,28 @@ void ImGui_ImplDX12_NewFrame()
 // If you are new to dear imgui or creating a new binding for dear imgui, it is recommended that you completely ignore this section first..
 //--------------------------------------------------------------------------------------------------------
 
+static DXGI_FORMAT ImGui_ImplDX12_GetViewportSwapChainFormat(DXGI_FORMAT rtv_format)
+{
+    // Flip-model swap chains reject SRGB buffer formats. The application uses
+    // an UNORM back buffer with an SRGB RTV, so secondary viewports must keep
+    // that resource/view format split instead of copying the RTV format here.
+    if (rtv_format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+        return DXGI_FORMAT_R8G8B8A8_UNORM;
+    if (rtv_format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
+        return DXGI_FORMAT_B8G8R8A8_UNORM;
+    if (rtv_format == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB)
+        return DXGI_FORMAT_B8G8R8X8_UNORM;
+    return rtv_format;
+}
+
+static void ImGui_ImplDX12_CreateViewportRenderTargetView(ImGui_ImplDX12_Data* bd, ID3D12Resource* back_buffer, D3D12_CPU_DESCRIPTOR_HANDLE descriptor)
+{
+    D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {};
+    rtv_desc.Format = bd->RTVFormat;
+    rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+    bd->pd3dDevice->CreateRenderTargetView(back_buffer, &rtv_desc, descriptor);
+}
+
 static void ImGui_ImplDX12_CreateWindow(ImGuiViewport* viewport)
 {
     ImGui_ImplDX12_Data* bd = ImGui_ImplDX12_GetBackendData();
@@ -1130,7 +1152,7 @@ static void ImGui_ImplDX12_CreateWindow(ImGuiViewport* viewport)
     sd1.BufferCount = bd->numFramesInFlight;
     sd1.Width = (UINT)viewport->Size.x;
     sd1.Height = (UINT)viewport->Size.y;
-    sd1.Format = bd->RTVFormat;
+    sd1.Format = ImGui_ImplDX12_GetViewportSwapChainFormat(bd->RTVFormat);
     sd1.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     sd1.SampleDesc.Count = 1;
     sd1.SampleDesc.Quality = 0;
@@ -1146,13 +1168,18 @@ static void ImGui_ImplDX12_CreateWindow(ImGuiViewport* viewport)
     IDXGISwapChain1* swap_chain = nullptr;
     res = bd->pdxgiFactory->CreateSwapChainForHwnd(vd->CommandQueue, hwnd, &sd1, nullptr, nullptr, &swap_chain);
     IM_ASSERT(res == S_OK);
+    if (FAILED(res) || swap_chain == nullptr)
+        return;
     res = bd->pdxgiFactory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES); // Disable e.g. Alt+Enter
     IM_ASSERT(res == S_OK);
 
     // Or swapChain.As(&mSwapChain)
     IM_ASSERT(vd->SwapChain == nullptr);
-    swap_chain->QueryInterface(IID_PPV_ARGS(&vd->SwapChain));
+    res = swap_chain->QueryInterface(IID_PPV_ARGS(&vd->SwapChain));
     swap_chain->Release();
+    IM_ASSERT(res == S_OK);
+    if (FAILED(res) || vd->SwapChain == nullptr)
+        return;
 
     // Create the render targets and waitable object
     if (vd->SwapChain)
@@ -1179,7 +1206,7 @@ static void ImGui_ImplDX12_CreateWindow(ImGuiViewport* viewport)
         {
             IM_ASSERT(vd->FrameCtx[i].RenderTarget == nullptr);
             vd->SwapChain->GetBuffer(i, IID_PPV_ARGS(&back_buffer));
-            bd->pd3dDevice->CreateRenderTargetView(back_buffer, nullptr, vd->FrameCtx[i].RenderTargetCpuDescriptors);
+            ImGui_ImplDX12_CreateViewportRenderTargetView(bd, back_buffer, vd->FrameCtx[i].RenderTargetCpuDescriptors);
             vd->FrameCtx[i].RenderTarget = back_buffer;
         }
 
@@ -1252,6 +1279,9 @@ static void ImGui_ImplDX12_SetWindowSize(ImGuiViewport* viewport, ImVec2 size)
     ImGui_ImplDX12_Data* bd = ImGui_ImplDX12_GetBackendData();
     ImGui_ImplDX12_ViewportData* vd = (ImGui_ImplDX12_ViewportData*)viewport->RendererUserData;
 
+    if (vd == nullptr || vd->SwapChain == nullptr)
+        return;
+
     ImGui_WaitForPendingOperations(vd);
 
     for (UINT i = 0; i < bd->numFramesInFlight; i++)
@@ -1266,7 +1296,7 @@ static void ImGui_ImplDX12_SetWindowSize(ImGuiViewport* viewport, ImVec2 size)
         for (UINT i = 0; i < bd->numFramesInFlight; i++)
         {
             vd->SwapChain->GetBuffer(i, IID_PPV_ARGS(&back_buffer));
-            bd->pd3dDevice->CreateRenderTargetView(back_buffer, nullptr, vd->FrameCtx[i].RenderTargetCpuDescriptors);
+            ImGui_ImplDX12_CreateViewportRenderTargetView(bd, back_buffer, vd->FrameCtx[i].RenderTargetCpuDescriptors);
             vd->FrameCtx[i].RenderTarget = back_buffer;
         }
     }
@@ -1276,6 +1306,9 @@ static void ImGui_ImplDX12_RenderWindow(ImGuiViewport* viewport, void*)
 {
     ImGui_ImplDX12_Data* bd = ImGui_ImplDX12_GetBackendData();
     ImGui_ImplDX12_ViewportData* vd = (ImGui_ImplDX12_ViewportData*)viewport->RendererUserData;
+
+    if (vd == nullptr || vd->SwapChain == nullptr)
+        return;
 
     ImGui_ImplDX12_FrameContext* frame_context = ImGui_WaitForNextFrameContext(vd);
     UINT back_buffer_idx = vd->SwapChain->GetCurrentBackBufferIndex();
@@ -1319,6 +1352,8 @@ static void ImGui_ImplDX12_SwapBuffers(ImGuiViewport* viewport, void*)
     ImGui_ImplDX12_Data* bd = ImGui_ImplDX12_GetBackendData();
     ImGui_ImplDX12_ViewportData* vd = (ImGui_ImplDX12_ViewportData*)viewport->RendererUserData;
 
+    if (vd == nullptr || vd->SwapChain == nullptr)
+        return;
     vd->SwapChain->Present(0, bd->tearingSupport ? DXGI_PRESENT_ALLOW_TEARING : 0);
 }
 

@@ -66,13 +66,15 @@ void DebugRenderer::Finalize() {
 	vertices_.clear();
 	depthTestedVertices_.clear();
 	solidVertices_.clear();
+	worldLabels_.clear();
 	vertices_.shrink_to_fit();
 	depthTestedVertices_.shrink_to_fit();
 	solidVertices_.shrink_to_fit();
+	worldLabels_.shrink_to_fit();
 	mappedVertices_ = nullptr;
 	mappedDepthTestedVertices_ = nullptr;
 	mappedSolidVertices_ = nullptr;
-	cameraData_ = nullptr;
+	mappedCameraData_ = nullptr;
 	vertexResource_.Reset();
 	depthTestedVertexResource_.Reset();
 	solidVertexResource_.Reset();
@@ -83,13 +85,31 @@ void DebugRenderer::Finalize() {
 	rootSignature_.Reset();
 	dxCommon_ = nullptr;
 	maxVertexCount_ = 0;
+	drawSlotIndex_ = 0;
 	isInitialized_ = false;
 }
 
 void DebugRenderer::Clear() {
+	ClearGeometry();
+	worldLabels_.clear();
+	drawSlotIndex_ = 0;
+}
+
+void DebugRenderer::ClearGeometry() {
 	vertices_.clear();
 	depthTestedVertices_.clear();
 	solidVertices_.clear();
+}
+
+void DebugRenderer::AddWorldLabel(
+	const Vector3& position,
+	const std::string& text,
+	const Vector4& color
+) {
+	if (text.empty()) {
+		return;
+	}
+	worldLabels_.push_back({ position, color, text });
 }
 
 void DebugRenderer::AddLine(
@@ -339,12 +359,18 @@ void DebugRenderer::Draw(const Camera* camera) {
 	if (
 		!isInitialized_ ||
 		!camera ||
+		drawSlotIndex_ >= kDrawSlotCount ||
 		vertices_.empty() &&
 		depthTestedVertices_.empty() &&
 		solidVertices_.empty()
 	) {
 		return;
 	}
+	const uint32_t drawSlot = drawSlotIndex_++;
+	const size_t vertexSlotOffset =
+		static_cast<size_t>(drawSlot) * maxVertexCount_;
+	const UINT64 vertexSlotByteOffset =
+		static_cast<UINT64>(vertexSlotOffset * sizeof(Vertex));
 
 	const uint32_t vertexCount = static_cast<uint32_t>(
 		(std::min)(
@@ -353,7 +379,11 @@ void DebugRenderer::Draw(const Camera* camera) {
 		)
 	);
 	if (vertexCount > 0) {
-		std::memcpy(mappedVertices_, vertices_.data(), sizeof(Vertex) * vertexCount);
+		std::memcpy(
+			mappedVertices_ + vertexSlotOffset,
+			vertices_.data(),
+			sizeof(Vertex) * vertexCount
+		);
 	}
 	const uint32_t depthTestedVertexCount = static_cast<uint32_t>(
 		(std::min)(
@@ -363,7 +393,7 @@ void DebugRenderer::Draw(const Camera* camera) {
 	);
 	if (depthTestedVertexCount > 0) {
 		std::memcpy(
-			mappedDepthTestedVertices_,
+			mappedDepthTestedVertices_ + vertexSlotOffset,
 			depthTestedVertices_.data(),
 			sizeof(Vertex) * depthTestedVertexCount
 		);
@@ -373,16 +403,30 @@ void DebugRenderer::Draw(const Camera* camera) {
 	);
 	if (solidVertexCount > 0) {
 		std::memcpy(
-			mappedSolidVertices_, solidVertices_.data(), sizeof(Vertex) * solidVertexCount
+			mappedSolidVertices_ + vertexSlotOffset,
+			solidVertices_.data(),
+			sizeof(Vertex) * solidVertexCount
 		);
 	}
-	cameraData_->viewProjection = camera->GetViewProjectionMatrix();
+	CameraData* cameraData = reinterpret_cast<CameraData*>(
+		mappedCameraData_ + static_cast<size_t>(drawSlot) * kCameraSlotSize
+	);
+	cameraData->viewProjection = camera->GetViewProjectionMatrix();
+
+	D3D12_VERTEX_BUFFER_VIEW vertexBufferView = vertexBufferView_;
+	vertexBufferView.BufferLocation += vertexSlotByteOffset;
+	D3D12_VERTEX_BUFFER_VIEW depthTestedVertexBufferView =
+		depthTestedVertexBufferView_;
+	depthTestedVertexBufferView.BufferLocation += vertexSlotByteOffset;
+	D3D12_VERTEX_BUFFER_VIEW solidVertexBufferView = solidVertexBufferView_;
+	solidVertexBufferView.BufferLocation += vertexSlotByteOffset;
 
 	ID3D12GraphicsCommandList* commandList = dxCommon_->GetCommandList();
 	commandList->SetGraphicsRootSignature(rootSignature_.Get());
 	commandList->SetGraphicsRootConstantBufferView(
 		0,
-		cameraResource_->GetGPUVirtualAddress()
+		cameraResource_->GetGPUVirtualAddress() +
+			static_cast<UINT64>(drawSlot) * kCameraSlotSize
 	);
 	if (depthTestedVertexCount > 0) {
 		commandList->SetPipelineState(depthTestedPipelineState_.Get());
@@ -390,20 +434,20 @@ void DebugRenderer::Draw(const Camera* camera) {
 		commandList->IASetVertexBuffers(
 			0,
 			1,
-			&depthTestedVertexBufferView_
+			&depthTestedVertexBufferView
 		);
 		commandList->DrawInstanced(depthTestedVertexCount, 1, 0, 0);
 	}
 	if (solidVertexCount > 0) {
 		commandList->SetPipelineState(solidPipelineState_.Get());
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		commandList->IASetVertexBuffers(0, 1, &solidVertexBufferView_);
+		commandList->IASetVertexBuffers(0, 1, &solidVertexBufferView);
 		commandList->DrawInstanced(solidVertexCount, 1, 0, 0);
 	}
 	if (vertexCount > 0) {
 		commandList->SetPipelineState(pipelineState_.Get());
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
-		commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
+		commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
 		commandList->DrawInstanced(vertexCount, 1, 0, 0);
 	}
 }
@@ -546,7 +590,7 @@ void DebugRenderer::CreateGraphicsPipeline() {
 
 void DebugRenderer::CreateResources() {
 	vertexResource_ = dxCommon_->CreateBufferResource(
-		sizeof(Vertex) * maxVertexCount_
+		sizeof(Vertex) * maxVertexCount_ * kDrawSlotCount
 	);
 	vertexResource_->Map(
 		0,
@@ -561,7 +605,7 @@ void DebugRenderer::CreateResources() {
 	vertexBufferView_.StrideInBytes = sizeof(Vertex);
 
 	depthTestedVertexResource_ = dxCommon_->CreateBufferResource(
-		sizeof(Vertex) * maxVertexCount_
+		sizeof(Vertex) * maxVertexCount_ * kDrawSlotCount
 	);
 	depthTestedVertexResource_->Map(
 		0,
@@ -575,7 +619,7 @@ void DebugRenderer::CreateResources() {
 	depthTestedVertexBufferView_.StrideInBytes = sizeof(Vertex);
 
 	solidVertexResource_ = dxCommon_->CreateBufferResource(
-		sizeof(Vertex) * maxVertexCount_
+		sizeof(Vertex) * maxVertexCount_ * kDrawSlotCount
 	);
 	solidVertexResource_->Map(
 		0,
@@ -588,11 +632,18 @@ void DebugRenderer::CreateResources() {
 		static_cast<UINT>(sizeof(Vertex) * maxVertexCount_);
 	solidVertexBufferView_.StrideInBytes = sizeof(Vertex);
 
-	cameraResource_ = dxCommon_->CreateBufferResource(sizeof(CameraData));
+	cameraResource_ = dxCommon_->CreateBufferResource(
+		static_cast<size_t>(kCameraSlotSize) * kDrawSlotCount
+	);
 	cameraResource_->Map(
 		0,
 		nullptr,
-		reinterpret_cast<void**>(&cameraData_)
+		reinterpret_cast<void**>(&mappedCameraData_)
 	);
-	cameraData_->viewProjection = MakeIdentity4x4();
+	for (uint32_t drawSlot = 0; drawSlot < kDrawSlotCount; ++drawSlot) {
+		CameraData* cameraData = reinterpret_cast<CameraData*>(
+			mappedCameraData_ + static_cast<size_t>(drawSlot) * kCameraSlotSize
+		);
+		cameraData->viewProjection = MakeIdentity4x4();
+	}
 }

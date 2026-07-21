@@ -179,7 +179,7 @@
       "id": 5,
       "locked": false,
       "modelPath": "Cube.obj",
-      "name": "Entity",
+      "name": "Floor",
       "parentId": 0,
       "sprite": {
         "anchor": [
@@ -598,6 +598,9 @@
           "mouseSensitivity": 0.004999999888241291,
           "occlusionEnabled": true,
           "occlusionMargin": 0.44999998807907104,
+          "occlusionMask": 4294967295,
+          "occlusionPullInSmoothTime": 0.03999999910593033,
+          "occlusionRecoverySmoothTime": 0.18000000715255737,
           "positionSmoothTime": 0.11999999731779099,
           "rotationSmoothTime": 0.07999999821186066,
           "targetEntityId": 0,
@@ -616,7 +619,7 @@
           "fovY": 0.44999998807907104,
           "invertPitch": false,
           "invertYaw": false,
-          "isMain": false,
+          "isMain": true,
           "localId": 6,
           "nearClip": 0.10000000149011612,
           "type": "Camera"
@@ -1066,7 +1069,7 @@
           "fovY": 0.44999998807907104,
           "invertPitch": false,
           "invertYaw": false,
-          "isMain": true,
+          "isMain": false,
           "localId": 4,
           "nearClip": 0.10000000149011612,
           "type": "Camera"
@@ -1090,6 +1093,9 @@
           "mouseSensitivity": 0.004999999888241291,
           "occlusionEnabled": true,
           "occlusionMargin": 0.44999998807907104,
+          "occlusionMask": 4294967295,
+          "occlusionPullInSmoothTime": 0.03999999910593033,
+          "occlusionRecoverySmoothTime": 0.18000000715255737,
           "positionSmoothTime": 0.11999999731779099,
           "rotationSmoothTime": 0.07999999821186066,
           "targetEntityId": 0,
@@ -1232,7 +1238,7 @@
               ]
             },
             {
-              "actionId": "Builtin.MeleeAttack",
+              "actionId": "Builtin.MeleeComboAttack",
               "name": "Attack",
               "parameters": [
                 {
@@ -1247,8 +1253,18 @@
                 },
                 {
                   "boolValue": false,
-                  "entityId": 15,
-                  "entityName": "PlayerAttackHitBox",
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "NextState",
+                  "stringValue": "Attack2",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 21,
+                  "entityName": "PlayerWeaponHitBox",
                   "floatValue": 0.0,
                   "intValue": 0,
                   "name": "HitBox",
@@ -1262,7 +1278,7 @@
                   "floatValue": 0.0,
                   "intValue": 0,
                   "name": "Animation",
-                  "stringValue": "",
+                  "stringValue": "Attack1",
                   "type": "String"
                 },
                 {
@@ -1270,6 +1286,66 @@
                   "entityId": 0,
                   "entityName": "",
                   "floatValue": 0.11999999731779099,
+                  "intValue": 0,
+                  "name": "AnimationBlendIn",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 20,
+                  "entityName": "PlayerWeapon",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AnimationTarget",
+                  "stringValue": "",
+                  "type": "Entity"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "ReturnAnimation",
+                  "stringValue": "Idle",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.18000000715255737,
+                  "intValue": 0,
+                  "name": "ReturnAnimationBlend",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AttackInput",
+                  "stringValue": "Mouse Left",
+                  "type": "Input"
+                },
+                {
+                  "boolValue": true,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AnimateHitBox",
+                  "stringValue": "",
+                  "type": "Bool"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.30000001192092896,
                   "intValue": 0,
                   "name": "Windup",
                   "stringValue": "",
@@ -1279,7 +1355,233 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
+                  "floatValue": 0.2800000011920929,
+                  "intValue": 0,
+                  "name": "ActiveTime",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.3199999928474426,
+                  "intValue": 0,
+                  "name": "Recovery",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.44999998807907104,
+                  "intValue": 0,
+                  "name": "ComboWindowStart",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.18000000715255737,
+                  "intValue": 0,
+                  "name": "ComboInputBuffer",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.8199999928474426,
+                  "intValue": 0,
+                  "name": "ComboWindowEnd",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.8999999761581421,
+                  "intValue": 0,
+                  "name": "ComboTransitionTime",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
                   "floatValue": 0.2199999988079071,
+                  "intValue": 0,
+                  "name": "MotionStart",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.36000001430511475,
+                  "intValue": 0,
+                  "name": "MotionDuration",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.41999998688697815,
+                  "intValue": 0,
+                  "name": "ForwardDistance",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "SideDistance",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "MotionEasing",
+                  "stringValue": "EaseOut",
+                  "type": "String"
+                }
+              ]
+            },
+            {
+              "actionId": "Builtin.MeleeComboAttack",
+              "name": "Attack2",
+              "parameters": [
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "ReturnState",
+                  "stringValue": "Idle",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "NextState",
+                  "stringValue": "Attack3",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 21,
+                  "entityName": "PlayerWeaponHitBox",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "HitBox",
+                  "stringValue": "",
+                  "type": "Entity"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "Animation",
+                  "stringValue": "Attack2",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.07999999821186066,
+                  "intValue": 0,
+                  "name": "AnimationBlendIn",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 20,
+                  "entityName": "PlayerWeapon",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AnimationTarget",
+                  "stringValue": "",
+                  "type": "Entity"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "ReturnAnimation",
+                  "stringValue": "Idle",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.18000000715255737,
+                  "intValue": 0,
+                  "name": "ReturnAnimationBlend",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AttackInput",
+                  "stringValue": "Mouse Left",
+                  "type": "Input"
+                },
+                {
+                  "boolValue": true,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AnimateHitBox",
+                  "stringValue": "",
+                  "type": "Bool"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.1599999964237213,
+                  "intValue": 0,
+                  "name": "Windup",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.3400000035762787,
                   "intValue": 0,
                   "name": "ActiveTime",
                   "stringValue": "",
@@ -1294,6 +1596,282 @@
                   "name": "Recovery",
                   "stringValue": "",
                   "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.36000001430511475,
+                  "intValue": 0,
+                  "name": "ComboWindowStart",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.1599999964237213,
+                  "intValue": 0,
+                  "name": "ComboInputBuffer",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.7200000286102295,
+                  "intValue": 0,
+                  "name": "ComboWindowEnd",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.800000011920929,
+                  "intValue": 0,
+                  "name": "ComboTransitionTime",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.11999999731779099,
+                  "intValue": 0,
+                  "name": "MotionStart",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.4000000059604645,
+                  "intValue": 0,
+                  "name": "MotionDuration",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.18000000715255737,
+                  "intValue": 0,
+                  "name": "ForwardDistance",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": -0.11999999731779099,
+                  "intValue": 0,
+                  "name": "SideDistance",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "MotionEasing",
+                  "stringValue": "EaseInOut",
+                  "type": "String"
+                }
+              ]
+            },
+            {
+              "actionId": "Builtin.MeleeComboAttack",
+              "name": "Attack3",
+              "parameters": [
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "ReturnState",
+                  "stringValue": "Idle",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 21,
+                  "entityName": "PlayerWeaponHitBox",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "HitBox",
+                  "stringValue": "",
+                  "type": "Entity"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "Animation",
+                  "stringValue": "Attack3",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.07999999821186066,
+                  "intValue": 0,
+                  "name": "AnimationBlendIn",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 20,
+                  "entityName": "PlayerWeapon",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AnimationTarget",
+                  "stringValue": "",
+                  "type": "Entity"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "ReturnAnimation",
+                  "stringValue": "Idle",
+                  "type": "String"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.18000000715255737,
+                  "intValue": 0,
+                  "name": "ReturnAnimationBlend",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AttackInput",
+                  "stringValue": "Mouse Left",
+                  "type": "Input"
+                },
+                {
+                  "boolValue": true,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "AnimateHitBox",
+                  "stringValue": "",
+                  "type": "Bool"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.36000001430511475,
+                  "intValue": 0,
+                  "name": "Windup",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.6200000047683716,
+                  "intValue": 0,
+                  "name": "ActiveTime",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.27000001072883606,
+                  "intValue": 0,
+                  "name": "Recovery",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 1.25,
+                  "intValue": 0,
+                  "name": "ComboTransitionTime",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.3400000035762787,
+                  "intValue": 0,
+                  "name": "MotionStart",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.6200000047683716,
+                  "intValue": 0,
+                  "name": "MotionDuration",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.30000001192092896,
+                  "intValue": 0,
+                  "name": "ForwardDistance",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "SideDistance",
+                  "stringValue": "",
+                  "type": "Float"
+                },
+                {
+                  "boolValue": false,
+                  "entityId": 0,
+                  "entityName": "",
+                  "floatValue": 0.0,
+                  "intValue": 0,
+                  "name": "MotionEasing",
+                  "stringValue": "EaseInOut",
+                  "type": "String"
                 }
               ]
             }
@@ -1929,6 +2507,786 @@
           0.0,
           0.0,
           1.399999976158142
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "9y5Huh14gN/武器.pmx",
+          "type": "MeshRenderer"
+        },
+        {
+          "clips": [
+            {
+              "duration": 1.0,
+              "loop": true,
+              "name": "Idle",
+              "playOnStart": true,
+              "tracks": [
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.006000000052154064,
+                        1.0396881103515625,
+                        -2.5
+                      ]
+                    },
+                    {
+                      "time": 1.0,
+                      "value": [
+                        0.006000000052154064,
+                        1.0499999523162842,
+                        -2.5
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        1.5657933950424194,
+                        4.949979484081268e-06,
+                        3.140000104904175
+                      ]
+                    },
+                    {
+                      "time": 1.0,
+                      "value": [
+                        1.565999984741211,
+                        0.0,
+                        3.140000104904175
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    }
+                  ],
+                  "property": "Active",
+                  "targetEntityId": 21,
+                  "targetEntityName": "PlayerWeaponHitBox"
+                }
+              ]
+            },
+            {
+              "duration": 0.8999999761581421,
+              "loop": false,
+              "name": "Attack1",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "EaseInOut",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        2.5,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.4099999964237213,
+                      "value": [
+                        0.0,
+                        2.8420591354370117,
+                        -0.7670941948890686
+                      ]
+                    },
+                    {
+                      "time": 0.5199999809265137,
+                      "value": [
+                        0.0,
+                        0.6499999761581421,
+                        2.0899999141693115
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "EaseInOut",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        1.5707964897155762,
+                        0.0,
+                        3.141472816467285
+                      ]
+                    },
+                    {
+                      "time": 0.4099999964237213,
+                      "value": [
+                        1.1524107456207275,
+                        -0.08360686153173447,
+                        -2.9109408855438232
+                      ]
+                    },
+                    {
+                      "time": 0.5199999809265137,
+                      "value": [
+                        3.047461986541748,
+                        -8.409818263999114e-08,
+                        3.141592502593994
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.30000001192092896,
+                      "value": [
+                        1.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.5799999833106995,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.8999999761581421,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    }
+                  ],
+                  "property": "Active",
+                  "targetEntityId": 21,
+                  "targetEntityName": "PlayerWeaponHitBox"
+                },
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [],
+                  "property": "LocalScale",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                }
+              ]
+            },
+            {
+              "duration": 0.800000011920929,
+              "loop": false,
+              "name": "Attack2",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        2.200000047683716,
+                        1.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        0.0,
+                        1.0,
+                        2.200000047683716
+                      ]
+                    },
+                    {
+                      "time": 0.7200000286102295,
+                      "value": [
+                        -2.200000047683716,
+                        1.0,
+                        0.0
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        -1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        -3.1415927410125732,
+                        0.0,
+                        -1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.7200000286102295,
+                      "value": [
+                        -2.335184944968205e-05,
+                        1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.1599999964237213,
+                      "value": [
+                        1.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.5,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.800000011920929,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    }
+                  ],
+                  "property": "Active",
+                  "targetEntityId": 21,
+                  "targetEntityName": "PlayerWeaponHitBox"
+                },
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    }
+                  ],
+                  "property": "LocalScale",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                }
+              ]
+            },
+            {
+              "duration": 1.25,
+              "loop": false,
+              "name": "Attack3",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "EaseInOut",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        -0.550000011920929,
+                        1.0499999523162842,
+                        -0.8500000238418579
+                      ]
+                    },
+                    {
+                      "time": 0.25,
+                      "value": [
+                        -0.699999988079071,
+                        1.0,
+                        -0.5
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        1.0,
+                        1.100000023841858,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.5199999809265137,
+                      "value": [
+                        0.0,
+                        1.0499999523162842,
+                        1.0
+                      ]
+                    },
+                    {
+                      "time": 0.699999988079071,
+                      "value": [
+                        -1.0,
+                        1.0499999523162842,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.8799999952316284,
+                      "value": [
+                        0.0,
+                        1.0499999523162842,
+                        -0.800000011920929
+                      ]
+                    },
+                    {
+                      "time": 0.9800000190734863,
+                      "value": [
+                        0.800000011920929,
+                        1.0499999523162842,
+                        0.20000000298023224
+                      ]
+                    },
+                    {
+                      "time": 1.25,
+                      "value": [
+                        -0.550000011920929,
+                        1.0499999523162842,
+                        -0.8500000238418579
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.25,
+                        0.0,
+                        0.7799999713897705
+                      ]
+                    },
+                    {
+                      "time": 0.25,
+                      "value": [
+                        0.25,
+                        0.0,
+                        0.7799999713897705
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        0.0,
+                        -1.5700000524520874,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.5199999809265137,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.699999988079071,
+                      "value": [
+                        0.0,
+                        1.5700000524520874,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.8799999952316284,
+                      "value": [
+                        0.0,
+                        3.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.9800000190734863,
+                      "value": [
+                        0.0,
+                        -1.5700000524520874,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 1.25,
+                      "value": [
+                        0.25,
+                        0.0,
+                        0.7799999713897705
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.36000001430511475,
+                      "value": [
+                        1.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 0.9800000190734863,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 1.25,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    }
+                  ],
+                  "property": "Active",
+                  "targetEntityId": 21,
+                  "targetEntityName": "PlayerWeaponHitBox"
+                }
+              ]
+            }
+          ],
+          "enabled": true,
+          "localId": 2,
+          "type": "PrefabAnimator"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 20,
+      "locked": false,
+      "modelPath": "9y5Huh14gN/武器.pmx",
+      "name": "PlayerWeapon",
+      "parentId": 13,
+      "prefab": {
+        "assetId": "fa93a1e5-f5fb-4de2-9cb5-ac1c81c57eb7",
+        "instanceRootId": 20,
+        "links": [
+          {
+            "assetId": "fa93a1e5-f5fb-4de2-9cb5-ac1c81c57eb7",
+            "instanceRootId": 20,
+            "localId": 1,
+            "sourcePath": "resources/prefabs/PlayerWeapon.prefab.json"
+          }
+        ],
+        "localId": 1,
+        "sourcePath": "resources/prefabs/PlayerWeapon.prefab.json"
+      },
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -0.550000011920929,
+          1.0499999523162842,
+          -0.8500000238418579
+        ]
+      }
+    },
+    {
+      "active": false,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [
+            1.0,
+            0.20000000298023224,
+            0.10000000149011612,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 1,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            0.8999999761581421,
+            0.800000011920929,
+            1.2000000476837158
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "damage": 20.0,
+          "damageStatId": "hp",
+          "enabled": true,
+          "ignoreSameFaction": true,
+          "localId": 2,
+          "ownerEntityId": 0,
+          "ownerEntityName": "Player",
+          "poiseDamage": 0.0,
+          "poiseStatId": "poise",
+          "type": "HitBox"
+        },
+        {
+          "alignmentMode": "ManualOffset",
+          "enabled": true,
+          "inheritScale": true,
+          "jointName": "Ctr_Wpn_A",
+          "localId": 3,
+          "sourceJointName": "",
+          "targetEntityId": 20,
+          "targetEntityName": "PlayerWeapon",
+          "type": "BoneAttachment"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 21,
+      "locked": false,
+      "modelPath": "",
+      "name": "PlayerWeaponHitBox",
+      "parentId": 20,
+      "prefab": {
+        "assetId": "fa93a1e5-f5fb-4de2-9cb5-ac1c81c57eb7",
+        "instanceRootId": 20,
+        "links": [
+          {
+            "assetId": "fa93a1e5-f5fb-4de2-9cb5-ac1c81c57eb7",
+            "instanceRootId": 20,
+            "localId": 2,
+            "sourcePath": "resources/prefabs/PlayerWeapon.prefab.json"
+          }
+        ],
+        "localId": 2,
+        "sourcePath": "resources/prefabs/PlayerWeapon.prefab.json"
+      },
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cameras": [
+            {
+              "entityId": 1,
+              "entityName": "Main Camera"
+            },
+            {
+              "entityId": 7,
+              "entityName": "Elen"
+            },
+            {
+              "entityId": 13,
+              "entityName": "Player"
+            }
+          ],
+          "enabled": true,
+          "localId": 1,
+          "triggerKey": "F5",
+          "type": "CameraSwitcher",
+          "wrap": true
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 22,
+      "locked": false,
+      "modelPath": "",
+      "name": "Entity",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
         ]
       }
     }

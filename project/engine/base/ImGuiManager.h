@@ -23,6 +23,7 @@ class SceneCatalog;
 class SceneDocument;
 class SceneManager;
 class SceneTemplateRegistry;
+struct SceneEntity;
 enum class SceneBuildConfiguration : uint8_t;
 enum class SceneStartupMode : uint8_t;
 
@@ -200,6 +201,7 @@ private:
 	void DrawConsoleWindow();
 	void DrawLoadedScenesWindow();
 	void DrawPrefabWindow();
+	void DrawPrefabInspectorWindow();
 	void RequestOpenPrefab(const std::string& filePath, int historyIndex = -1);
 	bool OpenPrefab(const std::string& filePath, int historyIndex = -1);
 	void DrawPrefabOpenConfirmation();
@@ -220,15 +222,32 @@ private:
 	void ToggleFavoritePrefab(const PrefabAssetReference& reference);
 	void DrawPrefabPreview();
 	void DrawPrefabAnimationTimeline();
+	void DrawPrefabTransformPoseInspector(SceneEntity& entity);
 	void RebuildPrefabAnimationPreviewDocument();
 	const SceneDocument& GetPrefabStageDocument() const;
 	void DrawPrefabGizmo(float x, float y, float width, float height);
+	bool WritePrefabAnimationGizmoKey(
+		uint64_t entityId,
+		const std::string& property,
+		const Vector3& value
+	);
 	bool PickPrefabEntity(float x, float y, float width, float height);
 	void ValidateAllPrefabAssets();
 	void DrawPrefabDiagnostics();
 	void DrawPrefabHierarchy();
 	void DrawPrefabInspector();
+	void DrawWorldAxisIndicator(
+		const ImVec2& imageMin,
+		const ImVec2& imageMax,
+		const Matrix4x4& viewMatrix
+	) const;
+	void DrawSceneDebugLabels(
+		const ImVec2& imageMin,
+		const ImVec2& imageMax,
+		const Matrix4x4& viewProjectionMatrix
+	) const;
 	void DrawPlaybackControls();
+	void HandleEditShortcuts();
 	void DrawSceneGizmo(
 		float x,
 		float y,
@@ -305,8 +324,12 @@ private:
 	bool showConsole_ = true;
 	bool showLoadedScenes_ = true;
 	bool showPrefab_ = false;
+	bool showPrefabInspector_ = true;
+	bool prefabInspectorFocusRequested_ = false;
 	bool sceneGridVisible_ = true;
 	bool prefabGridVisible_ = true;
+	bool sceneAxisVisible_ = true;
+	bool prefabAxisVisible_ = true;
 	EditorFontPreset editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
 	float editorFontSize_ = 13.0f;
 	bool editorFontRebuildRequested_ = false;
@@ -450,6 +473,9 @@ private:
 	float prefabAnimationPreviewTime_ = 0.0f;
 	bool prefabAnimationPreviewPlaying_ = false;
 	bool prefabAnimationPreviewActive_ = false;
+	float prefabTransformPoseAddTime_ = 0.0f;
+	std::string prefabTransformPoseStatus_;
+	bool prefabKeyboardFocusThisFrame_ = false;
 	// ImGui 1.92以降はフォントデータをAtlasの寿命まで保持する必要がある。
 	std::vector<uint8_t> editorBaseFontData_;
 	std::vector<uint8_t> editorJapaneseFontData_;
