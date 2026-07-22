@@ -1,6 +1,7 @@
 // 役割: Sceneの物理Componentを実行状態へ反映し、物理ワールドを更新する。
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include "../SceneRuntimeObjectBinding.h"
@@ -35,6 +36,10 @@ public:
 		float deltaTime,
 		bool playing
 	);
+	void ResetBodies(
+		const std::vector<SceneRuntimeObjectBinding>& bindings,
+		const std::vector<uint64_t>& entityIds
+	) const;
 	void Clear();
 
 private:

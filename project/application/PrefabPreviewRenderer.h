@@ -26,6 +26,7 @@ public:
 		bool showJointAxes = false;
 		bool showColliders = true;
 		bool showCombatVolumes = true;
+		bool isolateSelectedCollider = false;
 		bool showGrid = true;
 	};
 
@@ -36,6 +37,7 @@ public:
 	void Render(
 		const std::string& assetPath,
 		const SceneDocument& document,
+		const SceneDocument* ghostDocument,
 		uint32_t width,
 		uint32_t height,
 		float yaw,
@@ -59,12 +61,14 @@ private:
 	};
 
 	void SyncModels(const SceneDocument& document);
+	void SyncGhostModels(const SceneDocument* document);
 	void UpdateFraming(
 		const SceneDocument& document,
 		const OverlayOptions& options
 	);
 	void DrawEditorOverlays(
 		const SceneDocument& document,
+		const SceneDocument* ghostDocument,
 		const OverlayOptions& options
 	);
 
@@ -73,6 +77,7 @@ private:
 	SceneRenderTarget* renderTarget_ = nullptr;
 	Camera* camera_ = nullptr;
 	std::unordered_map<uint64_t, ModelRuntime> models_;
+	std::unordered_map<uint64_t, ModelRuntime> ghostModels_;
 	std::string framedAssetPath_;
 	uint64_t appliedFramingSerial_ = 0;
 	bool framingInitialized_ = false;

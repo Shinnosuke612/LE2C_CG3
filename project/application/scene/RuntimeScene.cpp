@@ -199,6 +199,7 @@ void RuntimeScene::Update(float deltaTime)
 	const bool editing = executionContext && executionContext->IsEditing();
 	const bool playing = !executionContext || executionContext->IsPlaying();
 	SceneDocument* activeDocument = GetSceneDocument();
+	std::vector<uint64_t> spawnerResetEntityIds;
 
 	// 遷移が成立したフレームは旧Sceneの状態をこれ以上変更しない。
 	if (playing && activeDocument) {
@@ -256,6 +257,14 @@ void RuntimeScene::Update(float deltaTime)
 		projectileSystem_.FlushRemovals(*activeDocument);
 		// 保存値を実行時状態へ展開し、Transform AnimationをObject同期前に反映する。
 		statSystem_.Update(*activeDocument);
+		enemySpawnerSystem_.Update(*activeDocument, deltaTime);
+		spawnerResetEntityIds = enemySpawnerSystem_.ConsumeResetEntityIds();
+		for (uint64_t entityId : spawnerResetEntityIds) {
+			stateMachineSystem_.ResetEntity(entityId);
+			prefabAnimationSystem_.ResetEntity(entityId);
+			enemySystem_.ResetEntity(entityId);
+			hitReactionSystem_.ResetEntity(entityId);
+		}
 		prefabAnimationSystem_.Update(*activeDocument, deltaTime);
 	} else {
 		statSystem_.Clear();
@@ -263,7 +272,9 @@ void RuntimeScene::Update(float deltaTime)
 		eventSystem_.Clear();
 		stateMachineSystem_.Clear();
 		combatSystem_.Clear();
+		hitReactionSystem_.Clear();
 		enemySystem_.Clear();
+		enemySpawnerSystem_.Clear();
 		projectileSystem_.Clear();
 		attachmentSystem_.Clear(&objectSystem_);
 	}
@@ -287,17 +298,23 @@ void RuntimeScene::Update(float deltaTime)
 			runtimeObjectBindings_,
 			editing
 		);
+		physicsSystem_.ResetBodies(
+			runtimeObjectBindings_,
+			spawnerResetEntityIds
+		);
 		if (playing) {
-			agentSystem_.Update(
-				*activeDocument,
-				runtimeObjectBindings_,
-				deltaTime
-			);
 			enemySystem_.Update(
 				*activeDocument,
 				runtimeObjectBindings_,
 				statSystem_,
 				prefabAnimationSystem_,
+				hitReactionSystem_,
+				deltaTime
+			);
+			// GroundXZ Agentは敵AIが決めた速度へ離隔補正だけを加える。
+			agentSystem_.Update(
+				*activeDocument,
+				runtimeObjectBindings_,
 				deltaTime
 			);
 			projectileSystem_.Update(
@@ -311,6 +328,7 @@ void RuntimeScene::Update(float deltaTime)
 		agentSystem_.Clear();
 		attachmentSystem_.Clear(&objectSystem_);
 		combatSystem_.Clear();
+		hitReactionSystem_.Clear();
 		enemySystem_.Clear();
 		eventSystem_.Clear();
 		stateMachineSystem_.Clear();
@@ -345,6 +363,12 @@ void RuntimeScene::Update(float deltaTime)
 			prefabAnimationSystem_,
 			deltaTime
 		);
+		// Combat後に予約した被弾速度を、AI/Agent/Stateの書込み後に上書きする。
+		hitReactionSystem_.ApplyMotionOverrides(
+			*activeDocument,
+			runtimeObjectBindings_,
+			deltaTime
+		);
 	}
 	if (activeDocument) {
 		physicsSystem_.Step(
@@ -377,6 +401,14 @@ void RuntimeScene::Update(float deltaTime)
 			*activeDocument,
 			runtimeObjectBindings_,
 			statSystem_
+		);
+		hitReactionSystem_.Update(
+			*activeDocument,
+			runtimeObjectBindings_,
+			statSystem_,
+			stateMachineSystem_,
+			combatSystem_.ConsumeHitEvents(),
+			deltaTime
 		);
 	}
 	objectSystem_.SyncSprites(activeDocument);
@@ -563,6 +595,7 @@ void RuntimeScene::Finalize()
 	agentSystem_.Clear();
 	attachmentSystem_.Clear(&objectSystem_);
 	combatSystem_.Clear();
+	hitReactionSystem_.Clear();
 	enemySystem_.Clear();
 	eventSystem_.Clear();
 	stateMachineSystem_.Clear();

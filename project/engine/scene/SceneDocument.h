@@ -129,6 +129,36 @@ struct SceneAnimationKeyframe {
 	Vector3 positionBulge{};
 };
 
+struct SceneAttackHitWindow {
+	float startTime = 0.15f;
+	float endTime = 0.35f;
+	uint64_t hitBoxEntityId = 0;
+	std::string hitBoxEntityName;
+	float damage = 10.0f;
+	float poiseDamage = 0.0f;
+	float knockback = 0.0f;
+	std::string reactionTag = "Light";
+	std::string knockbackDirectionMode = "RadialFromAttacker";
+	Vector3 knockbackLocalDirection = { 0.0f, 0.0f, 1.0f };
+};
+
+// AttackDefinitionはStateMachineから再生する攻撃時系列の共有データ。
+struct SceneAttackDefinition {
+	std::string name = "Attack";
+	std::string animation;
+	uint64_t animationTargetEntityId = 0;
+	std::string animationTargetEntityName;
+	uint64_t hitBoxEntityId = 0;
+	std::string hitBoxEntityName;
+	float windup = 0.15f;
+	float activeTime = 0.2f;
+	float recovery = 0.35f;
+	float forwardDistance = 0.0f;
+	float sideDistance = 0.0f;
+	std::string motionEasing = "SmoothStep";
+	std::vector<SceneAttackHitWindow> hitWindows;
+};
+
 struct SceneAnimationTrack {
 	uint64_t targetEntityId = 0;
 	std::string targetEntityName;
@@ -281,6 +311,8 @@ struct SceneComponent {
 	bool playerCameraRelativeMove = true;
 	bool playerAllowJump = true;
 	std::string agentBehaviorName = "Fish";
+	// Free3Dは既存の遊泳群制御、GroundXZはEnemyBehaviorの速度へ離隔だけを加える。
+	std::string agentMovementMode = "Free3D";
 	std::string agentProfileName = "Default";
 	std::string agentGroupName;
 	uint64_t agentBoundsEntityId = 0;
@@ -393,6 +425,7 @@ struct SceneComponent {
 	float cameraPathPointDurationToNext = 1.0f;
 	std::string cameraPathPointEasingToNext = "SmoothStep";
 	std::vector<SceneStatDefinition> stats;
+	std::vector<SceneAttackDefinition> attackDefinitions;
 	std::vector<SceneEventBinding> eventBindings;
 	std::vector<ScenePrefabAnimationClip> prefabAnimationClips;
 	std::string stateMachineInitialState = "Idle";
@@ -401,6 +434,13 @@ struct SceneComponent {
 	std::string factionName = "Neutral";
 	float hitBoxDamage = 10.0f;
 	float hitBoxPoiseDamage = 0.0f;
+	float hitBoxKnockback = 0.0f;
+	std::string hitBoxKnockbackDirectionMode = "RadialFromAttacker";
+	Vector3 hitBoxKnockbackLocalDirection = { 0.0f, 0.0f, 1.0f };
+	// Runtime専用。Attack Windowが切り替わった接触を別Hitとして扱うための世代番号。
+	uint64_t hitBoxAttackWindowSerial = 0;
+	float hitBoxHitStopDuration = 0.0f;
+	std::string hitBoxReactionTag = "Light";
 	std::string hitBoxDamageStatId = "hp";
 	std::string hitBoxPoiseStatId = "poise";
 	uint64_t hitBoxOwnerEntityId = 0;
@@ -410,6 +450,12 @@ struct SceneComponent {
 	std::string hurtBoxHealthStatId = "hp";
 	uint64_t hurtBoxStatsEntityId = 0;
 	std::string hurtBoxStatsEntityName;
+	float hitReactionKnockbackMultiplier = 1.0f;
+	float hitReactionMinimumPoiseDamage = 0.0f;
+	std::string hitReactionStateName = "Hit";
+	float hitReactionStateDuration = 0.2f;
+	std::string deathPresentationStateName = "Dead";
+	float deathPresentationDeactivateDelay = 2.0f;
 	uint64_t boneAttachmentTargetEntityId = 0;
 	std::string boneAttachmentTargetEntityName;
 	std::string boneAttachmentJointName;
@@ -420,6 +466,12 @@ struct SceneComponent {
 	bool boneAttachmentInheritScale = true;
 	uint64_t enemyTargetEntityId = 0;
 	std::string enemyTargetEntityName = "Player";
+	std::string enemySpawnerPrefabPath;
+	int enemySpawnerInitialCount = 0;
+	int enemySpawnerMaxAlive = 10;
+	float enemySpawnerInterval = 1.0f;
+	float enemySpawnerRadius = 3.0f;
+	bool enemySpawnerAutoStart = true;
 	std::string enemyHealthStatId = "hp";
 	float enemyDetectionRange = 12.0f;
 	float enemyLoseRange = 18.0f;

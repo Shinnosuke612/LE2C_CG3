@@ -5,8 +5,12 @@
 #include "../../../engine/collision/Collider.h"
 #include "../../../engine/scene/SceneDocument.h"
 #include "../../../engine/scene/SceneEntityQuery.h"
+#include "../../../engine/scene/SceneTransformResolver.h"
+#include "../../../engine/math/Math.h"
+#include "../../../engine/math/Quaternion.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace {
@@ -51,9 +55,14 @@ namespace {
 		return faction.component ? faction.component->factionName : std::string{};
 	}
 
-	uint64_t MakeContactKey(uint64_t hitBoxId, uint64_t hurtBoxId) {
+	uint64_t MakeContactKey(
+		uint64_t hitBoxId,
+		uint64_t hurtBoxId,
+		uint64_t attackWindowSerial
+	) {
 		uint64_t value = hitBoxId + 0x9E3779B97F4A7C15ull;
 		value ^= hurtBoxId + 0x9E3779B97F4A7C15ull + (value << 6) + (value >> 2);
+		value ^= attackWindowSerial + 0x9E3779B97F4A7C15ull + (value << 6) + (value >> 2);
 		return value;
 	}
 }
@@ -143,7 +152,8 @@ void SceneCombatSystem::Update(
 
 			const uint64_t contactKey = MakeContactKey(
 				hit.entity->id,
-				hurt.entity->id
+				hurt.entity->id,
+				hit.component->hitBoxAttackWindowSerial
 			);
 			currentContacts.insert(contactKey);
 			if (activeContacts_.contains(contactKey)) {
@@ -154,6 +164,41 @@ void SceneCombatSystem::Update(
 					hurt.component->hurtBoxDamageMultiplier,
 				0.0f
 			);
+			Vector3 knockbackDirection = Math::Subtract(
+				SceneTransformResolver::ResolveScene3DTransform(
+					document, *statsEntity
+				).translate,
+				SceneTransformResolver::ResolveScene3DTransform(
+					document, *hitOwner
+				).translate
+			);
+			knockbackDirection.y = 0.0f;
+			const std::string& directionMode =
+				hit.component->hitBoxKnockbackDirectionMode;
+			if (directionMode != "RadialFromAttacker") {
+				Vector3 local = hit.component->hitBoxKnockbackLocalDirection;
+				local.y = 0.0f;
+				if (directionMode == "AttackFacingLocal" || directionMode == "HitBoxLocal") {
+					const SceneEntity& basisEntity = directionMode == "HitBoxLocal"
+						? *hit.entity : *hitOwner;
+					const Transform basis = SceneTransformResolver::ResolveScene3DTransform(
+						document, basisEntity
+					);
+					const float yaw = basis.useQuaternionRotation
+						? MakeEulerFromQuaternion(basis.quaternionRotate).y
+						: basis.rotate.y;
+					knockbackDirection = {
+						local.x * std::cos(yaw) + local.z * std::sin(yaw),
+						0.0f,
+						-local.x * std::sin(yaw) + local.z * std::cos(yaw)
+					};
+				} else if (directionMode == "World") {
+					knockbackDirection = local;
+				}
+			}
+			knockbackDirection = Math::Length(knockbackDirection) > 0.0001f
+				? Math::Normalize(knockbackDirection)
+				: Vector3{ 0.0f, 0.0f, 1.0f };
 			statSystem.Modify(
 				statsEntity->id,
 				hurt.component->hurtBoxHealthStatId.empty()
@@ -162,6 +207,18 @@ void SceneCombatSystem::Update(
 				"Subtract",
 				damage
 			);
+			hitEvents_.push_back({
+				hitOwner->id,
+				statsEntity->id,
+				damage,
+				hit.component->hitBoxPoiseDamage,
+				hit.component->hitBoxKnockback,
+				knockbackDirection,
+				hurt.component->hurtBoxHealthStatId.empty()
+					? hit.component->hitBoxDamageStatId
+					: hurt.component->hurtBoxHealthStatId,
+				hit.component->hitBoxReactionTag
+			});
 			if (hit.component->hitBoxPoiseDamage > 0.0f) {
 				statSystem.Modify(
 					statsEntity->id,
@@ -192,6 +249,12 @@ void SceneCombatSystem::Update(
 	}
 }
 
+std::vector<SceneCombatHitEvent> SceneCombatSystem::ConsumeHitEvents() {
+	std::vector<SceneCombatHitEvent> result = std::move(hitEvents_);
+	hitEvents_.clear();
+	return result;
+}
+
 void SceneCombatSystem::FlushRemovals(SceneDocument& document) {
 	for (uint64_t entityId : pendingRemovals_) {
 		const SceneEntity* entity = document.FindEntity(entityId);
@@ -203,6 +266,7 @@ void SceneCombatSystem::FlushRemovals(SceneDocument& document) {
 		}
 	}
 	pendingRemovals_.clear();
+	hitEvents_.clear();
 }
 
 void SceneCombatSystem::Clear() {

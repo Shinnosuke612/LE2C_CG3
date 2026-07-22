@@ -279,6 +279,34 @@ namespace {
 		);
 		return true;
 	}
+
+	// 接触面を床として維持しつつ横移動できるよう、PhysicsのSweepでは
+	// 「接触」ではなく押し戻しを要する量の貫通だけを停止条件にする。
+	// Trigger CombatはCollider::Intersectsを使うため、この判定変更の対象外。
+	bool HasBlockingOverlap(const Collider& moving, const Collider& obstacle) {
+		if (!moving.CanCollideWith(obstacle)) {
+			return false;
+		}
+		Vector3 pushOut{};
+		if (moving.GetType() == Collider::Type::Sphere) {
+			const auto& sphere = static_cast<const SphereCollider&>(moving);
+			return obstacle.GetType() == Collider::Type::Sphere
+				? TryComputeSphereSpherePushOut(
+					sphere, static_cast<const SphereCollider&>(obstacle), pushOut
+				)
+				: TryComputeSphereObbPushOut(
+					sphere, static_cast<const OBBCollider&>(obstacle).GetOBB(), pushOut
+				);
+		}
+		const auto& box = static_cast<const OBBCollider&>(moving);
+		return obstacle.GetType() == Collider::Type::Sphere
+			? TryComputeObbSpherePushOut(
+				box.GetOBB(), static_cast<const SphereCollider&>(obstacle), pushOut
+			)
+			: TryComputePushOut(
+				box.GetOBB(), static_cast<const OBBCollider&>(obstacle).GetOBB(), pushOut
+			);
+	}
 }
 
 void PhysicsWorld::Clear() {
@@ -393,7 +421,7 @@ bool PhysicsWorld::CollidesWithStatic(const PhysicsBody& body) const {
 		) {
 			continue;
 		}
-		if (body.collider->Intersects(*other->collider)) {
+		if (HasBlockingOverlap(*body.collider, *other->collider)) {
 			return true;
 		}
 	}
@@ -403,7 +431,7 @@ bool PhysicsWorld::CollidesWithStatic(const PhysicsBody& body) const {
 			collider &&
 			collider != body.collider &&
 			!collider->IsTrigger() &&
-			body.collider->Intersects(*collider)
+			HasBlockingOverlap(*body.collider, *collider)
 		) {
 			return true;
 		}

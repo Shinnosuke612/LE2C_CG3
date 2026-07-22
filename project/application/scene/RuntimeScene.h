@@ -8,7 +8,9 @@
 #include "system/SceneCombatSystem.h"
 #include "system/SceneDebugSystem.h"
 #include "system/SceneEnemySystem.h"
+#include "system/SceneEnemySpawnerSystem.h"
 #include "system/SceneEventSystem.h"
+#include "system/SceneHitReactionSystem.h"
 #include "system/SceneEffectRenderSystem.h"
 #include "system/SceneEnvironmentSystem.h"
 #include "system/SceneLightingSystem.h"
@@ -79,7 +81,9 @@ private:
 	SceneCombatSystem combatSystem_;
 	SceneDebugSystem debugSystem_;
 	SceneEnemySystem enemySystem_;
+	SceneEnemySpawnerSystem enemySpawnerSystem_;
 	SceneEventSystem eventSystem_;
+	SceneHitReactionSystem hitReactionSystem_;
 	SceneEffectRenderSystem effectRenderSystem_;
 	SceneEnvironmentSystem environmentSystem_;
 	SceneLightingSystem lightingSystem_;

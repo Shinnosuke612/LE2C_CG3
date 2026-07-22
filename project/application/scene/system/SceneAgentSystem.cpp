@@ -5,6 +5,7 @@
 #include "../../../engine/agent/AgentSettingsResolver.h"
 #include "../../../engine/agent/AgentSteering.h"
 #include "../../../engine/math/Math.h"
+#include "../../../engine/physics/PhysicsBody.h"
 #include "../../../engine/scene/SceneDocument.h"
 #include "../../../engine/scene/SceneEntityQuery.h"
 #include "../../../engine/scene/SceneTransformResolver.h"
@@ -100,6 +101,22 @@ namespace {
 			return "team:" + team->name;
 		}
 		return {};
+	}
+
+	std::string ResolveGroundCrowdKey(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& behavior
+	) {
+		const std::string teamKey = ResolveAgentTeamRuntimeKey(document, entity);
+		if (!teamKey.empty()) {
+			return teamKey;
+		}
+		if (!behavior.agentGroupName.empty()) {
+			return "group:" + behavior.agentGroupName;
+		}
+		return "behavior:" + behavior.agentBehaviorName +
+			"/profile:" + behavior.agentProfileName;
 	}
 
 	bool TryResolveWaterBounds(
@@ -341,6 +358,13 @@ void SceneAgentSystem::Update(
 		Transform transform{};
 		std::string teamKey;
 	};
+	struct GroundAgentUpdateEntry {
+		SceneEntity* entity = nullptr;
+		SceneComponent behavior{};
+		PhysicsBody* body = nullptr;
+		Transform transform{};
+		std::string crowdKey;
+	};
 
 	const float dt = std::clamp(deltaTime, 0.0f, 0.1f);
 	if (dt <= 0.0f) {
@@ -349,6 +373,7 @@ void SceneAgentSystem::Update(
 
 	// 実行対象だけを収集し、削除済みEntityのランタイム状態を後段で破棄する。
 	std::vector<AgentUpdateEntry> agents;
+	std::vector<GroundAgentUpdateEntry> groundAgents;
 	std::unordered_set<uint64_t> requiredIds;
 	for (const SceneRuntimeObjectBinding& binding : bindings) {
 		if (!binding.entity || !binding.object) {
@@ -366,6 +391,16 @@ void SceneAgentSystem::Update(
 		Object3d* object = binding.object;
 		const SceneComponent resolvedBehavior =
 			ResolveAgentBehaviorSettings(document, entity, *behavior);
+		if (resolvedBehavior.agentMovementMode == "GroundXZ") {
+			groundAgents.push_back({
+				&entity,
+				resolvedBehavior,
+				binding.body,
+				object->GetTransform(),
+				ResolveGroundCrowdKey(document, entity, resolvedBehavior)
+			});
+			continue;
+		}
 
 		AgentRuntime& runtime = agentRuntimes_[entity.id];
 		if (!runtime.initialized) {
@@ -424,6 +459,74 @@ void SceneAgentSystem::Update(
 		} else {
 			++iterator;
 		}
+	}
+
+	// GroundXZはEnemyBehaviorが設定した基準速度へ離隔分だけを加える。
+	// Transform・Rotation・Y速度は更新しないため、敵AIとAgentで移動所有が競合しない。
+	for (GroundAgentUpdateEntry& agent : groundAgents) {
+		if (!agent.body || agent.crowdKey.empty()) {
+			continue;
+		}
+		const float radius = (std::max)(
+			agent.behavior.agentSeparationRadius,
+			0.0f
+		);
+		const float weight = (std::max)(
+			agent.behavior.agentSeparationWeight,
+			0.0f
+		);
+		if (radius <= 0.0001f || weight <= 0.0f) {
+			continue;
+		}
+
+		Vector3 separation{};
+		int neighborCount = 0;
+		for (const GroundAgentUpdateEntry& other : groundAgents) {
+			if (
+				other.entity == agent.entity ||
+				other.crowdKey != agent.crowdKey
+			) {
+				continue;
+			}
+			if (
+				agent.behavior.agentNeighborLimit > 0 &&
+				neighborCount >= agent.behavior.agentNeighborLimit
+			) {
+				break;
+			}
+			const Vector3 offset = {
+				agent.transform.translate.x - other.transform.translate.x,
+				0.0f,
+				agent.transform.translate.z - other.transform.translate.z
+			};
+			const float distance = Math::Length(offset);
+			if (distance >= radius) {
+				continue;
+			}
+			++neighborCount;
+			Vector3 direction{};
+			if (distance > 0.0001f) {
+				direction = Math::Multiply(offset, 1.0f / distance);
+			} else {
+				const float angle = Hash01(
+					agent.entity->id ^ other.entity->id,
+					743u
+				) * 6.28318530718f;
+				direction = { std::cos(angle), 0.0f, std::sin(angle) };
+			}
+			separation = AddScaled(
+				separation,
+				direction,
+				1.0f - distance / radius
+			);
+		}
+
+		const Vector3 correction = ClampVectorLength(
+			Math::Multiply(separation, weight),
+			(std::max)(agent.behavior.agentMaxSpeed, 0.001f)
+		);
+		agent.body->velocity.x += correction.x;
+		agent.body->velocity.z += correction.z;
 	}
 
 	struct TeamFrameState {

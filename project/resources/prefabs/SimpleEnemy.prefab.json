@@ -68,8 +68,15 @@
             {
               "displayName": "HP",
               "id": "hp",
-              "initial": 60.0,
-              "max": 60.0,
+              "initial": 40.0,
+              "max": 40.0,
+              "min": 0.0
+            },
+            {
+              "displayName": "Poise",
+              "id": "poise",
+              "initial": 15.0,
+              "max": 15.0,
               "min": 0.0
             }
           ],
@@ -97,6 +104,34 @@
           "targetEntityName": "Player",
           "turnSpeed": 8.0,
           "type": "EnemyBehavior"
+        },
+        {
+          "behaviorName": "LightMeleeEnemy",
+          "enabled": true,
+          "groupName": "LightMeleeEnemies",
+          "maxSpeed": 3.0,
+          "minSpeed": 3.0,
+          "movementMode": "GroundXZ",
+          "neighborLimit": 8,
+          "profileName": "LightMelee",
+          "separationRadius": 1.5,
+          "separationWeight": 2.2,
+          "type": "AgentBehavior",
+          "useWaterBounds": false
+        },
+        {
+          "enabled": true,
+          "knockbackMultiplier": 1.35,
+          "minimumPoiseDamage": 0.0,
+          "stateDuration": 0.2,
+          "stateName": "Hit",
+          "type": "HitReaction"
+        },
+        {
+          "deactivateDelay": 0.45,
+          "enabled": true,
+          "stateName": "Dead",
+          "type": "DeathPresentation"
         }
       ],
       "folder": false,
@@ -227,8 +262,10 @@
           "ignoreSameFaction": true,
           "ownerEntityId": 1,
           "ownerEntityName": "SimpleEnemy",
-          "poiseDamage": 0.0,
+          "knockback": 2.5,
+          "poiseDamage": 6.0,
           "poiseStatId": "poise",
+          "reactionTag": "LightMelee",
           "type": "HitBox"
         }
       ],

@@ -224,6 +224,10 @@ bool ScenePrefabAnimationSystem::Play(
 	return false;
 }
 
+void ScenePrefabAnimationSystem::ResetEntity(uint64_t entityId) {
+	runtimes_.erase(entityId);
+}
+
 void ScenePrefabAnimationSystem::Clear() {
 	runtimes_.clear();
 }

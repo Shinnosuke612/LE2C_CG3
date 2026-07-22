@@ -2075,10 +2075,12 @@ void Game::DrawPrefabPreview() {
 	overlayOptions.showJointAxes = request.showJointAxes;
 	overlayOptions.showColliders = request.showColliders;
 	overlayOptions.showCombatVolumes = request.showCombatVolumes;
+	overlayOptions.isolateSelectedCollider = request.isolateSelectedCollider;
 	overlayOptions.showGrid = request.showGrid;
 	prefabPreviewRenderer_->Render(
 		request.assetPath,
 		*request.document,
+		request.ghostDocument,
 		request.width,
 		request.height,
 		request.yaw,

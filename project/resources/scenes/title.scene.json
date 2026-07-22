@@ -516,6 +516,7 @@
           "memberSeparationUpdateInterval": 0.10000000149011612,
           "memberSpeedVariation": 0.15000000596046448,
           "minSpeed": 1.0,
+          "movementMode": "Free3D",
           "neighborLimit": 0,
           "pitchFromVerticalVelocity": 1.0,
           "profileName": "Default",
@@ -619,7 +620,7 @@
           "fovY": 0.44999998807907104,
           "invertPitch": false,
           "invertYaw": false,
-          "isMain": true,
+          "isMain": false,
           "localId": 6,
           "nearClip": 0.10000000149011612,
           "type": "Camera"
@@ -762,6 +763,7 @@
           "memberSeparationUpdateInterval": 0.10000000149011612,
           "memberSpeedVariation": 0.15000000596046448,
           "minSpeed": 1.0,
+          "movementMode": "Free3D",
           "neighborLimit": 0,
           "pitchFromVerticalVelocity": 1.0,
           "profileName": "Default",
@@ -1069,7 +1071,7 @@
           "fovY": 0.44999998807907104,
           "invertPitch": false,
           "invertYaw": false,
-          "isMain": false,
+          "isMain": true,
           "localId": 4,
           "nearClip": 0.10000000149011612,
           "type": "Camera"
@@ -1425,7 +1427,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.36000001430511475,
+                  "floatValue": 0.10000000149011612,
                   "intValue": 0,
                   "name": "MotionDuration",
                   "stringValue": "",
@@ -1571,7 +1573,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.1599999964237213,
+                  "floatValue": 0.2800000011920929,
                   "intValue": 0,
                   "name": "Windup",
                   "stringValue": "",
@@ -1581,7 +1583,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.3400000035762787,
+                  "floatValue": 0.3199999928474426,
                   "intValue": 0,
                   "name": "ActiveTime",
                   "stringValue": "",
@@ -1591,7 +1593,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.30000001192092896,
+                  "floatValue": 0.20000000298023224,
                   "intValue": 0,
                   "name": "Recovery",
                   "stringValue": "",
@@ -1641,7 +1643,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.11999999731779099,
+                  "floatValue": 0.2800000011920929,
                   "intValue": 0,
                   "name": "MotionStart",
                   "stringValue": "",
@@ -1651,7 +1653,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.4000000059604645,
+                  "floatValue": 0.3199999928474426,
                   "intValue": 0,
                   "name": "MotionDuration",
                   "stringValue": "",
@@ -1787,7 +1789,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.36000001430511475,
+                  "floatValue": 0.10000000149011612,
                   "intValue": 0,
                   "name": "Windup",
                   "stringValue": "",
@@ -1797,7 +1799,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.6200000047683716,
+                  "floatValue": 1.2999999523162842,
                   "intValue": 0,
                   "name": "ActiveTime",
                   "stringValue": "",
@@ -1807,7 +1809,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.27000001072883606,
+                  "floatValue": 0.15000000596046448,
                   "intValue": 0,
                   "name": "Recovery",
                   "stringValue": "",
@@ -1817,7 +1819,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 1.25,
+                  "floatValue": 1.5499999523162842,
                   "intValue": 0,
                   "name": "ComboTransitionTime",
                   "stringValue": "",
@@ -1827,7 +1829,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.3400000035762787,
+                  "floatValue": 1.1799999475479126,
                   "intValue": 0,
                   "name": "MotionStart",
                   "stringValue": "",
@@ -1837,7 +1839,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.6200000047683716,
+                  "floatValue": 0.18000000715255737,
                   "intValue": 0,
                   "name": "MotionDuration",
                   "stringValue": "",
@@ -1847,7 +1849,7 @@
                   "boolValue": false,
                   "entityId": 0,
                   "entityName": "",
-                  "floatValue": 0.30000001192092896,
+                  "floatValue": 0.25,
                   "intValue": 0,
                   "name": "ForwardDistance",
                   "stringValue": "",
@@ -1870,7 +1872,7 @@
                   "floatValue": 0.0,
                   "intValue": 0,
                   "name": "MotionEasing",
-                  "stringValue": "EaseInOut",
+                  "stringValue": "EaseIn",
                   "type": "String"
                 }
               ]
@@ -2033,12 +2035,15 @@
           "damage": 20.0,
           "damageStatId": "hp",
           "enabled": true,
+          "hitStopDuration": 0.0,
           "ignoreSameFaction": true,
+          "knockback": 8.0,
           "localId": 2,
           "ownerEntityId": 13,
           "ownerEntityName": "Player",
-          "poiseDamage": 0.0,
+          "poiseDamage": 10.0,
           "poiseStatId": "poise",
+          "reactionTag": "Light",
           "type": "HitBox"
         }
       ],
@@ -2178,7 +2183,7 @@
       }
     },
     {
-      "active": true,
+      "active": false,
       "components": [
         {
           "cullMode": "Back",
@@ -2271,11 +2276,11 @@
           "attackRange": 2.299999952316284,
           "attackRecovery": 0.44999998807907104,
           "attackWindup": 0.25,
-          "detectionRange": 12.0,
+          "detectionRange": 20.0,
           "enabled": true,
           "healthStatId": "hp",
           "localId": 6,
-          "loseRange": 18.0,
+          "loseRange": 30.0,
           "moveSpeed": 3.0,
           "targetEntityId": 13,
           "targetEntityName": "Player",
@@ -2455,12 +2460,15 @@
           "damage": 10.0,
           "damageStatId": "hp",
           "enabled": true,
+          "hitStopDuration": 0.0,
           "ignoreSameFaction": true,
+          "knockback": 0.0,
           "localId": 2,
           "ownerEntityId": 17,
           "ownerEntityName": "TrainingEnemy",
           "poiseDamage": 0.0,
           "poiseStatId": "poise",
+          "reactionTag": "Light",
           "type": "HitBox"
         }
       ],
@@ -2723,30 +2731,74 @@
               "playOnStart": false,
               "tracks": [
                 {
-                  "easing": "Linear",
+                  "easing": "SmoothStep",
                   "keyframes": [
                     {
-                      "time": 0.0,
-                      "value": [
-                        2.200000047683716,
-                        1.0,
+                      "easingToNext": "EaseInOut",
+                      "positionBulge": [
+                        1.600000023841858,
+                        0.0,
                         0.0
-                      ]
-                    },
-                    {
-                      "time": 0.36000001430511475,
+                      ],
+                      "time": 0.0,
                       "value": [
                         0.0,
                         1.0,
-                        2.200000047683716
+                        1.75
                       ]
                     },
                     {
-                      "time": 0.7200000286102295,
+                      "easingToNext": "EaseIn",
+                      "time": 0.20000000298023224,
                       "value": [
-                        -2.200000047683716,
+                        1.4500000476837158,
                         1.0,
-                        0.0
+                        -1.2999999523162842
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseIn",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        0.2800000011920929
+                      ],
+                      "time": 0.2800000011920929,
+                      "value": [
+                        1.7000000476837158,
+                        1.0,
+                        0.10000000149011612
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "positionBulge": [
+                        -0.3499999940395355,
+                        0.0,
+                        0.2800000011920929
+                      ],
+                      "time": 0.4399999976158142,
+                      "value": [
+                        0.0,
+                        1.0,
+                        1.75
+                      ]
+                    },
+                    {
+                      "easingToNext": "SmoothStep",
+                      "time": 0.6000000238418579,
+                      "value": [
+                        -1.7000000476837158,
+                        1.0,
+                        0.10000000149011612
+                      ]
+                    },
+                    {
+                      "time": 0.800000011920929,
+                      "value": [
+                        -1.2000000476837158,
+                        1.0,
+                        -1.149999976158142
                       ]
                     }
                   ],
@@ -2755,18 +2807,11 @@
                   "targetEntityName": "PlayerWeapon"
                 },
                 {
-                  "easing": "Linear",
+                  "easing": "SmoothStep",
                   "keyframes": [
                     {
+                      "easingToNext": "EaseInOut",
                       "time": 0.0,
-                      "value": [
-                        0.0,
-                        -1.5707963705062866,
-                        1.5707963705062866
-                      ]
-                    },
-                    {
-                      "time": 0.36000001430511475,
                       "value": [
                         -3.1415927410125732,
                         0.0,
@@ -2774,11 +2819,47 @@
                       ]
                     },
                     {
-                      "time": 0.7200000286102295,
+                      "easingToNext": "EaseIn",
+                      "time": 0.20000000298023224,
                       "value": [
-                        -2.335184944968205e-05,
+                        0.0,
+                        -2.3499999046325684,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseIn",
+                      "time": 0.2800000011920929,
+                      "value": [
+                        0.0,
+                        -1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "time": 0.4399999976158142,
+                      "value": [
+                        -3.1415927410125732,
+                        0.0,
+                        -1.5707963705062866
+                      ]
+                    },
+                    {
+                      "easingToNext": "SmoothStep",
+                      "time": 0.6000000238418579,
+                      "value": [
+                        0.0,
                         1.5707963705062866,
                         1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.800000011920929,
+                      "value": [
+                        0.0,
+                        2.3499999046325684,
+                        1.2000000476837158
                       ]
                     }
                   ],
@@ -2798,7 +2879,7 @@
                       ]
                     },
                     {
-                      "time": 0.1599999964237213,
+                      "time": 0.2800000011920929,
                       "value": [
                         1.0,
                         0.0,
@@ -2806,7 +2887,7 @@
                       ]
                     },
                     {
-                      "time": 0.5,
+                      "time": 0.6000000238418579,
                       "value": [
                         0.0,
                         0.0,
@@ -2830,7 +2911,52 @@
                   "easing": "SmoothStep",
                   "keyframes": [
                     {
+                      "easingToNext": "EaseInOut",
                       "time": 0.0,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseIn",
+                      "time": 0.20000000298023224,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseIn",
+                      "time": 0.2800000011920929,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "time": 0.4399999976158142,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "SmoothStep",
+                      "time": 0.6000000238418579,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "time": 0.800000011920929,
                       "value": [
                         1.0,
                         1.0,
@@ -2845,76 +2971,187 @@
               ]
             },
             {
-              "duration": 1.25,
+              "duration": 1.5499999523162842,
               "loop": false,
               "name": "Attack3",
               "playOnStart": false,
               "tracks": [
                 {
-                  "easing": "EaseInOut",
+                  "easing": "Linear",
                   "keyframes": [
                     {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.07000000029802322,
+                        0.0,
+                        -0.14000000059604645
+                      ],
                       "time": 0.0,
                       "value": [
-                        -0.550000011920929,
-                        1.0499999523162842,
-                        -0.8500000238418579
+                        -1.2000000476837158,
+                        1.0,
+                        -1.149999976158142
                       ]
                     },
                     {
-                      "time": 0.25,
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        -0.3499999940395355
+                      ],
+                      "time": 0.10000000149011612,
                       "value": [
-                        -0.699999988079071,
+                        0.0,
                         1.0,
-                        -0.5
+                        -1.7000000476837158
                       ]
                     },
                     {
-                      "time": 0.36000001430511475,
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        0.3499999940395355
+                      ],
+                      "time": 0.20000000298023224,
                       "value": [
+                        1.7000000476837158,
                         1.0,
-                        1.100000023841858,
                         0.0
                       ]
                     },
                     {
-                      "time": 0.5199999809265137,
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.3499999940395355,
+                        0.0,
+                        0.3499999940395355
+                      ],
+                      "time": 0.30000001192092896,
                       "value": [
                         0.0,
-                        1.0499999523162842,
-                        1.0
+                        1.0,
+                        1.7000000476837158
                       ]
                     },
                     {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.3499999940395355,
+                        0.0,
+                        -0.3499999940395355
+                      ],
+                      "time": 0.4000000059604645,
+                      "value": [
+                        -1.7000000476837158,
+                        1.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        -0.3499999940395355
+                      ],
+                      "time": 0.5,
+                      "value": [
+                        0.0,
+                        1.0,
+                        -1.7000000476837158
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        0.3499999940395355
+                      ],
+                      "time": 0.6000000238418579,
+                      "value": [
+                        1.7000000476837158,
+                        1.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.3499999940395355,
+                        0.0,
+                        0.3499999940395355
+                      ],
                       "time": 0.699999988079071,
                       "value": [
-                        -1.0,
-                        1.0499999523162842,
+                        0.0,
+                        1.0,
+                        1.7000000476837158
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.12999999523162842,
+                        0.0,
+                        -0.05999999865889549
+                      ],
+                      "time": 0.800000011920929,
+                      "value": [
+                        -1.7000000476837158,
+                        1.0,
                         0.0
                       ]
                     },
                     {
-                      "time": 0.8799999952316284,
+                      "easingToNext": "EaseOut",
+                      "positionBulge": [
+                        -1.7999999523162842,
+                        0.0,
+                        0.0
+                      ],
+                      "time": 0.8999999761581421,
+                      "value": [
+                        -1.2000000476837158,
+                        1.0,
+                        -1.149999976158142
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseInOut",
+                      "time": 1.0800000429153442,
                       "value": [
                         0.0,
-                        1.0499999523162842,
-                        -0.800000011920929
+                        2.5,
+                        1.7999999523162842
                       ]
                     },
                     {
-                      "time": 0.9800000190734863,
+                      "easingToNext": "EaseIn",
+                      "time": 1.1799999475479126,
                       "value": [
+                        0.0,
+                        2.8499999046325684,
+                        1.7999999523162842
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "time": 1.3600000143051147,
+                      "value": [
+                        0.0,
+                        0.15000000596046448,
+                        1.7999999523162842
+                      ]
+                    },
+                    {
+                      "time": 1.5499999523162842,
+                      "value": [
+                        0.0,
                         0.800000011920929,
-                        1.0499999523162842,
-                        0.20000000298023224
-                      ]
-                    },
-                    {
-                      "time": 1.25,
-                      "value": [
-                        -0.550000011920929,
-                        1.0499999523162842,
-                        -0.8500000238418579
+                        1.5
                       ]
                     }
                   ],
@@ -2928,69 +3165,250 @@
                     {
                       "time": 0.0,
                       "value": [
-                        0.25,
                         0.0,
-                        0.7799999713897705
+                        2.3499999046325684,
+                        1.2000000476837158
                       ]
                     },
                     {
-                      "time": 0.25,
+                      "time": 0.10000000149011612,
                       "value": [
-                        0.25,
                         0.0,
-                        0.7799999713897705
+                        0.0,
+                        1.5707963705062866
                       ]
                     },
                     {
-                      "time": 0.36000001430511475,
+                      "time": 0.20000000298023224,
                       "value": [
                         0.0,
-                        -1.5700000524520874,
-                        0.0
+                        -1.5707963705062866,
+                        1.5707963705062866
                       ]
                     },
                     {
-                      "time": 0.5199999809265137,
+                      "time": 0.30000001192092896,
+                      "value": [
+                        0.0,
+                        3.1415927410125732,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.4000000059604645,
+                      "value": [
+                        0.0,
+                        1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.5,
                       "value": [
                         0.0,
                         0.0,
-                        0.0
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.6000000238418579,
+                      "value": [
+                        0.0,
+                        -1.5707963705062866,
+                        1.5707963705062866
                       ]
                     },
                     {
                       "time": 0.699999988079071,
                       "value": [
                         0.0,
-                        1.5700000524520874,
-                        0.0
+                        3.1415927410125732,
+                        1.5707963705062866
                       ]
                     },
                     {
-                      "time": 0.8799999952316284,
+                      "time": 0.800000011920929,
                       "value": [
                         0.0,
-                        3.0,
-                        0.0
+                        1.5707963705062866,
+                        1.5707963705062866
                       ]
                     },
                     {
-                      "time": 0.9800000190734863,
+                      "time": 0.8999999761581421,
                       "value": [
                         0.0,
-                        -1.5700000524520874,
-                        0.0
+                        2.3499999046325684,
+                        1.2000000476837158
                       ]
                     },
                     {
-                      "time": 1.25,
+                      "time": 1.0800000429153442,
                       "value": [
-                        0.25,
+                        1.5707963705062866,
                         0.0,
-                        0.7799999713897705
+                        3.1415927410125732
+                      ]
+                    },
+                    {
+                      "time": 1.1799999475479126,
+                      "value": [
+                        1.1524107456207275,
+                        -0.08360689878463745,
+                        -2.9109408855438232
+                      ]
+                    },
+                    {
+                      "time": 1.3600000143051147,
+                      "value": [
+                        3.047461986541748,
+                        0.0,
+                        3.141592502593994
+                      ]
+                    },
+                    {
+                      "time": 1.5499999523162842,
+                      "value": [
+                        2.700000047683716,
+                        0.0,
+                        3.1415927410125732
                       ]
                     }
                   ],
                   "property": "LocalRotation",
+                  "targetEntityId": 20,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.0,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.10000000149011612,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.20000000298023224,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.30000001192092896,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.4000000059604645,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.5,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.6000000238418579,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.699999988079071,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.800000011920929,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "time": 0.8999999761581421,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseInOut",
+                      "time": 1.0800000429153442,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseIn",
+                      "time": 1.1799999475479126,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "time": 1.3600000143051147,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "time": 1.5499999523162842,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    }
+                  ],
+                  "property": "LocalScale",
                   "targetEntityId": 20,
                   "targetEntityName": "PlayerWeapon"
                 },
@@ -3006,7 +3424,7 @@
                       ]
                     },
                     {
-                      "time": 0.36000001430511475,
+                      "time": 0.10000000149011612,
                       "value": [
                         1.0,
                         0.0,
@@ -3014,7 +3432,7 @@
                       ]
                     },
                     {
-                      "time": 0.9800000190734863,
+                      "time": 0.9200000166893005,
                       "value": [
                         0.0,
                         0.0,
@@ -3022,7 +3440,23 @@
                       ]
                     },
                     {
-                      "time": 1.25,
+                      "time": 1.2599999904632568,
+                      "value": [
+                        1.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 1.399999976158142,
+                      "value": [
+                        0.0,
+                        0.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "time": 1.5499999523162842,
                       "value": [
                         0.0,
                         0.0,
@@ -3040,6 +3474,16 @@
           "enabled": true,
           "localId": 2,
           "type": "PrefabAnimator"
+        },
+        {
+          "attacks": [
+            { "name": "Attack1", "animation": "Attack1", "windup": 0.3, "activeTime": 0.28, "recovery": 0.32, "forwardDistance": 0.42, "sideDistance": 0.0, "motionEasing": "EaseOut", "hitWindows": [{ "startTime": 0.3, "endTime": 0.58, "hitBoxEntityId": 21, "hitBoxEntityName": "PlayerWeaponHitBox", "damage": 20.0, "poiseDamage": 10.0, "knockback": 8.0, "reactionTag": "Light", "knockbackDirectionMode": "RadialFromAttacker", "knockbackLocalDirection": [0.0, 0.0, 1.0] }] },
+            { "name": "Attack2", "animation": "Attack2", "windup": 0.28, "activeTime": 0.32, "recovery": 0.2, "forwardDistance": 0.18, "sideDistance": -0.12, "motionEasing": "EaseInOut", "hitWindows": [{ "startTime": 0.28, "endTime": 0.6, "hitBoxEntityId": 21, "hitBoxEntityName": "PlayerWeaponHitBox", "damage": 20.0, "poiseDamage": 10.0, "knockback": 8.0, "reactionTag": "Light", "knockbackDirectionMode": "AttackFacingLocal", "knockbackLocalDirection": [0.0, 0.0, 1.0] }] },
+            { "name": "Attack3", "animation": "Attack3", "windup": 0.1, "activeTime": 1.3, "recovery": 0.15, "forwardDistance": 0.25, "sideDistance": 0.0, "motionEasing": "EaseIn", "hitWindows": [{ "startTime": 0.1, "endTime": 1.26, "hitBoxEntityId": 21, "hitBoxEntityName": "PlayerWeaponHitBox", "damage": 16.0, "poiseDamage": 8.0, "knockback": 4.0, "reactionTag": "Light", "knockbackDirectionMode": "RadialFromAttacker", "knockbackLocalDirection": [0.0, 0.0, 1.0] }, { "startTime": 1.26, "endTime": 1.4, "hitBoxEntityId": 21, "hitBoxEntityName": "PlayerWeaponHitBox", "damage": 28.0, "poiseDamage": 18.0, "knockback": 12.0, "reactionTag": "Heavy", "knockbackDirectionMode": "AttackFacingLocal", "knockbackLocalDirection": [0.0, 0.0, 1.0] }] }
+          ],
+          "enabled": true,
+          "localId": 4,
+          "type": "AttackSet"
         }
       ],
       "folder": false,
@@ -3139,12 +3583,15 @@
           "damage": 20.0,
           "damageStatId": "hp",
           "enabled": true,
+          "hitStopDuration": 0.0,
           "ignoreSameFaction": true,
+          "knockback": 8.0,
           "localId": 2,
           "ownerEntityId": 0,
           "ownerEntityName": "Player",
-          "poiseDamage": 0.0,
+          "poiseDamage": 10.0,
           "poiseStatId": "poise",
+          "reactionTag": "Light",
           "type": "HitBox"
         },
         {
@@ -3287,6 +3734,67 @@
           0.0,
           0.0,
           0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "autoStart": true,
+          "enabled": true,
+          "initialCount": 1,
+          "interval": 1.0,
+          "localId": 1,
+          "maxAlive": 1,
+          "prefabPath": "resources/prefabs/SimpleEnemy.prefab.json",
+          "radius": 0.0,
+          "type": "EnemySpawner"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 23,
+      "locked": false,
+      "modelPath": "",
+      "name": "LightEnemySpawner",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          1.0,
+          -5.5
         ]
       }
     }

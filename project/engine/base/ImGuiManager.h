@@ -46,6 +46,7 @@ struct SceneAssetRequest {
 
 struct PrefabPreviewRequest {
 	const SceneDocument* document = nullptr;
+	const SceneDocument* ghostDocument = nullptr;
 	std::string assetPath;
 	uint64_t revision = 0;
 	float yaw = 0.65f;
@@ -58,6 +59,7 @@ struct PrefabPreviewRequest {
 	bool showJointAxes = false;
 	bool showColliders = true;
 	bool showCombatVolumes = true;
+	bool isolateSelectedCollider = false;
 	bool showGrid = true;
 	uint64_t framingSerial = 0;
 };
@@ -171,7 +173,7 @@ public:
 		const Matrix4x4& viewMatrix,
 		const Matrix4x4& projectionMatrix
 	);
-	bool GetPrefabPreviewRequest(PrefabPreviewRequest& request) const;
+	bool GetPrefabPreviewRequest(PrefabPreviewRequest& request);
 
 	// Communication with scenes
 	const std::string& GetSelectedProjectFile() const { return selectedProjectFile_; }
@@ -224,6 +226,7 @@ private:
 	void DrawPrefabAnimationTimeline();
 	void DrawPrefabTransformPoseInspector(SceneEntity& entity);
 	void RebuildPrefabAnimationPreviewDocument();
+	void RebuildPrefabHitBoxGhostDocument();
 	const SceneDocument& GetPrefabStageDocument() const;
 	void DrawPrefabGizmo(float x, float y, float width, float height);
 	bool WritePrefabAnimationGizmoKey(
@@ -466,6 +469,7 @@ private:
 	std::string prefabNestedTargetDocumentPath_;
 	uint64_t prefabNestedTargetRootId_ = 0;
 	SceneDocument* prefabAnimationPreviewDocument_ = nullptr;
+	SceneDocument* prefabHitBoxGhostDocument_ = nullptr;
 	std::string prefabAnimationPreviewAssetPath_;
 	uint64_t prefabAnimationPreviewSourceRevision_ = 0;
 	uint64_t prefabAnimationPreviewOwnerEntityId_ = 0;
@@ -473,6 +477,11 @@ private:
 	float prefabAnimationPreviewTime_ = 0.0f;
 	bool prefabAnimationPreviewPlaying_ = false;
 	bool prefabAnimationPreviewActive_ = false;
+	bool prefabHitBoxSetupMode_ = false;
+	bool prefabHitBoxGhostVisible_ = false;
+	float prefabHitBoxGhostTime_ = 0.0f;
+	bool prefabAttackPreviewMode_ = false;
+	int prefabAttackPreviewIndex_ = 0;
 	float prefabTransformPoseAddTime_ = 0.0f;
 	std::string prefabTransformPoseStatus_;
 	bool prefabKeyboardFocusThisFrame_ = false;

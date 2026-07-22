@@ -90,12 +90,18 @@
     <ClCompile Include="application\scene\system\SceneCombatSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
+	<ClCompile Include="application\scene\system\SceneHitReactionSystem.cpp">
+	  <Filter>Application\Scene\System</Filter>
+	</ClCompile>
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
     <ClCompile Include="application\scene\system\SceneEnemySystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
+	<ClCompile Include="application\scene\system\SceneEnemySpawnerSystem.cpp">
+	  <Filter>Application\Scene\System</Filter>
+	</ClCompile>
     <ClCompile Include="application\scene\system\SceneEventSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
@@ -297,12 +303,18 @@
     <ClInclude Include="application\scene\system\SceneCombatSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
+	<ClInclude Include="application\scene\system\SceneHitReactionSystem.h">
+	  <Filter>Application\Scene\System</Filter>
+	</ClInclude>
     <ClInclude Include="application\scene\system\SceneDebugSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
     <ClInclude Include="application\scene\system\SceneEnemySystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
+	<ClInclude Include="application\scene\system\SceneEnemySpawnerSystem.h">
+	  <Filter>Application\Scene\System</Filter>
+	</ClInclude>
     <ClInclude Include="application\scene\system\SceneEventSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>

@@ -1177,6 +1177,34 @@ namespace {
 		return result;
 	}
 
+	json AttackDefinitionsToJson(const std::vector<SceneAttackDefinition>& attacks) {
+		json result = json::array();
+		for (const SceneAttackDefinition& attack : attacks) {
+			json windows = json::array();
+			for (const SceneAttackHitWindow& window : attack.hitWindows) {
+				windows.push_back({
+					{ "startTime", window.startTime }, { "endTime", window.endTime },
+					{ "hitBoxEntityId", window.hitBoxEntityId },
+					{ "hitBoxEntityName", window.hitBoxEntityName },
+					{ "damage", window.damage }, { "poiseDamage", window.poiseDamage },
+					{ "knockback", window.knockback }, { "reactionTag", window.reactionTag },
+					{ "knockbackDirectionMode", window.knockbackDirectionMode },
+					{ "knockbackLocalDirection", VectorToJson(window.knockbackLocalDirection) }
+				});
+			}
+			result.push_back({
+				{ "name", attack.name }, { "animation", attack.animation },
+				{ "animationTargetEntityId", attack.animationTargetEntityId },
+				{ "animationTargetEntityName", attack.animationTargetEntityName },
+				{ "hitBoxEntityId", attack.hitBoxEntityId }, { "hitBoxEntityName", attack.hitBoxEntityName },
+				{ "windup", attack.windup }, { "activeTime", attack.activeTime }, { "recovery", attack.recovery },
+				{ "forwardDistance", attack.forwardDistance }, { "sideDistance", attack.sideDistance },
+				{ "motionEasing", attack.motionEasing }, { "hitWindows", std::move(windows) }
+			});
+		}
+		return result;
+	}
+
 	uint64_t NextComponentLocalId(const SceneEntity& entity) {
 		std::unordered_set<uint64_t> usedIds;
 		for (const SceneComponent& component : entity.components) {
@@ -1367,6 +1395,7 @@ namespace {
 			result["allowJump"] = component.playerAllowJump;
 		} else if (component.type == "AgentBehavior") {
 			result["behaviorName"] = component.agentBehaviorName;
+			result["movementMode"] = component.agentMovementMode;
 			result["profileName"] = component.agentProfileName;
 			result["groupName"] = component.agentGroupName;
 			result["boundsEntityId"] = component.agentBoundsEntityId;
@@ -1530,6 +1559,8 @@ namespace {
 			result["clips"] = PrefabAnimationsToJson(
 				component.prefabAnimationClips
 			);
+		} else if (component.type == "AttackSet") {
+			result["attacks"] = AttackDefinitionsToJson(component.attackDefinitions);
 		} else if (component.type == "StateMachine") {
 			result["initialState"] = component.stateMachineInitialState;
 			result["resetOnDisable"] = component.stateMachineResetOnDisable;
@@ -1541,6 +1572,11 @@ namespace {
 		} else if (component.type == "HitBox") {
 			result["damage"] = component.hitBoxDamage;
 			result["poiseDamage"] = component.hitBoxPoiseDamage;
+			result["knockback"] = component.hitBoxKnockback;
+			result["knockbackDirectionMode"] = component.hitBoxKnockbackDirectionMode;
+			result["knockbackLocalDirection"] = VectorToJson(component.hitBoxKnockbackLocalDirection);
+			result["hitStopDuration"] = component.hitBoxHitStopDuration;
+			result["reactionTag"] = component.hitBoxReactionTag;
 			result["damageStatId"] = component.hitBoxDamageStatId;
 			result["poiseStatId"] = component.hitBoxPoiseStatId;
 			result["ownerEntityId"] = component.hitBoxOwnerEntityId;
@@ -1551,6 +1587,17 @@ namespace {
 			result["healthStatId"] = component.hurtBoxHealthStatId;
 			result["statsEntityId"] = component.hurtBoxStatsEntityId;
 			result["statsEntityName"] = component.hurtBoxStatsEntityName;
+		} else if (component.type == "HitReaction") {
+			result["knockbackMultiplier"] =
+				component.hitReactionKnockbackMultiplier;
+			result["minimumPoiseDamage"] =
+				component.hitReactionMinimumPoiseDamage;
+			result["stateName"] = component.hitReactionStateName;
+			result["stateDuration"] = component.hitReactionStateDuration;
+		} else if (component.type == "DeathPresentation") {
+			result["stateName"] = component.deathPresentationStateName;
+			result["deactivateDelay"] =
+				component.deathPresentationDeactivateDelay;
 		} else if (component.type == "BoneAttachment") {
 			result["targetEntityId"] = component.boneAttachmentTargetEntityId;
 			result["targetEntityName"] = component.boneAttachmentTargetEntityName;
@@ -1578,6 +1625,13 @@ namespace {
 				component.enemyAttackHitBoxEntityId;
 			result["attackHitBoxEntityName"] =
 				component.enemyAttackHitBoxEntityName;
+		} else if (component.type == "EnemySpawner") {
+			result["prefabPath"] = component.enemySpawnerPrefabPath;
+			result["initialCount"] = component.enemySpawnerInitialCount;
+			result["maxAlive"] = component.enemySpawnerMaxAlive;
+			result["interval"] = component.enemySpawnerInterval;
+			result["radius"] = component.enemySpawnerRadius;
+			result["autoStart"] = component.enemySpawnerAutoStart;
 		} else if (component.type == "Projectile") {
 			result["direction"] = VectorToJson(component.projectileDirection);
 			result["speed"] = component.projectileSpeed;
@@ -1824,6 +1878,44 @@ namespace {
 				}
 			}
 			destination.push_back(std::move(state));
+		}
+	}
+
+	void ReadAttackDefinitions(const json& source, std::vector<SceneAttackDefinition>& destination) {
+		if (!source.is_array()) { return; }
+		for (const json& value : source) {
+			if (!value.is_object()) { continue; }
+			SceneAttackDefinition attack{};
+			attack.name = value.value("name", attack.name);
+			attack.animation = value.value("animation", attack.animation);
+			attack.animationTargetEntityId = value.value("animationTargetEntityId", attack.animationTargetEntityId);
+			attack.animationTargetEntityName = value.value("animationTargetEntityName", attack.animationTargetEntityName);
+			attack.hitBoxEntityId = value.value("hitBoxEntityId", attack.hitBoxEntityId);
+			attack.hitBoxEntityName = value.value("hitBoxEntityName", attack.hitBoxEntityName);
+			attack.windup = (std::max)(value.value("windup", attack.windup), 0.0f);
+			attack.activeTime = (std::max)(value.value("activeTime", attack.activeTime), 0.0f);
+			attack.recovery = (std::max)(value.value("recovery", attack.recovery), 0.0f);
+			attack.forwardDistance = value.value("forwardDistance", attack.forwardDistance);
+			attack.sideDistance = value.value("sideDistance", attack.sideDistance);
+			attack.motionEasing = value.value("motionEasing", attack.motionEasing);
+			if (const auto windows = value.find("hitWindows"); windows != value.end() && windows->is_array()) {
+				for (const json& windowValue : *windows) {
+					if (!windowValue.is_object()) { continue; }
+					SceneAttackHitWindow window{};
+					window.startTime = (std::max)(windowValue.value("startTime", window.startTime), 0.0f);
+					window.endTime = (std::max)(windowValue.value("endTime", window.endTime), window.startTime);
+					window.hitBoxEntityId = windowValue.value("hitBoxEntityId", window.hitBoxEntityId);
+					window.hitBoxEntityName = windowValue.value("hitBoxEntityName", window.hitBoxEntityName);
+					window.damage = (std::max)(windowValue.value("damage", window.damage), 0.0f);
+					window.poiseDamage = (std::max)(windowValue.value("poiseDamage", window.poiseDamage), 0.0f);
+					window.knockback = (std::max)(windowValue.value("knockback", window.knockback), 0.0f);
+					window.reactionTag = windowValue.value("reactionTag", window.reactionTag);
+					window.knockbackDirectionMode = windowValue.value("knockbackDirectionMode", window.knockbackDirectionMode);
+					if (windowValue.contains("knockbackLocalDirection")) window.knockbackLocalDirection = JsonToVector(windowValue.at("knockbackLocalDirection"), window.knockbackLocalDirection);
+					attack.hitWindows.push_back(std::move(window));
+				}
+			}
+			destination.push_back(std::move(attack));
 		}
 	}
 
@@ -2464,6 +2556,10 @@ namespace {
 					"behaviorName",
 					component.agentBehaviorName
 				);
+				component.agentMovementMode = value.value(
+					"movementMode",
+					component.agentMovementMode
+				);
 				component.agentProfileName = value.value(
 					"profileName",
 					component.agentProfileName
@@ -2971,6 +3067,23 @@ namespace {
 					component.hitBoxPoiseDamage = value.value(
 						"poiseDamage", component.hitBoxPoiseDamage
 					);
+					component.hitBoxKnockback = value.value(
+						"knockback", component.hitBoxKnockback
+					);
+					component.hitBoxKnockbackDirectionMode = value.value(
+						"knockbackDirectionMode", component.hitBoxKnockbackDirectionMode
+					);
+					if (value.contains("knockbackLocalDirection")) {
+						component.hitBoxKnockbackLocalDirection = JsonToVector(
+							value.at("knockbackLocalDirection"), component.hitBoxKnockbackLocalDirection
+						);
+					}
+					component.hitBoxHitStopDuration = value.value(
+						"hitStopDuration", component.hitBoxHitStopDuration
+					);
+					component.hitBoxReactionTag = value.value(
+						"reactionTag", component.hitBoxReactionTag
+					);
 					component.hitBoxDamageStatId = value.value(
 						"damageStatId", component.hitBoxDamageStatId
 					);
@@ -2999,6 +3112,34 @@ namespace {
 					);
 					component.hurtBoxStatsEntityName = value.value(
 						"statsEntityName", component.hurtBoxStatsEntityName
+					);
+				}
+				if (component.type == "AttackSet" && value.contains("attacks")) {
+					ReadAttackDefinitions(value.at("attacks"), component.attackDefinitions);
+				}
+				if (component.type == "HitReaction") {
+					component.hitReactionKnockbackMultiplier = value.value(
+						"knockbackMultiplier",
+						component.hitReactionKnockbackMultiplier
+					);
+					component.hitReactionMinimumPoiseDamage = value.value(
+						"minimumPoiseDamage",
+						component.hitReactionMinimumPoiseDamage
+					);
+					component.hitReactionStateName = value.value(
+						"stateName", component.hitReactionStateName
+					);
+					component.hitReactionStateDuration = value.value(
+						"stateDuration", component.hitReactionStateDuration
+					);
+				}
+				if (component.type == "DeathPresentation") {
+					component.deathPresentationStateName = value.value(
+						"stateName", component.deathPresentationStateName
+					);
+					component.deathPresentationDeactivateDelay = value.value(
+						"deactivateDelay",
+						component.deathPresentationDeactivateDelay
 					);
 				}
 				if (component.type == "BoneAttachment") {
@@ -3104,6 +3245,26 @@ namespace {
 						"homingStrength", component.projectileHomingStrength
 					);
 				}
+				if (component.type == "EnemySpawner") {
+					component.enemySpawnerPrefabPath = value.value(
+						"prefabPath", component.enemySpawnerPrefabPath
+					);
+					component.enemySpawnerInitialCount = value.value(
+						"initialCount", component.enemySpawnerInitialCount
+					);
+					component.enemySpawnerMaxAlive = value.value(
+						"maxAlive", component.enemySpawnerMaxAlive
+					);
+					component.enemySpawnerInterval = value.value(
+						"interval", component.enemySpawnerInterval
+					);
+					component.enemySpawnerRadius = value.value(
+						"radius", component.enemySpawnerRadius
+					);
+					component.enemySpawnerAutoStart = value.value(
+						"autoStart", component.enemySpawnerAutoStart
+					);
+				}
 			}
 			if (!component.type.empty()) {
 				if (component.type == "Environment") {
@@ -3128,6 +3289,12 @@ namespace {
 				} else if (component.type == "AgentBehavior") {
 					if (component.agentBehaviorName.empty()) {
 						component.agentBehaviorName = "Agent";
+					}
+					if (
+						component.agentMovementMode != "Free3D" &&
+						component.agentMovementMode != "GroundXZ"
+					) {
+						component.agentMovementMode = "Free3D";
 					}
 					if (component.agentProfileName.empty()) {
 						component.agentProfileName = "Default";
@@ -7441,6 +7608,7 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.playerAllowJump = true;
 	} else if (type == "AgentBehavior") {
 		component.agentBehaviorName = "Agent";
+		component.agentMovementMode = "Free3D";
 		component.agentProfileName = "Default";
 		component.agentGroupName = "";
 		component.agentBoundsEntityId = 0;
@@ -7601,6 +7769,8 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		};
 		clip.tracks.push_back(std::move(track));
 		component.prefabAnimationClips.push_back(std::move(clip));
+	} else if (type == "AttackSet") {
+		component.attackDefinitions.push_back(SceneAttackDefinition{});
 	} else if (type == "Faction") {
 		component.factionName = "Neutral";
 	} else if (type == "HitBox") {
@@ -7609,8 +7779,20 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 	} else if (type == "HurtBox") {
 		component.hurtBoxDamageMultiplier = 1.0f;
 		component.hurtBoxHealthStatId = "hp";
+	} else if (type == "HitReaction") {
+		component.hitReactionKnockbackMultiplier = 1.0f;
+		component.hitReactionMinimumPoiseDamage = 0.0f;
+		component.hitReactionStateName = "Hit";
+		component.hitReactionStateDuration = 0.2f;
+	} else if (type == "DeathPresentation") {
+		component.deathPresentationStateName = "Dead";
+		component.deathPresentationDeactivateDelay = 2.0f;
 	} else if (type == "EnemyBehavior") {
 		component.enemyTargetEntityName = "Player";
+	} else if (type == "EnemySpawner") {
+		component.enemySpawnerMaxAlive = 10;
+		component.enemySpawnerInterval = 1.0f;
+		component.enemySpawnerRadius = 3.0f;
 	} else if (type == "Projectile") {
 		component.projectileDirection = { 0.0f, 0.0f, 1.0f };
 	}

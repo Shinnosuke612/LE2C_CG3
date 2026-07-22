@@ -33,6 +33,10 @@ public:
 		const std::string& fallback = {}
 	) const;
 	SceneEntity* GetEntityParameter(const std::string& name) const;
+	SceneEntity* ResolveEntityReference(
+		uint64_t entityId,
+		const std::string& entityName
+	) const;
 
 	bool IsKeyDown(const std::string& keyName) const;
 	bool IsKeyTriggered(const std::string& keyName) const;
@@ -114,6 +118,7 @@ public:
 	);
 	bool RequestState(uint64_t entityId, const std::string& stateName);
 	const std::string* GetCurrentState(uint64_t entityId) const;
+	void ResetEntity(uint64_t entityId);
 	void Clear();
 
 private:

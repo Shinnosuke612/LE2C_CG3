@@ -1,6 +1,7 @@
 // 役割: 敵AIの判断を移動速度・Animation・HitBox有効時間へ変換する。
 #include "SceneEnemySystem.h"
 
+#include "SceneHitReactionSystem.h"
 #include "ScenePrefabAnimationSystem.h"
 #include "SceneStatSystem.h"
 #include "../../../engine/3d/Object3d.h"
@@ -64,6 +65,7 @@ void SceneEnemySystem::Update(
 	const std::vector<SceneRuntimeObjectBinding>& bindings,
 	SceneStatSystem& statSystem,
 	ScenePrefabAnimationSystem& prefabAnimationSystem,
+	const SceneHitReactionSystem& hitReactionSystem,
 	float deltaTime
 ) {
 	std::unordered_set<uint64_t> requiredEntities;
@@ -86,6 +88,20 @@ void SceneEnemySystem::Update(
 		if (!runtime.initialized) {
 			runtime.initialized = true;
 			SetHitBoxActive(hitBox, false);
+		}
+		if (hitReactionSystem.IsKnockbackActive(binding.entity->id)) {
+			// 被弾中にAttack Phaseを進めると、吹き飛ばされながら攻撃判定だけが
+			// 残る。移動はReactionがPhysics直前に所有するため、ここではAIと
+			// 攻撃判定だけを止め、Knockback終了後に同じPhaseから復帰させる。
+			runtime.hitBoxSuppressedByReaction =
+				runtime.phase == AttackPhase::Active;
+			SetHitBoxActive(hitBox, false);
+			continue;
+		}
+		if (runtime.hitBoxSuppressedByReaction) {
+			// Active中に被弾した攻撃は、残り時間だけKnockback後に再開する。
+			SetHitBoxActive(hitBox, runtime.phase == AttackPhase::Active);
+			runtime.hitBoxSuppressedByReaction = false;
 		}
 		if (statSystem.IsAtMin(
 			binding.entity->id,
@@ -231,6 +247,10 @@ void SceneEnemySystem::Update(
 			++iterator;
 		}
 	}
+}
+
+void SceneEnemySystem::ResetEntity(uint64_t entityId) {
+	runtimes_.erase(entityId);
 }
 
 void SceneEnemySystem::Clear() {

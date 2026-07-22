@@ -112,6 +112,7 @@ void PrefabPreviewRenderer::Initialize(
 void PrefabPreviewRenderer::Render(
 	const std::string& assetPath,
 	const SceneDocument& document,
+	const SceneDocument* ghostDocument,
 	uint32_t width,
 	uint32_t height,
 	float yaw,
@@ -128,6 +129,7 @@ void PrefabPreviewRenderer::Render(
 	height = std::clamp(height, 180u, 900u);
 	renderTarget_->Resize(width, height);
 	SyncModels(document);
+	SyncGhostModels(ghostDocument);
 	const bool framingRequested =
 		!framingInitialized_ ||
 		framedAssetPath_ != assetPath ||
@@ -158,20 +160,29 @@ void PrefabPreviewRenderer::Render(
 		(void)entityId;
 		runtime.object->UpdateForCamera(camera_);
 	}
+	for (auto& [entityId, runtime] : ghostModels_) {
+		(void)entityId;
+		runtime.object->UpdateForCamera(camera_);
+	}
 
 	renderTarget_->Begin();
 	srvManager_->PreDraw();
 	Object3dCommon::GetInstance()->SetCommonRenderState();
+	for (const auto& [entityId, runtime] : ghostModels_) {
+		(void)entityId;
+		runtime.object->Draw();
+	}
 	for (const auto& [entityId, runtime] : models_) {
 		(void)entityId;
 		runtime.object->Draw();
 	}
-	DrawEditorOverlays(document, overlayOptions);
+	DrawEditorOverlays(document, ghostDocument, overlayOptions);
 	renderTarget_->End();
 }
 
 void PrefabPreviewRenderer::Finalize() {
 	models_.clear();
+	ghostModels_.clear();
 	delete camera_;
 	camera_ = nullptr;
 	delete renderTarget_;
@@ -263,8 +274,77 @@ void PrefabPreviewRenderer::SyncModels(const SceneDocument& document) {
 	}
 }
 
+void PrefabPreviewRenderer::SyncGhostModels(const SceneDocument* document) {
+	if (!document) {
+		ghostModels_.clear();
+		return;
+	}
+
+	std::unordered_set<uint64_t> requiredIds;
+	for (const SceneEntity& entity : document->GetEntities()) {
+		const SceneComponent* meshRenderer =
+			FindEnabledComponent(entity, "MeshRenderer");
+		if (
+			!meshRenderer ||
+			meshRenderer->modelPath.empty() ||
+			!IsEntityActiveInHierarchy(*document, entity)
+		) {
+			continue;
+		}
+
+		requiredIds.insert(entity.id);
+		auto found = ghostModels_.find(entity.id);
+		if (
+			found != ghostModels_.end() &&
+			found->second.modelPath != meshRenderer->modelPath
+		) {
+			ghostModels_.erase(found);
+			found = ghostModels_.end();
+		}
+		if (found == ghostModels_.end()) {
+			ModelManager* modelManager = ModelManager::GetInstance();
+			modelManager->LoadModel(meshRenderer->modelPath);
+			Model* model = modelManager->FindModel(meshRenderer->modelPath);
+			if (!model) {
+				continue;
+			}
+
+			ModelRuntime runtime{};
+			runtime.object = std::make_unique<Object3d>();
+			runtime.object->Initialize(Object3dCommon::GetInstance());
+			runtime.object->SetModel(model);
+			runtime.object->SetCamera(camera_);
+			// GhostはBase Poseと区別するため、Scene側のLight Bindingを使わず色を固定する。
+			runtime.object->SetEnableLighting(false);
+			runtime.object->SetEnvironmentCoefficient(0.0f);
+			runtime.modelPath = meshRenderer->modelPath;
+			found = ghostModels_.emplace(entity.id, std::move(runtime)).first;
+		}
+
+		Object3d& object = *found->second.object;
+		object.SetScale({ 1.0f, 1.0f, 1.0f });
+		object.SetRotateQuaternion(MakeIdentityQuaternion());
+		object.SetTranslate({ 0.0f, 0.0f, 0.0f });
+		object.SetParentMatrixOverride(
+			ResolveSceneWorldMatrix(*document, entity)
+		);
+		object.SetCullMode(ResolveCullMode(meshRenderer->meshCullMode));
+		object.SetMaterialOverrides(BuildMaterialOverrides(*meshRenderer));
+		object.SetColor({ 0.25f, 0.75f, 1.0f, 0.30f });
+	}
+
+	for (auto it = ghostModels_.begin(); it != ghostModels_.end();) {
+		if (!requiredIds.contains(it->first)) {
+			it = ghostModels_.erase(it);
+		} else {
+			++it;
+		}
+	}
+}
+
 void PrefabPreviewRenderer::DrawEditorOverlays(
 	const SceneDocument& document,
+	const SceneDocument* ghostDocument,
 	const OverlayOptions& options
 ) {
 #if defined(_DEBUG) || defined(DEVELOPMENT)
@@ -299,6 +379,12 @@ void PrefabPreviewRenderer::DrawEditorOverlays(
 		const SceneComponent* colliderComponent =
 			FindEnabledComponent(entity, "OBBCollider");
 		if (!colliderComponent) {
+			continue;
+		}
+		if (
+			options.isolateSelectedCollider &&
+			entity.id != options.selectedEntityId
+		) {
 			continue;
 		}
 
@@ -399,10 +485,89 @@ void PrefabPreviewRenderer::DrawEditorOverlays(
 		}
 	}
 
+	if (
+		ghostDocument &&
+		options.isolateSelectedCollider &&
+		options.selectedEntityId != 0
+	) {
+		const SceneEntity* ghostEntity = ghostDocument->FindEntity(
+			options.selectedEntityId
+		);
+		const SceneComponent* colliderComponent = ghostEntity
+			? FindEnabledComponent(*ghostEntity, "OBBCollider")
+			: nullptr;
+		if (colliderComponent) {
+			const bool isCombatVolume =
+				FindEnabledComponent(*ghostEntity, "HitBox") != nullptr ||
+				FindEnabledComponent(*ghostEntity, "HurtBox") != nullptr;
+			const bool shouldDraw = isCombatVolume
+				? options.showCombatVolumes || options.showColliders
+				: options.showColliders;
+			if (shouldDraw) {
+				const Vector4 color = { 0.18f, 0.72f, 1.0f, 0.88f };
+				Vector4 solidColor = color;
+				solidColor.w = 0.14f;
+				const bool drawWire =
+					colliderComponent->colliderDebugDrawMode != "Solid";
+				const bool drawSolid =
+					colliderComponent->colliderDebugDrawMode != "Wireframe";
+				const uint32_t segments = static_cast<uint32_t>(std::clamp(
+					colliderComponent->colliderDebugSegments,
+					4,
+					64
+				));
+				const Matrix4x4 worldMatrix =
+					ResolveSceneWorldMatrix(*ghostDocument, *ghostEntity);
+				if (colliderComponent->colliderShape == "Sphere") {
+					SphereCollider collider;
+					collider.SetWorldMatrix(&worldMatrix);
+					collider.SetOffset(colliderComponent->colliderOffset);
+					collider.SetRadius((std::max)(
+						colliderComponent->colliderSphereRadius,
+						0.001f
+					));
+					if (drawSolid) {
+						debugRenderer->AddSolidSphere(
+							collider.GetWorldCenter(), collider.GetRadius(),
+							solidColor, segments
+						);
+					}
+					if (drawWire) {
+						debugRenderer->AddSphere(
+							collider.GetWorldCenter(), collider.GetRadius(),
+							color, segments
+						);
+					}
+				} else {
+					OBBCollider collider;
+					collider.SetWorldMatrix(&worldMatrix);
+					collider.SetOffset(colliderComponent->colliderOffset);
+					collider.SetHalfSize({
+						(std::max)(std::abs(colliderComponent->colliderSizeMultiplier.x), 0.001f),
+						(std::max)(std::abs(colliderComponent->colliderSizeMultiplier.y), 0.001f),
+						(std::max)(std::abs(colliderComponent->colliderSizeMultiplier.z), 0.001f)
+					});
+					const OBBCollider::OBB obb = collider.GetOBB();
+					if (drawSolid) {
+						debugRenderer->AddSolidOBB(
+							obb.center, obb.axis, obb.halfSize, solidColor
+						);
+					}
+					if (drawWire) {
+						debugRenderer->AddOBB(
+							obb.center, obb.axis, obb.halfSize, color
+						);
+					}
+				}
+			}
+		}
+	}
+
 	debugRenderer->Draw(camera_);
 	debugRenderer->ClearGeometry();
 #else
 	(void)document;
+	(void)ghostDocument;
 	(void)options;
 #endif
 }

@@ -710,6 +710,7 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 	sceneViewHeight_ = dxCommon_->GetClientHeight();
 	prefabEditorSession_ = new PrefabEditorSession();
 	prefabAnimationPreviewDocument_ = new SceneDocument();
+	prefabHitBoxGhostDocument_ = new SceneDocument();
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -1723,8 +1724,7 @@ const SceneDocument& ImGuiManager::GetPrefabStageDocument() const {
 	if (
 		prefabAnimationPreviewActive_ &&
 		prefabAnimationPreviewDocument_ &&
-		prefabAnimationPreviewAssetPath_ == prefabEditorSession_->GetFilePath() &&
-		prefabAnimationPreviewSourceRevision_ == sourceDocument.GetRevision()
+		prefabAnimationPreviewAssetPath_ == prefabEditorSession_->GetFilePath()
 	) {
 		return *prefabAnimationPreviewDocument_;
 	}
@@ -1770,9 +1770,43 @@ void ImGuiManager::RebuildPrefabAnimationPreviewDocument() {
 	prefabAnimationPreviewSourceRevision_ = sourceDocument.GetRevision();
 }
 
-bool ImGuiManager::GetPrefabPreviewRequest(
-	PrefabPreviewRequest& request
-) const {
+void ImGuiManager::RebuildPrefabHitBoxGhostDocument() {
+	if (
+		!prefabHitBoxSetupMode_ ||
+		!prefabHitBoxGhostVisible_ ||
+		!prefabHitBoxGhostDocument_ ||
+		!prefabEditorSession_ ||
+		!prefabEditorSession_->IsOpen()
+	) {
+		return;
+	}
+
+	const SceneDocument& sourceDocument = prefabEditorSession_->GetDocument();
+	const SceneEntity* owner = sourceDocument.FindEntity(
+		prefabAnimationPreviewOwnerEntityId_
+	);
+	const SceneComponent* animator = owner
+		? FindEnabledComponent(*owner, "PrefabAnimator")
+		: nullptr;
+	if (
+		!animator ||
+		prefabAnimationPreviewClipIndex_ < 0 ||
+		prefabAnimationPreviewClipIndex_ >=
+			static_cast<int>(animator->prefabAnimationClips.size())
+	) {
+		return;
+	}
+
+	*prefabHitBoxGhostDocument_ = sourceDocument;
+	ScenePrefabAnimationEvaluator::ApplyClip(
+		*prefabHitBoxGhostDocument_,
+		owner->id,
+		animator->prefabAnimationClips[prefabAnimationPreviewClipIndex_],
+		prefabHitBoxGhostTime_
+	);
+}
+
+bool ImGuiManager::GetPrefabPreviewRequest(PrefabPreviewRequest& request) {
 	if (
 		!showPrefab_ ||
 		!prefabEditorSession_ ||
@@ -1780,9 +1814,18 @@ bool ImGuiManager::GetPrefabPreviewRequest(
 	) {
 		return false;
 	}
+	// InspectorはTimelineより後にSource Documentを変更する。ここで最後に
+	// Snapshotを作り直し、編集FrameだけAuthoring Poseへ戻る表示を防ぐ。
+	RebuildPrefabAnimationPreviewDocument();
+	RebuildPrefabHitBoxGhostDocument();
 
 	const SceneDocument& sourceDocument = prefabEditorSession_->GetDocument();
 	request.document = &GetPrefabStageDocument();
+	request.ghostDocument = (
+		prefabHitBoxSetupMode_ &&
+		prefabHitBoxGhostVisible_ &&
+		prefabHitBoxGhostDocument_
+	) ? prefabHitBoxGhostDocument_ : nullptr;
 	request.assetPath = prefabEditorSession_->GetFilePath();
 	request.revision = sourceDocument.GetRevision();
 	request.yaw = prefabPreviewYaw_;
@@ -1795,6 +1838,7 @@ bool ImGuiManager::GetPrefabPreviewRequest(
 	request.showJointAxes = prefabPreviewShowJointAxes_;
 	request.showColliders = prefabPreviewShowColliders_;
 	request.showCombatVolumes = prefabPreviewShowCombatVolumes_;
+	request.isolateSelectedCollider = prefabHitBoxSetupMode_;
 	request.showGrid = prefabGridVisible_;
 	request.framingSerial = prefabPreviewFramingSerial_;
 	return true;
@@ -2274,6 +2318,8 @@ void ImGuiManager::Finalize(){
 	prefabEditorSession_ = nullptr;
 	delete prefabAnimationPreviewDocument_;
 	prefabAnimationPreviewDocument_ = nullptr;
+	delete prefabHitBoxGhostDocument_;
+	prefabHitBoxGhostDocument_ = nullptr;
 	ImGui_ImplDX12_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
@@ -8281,6 +8327,14 @@ void ImGuiManager::DrawInspectorWindow() {
 					0.0f,
 					100000.0f
 				);
+				hitBoxChanged |= ImGui::DragFloat(
+					"Knockback",
+					&component.hitBoxKnockback,
+					0.1f, 0.0f, 100000.0f
+				);
+				hitBoxChanged |= InputTextString(
+					"Reaction Tag", component.hitBoxReactionTag
+				);
 				hitBoxChanged |= InputTextString(
 					"Damage Stat", component.hitBoxDamageStatId
 				);
@@ -8337,6 +8391,37 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::TextDisabled("Requires a Trigger Collider on this Entity.");
+				ImGui::EndDisabled();
+			} else if (component.type == "HitReaction") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool reactionChanged = false;
+				reactionChanged |= ImGui::DragFloat(
+					"Knockback Multiplier",
+					&component.hitReactionKnockbackMultiplier,
+					0.01f, 0.0f, 100.0f
+				);
+				reactionChanged |= ImGui::DragFloat(
+					"Minimum Poise Damage",
+					&component.hitReactionMinimumPoiseDamage,
+					0.1f, 0.0f, 100000.0f
+				);
+				reactionChanged |= InputTextString(
+					"Hit State", component.hitReactionStateName
+				);
+				if (reactionChanged) { document.MarkDirty(); }
+				ImGui::EndDisabled();
+			} else if (component.type == "DeathPresentation") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool deathChanged = false;
+				deathChanged |= InputTextString(
+					"Death State", component.deathPresentationStateName
+				);
+				deathChanged |= ImGui::DragFloat(
+					"Deactivate Delay",
+					&component.deathPresentationDeactivateDelay,
+					0.05f, 0.0f, 60.0f
+				);
+				if (deathChanged) { document.MarkDirty(); }
 				ImGui::EndDisabled();
 			} else if (component.type == "BoneAttachment") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
@@ -8535,6 +8620,51 @@ void ImGuiManager::DrawInspectorWindow() {
 				if (enemyChanged) {
 					document.MarkDirty();
 				}
+				ImGui::EndDisabled();
+			} else if (component.type == "EnemySpawner") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool spawnerChanged = false;
+				spawnerChanged |= InputTextString(
+					"Enemy Prefab", component.enemySpawnerPrefabPath
+				);
+				spawnerChanged |= ImGui::DragInt(
+					"Initial Count", &component.enemySpawnerInitialCount,
+					1.0f, 0, 10000
+				);
+				spawnerChanged |= ImGui::DragInt(
+					"Max Alive", &component.enemySpawnerMaxAlive,
+					1.0f, 0, 10000
+				);
+				spawnerChanged |= ImGui::DragFloat(
+					"Respawn Interval", &component.enemySpawnerInterval,
+					0.05f, 0.0f, 3600.0f
+				);
+				spawnerChanged |= ImGui::DragFloat(
+					"Spawn Radius", &component.enemySpawnerRadius,
+					0.1f, 0.0f, 10000.0f
+				);
+				spawnerChanged |= ImGui::Checkbox(
+					"Auto Start", &component.enemySpawnerAutoStart
+				);
+				component.enemySpawnerInitialCount = (std::max)(
+					component.enemySpawnerInitialCount, 0
+				);
+				component.enemySpawnerMaxAlive = (std::max)(
+					component.enemySpawnerMaxAlive,
+					component.enemySpawnerInitialCount
+				);
+				component.enemySpawnerInterval = (std::max)(
+					component.enemySpawnerInterval, 0.0f
+				);
+				component.enemySpawnerRadius = (std::max)(
+					component.enemySpawnerRadius, 0.0f
+				);
+				if (spawnerChanged) {
+					document.MarkDirty();
+				}
+				ImGui::TextDisabled(
+					"Runtime-only instances are reset to their prefab baseline before reuse."
+				);
 				ImGui::EndDisabled();
 			} else if (component.type == "Projectile") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
@@ -8792,8 +8922,57 @@ void ImGuiManager::DrawInspectorWindow() {
 						agentTeam->name.c_str()
 					);
 				}
+				const bool isGroundAgent =
+					component.agentMovementMode == "GroundXZ";
+				if (ImGui::BeginCombo(
+					"Movement Mode",
+					isGroundAgent ? "Ground XZ" : "Free 3D"
+				)) {
+					if (ImGui::Selectable("Free 3D", !isGroundAgent)) {
+						component.agentMovementMode = "Free3D";
+						agentChanged = true;
+					}
+					if (ImGui::Selectable("Ground XZ", isGroundAgent)) {
+						component.agentMovementMode = "GroundXZ";
+						agentChanged = true;
+					}
+					ImGui::EndCombo();
+				}
+				if (isGroundAgent) {
+					ImGui::TextDisabled(
+						"Adds XZ separation to PhysicsBody velocity after EnemyBehavior."
+					);
+					ImGui::TextDisabled(
+						"Transform, rotation, and vertical velocity remain owned by other systems."
+					);
+					ImGui::BeginDisabled(useTeamAgentSettings);
+					ImGui::SeparatorText("Ground Separation");
+					agentChanged |= ImGui::DragFloat(
+						"Separation Radius",
+						&component.agentSeparationRadius,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						"Separation Weight",
+						&component.agentSeparationWeight,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					agentChanged |= ImGui::InputInt(
+						"Neighbor Limit",
+						&component.agentNeighborLimit
+					);
+					ImGui::EndDisabled();
+				}
 				ImGui::BeginDisabled(useTeamAgentSettings);
-				if (belongsToAgentTeam || component.agentSchooling) {
+				if (
+					belongsToAgentTeam ||
+					component.agentSchooling ||
+					isGroundAgent
+				) {
 					char groupBuffer[64]{};
 					strncpy_s(
 						groupBuffer,
@@ -9657,8 +9836,11 @@ void ImGuiManager::DrawInspectorWindow() {
 				"Faction",
 				"HitBox",
 				"HurtBox",
+				"HitReaction",
+				"DeathPresentation",
 				"BoneAttachment",
 				"EnemyBehavior",
+				"EnemySpawner",
 				"Projectile"
 			};
 			for (const char* componentType : availableComponents) {
@@ -11615,6 +11797,93 @@ void ImGuiManager::DrawPrefabPreview() {
 	ImGui::SameLine();
 	ImGui::Checkbox("Hit/Hurt", &prefabPreviewShowCombatVolumes_);
 	ImGui::SameLine();
+	if (ImGui::Checkbox("HitBox Setup", &prefabHitBoxSetupMode_)) {
+		if (prefabHitBoxSetupMode_) {
+			// Colliderの基準位置はAuthoring Poseで編集する。Preview Poseを
+			// 維持したままでは親の回転によりLocal Offsetを判断しづらい。
+			prefabAnimationPreviewPlaying_ = false;
+			prefabAnimationPreviewActive_ = false;
+			prefabAttackPreviewMode_ = false;
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Checkbox("Attack Preview", &prefabAttackPreviewMode_)) {
+		if (prefabAttackPreviewMode_) {
+			// Attack PreviewはAnimator Poseを正とするため、Base Pose編集とは排他にする。
+			prefabHitBoxSetupMode_ = false;
+			prefabAnimationPreviewPlaying_ = false;
+			prefabAnimationPreviewActive_ = true;
+		}
+	}
+	if (prefabHitBoxSetupMode_) {
+		ImGui::SameLine();
+		ImGui::TextDisabled("Base Pose");
+		const SceneDocument& document = prefabEditorSession_->GetDocument();
+		const SceneEntity* owner = document.FindEntity(
+			prefabAnimationPreviewOwnerEntityId_
+		);
+		const SceneComponent* animator = owner
+			? FindEnabledComponent(*owner, "PrefabAnimator")
+			: nullptr;
+		if (!animator) {
+			for (const SceneEntity& candidate : document.GetEntities()) {
+				if (const SceneComponent* candidateAnimator =
+					FindEnabledComponent(candidate, "PrefabAnimator")) {
+					owner = &candidate;
+					animator = candidateAnimator;
+					prefabAnimationPreviewOwnerEntityId_ = candidate.id;
+					prefabAnimationPreviewClipIndex_ = 0;
+					break;
+				}
+			}
+		}
+		if (animator && !animator->prefabAnimationClips.empty()) {
+			prefabAnimationPreviewClipIndex_ = std::clamp(
+				prefabAnimationPreviewClipIndex_,
+				0,
+				static_cast<int>(animator->prefabAnimationClips.size() - 1)
+			);
+			ImGui::SameLine();
+			ImGui::Checkbox("Ghost", &prefabHitBoxGhostVisible_);
+			ImGui::SameLine();
+			const ScenePrefabAnimationClip& ghostClip =
+				animator->prefabAnimationClips[prefabAnimationPreviewClipIndex_];
+			ImGui::SetNextItemWidth(140.0f);
+			if (ImGui::BeginCombo("##HitBoxGhostClip", ghostClip.name.c_str())) {
+				for (size_t index = 0;
+					index < animator->prefabAnimationClips.size();
+					++index) {
+					const bool selected = static_cast<int>(index) ==
+						prefabAnimationPreviewClipIndex_;
+					if (ImGui::Selectable(
+						animator->prefabAnimationClips[index].name.c_str(),
+						selected
+					)) {
+						prefabAnimationPreviewClipIndex_ = static_cast<int>(index);
+						prefabHitBoxGhostTime_ = 0.0f;
+					}
+				}
+				ImGui::EndCombo();
+			}
+			const ScenePrefabAnimationClip& selectedGhostClip =
+				animator->prefabAnimationClips[prefabAnimationPreviewClipIndex_];
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(100.0f);
+			ImGui::BeginDisabled(!prefabHitBoxGhostVisible_);
+			ImGui::SliderFloat(
+				"##HitBoxGhostTime",
+				&prefabHitBoxGhostTime_,
+				0.0f,
+				(std::max)(selectedGhostClip.duration, 0.001f),
+				"Ghost %.2f s"
+			);
+			ImGui::EndDisabled();
+		} else {
+			ImGui::SameLine();
+			ImGui::TextDisabled("No PrefabAnimator for Ghost");
+		}
+	}
+	ImGui::SameLine();
 	if (ImGui::Checkbox("Grid", &prefabGridVisible_)) {
 		SaveEditorSettings();
 	}
@@ -11938,6 +12207,13 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
 		return;
 	}
+	if (prefabHitBoxSetupMode_) {
+		ImGui::SeparatorText("Prefab Animator Timeline");
+		ImGui::TextDisabled(
+			"HitBox Setup uses the Authoring Pose. Disable HitBox Setup to preview animation."
+		);
+		return;
+	}
 
 	const std::string& assetPath = prefabEditorSession_->GetFilePath();
 	if (prefabAnimationPreviewAssetPath_ != assetPath) {
@@ -11948,6 +12224,7 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		prefabAnimationPreviewTime_ = 0.0f;
 		prefabAnimationPreviewPlaying_ = false;
 		prefabAnimationPreviewActive_ = false;
+		prefabAttackPreviewIndex_ = 0;
 		prefabTransformPoseAddTime_ = 0.0f;
 		prefabTransformPoseStatus_.clear();
 	}
@@ -11987,6 +12264,7 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		prefabAnimationPreviewTime_ = 0.0f;
 		prefabAnimationPreviewPlaying_ = false;
 		prefabAnimationPreviewActive_ = false;
+		prefabAttackPreviewIndex_ = 0;
 		prefabTransformPoseAddTime_ = 0.0f;
 		prefabTransformPoseStatus_.clear();
 	}
@@ -12010,6 +12288,7 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 				prefabAnimationPreviewPlaying_ = false;
 				prefabAnimationPreviewActive_ =
 					!animators[index].component->prefabAnimationClips.empty();
+				prefabAttackPreviewIndex_ = 0;
 				prefabTransformPoseAddTime_ = 0.0f;
 				prefabTransformPoseStatus_.clear();
 			}
@@ -12028,6 +12307,66 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		return;
 	}
 
+	const SceneComponent* attackSet = FindEnabledComponent(
+		*animatorEntry.entity,
+		"AttackSet"
+	);
+	if (prefabAttackPreviewMode_) {
+		if (!attackSet || attackSet->attackDefinitions.empty()) {
+			ImGui::TextDisabled(
+				"Attack Preview requires an AttackSet on the selected Animator."
+			);
+		} else {
+			prefabAttackPreviewIndex_ = std::clamp(
+				prefabAttackPreviewIndex_,
+				0,
+				static_cast<int>(attackSet->attackDefinitions.size() - 1)
+			);
+			const SceneAttackDefinition& selectedAttack =
+				attackSet->attackDefinitions[prefabAttackPreviewIndex_];
+			if (ImGui::BeginCombo("Attack", selectedAttack.name.c_str())) {
+				for (size_t index = 0;
+					index < attackSet->attackDefinitions.size();
+					++index) {
+					const bool selected = static_cast<int>(index) ==
+						prefabAttackPreviewIndex_;
+					if (ImGui::Selectable(
+						attackSet->attackDefinitions[index].name.c_str(),
+						selected
+					)) {
+						prefabAttackPreviewIndex_ = static_cast<int>(index);
+					}
+				}
+				ImGui::EndCombo();
+			}
+			const SceneAttackDefinition& attack =
+				attackSet->attackDefinitions[prefabAttackPreviewIndex_];
+			auto clipEntry = std::find_if(
+				clips.begin(),
+				clips.end(),
+				[&attack](const ScenePrefabAnimationClip& candidate) {
+					return candidate.name == attack.animation;
+				}
+			);
+			if (clipEntry == clips.end()) {
+				ImGui::TextDisabled(
+					"Attack animation '%s' was not found.",
+					attack.animation.c_str()
+				);
+			} else {
+				const int attackClipIndex = static_cast<int>(
+					std::distance(clips.begin(), clipEntry)
+				);
+				if (prefabAnimationPreviewClipIndex_ != attackClipIndex) {
+					prefabAnimationPreviewClipIndex_ = attackClipIndex;
+					prefabAnimationPreviewTime_ = 0.0f;
+					prefabAnimationPreviewPlaying_ = false;
+				}
+				prefabAnimationPreviewActive_ = true;
+			}
+		}
+	}
+
 	prefabAnimationPreviewClipIndex_ = std::clamp(
 		prefabAnimationPreviewClipIndex_,
 		0,
@@ -12037,6 +12376,7 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		clips[prefabAnimationPreviewClipIndex_].name.empty()
 			? "(Unnamed Clip)"
 			: clips[prefabAnimationPreviewClipIndex_].name.c_str();
+	ImGui::BeginDisabled(prefabAttackPreviewMode_);
 	if (ImGui::BeginCombo("Clip", clipPreview)) {
 		for (size_t index = 0; index < clips.size(); ++index) {
 			const bool selected =
@@ -12057,10 +12397,24 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		}
 		ImGui::EndCombo();
 	}
+	ImGui::EndDisabled();
 
 	const ScenePrefabAnimationClip& clip =
 		clips[prefabAnimationPreviewClipIndex_];
 	const float duration = (std::max)(clip.duration, 0.001f);
+	const SceneAttackDefinition* timelineAttack = nullptr;
+	if (attackSet) {
+		auto found = std::find_if(
+			attackSet->attackDefinitions.begin(),
+			attackSet->attackDefinitions.end(),
+			[&clip](const SceneAttackDefinition& attack) {
+				return attack.animation == clip.name;
+			}
+		);
+		if (found != attackSet->attackDefinitions.end()) {
+			timelineAttack = &*found;
+		}
+	}
 	prefabAnimationPreviewTime_ = std::clamp(
 		prefabAnimationPreviewTime_,
 		0.0f,
@@ -12159,7 +12513,13 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 	);
 	const float headerHeight = 24.0f;
 	const float rowHeight = 24.0f;
-	const size_t rowCount = (std::max)(clip.tracks.size(), size_t{ 1 });
+	const size_t hitWindowCount = timelineAttack
+		? timelineAttack->hitWindows.size()
+		: 0;
+	const size_t rowCount = (std::max)(
+		clip.tracks.size() + hitWindowCount,
+		size_t{ 1 }
+	);
 	const float timelineHeight = headerHeight + rowHeight * rowCount;
 	const ImVec2 timelineOrigin = ImGui::GetCursorScreenPos();
 	ImGui::InvisibleButton(
@@ -12315,6 +12675,93 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 				3.5f,
 				keyColor
 			);
+		}
+	}
+
+	if (timelineAttack) {
+		for (size_t windowIndex = 0;
+			windowIndex < timelineAttack->hitWindows.size();
+			++windowIndex) {
+			const SceneAttackHitWindow& window =
+				timelineAttack->hitWindows[windowIndex];
+			const size_t rowIndex = clip.tracks.size() + windowIndex;
+			const float rowTop =
+				timelineOrigin.y + headerHeight + rowHeight * rowIndex;
+			const float rowCenter = rowTop + rowHeight * 0.5f;
+			if ((rowIndex & 1u) != 0u) {
+				drawList->AddRectFilled(
+					ImVec2(timelineOrigin.x, rowTop),
+					ImVec2(trackRight, rowTop + rowHeight),
+					IM_COL32(35, 39, 44, 255)
+				);
+			}
+			const SceneEntity* hitBox = window.hitBoxEntityId != 0
+				? document.FindEntity(window.hitBoxEntityId)
+				: nullptr;
+			if (!hitBox && !window.hitBoxEntityName.empty()) {
+				hitBox = document.FindEntityByName(window.hitBoxEntityName);
+			}
+			const std::string targetName = hitBox
+				? hitBox->name
+				: std::string("StateMachine HitBox");
+			const std::string rowLabel = "Hit / " + timelineAttack->name +
+				" / " + targetName;
+			const ImVec2 labelMin(timelineOrigin.x, rowTop);
+			const ImVec2 labelMax(trackLeft - 4.0f, rowTop + rowHeight);
+			drawList->PushClipRect(labelMin, labelMax, true);
+			drawList->AddText(
+				ImVec2(timelineOrigin.x + 5.0f, rowTop + 4.0f),
+				IM_COL32(255, 183, 90, 255),
+				rowLabel.c_str()
+			);
+			drawList->PopClipRect();
+			const float startTime = std::clamp(window.startTime, 0.0f, duration);
+			const float endTime = std::clamp(window.endTime, startTime, duration);
+			const bool active = prefabAnimationPreviewTime_ >= startTime &&
+				prefabAnimationPreviewTime_ < endTime;
+			if (
+				prefabAttackPreviewMode_ &&
+				active &&
+				hitBox &&
+				FindEnabledComponent(*hitBox, "OBBCollider")
+			) {
+				// Attack Preview中は有効WindowのColliderをStage選択色で示す。
+				prefabSelectedEntityId_ = hitBox->id;
+			}
+			const ImU32 hitColor = active
+				? IM_COL32(255, 92, 48, 245)
+				: IM_COL32(220, 92, 42, 185);
+			drawList->AddRectFilled(
+				ImVec2(
+					trackLeft + trackWidth * (startTime / duration),
+					rowCenter - 6.0f
+				),
+				ImVec2(
+					trackLeft + trackWidth * (endTime / duration),
+					rowCenter + 6.0f
+				),
+				hitColor,
+				2.0f
+			);
+			if (ImGui::IsMouseHoveringRect(
+				labelMin,
+				ImVec2(trackRight, rowTop + rowHeight)
+			)) {
+				if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+					prefabAnimationPreviewTime_ = startTime;
+					prefabAnimationPreviewPlaying_ = false;
+					prefabAnimationPreviewActive_ = true;
+				}
+				ImGui::SetTooltip(
+					"%s | %.3f - %.3f s | Damage %.1f | Poise %.1f | Knockback %.1f",
+					rowLabel.c_str(),
+					window.startTime,
+					window.endTime,
+					window.damage,
+					window.poiseDamage,
+					window.knockback
+				);
+			}
 		}
 	}
 
@@ -13002,6 +13449,28 @@ void ImGuiManager::DrawPrefabGizmo(
 		prefabSelectedEntityId_
 	);
 	if (!sourceEntity || !stageEntity || sourceEntity->locked) {
+		return;
+	}
+	if (
+		prefabHitBoxSetupMode_ &&
+		!FindEnabledComponent(*sourceEntity, "OBBCollider")
+	) {
+		ImGui::GetWindowDrawList()->AddText(
+			ImVec2(x + 8.0f, y + 8.0f),
+			IM_COL32(255, 190, 80, 255),
+			"HitBox Setup: select an Entity with a Collider."
+		);
+		return;
+	}
+	if (
+		prefabHitBoxSetupMode_ &&
+		!FindEnabledComponent(*sourceEntity, "OBBCollider")
+	) {
+		ImGui::GetWindowDrawList()->AddText(
+			ImVec2(x + 8.0f, y + 8.0f),
+			IM_COL32(255, 190, 80, 255),
+			"HitBox Setup: select an Entity with a Collider."
+		);
 		return;
 	}
 
@@ -13992,8 +14461,28 @@ void ImGuiManager::DrawPrefabInspector() {
 			changed |= ImGui::DragFloat(
 				"Poise Damage", &component.hitBoxPoiseDamage, 0.1f, 0.0f, 100000.0f
 			);
+			changed |= ImGui::DragFloat(
+				"Knockback", &component.hitBoxKnockback, 0.1f, 0.0f, 100000.0f
+			);
 			changed |= InputTextString(
-				"Owner Name", component.hitBoxOwnerEntityName
+				"Reaction Tag", component.hitBoxReactionTag
+			);
+			changed |= InputTextString(
+				"Damage Stat", component.hitBoxDamageStatId
+			);
+			changed |= InputTextString(
+				"Poise Stat", component.hitBoxPoiseStatId
+			);
+			changed |= ImGui::InputScalar(
+				"Owner Entity Id",
+				ImGuiDataType_U64,
+				&component.hitBoxOwnerEntityId
+			);
+			changed |= InputTextString(
+				"Owner Entity Name", component.hitBoxOwnerEntityName
+			);
+			changed |= ImGui::Checkbox(
+				"Ignore Same Faction", &component.hitBoxIgnoreSameFaction
 			);
 			ImGui::TextDisabled("Use with an active Trigger Collider.");
 		} else if (component.type == "HurtBox") {
@@ -14007,7 +14496,110 @@ void ImGuiManager::DrawPrefabInspector() {
 			changed |= InputTextString(
 				"Stats Entity Name", component.hurtBoxStatsEntityName
 			);
-		} else if (component.type == "BoneAttachment") {
+		} else if (component.type == "AgentBehavior") {
+			const bool isGroundAgent =
+				component.agentMovementMode == "GroundXZ";
+			if (ImGui::BeginCombo(
+				"Movement Mode",
+				isGroundAgent ? "Ground XZ" : "Free 3D"
+			)) {
+				if (ImGui::Selectable("Free 3D", !isGroundAgent)) {
+					component.agentMovementMode = "Free3D";
+					changed = true;
+				}
+				if (ImGui::Selectable("Ground XZ", isGroundAgent)) {
+					component.agentMovementMode = "GroundXZ";
+					changed = true;
+				}
+				ImGui::EndCombo();
+			}
+			changed |= InputTextString("Group", component.agentGroupName);
+			if (isGroundAgent) {
+				changed |= ImGui::DragFloat(
+					"Separation Radius",
+					&component.agentSeparationRadius,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				changed |= ImGui::DragFloat(
+					"Separation Weight",
+					&component.agentSeparationWeight,
+					0.05f,
+					0.0f,
+					100.0f
+				);
+				changed |= ImGui::InputInt(
+					"Neighbor Limit",
+					&component.agentNeighborLimit
+				);
+				ImGui::TextDisabled(
+					"Requires PhysicsBody. EnemyBehavior retains movement and rotation ownership."
+				);
+			}
+		} else if (component.type == "HitReaction") {
+			changed |= ImGui::DragFloat(
+				"Knockback Multiplier",
+				&component.hitReactionKnockbackMultiplier,
+				0.01f, 0.0f, 100.0f
+			);
+			changed |= ImGui::DragFloat(
+				"Minimum Poise Damage",
+				&component.hitReactionMinimumPoiseDamage,
+				0.1f, 0.0f, 100000.0f
+			);
+			changed |= InputTextString(
+				"Hit State", component.hitReactionStateName
+			);
+		} else if (component.type == "DeathPresentation") {
+			changed |= InputTextString(
+				"Death State", component.deathPresentationStateName
+			);
+			changed |= ImGui::DragFloat(
+				"Deactivate Delay",
+				&component.deathPresentationDeactivateDelay,
+				0.05f, 0.0f, 60.0f
+			);
+		} else if (component.type == "EnemySpawner") {
+				changed |= InputTextString(
+					"Enemy Prefab", component.enemySpawnerPrefabPath
+				);
+				changed |= ImGui::DragInt(
+					"Initial Count", &component.enemySpawnerInitialCount,
+					1.0f, 0, 10000
+				);
+				changed |= ImGui::DragInt(
+					"Max Alive", &component.enemySpawnerMaxAlive,
+					1.0f, 0, 10000
+				);
+				changed |= ImGui::DragFloat(
+					"Respawn Interval", &component.enemySpawnerInterval,
+					0.05f, 0.0f, 3600.0f
+				);
+				changed |= ImGui::DragFloat(
+					"Spawn Radius", &component.enemySpawnerRadius,
+					0.1f, 0.0f, 10000.0f
+				);
+				changed |= ImGui::Checkbox(
+					"Auto Start", &component.enemySpawnerAutoStart
+				);
+				component.enemySpawnerInitialCount = (std::max)(
+					component.enemySpawnerInitialCount, 0
+				);
+				component.enemySpawnerMaxAlive = (std::max)(
+					component.enemySpawnerMaxAlive,
+					component.enemySpawnerInitialCount
+				);
+				component.enemySpawnerInterval = (std::max)(
+					component.enemySpawnerInterval, 0.0f
+				);
+				component.enemySpawnerRadius = (std::max)(
+					component.enemySpawnerRadius, 0.0f
+				);
+				ImGui::TextDisabled(
+					"Runtime-only instances are reset to their prefab baseline before reuse."
+				);
+			} else if (component.type == "BoneAttachment") {
 			SceneEntity* targetEntity = component.boneAttachmentTargetEntityId != 0
 				? document.FindEntity(component.boneAttachmentTargetEntityId)
 				: nullptr;
@@ -14096,6 +14688,164 @@ void ImGuiManager::DrawPrefabInspector() {
 			changed |= ImGui::Checkbox(
 				"Inherit Bone Scale", &component.boneAttachmentInheritScale
 			);
+		} else if (component.type == "AttackSet") {
+			auto hasHitBox = [](const SceneEntity& candidate) {
+				return std::any_of(
+					candidate.components.begin(),
+					candidate.components.end(),
+					[](const SceneComponent& candidateComponent) {
+						return candidateComponent.type == "HitBox";
+					}
+				);
+			};
+			int removeAttack = -1;
+			for (size_t attackIndex = 0; attackIndex < component.attackDefinitions.size(); ++attackIndex) {
+				SceneAttackDefinition& attack = component.attackDefinitions[attackIndex];
+				ImGui::PushID(static_cast<int>(attackIndex));
+				if (ImGui::TreeNodeEx("Attack", ImGuiTreeNodeFlags_DefaultOpen, "%s", attack.name.c_str())) {
+					ImGui::SeparatorText("Identity");
+					changed |= InputTextString("Name", attack.name);
+					changed |= InputTextString("Animation", attack.animation);
+					const SceneComponent* animator = FindEnabledComponent(
+						*entity,
+						"PrefabAnimator"
+					);
+					const ScenePrefabAnimationClip* animationClip = nullptr;
+					if (animator) {
+						auto foundClip = std::find_if(
+							animator->prefabAnimationClips.begin(),
+							animator->prefabAnimationClips.end(),
+							[&attack](const ScenePrefabAnimationClip& clip) {
+								return clip.name == attack.animation;
+							}
+						);
+						if (foundClip != animator->prefabAnimationClips.end()) {
+							animationClip = &*foundClip;
+						}
+					}
+					ImGui::SeparatorText("Timing");
+					changed |= ImGui::DragFloat("Windup", &attack.windup, 0.01f, 0.0f, 60.0f);
+					changed |= ImGui::DragFloat("Active Time", &attack.activeTime, 0.01f, 0.0f, 60.0f);
+					changed |= ImGui::DragFloat("Recovery", &attack.recovery, 0.01f, 0.0f, 60.0f);
+					const float attackDuration = attack.windup +
+						attack.activeTime + attack.recovery;
+					if (animationClip) {
+						const float durationDifference =
+							std::abs(animationClip->duration - attackDuration);
+						ImGui::TextDisabled(
+							"Attack %.3f s / Clip %.3f s",
+							attackDuration,
+							animationClip->duration
+						);
+						if (durationDifference > 0.02f) {
+							ImGui::TextColored(
+								ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+								"Timing and Clip duration differ by %.3f s.",
+								durationDifference
+							);
+						}
+					} else if (!attack.animation.empty()) {
+						ImGui::TextColored(
+							ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
+							"Animation '%s' was not found on this PrefabAnimator.",
+							attack.animation.c_str()
+						);
+					}
+					ImGui::SeparatorText("Motion");
+					changed |= ImGui::DragFloat("Forward Distance", &attack.forwardDistance, 0.01f, -100.0f, 100.0f);
+					changed |= ImGui::DragFloat("Side Distance", &attack.sideDistance, 0.01f, -100.0f, 100.0f);
+					ImGui::SeparatorText("Hit Windows");
+					int removeWindow = -1;
+					for (size_t windowIndex = 0; windowIndex < attack.hitWindows.size(); ++windowIndex) {
+						SceneAttackHitWindow& window = attack.hitWindows[windowIndex];
+						ImGui::PushID(static_cast<int>(windowIndex));
+						if (ImGui::TreeNodeEx("Hit Window", ImGuiTreeNodeFlags_DefaultOpen, "Hit Window %zu", windowIndex + 1)) {
+							changed |= ImGui::DragFloat("Start", &window.startTime, 0.01f, 0.0f, 60.0f);
+							changed |= ImGui::DragFloat("End", &window.endTime, 0.01f, window.startTime, 60.0f);
+							const SceneEntity* selectedHitBox =
+								window.hitBoxEntityId != 0
+									? document.FindEntity(window.hitBoxEntityId)
+									: nullptr;
+							if (!selectedHitBox && !window.hitBoxEntityName.empty()) {
+								selectedHitBox = document.FindEntityByName(window.hitBoxEntityName);
+							}
+							std::string hitBoxPreview = "StateMachine HitBox (Fallback)";
+							if (selectedHitBox && hasHitBox(*selectedHitBox)) {
+								hitBoxPreview = selectedHitBox->name;
+							} else if (window.hitBoxEntityId != 0 || !window.hitBoxEntityName.empty()) {
+								hitBoxPreview = "Missing HitBox";
+							}
+							if (ImGui::BeginCombo("HitBox", hitBoxPreview.c_str())) {
+								const bool usesFallback = window.hitBoxEntityId == 0 &&
+									window.hitBoxEntityName.empty();
+								if (ImGui::Selectable("StateMachine HitBox (Fallback)", usesFallback)) {
+									window.hitBoxEntityId = 0;
+									window.hitBoxEntityName.clear();
+									changed = true;
+								}
+								for (const SceneEntity& candidate : document.GetEntities()) {
+									if (!hasHitBox(candidate)) { continue; }
+									const bool selected = candidate.id == window.hitBoxEntityId;
+									const std::string label = candidate.name + " (" + std::to_string(candidate.id) + ")";
+									if (ImGui::Selectable(label.c_str(), selected)) {
+										window.hitBoxEntityId = candidate.id;
+										window.hitBoxEntityName = candidate.name;
+										changed = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+							ImGui::SeparatorText("Damage & Reaction");
+							changed |= ImGui::DragFloat("Damage", &window.damage, 0.1f, 0.0f, 100000.0f);
+							changed |= ImGui::DragFloat("Poise Damage", &window.poiseDamage, 0.1f, 0.0f, 100000.0f);
+							changed |= ImGui::DragFloat("Knockback", &window.knockback, 0.1f, 0.0f, 100000.0f);
+							changed |= InputTextString("Reaction Tag", window.reactionTag);
+							struct DirectionModeOption {
+								const char* value;
+								const char* label;
+							};
+							static constexpr DirectionModeOption directionModes[] = {
+								{ "RadialFromAttacker", "Radial from Attacker" },
+								{ "AttackFacingLocal", "Attack Facing Local" },
+								{ "HitBoxLocal", "HitBox Local" },
+								{ "World", "World" }
+							};
+							const char* directionPreview = "Radial from Attacker";
+							for (const DirectionModeOption& option : directionModes) {
+								if (window.knockbackDirectionMode == option.value) {
+									directionPreview = option.label;
+									break;
+								}
+							}
+							if (ImGui::BeginCombo("Direction Mode", directionPreview)) {
+								for (const DirectionModeOption& option : directionModes) {
+									const bool selected = window.knockbackDirectionMode == option.value;
+									if (ImGui::Selectable(option.label, selected)) {
+										window.knockbackDirectionMode = option.value;
+										changed = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+							const bool usesLocalDirection =
+								window.knockbackDirectionMode != "RadialFromAttacker";
+							ImGui::BeginDisabled(!usesLocalDirection);
+							changed |= ImGui::DragFloat3("Local Direction", &window.knockbackLocalDirection.x, 0.01f);
+							ImGui::EndDisabled();
+							if (ImGui::SmallButton("Remove Hit Window")) removeWindow = static_cast<int>(windowIndex);
+							ImGui::TreePop();
+						}
+						ImGui::PopID();
+					}
+					if (removeWindow >= 0) { attack.hitWindows.erase(attack.hitWindows.begin() + removeWindow); changed = true; }
+					if (ImGui::SmallButton("Add Hit Window")) { attack.hitWindows.push_back(SceneAttackHitWindow{}); changed = true; }
+					if (ImGui::SmallButton("Remove Attack")) removeAttack = static_cast<int>(attackIndex);
+					ImGui::TreePop();
+				}
+				ImGui::PopID();
+			}
+			if (removeAttack >= 0) { component.attackDefinitions.erase(component.attackDefinitions.begin() + removeAttack); changed = true; }
+			if (ImGui::Button("Add Attack")) { component.attackDefinitions.push_back(SceneAttackDefinition{}); changed = true; }
 		} else if (component.type == "PrefabAnimator") {
 			int removeClipIndex = -1;
 			for (size_t clipIndex = 0;
@@ -14291,7 +15041,7 @@ void ImGuiManager::DrawPrefabInspector() {
 	static int componentTypeIndex = 0;
 	static constexpr const char* componentTypes[] = {
 		"MeshRenderer", "Animator", "OBBCollider", "HitBox", "HurtBox",
-		"BoneAttachment", "PrefabAnimator", "Faction", "StateMachine"
+		"BoneAttachment", "PrefabAnimator", "AttackSet", "Faction", "StateMachine"
 	};
 	componentTypeIndex = std::clamp(
 		componentTypeIndex,

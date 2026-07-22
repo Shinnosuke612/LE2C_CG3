@@ -21,6 +21,7 @@ public:
 		bool restart = true,
 		float transitionDuration = 0.0f
 	);
+	void ResetEntity(uint64_t entityId);
 	void Clear();
 
 private:

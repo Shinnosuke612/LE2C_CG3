@@ -153,6 +153,24 @@ void ScenePhysicsSystem::Step(
 	}
 }
 
+void ScenePhysicsSystem::ResetBodies(
+	const std::vector<SceneRuntimeObjectBinding>& bindings,
+	const std::vector<uint64_t>& entityIds
+) const {
+	for (const SceneRuntimeObjectBinding& binding : bindings) {
+		if (!binding.entity || !binding.body ||
+			std::find(entityIds.begin(), entityIds.end(), binding.entity->id) ==
+				entityIds.end()) {
+			continue;
+		}
+		const SceneComponent* component =
+			SceneEntityQuery::FindEnabledComponent(*binding.entity, "PhysicsBody");
+		if (component) {
+			binding.body->velocity = component->physicsVelocity;
+		}
+	}
+}
+
 void ScenePhysicsSystem::Clear() {
 	physicsWorld_.Clear();
 	staticColliders_.clear();

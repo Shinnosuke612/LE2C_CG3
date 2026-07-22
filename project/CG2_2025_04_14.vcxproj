@@ -184,8 +184,10 @@
     <ClCompile Include="application\scene\system\SceneAttachmentSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneCameraSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneCombatSystem.cpp" />
+	<ClCompile Include="application\scene\system\SceneHitReactionSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEnemySystem.cpp" />
+	<ClCompile Include="application\scene\system\SceneEnemySpawnerSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEventSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneStateMachineSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEffectRenderSystem.cpp" />
@@ -390,8 +392,10 @@
     <ClInclude Include="application\scene\system\SceneAttachmentSystem.h" />
     <ClInclude Include="application\scene\system\SceneCameraSystem.h" />
     <ClInclude Include="application\scene\system\SceneCombatSystem.h" />
+	<ClInclude Include="application\scene\system\SceneHitReactionSystem.h" />
     <ClInclude Include="application\scene\system\SceneDebugSystem.h" />
     <ClInclude Include="application\scene\system\SceneEnemySystem.h" />
+	<ClInclude Include="application\scene\system\SceneEnemySpawnerSystem.h" />
     <ClInclude Include="application\scene\system\SceneEventSystem.h" />
     <ClInclude Include="application\scene\system\SceneStateMachineSystem.h" />
     <ClInclude Include="application\scene\system\SceneEffectRenderSystem.h" />

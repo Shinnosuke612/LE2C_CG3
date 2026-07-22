@@ -101,6 +101,19 @@ namespace {
 			: input;
 	}
 
+	const SceneAttackDefinition* ResolveAttackDefinition(StateContext& context) {
+		SceneEntity* target = context.GetEntityParameter("AnimationTarget");
+		const SceneComponent* attackSet = target
+			? SceneEntityQuery::FindEnabledComponent(*target, "AttackSet")
+			: nullptr;
+		if (!attackSet) { return nullptr; }
+		const std::string name = context.GetString("AttackName", context.GetString("Animation"));
+		auto found = std::find_if(attackSet->attackDefinitions.begin(), attackSet->attackDefinitions.end(),
+			[&](const SceneAttackDefinition& attack) { return attack.name == name; });
+		return found == attackSet->attackDefinitions.end() ? nullptr : &*found;
+	}
+
+
 	float ApplyStateEasing(float value, const std::string& easing) {
 		value = std::clamp(value, 0.0f, 1.0f);
 		if (easing == "Linear") {
@@ -278,10 +291,19 @@ namespace {
 		void Enter(StateContext& context) override {
 			comboQueued_ = false;
 			lastMotionAmount_ = 0.0f;
+			activeHitWindowIndex_ = -1;
+			activeHitBox_ = nullptr;
+			hasAttackDefinition_ = false;
+			if (const SceneAttackDefinition* definition = ResolveAttackDefinition(context)) {
+				attackDefinition_ = *definition;
+				hasAttackDefinition_ = true;
+			}
 			// 攻撃中のCamera操作で突進軌道が曲がらないよう、開始時の向きを固定する。
 			ResolvePlanarAttackAxes(context, forward_, right_);
 			context.SetEntityActive(context.GetEntityParameter("HitBox"), false);
-			const std::string animation = context.GetString("Animation");
+			const std::string animation = hasAttackDefinition_
+				? attackDefinition_.animation
+				: context.GetString("Animation");
 			if (animation.empty()) {
 				return;
 			}
@@ -304,34 +326,67 @@ namespace {
 
 		void Update(StateContext& context, float deltaTime) override {
 			context.StopHorizontalMovement();
-			const float windup = (std::max)(
-				context.GetFloat("Windup", 0.15f), 0.0f
-			);
-			const float activeTime = (std::max)(
-				context.GetFloat("ActiveTime", 0.2f), 0.0f
-			);
-			const float recovery = (std::max)(
-				context.GetFloat("Recovery", 0.35f), 0.0f
-			);
+			const float windup = hasAttackDefinition_ ? attackDefinition_.windup : (std::max)(context.GetFloat("Windup", 0.15f), 0.0f);
+			const float activeTime = hasAttackDefinition_ ? attackDefinition_.activeTime : (std::max)(context.GetFloat("ActiveTime", 0.2f), 0.0f);
+			const float recovery = hasAttackDefinition_ ? attackDefinition_.recovery : (std::max)(context.GetFloat("Recovery", 0.35f), 0.0f);
 			const float stateDuration = windup + activeTime + recovery;
 			const float time = context.GetStateTime();
-			SceneEntity* hitBox = context.GetEntityParameter("HitBox");
-			if (!context.GetBool("AnimateHitBox", false)) {
+			SceneEntity* fallbackHitBox = context.GetEntityParameter("HitBox");
+			if (hasAttackDefinition_ && !attackDefinition_.hitWindows.empty()) {
+				const auto activeWindow = std::find_if(
+					attackDefinition_.hitWindows.begin(),
+					attackDefinition_.hitWindows.end(),
+					[time](const SceneAttackHitWindow& window) {
+						return time >= window.startTime && time < window.endTime;
+					}
+				);
+				const int activeWindowIndex = activeWindow == attackDefinition_.hitWindows.end()
+					? -1
+					: static_cast<int>(activeWindow - attackDefinition_.hitWindows.begin());
+				SceneEntity* hitBox = activeWindowIndex >= 0
+					? context.ResolveEntityReference(
+						activeWindow->hitBoxEntityId,
+						activeWindow->hitBoxEntityName
+					)
+					: nullptr;
+				if (!hitBox && activeWindowIndex >= 0) {
+					hitBox = fallbackHitBox;
+				}
+				if (activeHitBox_ && activeHitBox_ != hitBox) {
+					context.SetEntityActive(activeHitBox_, false);
+				}
+				activeHitBox_ = hitBox;
+				context.SetEntityActive(hitBox, activeWindowIndex >= 0);
+				if (hitBox && activeWindowIndex >= 0) {
+					for (SceneComponent& component : hitBox->components) {
+						if (component.type != "HitBox") { continue; }
+						if (activeWindowIndex != activeHitWindowIndex_) {
+							++component.hitBoxAttackWindowSerial;
+						}
+						component.hitBoxDamage = activeWindow->damage;
+						component.hitBoxPoiseDamage = activeWindow->poiseDamage;
+						component.hitBoxKnockback = activeWindow->knockback;
+						component.hitBoxReactionTag = activeWindow->reactionTag;
+						component.hitBoxKnockbackDirectionMode =
+							activeWindow->knockbackDirectionMode;
+						component.hitBoxKnockbackLocalDirection =
+							activeWindow->knockbackLocalDirection;
+						break;
+					}
+				}
+				activeHitWindowIndex_ = activeWindowIndex;
+			} else if (!context.GetBool("AnimateHitBox", false)) {
 				context.SetEntityActive(
-					hitBox,
+					fallbackHitBox,
 					time >= windup && time < windup + activeTime
 				);
 			}
 
-			const float motionStart = (std::max)(
-				context.GetFloat("MotionStart", 0.0f), 0.0f
-			);
-			const float motionDuration = (std::max)(
-				context.GetFloat("MotionDuration", stateDuration), 0.0001f
-			);
+			const float motionStart = hasAttackDefinition_ ? windup : (std::max)(context.GetFloat("MotionStart", 0.0f), 0.0f);
+			const float motionDuration = hasAttackDefinition_ ? (std::max)(attackDefinition_.activeTime, 0.0001f) : (std::max)(context.GetFloat("MotionDuration", stateDuration), 0.0001f);
 			const float motionProgress = ApplyStateEasing(
 				(time - motionStart) / motionDuration,
-				context.GetString("MotionEasing", "SmoothStep")
+				hasAttackDefinition_ ? attackDefinition_.motionEasing : context.GetString("MotionEasing", "SmoothStep")
 			);
 			const float motionDelta = motionProgress - lastMotionAmount_;
 			lastMotionAmount_ = motionProgress;
@@ -340,11 +395,11 @@ namespace {
 				const Vector3 displacement = Math::Add(
 					Math::Multiply(
 						forward_,
-						context.GetFloat("ForwardDistance") * motionDelta
+						(hasAttackDefinition_ ? attackDefinition_.forwardDistance : context.GetFloat("ForwardDistance")) * motionDelta
 					),
 					Math::Multiply(
 						right_,
-						context.GetFloat("SideDistance") * motionDelta
+						(hasAttackDefinition_ ? attackDefinition_.sideDistance : context.GetFloat("SideDistance")) * motionDelta
 					)
 				);
 				context.SetHorizontalVelocity(
@@ -399,11 +454,17 @@ namespace {
 		}
 
 		void Exit(StateContext& context) override {
+			context.SetEntityActive(activeHitBox_, false);
 			context.SetEntityActive(context.GetEntityParameter("HitBox"), false);
+			activeHitBox_ = nullptr;
 		}
 
 	private:
 		bool comboQueued_ = false;
+		bool hasAttackDefinition_ = false;
+		SceneAttackDefinition attackDefinition_{};
+		int activeHitWindowIndex_ = -1;
+		SceneEntity* activeHitBox_ = nullptr;
 		float lastMotionAmount_ = 0.0f;
 		Vector3 forward_{ 0.0f, 0.0f, 1.0f };
 		Vector3 right_{ 1.0f, 0.0f, 0.0f };
@@ -477,14 +538,21 @@ SceneEntity* StateContext::GetEntityParameter(const std::string& name) const {
 	if (!parameter) {
 		return nullptr;
 	}
-	if (parameter->entityId != 0) {
-		if (SceneEntity* entity = document_.FindEntity(parameter->entityId)) {
+	return ResolveEntityReference(parameter->entityId, parameter->entityName);
+}
+
+SceneEntity* StateContext::ResolveEntityReference(
+	uint64_t entityId,
+	const std::string& entityName
+) const {
+	if (entityId != 0) {
+		if (SceneEntity* entity = document_.FindEntity(entityId)) {
 			return entity;
 		}
 	}
-	return parameter->entityName.empty()
+	return entityName.empty()
 		? nullptr
-		: document_.FindEntityByName(parameter->entityName);
+		: document_.FindEntityByName(entityName);
 }
 
 bool StateContext::IsKeyDown(const std::string& keyName) const {
@@ -758,6 +826,11 @@ const std::string* SceneStateMachineSystem::GetCurrentState(
 	return found == runtimes_.end() || !found->second.initialized
 		? nullptr
 		: &found->second.currentState;
+}
+
+void SceneStateMachineSystem::ResetEntity(uint64_t entityId) {
+	runtimes_.erase(entityId);
+	externalRequests_.erase(entityId);
 }
 
 void SceneStateMachineSystem::Clear() {

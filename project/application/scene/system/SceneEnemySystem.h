@@ -8,6 +8,7 @@
 #include "../SceneRuntimeObjectBinding.h"
 
 class SceneDocument;
+class SceneHitReactionSystem;
 class ScenePrefabAnimationSystem;
 class SceneStatSystem;
 
@@ -18,8 +19,10 @@ public:
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
 		SceneStatSystem& statSystem,
 		ScenePrefabAnimationSystem& prefabAnimationSystem,
+		const SceneHitReactionSystem& hitReactionSystem,
 		float deltaTime
 	);
+	void ResetEntity(uint64_t entityId);
 	void Clear();
 
 private:
@@ -36,6 +39,7 @@ private:
 		float phaseTimer = 0.0f;
 		float cooldown = 0.0f;
 		bool hasTarget = false;
+		bool hitBoxSuppressedByReaction = false;
 		bool initialized = false;
 	};
 
