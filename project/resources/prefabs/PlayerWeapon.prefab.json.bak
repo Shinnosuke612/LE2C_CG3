@@ -963,11 +963,1422 @@
                   "targetEntityName": "PlayerWeaponHitBox"
                 }
               ]
+            },
+            {
+              "duration": 0.10000000149011612,
+              "loop": false,
+              "name": "SpinStart",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.07000000029802322,
+                        0.0,
+                        -0.14000000059604645
+                      ],
+                      "time": 0.0,
+                      "value": [
+                        -1.2000000476837158,
+                        1.0,
+                        -1.149999976158142
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        -0.3499999940395355
+                      ],
+                      "time": 0.10000000149011612,
+                      "value": [
+                        0.0,
+                        1.0,
+                        -1.7000000476837158
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        2.3499999046325684,
+                        1.2000000476837158
+                      ]
+                    },
+                    {
+                      "time": 0.10000000149011612,
+                      "value": [
+                        0.0,
+                        0.0,
+                        1.5707963705062866
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.0,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.10000000149011612,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    }
+                  ],
+                  "property": "LocalScale",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                }
+              ]
+            },
+            {
+              "duration": 0.4000000059604645,
+              "loop": false,
+              "name": "SpinLoop",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        -0.3499999940395355
+                      ],
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        1.0,
+                        -1.7000000476837158
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        0.3499999940395355
+                      ],
+                      "time": 0.10000000149011612,
+                      "value": [
+                        1.7000000476837158,
+                        1.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.3499999940395355,
+                        0.0,
+                        0.3499999940395355
+                      ],
+                      "time": 0.20000000298023224,
+                      "value": [
+                        0.0,
+                        1.0,
+                        1.7000000476837158
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.3499999940395355,
+                        0.0,
+                        -0.3499999940395355
+                      ],
+                      "time": 0.30000001192092896,
+                      "value": [
+                        -1.7000000476837158,
+                        1.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        -0.3499999940395355
+                      ],
+                      "time": 0.4000000059604645,
+                      "value": [
+                        0.0,
+                        1.0,
+                        -1.7000000476837158
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        0.0,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.10000000149011612,
+                      "value": [
+                        0.0,
+                        -1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.20000000298023224,
+                      "value": [
+                        0.0,
+                        3.1415927410125732,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.30000001192092896,
+                      "value": [
+                        0.0,
+                        1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.4000000059604645,
+                      "value": [
+                        0.0,
+                        0.0,
+                        1.5707963705062866
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.0,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.10000000149011612,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.20000000298023224,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.30000001192092896,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.4000000059604645,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    }
+                  ],
+                  "property": "LocalScale",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                }
+              ]
+            },
+            {
+              "duration": 1.0499999523162842,
+              "loop": false,
+              "name": "SpinFinish",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        -0.3499999940395355
+                      ],
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        1.0,
+                        -1.7000000476837158
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        0.3499999940395355,
+                        0.0,
+                        0.3499999940395355
+                      ],
+                      "time": 0.10000000149011612,
+                      "value": [
+                        1.7000000476837158,
+                        1.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.3499999940395355,
+                        0.0,
+                        0.3499999940395355
+                      ],
+                      "time": 0.20000000298023224,
+                      "value": [
+                        0.0,
+                        1.0,
+                        1.7000000476837158
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "positionBulge": [
+                        -0.12999999523162842,
+                        0.0,
+                        -0.05999999865889549
+                      ],
+                      "time": 0.30000001192092896,
+                      "value": [
+                        -1.7000000476837158,
+                        1.0,
+                        0.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "positionBulge": [
+                        -1.7999999523162842,
+                        0.0,
+                        0.0
+                      ],
+                      "time": 0.4000000059604645,
+                      "value": [
+                        -1.2000000476837158,
+                        1.0,
+                        -1.149999976158142
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseInOut",
+                      "time": 0.5799999833106995,
+                      "value": [
+                        0.0,
+                        2.5,
+                        1.7999999523162842
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseIn",
+                      "time": 0.6800000071525574,
+                      "value": [
+                        0.0,
+                        2.8499999046325684,
+                        1.7999999523162842
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "time": 0.8600000143051147,
+                      "value": [
+                        0.0,
+                        0.15000000596046448,
+                        1.7999999523162842
+                      ]
+                    },
+                    {
+                      "time": 1.0499999523162842,
+                      "value": [
+                        0.0,
+                        0.800000011920929,
+                        1.5
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "time": 0.0,
+                      "value": [
+                        0.0,
+                        0.0,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.10000000149011612,
+                      "value": [
+                        0.0,
+                        -1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.20000000298023224,
+                      "value": [
+                        0.0,
+                        3.1415927410125732,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.30000001192092896,
+                      "value": [
+                        0.0,
+                        1.5707963705062866,
+                        1.5707963705062866
+                      ]
+                    },
+                    {
+                      "time": 0.4000000059604645,
+                      "value": [
+                        0.0,
+                        2.3499999046325684,
+                        1.2000000476837158
+                      ]
+                    },
+                    {
+                      "time": 0.5799999833106995,
+                      "value": [
+                        1.5707963705062866,
+                        0.0,
+                        3.1415927410125732
+                      ]
+                    },
+                    {
+                      "time": 0.6800000071525574,
+                      "value": [
+                        1.1524107456207275,
+                        -0.08360689878463745,
+                        -2.9109408855438232
+                      ]
+                    },
+                    {
+                      "time": 0.8600000143051147,
+                      "value": [
+                        3.047461986541748,
+                        0.0,
+                        3.141592502593994
+                      ]
+                    },
+                    {
+                      "time": 1.0499999523162842,
+                      "value": [
+                        2.700000047683716,
+                        0.0,
+                        3.1415927410125732
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.0,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.10000000149011612,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.20000000298023224,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "Linear",
+                      "time": 0.30000001192092896,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "time": 0.4000000059604645,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseInOut",
+                      "time": 0.5799999833106995,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseIn",
+                      "time": 0.6800000071525574,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "easingToNext": "EaseOut",
+                      "time": 0.8600000143051147,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    },
+                    {
+                      "time": 1.0499999523162842,
+                      "value": [
+                        1.0,
+                        1.0,
+                        1.0
+                      ]
+                    }
+                  ],
+                  "property": "LocalScale",
+                  "targetEntityId": 1,
+                  "targetEntityName": "PlayerWeapon"
+                },
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [
+                    {
+                      "time": 0.859357476234436,
+                      "value": [
+                        -0.10332123190164566,
+                        0.0022563894744962454,
+                        0.013163764029741287
+                      ]
+                    }
+                  ],
+                  "property": "LocalRotation",
+                  "targetEntityId": 3,
+                  "targetEntityName": "SpinFinish_HitBox_3"
+                },
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [
+                    {
+                      "time": 0.859357476234436,
+                      "value": [
+                        2.0769999027252197,
+                        0.9999995231628418,
+                        3.9019999504089355
+                      ]
+                    }
+                  ],
+                  "property": "LocalScale",
+                  "targetEntityId": 3,
+                  "targetEntityName": "SpinFinish_HitBox_3"
+                },
+                {
+                  "easing": "SmoothStep",
+                  "keyframes": [
+                    {
+                      "time": 0.859357476234436,
+                      "value": [
+                        0.005940879695117474,
+                        0.2715514004230499,
+                        2.618884563446045
+                      ]
+                    }
+                  ],
+                  "property": "LocalPosition",
+                  "targetEntityId": 3,
+                  "targetEntityName": "SpinFinish_HitBox_3"
+                }
+              ]
             }
           ],
           "enabled": true,
           "localId": 2,
           "type": "PrefabAnimator"
+        },
+        {
+          "attacks": [
+            {
+              "activeTime": 0.2800000011920929,
+              "animation": "Attack1",
+              "animationTargetEntityId": 0,
+              "animationTargetEntityName": "",
+              "effectEvents": [
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/core_burst.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.30000001192092896
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.4399999976158142
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.5799999833106995
+                }
+              ],
+              "facingMode": "FixedAtStart",
+              "facingRotateAngle": 0.0,
+              "facingTargetEntityId": 0,
+              "facingTargetEntityName": "",
+              "forwardDistance": 0.41999998688697815,
+              "hitBoxEntityId": 0,
+              "hitBoxEntityName": "",
+              "hitWindows": [
+                {
+                  "damage": 20.0,
+                  "endTime": 0.5799999833106995,
+                  "hitBoxEntityId": 2,
+                  "hitBoxEntityName": "PlayerWeaponHitBox",
+                  "hitPolicy": "OncePerActivation",
+                  "hitStopDuration": 0.019999999552965164,
+                  "knockback": 8.0,
+                  "knockbackDirectionMode": "RadialFromAttacker",
+                  "knockbackLocalDirection": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "payloadSource": "WindowLegacy",
+                  "poiseDamage": 10.0,
+                  "reactionTag": "Light",
+                  "startTime": 0.30000001192092896,
+                  "targetCooldown": 0.15000000596046448,
+                  "verticalKnockback": 0.0
+                }
+              ],
+              "loopEnabled": false,
+              "loopMaxCount": 0,
+              "loopSafetyTimeout": 0.0,
+              "motionEasing": "EaseOut",
+              "name": "Attack1",
+              "recovery": 0.3199999928474426,
+              "sideDistance": 0.0,
+              "windup": 0.30000001192092896
+            },
+            {
+              "activeTime": 0.3199999928474426,
+              "animation": "Attack2",
+              "animationTargetEntityId": 0,
+              "animationTargetEntityName": "",
+              "effectEvents": [
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/ring_burst.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.2800000011920929
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.41999998688697815
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.5600000023841858
+                }
+              ],
+              "facingMode": "FixedAtStart",
+              "facingRotateAngle": 0.0,
+              "facingTargetEntityId": 0,
+              "facingTargetEntityName": "",
+              "forwardDistance": 0.18000000715255737,
+              "hitBoxEntityId": 0,
+              "hitBoxEntityName": "",
+              "hitWindows": [
+                {
+                  "damage": 20.0,
+                  "endTime": 0.6000000238418579,
+                  "hitBoxEntityId": 2,
+                  "hitBoxEntityName": "PlayerWeaponHitBox",
+                  "hitPolicy": "OncePerActivation",
+                  "hitStopDuration": 0.02500000037252903,
+                  "knockback": 8.0,
+                  "knockbackDirectionMode": "AttackFacingLocal",
+                  "knockbackLocalDirection": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "payloadSource": "WindowLegacy",
+                  "poiseDamage": 10.0,
+                  "reactionTag": "Light",
+                  "startTime": 0.2800000011920929,
+                  "targetCooldown": 0.15000000596046448,
+                  "verticalKnockback": 0.0
+                }
+              ],
+              "loopEnabled": false,
+              "loopMaxCount": 0,
+              "loopSafetyTimeout": 0.0,
+              "motionEasing": "EaseInOut",
+              "name": "Attack2",
+              "recovery": 0.20000000298023224,
+              "sideDistance": -0.11999999731779099,
+              "windup": 0.2800000011920929
+            },
+            {
+              "activeTime": 1.2999999523162842,
+              "animation": "Attack3",
+              "animationTargetEntityId": 0,
+              "animationTargetEntityName": "",
+              "effectEvents": [
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/ring_burst.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.10000000149011612
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.3199999928474426
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.5400000214576721
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.7599999904632568
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.9800000190734863
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 1.2000000476837158
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/core_burst.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 1.2599999904632568
+                }
+              ],
+              "facingMode": "FixedAtStart",
+              "facingRotateAngle": 0.0,
+              "facingTargetEntityId": 0,
+              "facingTargetEntityName": "",
+              "forwardDistance": 0.25,
+              "hitBoxEntityId": 0,
+              "hitBoxEntityName": "",
+              "hitWindows": [
+                {
+                  "damage": 16.0,
+                  "endTime": 1.2599999904632568,
+                  "hitBoxEntityId": 2,
+                  "hitBoxEntityName": "PlayerWeaponHitBox",
+                  "hitPolicy": "OncePerActivation",
+                  "hitStopDuration": 0.029999999329447746,
+                  "knockback": 4.0,
+                  "knockbackDirectionMode": "RadialFromAttacker",
+                  "knockbackLocalDirection": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "payloadSource": "WindowLegacy",
+                  "poiseDamage": 8.0,
+                  "reactionTag": "Light",
+                  "startTime": 0.10000000149011612,
+                  "targetCooldown": 0.15000000596046448,
+                  "verticalKnockback": 0.0
+                },
+                {
+                  "damage": 28.0,
+                  "endTime": 1.399999976158142,
+                  "hitBoxEntityId": 2,
+                  "hitBoxEntityName": "PlayerWeaponHitBox",
+                  "hitPolicy": "OncePerActivation",
+                  "hitStopDuration": 0.054999999701976776,
+                  "knockback": 12.0,
+                  "knockbackDirectionMode": "AttackFacingLocal",
+                  "knockbackLocalDirection": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "payloadSource": "WindowLegacy",
+                  "poiseDamage": 18.0,
+                  "reactionTag": "Heavy",
+                  "startTime": 1.2599999904632568,
+                  "targetCooldown": 0.15000000596046448,
+                  "verticalKnockback": 0.0
+                }
+              ],
+              "loopEnabled": false,
+              "loopMaxCount": 0,
+              "loopSafetyTimeout": 0.0,
+              "motionEasing": "EaseIn",
+              "name": "Attack3",
+              "recovery": 0.15000000596046448,
+              "sideDistance": 0.0,
+              "windup": 0.10000000149011612
+            },
+            {
+              "activeTime": 0.0,
+              "animation": "SpinStart",
+              "animationTargetEntityId": 0,
+              "animationTargetEntityName": "",
+              "effectEvents": [],
+              "facingMode": "FixedAtStart",
+              "facingRotateAngle": 0.0,
+              "facingTargetEntityId": 0,
+              "facingTargetEntityName": "",
+              "forwardDistance": 0.0,
+              "hitBoxEntityId": 0,
+              "hitBoxEntityName": "",
+              "hitWindows": [],
+              "loopEnabled": false,
+              "loopMaxCount": 0,
+              "loopSafetyTimeout": 0.0,
+              "motionEasing": "Linear",
+              "name": "SpinStart",
+              "recovery": 0.0,
+              "sideDistance": 0.0,
+              "windup": 0.10000000149011612
+            },
+            {
+              "activeTime": 0.4000000059604645,
+              "animation": "SpinLoop",
+              "animationTargetEntityId": 0,
+              "animationTargetEntityName": "",
+              "effectEvents": [
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/ring_burst.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.0
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.11999999731779099
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.23999999463558197
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.36000001430511475
+                }
+              ],
+              "facingMode": "FixedAtStart",
+              "facingRotateAngle": 0.0,
+              "facingTargetEntityId": 0,
+              "facingTargetEntityName": "",
+              "forwardDistance": 0.0,
+              "hitBoxEntityId": 0,
+              "hitBoxEntityName": "",
+              "hitWindows": [
+                {
+                  "damage": 16.0,
+                  "endTime": 0.4000000059604645,
+                  "hitBoxEntityId": 2,
+                  "hitBoxEntityName": "PlayerWeaponHitBox",
+                  "hitPolicy": "OncePerLoop",
+                  "hitStopDuration": 0.029999999329447746,
+                  "knockback": 4.0,
+                  "knockbackDirectionMode": "RadialFromAttacker",
+                  "knockbackLocalDirection": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "payloadSource": "WindowLegacy",
+                  "poiseDamage": 8.0,
+                  "reactionTag": "Light",
+                  "startTime": 0.0,
+                  "targetCooldown": 0.15000000596046448,
+                  "verticalKnockback": 0.0
+                }
+              ],
+              "loopEnabled": true,
+              "loopMaxCount": 0,
+              "loopSafetyTimeout": 6.0,
+              "motionEasing": "Linear",
+              "name": "SpinLoop",
+              "recovery": 0.0,
+              "sideDistance": 0.0,
+              "windup": 0.0
+            },
+            {
+              "activeTime": 0.18000000715255737,
+              "animation": "SpinFinish",
+              "animationTargetEntityId": 0,
+              "animationTargetEntityName": "",
+              "effectEvents": [
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.1599999964237213
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.3199999928474426
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.47999998927116394
+                },
+                {
+                  "groundCrackBranchProbability": 0.25,
+                  "groundCrackLifetime": 1.2000000476837158,
+                  "groundCrackPrimaryBranchCount": 10,
+                  "groundCrackRadius": 3.200000047683716,
+                  "groundCrackSegmentsPerBranch": 6,
+                  "groundCrackSurfaceOffset": 0.029999999329447746,
+                  "groundCrackWidth": 0.05999999865889549,
+                  "groundEffectType": "None",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 6.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/slash_trail.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.6399999856948853
+                },
+                {
+                  "groundCrackBranchProbability": 0.4000000059604645,
+                  "groundCrackLifetime": 1.350000023841858,
+                  "groundCrackPrimaryBranchCount": 24,
+                  "groundCrackRadius": 14.399999618530273,
+                  "groundCrackSegmentsPerBranch": 10,
+                  "groundCrackSurfaceOffset": 0.03500000014901161,
+                  "groundCrackWidth": 0.019999999552965164,
+                  "groundEffectType": "ProceduralCrack",
+                  "groundPrefabLifetime": 1.2000000476837158,
+                  "groundPrefabPath": "",
+                  "groundProbeDistance": 8.0,
+                  "localOffset": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "particleEffectPath": "resources/particles/core_burst.json",
+                  "spawnEntityId": 2,
+                  "spawnEntityName": "PlayerWeaponHitBox",
+                  "time": 0.7599999904632568
+                }
+              ],
+              "facingMode": "FixedAtStart",
+              "facingRotateAngle": 0.0,
+              "facingTargetEntityId": 0,
+              "facingTargetEntityName": "",
+              "forwardDistance": 0.25,
+              "hitBoxEntityId": 0,
+              "hitBoxEntityName": "",
+              "hitWindows": [
+                {
+                  "damage": 16.0,
+                  "endTime": 0.7599999904632568,
+                  "hitBoxEntityId": 2,
+                  "hitBoxEntityName": "PlayerWeaponHitBox",
+                  "hitPolicy": "OncePerActivation",
+                  "hitStopDuration": 0.029999999329447746,
+                  "knockback": 4.0,
+                  "knockbackDirectionMode": "RadialFromAttacker",
+                  "knockbackLocalDirection": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "payloadSource": "WindowLegacy",
+                  "poiseDamage": 8.0,
+                  "reactionTag": "Light",
+                  "startTime": 0.0,
+                  "targetCooldown": 0.15000000596046448,
+                  "verticalKnockback": 0.0
+                },
+                {
+                  "damage": 28.0,
+                  "endTime": 0.8999999761581421,
+                  "hitBoxEntityId": 2,
+                  "hitBoxEntityName": "PlayerWeaponHitBox",
+                  "hitPolicy": "OncePerActivation",
+                  "hitStopDuration": 0.054999999701976776,
+                  "knockback": 15.0,
+                  "knockbackDirectionMode": "AttackFacingLocal",
+                  "knockbackLocalDirection": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "payloadSource": "WindowLegacy",
+                  "poiseDamage": 18.0,
+                  "reactionTag": "Heavy",
+                  "startTime": 0.7599999904632568,
+                  "targetCooldown": 0.15000000596046448,
+                  "verticalKnockback": 0.0
+                },
+                {
+                  "endTime": 0.8700000047683716,
+                  "hitBoxEntityId": 3,
+                  "hitBoxEntityName": "SpinFinish_HitBox_3",
+                  "payloadSource": "HitBox",
+                  "startTime": 0.8600000143051147
+                }
+              ],
+              "loopEnabled": false,
+              "loopMaxCount": 0,
+              "loopSafetyTimeout": 0.0,
+              "motionEasing": "EaseIn",
+              "name": "SpinFinish",
+              "recovery": 0.1899999976158142,
+              "sideDistance": 0.0,
+              "windup": 0.6800000071525574
+            }
+          ],
+          "enabled": true,
+          "localId": 4,
+          "type": "AttackSet"
         }
       ],
       "folder": false,
@@ -1053,16 +2464,25 @@
           "damage": 20.0,
           "damageStatId": "hp",
           "enabled": true,
+          "hitPolicy": "OncePerActivation",
           "hitStopDuration": 0.0,
           "ignoreSameFaction": true,
           "knockback": 30.0,
+          "knockbackDirectionMode": "RadialFromAttacker",
+          "knockbackLocalDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
           "localId": 2,
           "ownerEntityId": 0,
           "ownerEntityName": "Player",
           "poiseDamage": 20.0,
           "poiseStatId": "poise",
           "reactionTag": "Light",
-          "type": "HitBox"
+          "targetCooldown": 0.15000000596046448,
+          "type": "HitBox",
+          "verticalKnockback": 0.0
         },
         {
           "alignmentMode": "ManualOffset",
@@ -1082,6 +2502,121 @@
       "locked": false,
       "modelPath": "",
       "name": "PlayerWeaponHitBox",
+      "parentId": 1,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": false,
+      "components": [
+        {
+          "active": true,
+          "debugColor": [
+            1.0,
+            0.20000000298023224,
+            0.10000000149011612,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": true,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 1,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            -0.20999999344348907
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            2.2699999809265137,
+            0.3700000047683716,
+            1.309999942779541
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "damage": 5.0,
+          "damageStatId": "hp",
+          "enabled": true,
+          "hitPolicy": "OncePerActivation",
+          "hitStopDuration": 0.0,
+          "ignoreSameFaction": true,
+          "knockback": 40.0,
+          "knockbackDirectionMode": "RadialFromAttacker",
+          "knockbackLocalDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "localId": 2,
+          "ownerEntityId": 0,
+          "ownerEntityName": "Player",
+          "poiseDamage": 100.0,
+          "poiseStatId": "poise",
+          "reactionTag": "Light",
+          "targetCooldown": 0.15000000596046448,
+          "type": "HitBox",
+          "verticalKnockback": 20.0
+        },
+        {
+          "alignmentMode": "ManualOffset",
+          "enabled": true,
+          "inheritScale": true,
+          "jointName": "Ctr_Wpn_A",
+          "localId": 3,
+          "sourceJointName": "",
+          "targetEntityId": 1,
+          "targetEntityName": "PlayerWeapon",
+          "type": "BoneAttachment"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 3,
+      "locked": false,
+      "modelPath": "",
+      "name": "SpinFinish_HitBox_3",
       "parentId": 1,
       "sprite": {
         "anchor": [

@@ -1,0 +1,61 @@
+{
+  "name": "SlashTrail",
+  "textureFilePath": "resources/circleEntity.png",
+  "blendMode": "Add",
+  "emitter": {
+    "count": 1,
+    "frequency": 1.0,
+    "isActive": false,
+    "spawnSize": [0.0, 0.0, 0.0],
+    "translate": [0.0, 0.0, 0.0]
+  },
+  "behavior": {
+    "life": {
+      "isLooping": false,
+      "lifeTimeMin": 0.16,
+      "lifeTimeMax": 0.16,
+      "enableLifeFade": true,
+      "fadeOutStartRatio": 0.35
+    },
+    "motion": {
+      "mode": "Linear",
+      "linear": {
+        "baseVelocity": [0.0, 0.0, 0.0],
+        "velocityRandomRange": [0.0, 0.0, 0.0],
+        "enableAcceleration": false,
+        "baseAcceleration": [0.0, 0.0, 0.0],
+        "accelerationRandomRange": [0.0, 0.0, 0.0]
+      }
+    },
+    "color": {
+      "mode": "OverLife",
+      "startColorMin": [0.35, 0.75, 1.0, 0.9],
+      "startColorMax": [0.55, 0.9, 1.0, 1.0],
+      "endColorMin": [0.1, 0.35, 1.0, 0.0],
+      "endColorMax": [0.1, 0.35, 1.0, 0.0]
+    },
+    "scale": {
+      "enableScaleOverLife": true,
+      "startScaleMin": [0.12, 1.1, 1.0],
+      "startScaleMax": [0.18, 1.5, 1.0],
+      "endScaleMin": [0.04, 0.65, 1.0],
+      "endScaleMax": [0.06, 0.85, 1.0]
+    },
+    "rotation": {
+      "alignToVelocity": false,
+      "initialRotationMin": [0.0, 0.0, -3.1415927],
+      "initialRotationMax": [0.0, 0.0, 3.1415927],
+      "enableRotationOverTime": false,
+      "rotationSpeed": [0.0, 0.0, 0.0]
+    },
+    "render": {
+      "primitiveType": "Plane",
+      "billboardMode": "Billboard",
+      "cullMode": "None",
+      "depthTest": true,
+      "depthWrite": false,
+      "alphaCutoff": 0.0,
+      "emissiveIntensity": 1.0
+    }
+  }
+}

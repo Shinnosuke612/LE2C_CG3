@@ -150,7 +150,7 @@ void PrefabPreviewRenderer::Render(
 	camera_->SetOrbitTarget(orbitTarget_);
 	camera_->SetOrbitAngle(yaw, pitch);
 	camera_->SetOrbitDistance(
-		(std::max)(fitDistance_ * (std::max)(zoom, 0.05f), 0.02f)
+		(std::max)(fitDistance_ * (std::max)(zoom, 0.02f), 0.02f)
 	);
 	camera_->UpdatePreviewMatrices();
 	viewMatrix_ = camera_->GetViewMatrix();
@@ -591,6 +591,9 @@ void PrefabPreviewRenderer::UpdateFraming(
 	};
 
 	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			continue;
+		}
 		const auto runtime = models_.find(entity.id);
 		if (runtime == models_.end()) {
 			continue;
@@ -619,6 +622,9 @@ void PrefabPreviewRenderer::UpdateFraming(
 	}
 
 	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			continue;
+		}
 		const SceneComponent* colliderComponent =
 			FindEnabledComponent(entity, "OBBCollider");
 		if (!colliderComponent) {

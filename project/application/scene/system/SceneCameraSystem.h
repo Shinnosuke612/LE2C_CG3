@@ -7,6 +7,7 @@
 #include "../SceneRuntimeObjectBinding.h"
 #include "../../../engine/3d/CameraPathRuntime.h"
 #include "../../camera/ThirdPersonCameraController.h"
+#include "SceneEventSystem.h"
 
 class Camera;
 class Player;
@@ -64,6 +65,13 @@ public:
 	const Transform& GetCurrentPathTransform() const {
 		return cameraPathRuntime_.GetCurrentTransform();
 	}
+	uint64_t ConsumeCompletedCameraPathEntityId();
+	void ApplyEventRequests(
+		SceneDocument& document,
+		Camera* camera,
+		Player* player,
+		const std::vector<SceneCameraRequest>& requests
+	);
 
 private:
 	void ApplyActiveCamera(
@@ -99,6 +107,17 @@ private:
 		SceneDocument& document,
 		Camera* camera
 	);
+	bool StartCameraPath(
+		SceneDocument& document,
+		Camera* camera,
+		const SceneEntity& pathEntity,
+		const SceneComponent& path
+	);
+	void HandlePathFinished(
+		const SceneDocument& document,
+		Camera* camera,
+		Player* player
+	);
 	void SyncPlayerController(
 		const SceneDocument& document,
 		Camera* camera,
@@ -113,4 +132,6 @@ private:
 	bool wasPlaying_ = false;
 	uint64_t activeCameraEntityId_ = 0;
 	uint64_t thirdPersonCameraEntityId_ = 0;
+	uint64_t activeCameraPathEntityId_ = 0;
+	uint64_t completedCameraPathEntityId_ = 0;
 };

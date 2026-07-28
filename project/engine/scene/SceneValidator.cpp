@@ -3,6 +3,8 @@
 
 #include "SceneCatalog.h"
 #include "SceneDocument.h"
+#include "SceneEntityQuery.h"
+#include "SceneInputKey.h"
 
 #include <algorithm>
 #include <sstream>
@@ -546,16 +548,213 @@ bool SceneValidator::ValidateDocument(
 					}
 				}
 			} else if (component.type == "EventTrigger") {
-				for (const SceneEventBinding& binding : component.eventBindings) {
-					validateEntityReference(
-						binding.targetEntityId,
-						"Event target"
-					);
-					for (const SceneEventAction& action : binding.actions) {
-						validateEntityReference(
-							action.targetEntityId,
-							"Event action target"
+				auto validateCameraEventTarget = [
+					&addIssue,
+					&document,
+					&entity
+				](
+					uint64_t targetId,
+					const std::string& targetName,
+					const char* componentName,
+					const char* label,
+					bool checkPathPoints
+				) {
+					if (targetId == 0 && targetName.empty()) {
+						addIssue(
+							SceneValidationSeverity::Warning,
+							entity.id,
+							std::string(label) + " target is not set"
 						);
+						return;
+					}
+					const SceneEntity* target = targetId != 0
+						? document.FindEntity(targetId)
+						: nullptr;
+					if (!target && !targetName.empty()) {
+						target = document.FindEntityByName(targetName);
+					}
+					const SceneComponent* targetComponent = target
+						? SceneEntityQuery::FindEnabledComponent(
+							*target, componentName
+						)
+						: nullptr;
+					if (
+						!target || !targetComponent ||
+						!SceneEntityQuery::IsEntityActiveInHierarchy(document, *target)
+					) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							std::string(label) +
+								" target is unresolved, inactive, or disabled"
+						);
+						return;
+					}
+					if (!checkPathPoints) {
+						return;
+					}
+					const bool hasPoint = std::any_of(
+						document.GetEntities().begin(),
+						document.GetEntities().end(),
+						[&document, target](const SceneEntity& candidate) {
+							return candidate.parentId == target->id &&
+								SceneEntityQuery::IsEntityActiveInHierarchy(
+									document, candidate
+								) &&
+								SceneEntityQuery::FindEnabledComponent(
+									candidate, "CameraPathPoint"
+								);
+						}
+					);
+					if (!hasPoint) {
+						addIssue(
+							SceneValidationSeverity::Warning,
+							entity.id,
+							"CameraPath Event target has no active CameraPathPoint"
+						);
+					}
+					if (!targetComponent->cameraPathTargetCameraName.empty()) {
+						const SceneEntity* targetCamera = document.FindEntityByName(
+							targetComponent->cameraPathTargetCameraName
+						);
+						if (
+							!targetCamera ||
+							!SceneEntityQuery::IsEntityActiveInHierarchy(
+								document, *targetCamera
+							) ||
+							!SceneEntityQuery::FindEnabledComponent(
+								*targetCamera, "Camera"
+							)
+						) {
+							addIssue(
+								SceneValidationSeverity::Warning,
+								entity.id,
+								"CameraPath Event target has an unresolved target Camera"
+							);
+						}
+					}
+				};
+				for (const SceneEventBinding& binding : component.eventBindings) {
+					const bool triggerUsesTarget =
+						binding.triggerType == "OnStatReachedMin" ||
+						binding.triggerType == "OnStatCompare" ||
+						binding.triggerType == "OnPositionReached";
+					if (triggerUsesTarget) {
+						validateEntityReference(
+							binding.targetEntityId,
+							"Event target"
+						);
+					}
+					if (
+						binding.triggerType == "OnKeyPressed" &&
+						ResolveSceneInputKey(binding.triggerKey) == 0
+					) {
+						addIssue(
+							SceneValidationSeverity::Warning,
+							entity.id,
+							"OnKeyPressed Event has an unsupported key: " +
+								binding.triggerKey
+						);
+					}
+					if (binding.triggerType == "OnCameraPathCompleted") {
+						validateCameraEventTarget(
+							binding.targetEntityId,
+							binding.targetEntityName,
+							"CameraPath",
+							"OnCameraPathCompleted",
+							true
+						);
+					}
+					for (const SceneEventAction& action : binding.actions) {
+						const bool actionUsesTarget =
+							action.type == "ModifyStat" ||
+							action.type == "SetEntityActive" ||
+							action.type == "InstantiatePrefab" ||
+							action.type == "ChangeState";
+						if (actionUsesTarget) {
+							validateEntityReference(
+								action.targetEntityId,
+								"Event action target"
+							);
+						}
+						if (
+							action.type == "PlayCameraPath" ||
+							action.type == "StopCameraPath"
+						) {
+							validateCameraEventTarget(
+								action.targetEntityId,
+								action.targetEntityName,
+								"CameraPath",
+								action.type.c_str(),
+								action.type == "PlayCameraPath"
+							);
+						} else if (action.type == "SelectCamera") {
+							validateCameraEventTarget(
+								action.targetEntityId,
+								action.targetEntityName,
+								"Camera",
+								"SelectCamera",
+								false
+							);
+						}
+						if (
+							action.type == "SetPostProcessProfile" ||
+							action.type == "NextPostProcessProfile"
+						) {
+							const SceneEntity* manager =
+								action.postProcessManagerEntityId != 0
+								? document.FindEntity(action.postProcessManagerEntityId)
+								: nullptr;
+							if (!manager && !action.postProcessManagerEntityName.empty()) {
+								manager = document.FindEntityByName(
+									action.postProcessManagerEntityName
+								);
+							}
+							const SceneComponent* managerComponent = nullptr;
+							if (manager) {
+								const auto componentIterator = std::find_if(
+									manager->components.begin(),
+									manager->components.end(),
+									[](const SceneComponent& candidate) {
+										return candidate.enabled &&
+											candidate.type == "PostProcessProfileManager";
+									}
+								);
+								if (componentIterator != manager->components.end()) {
+									managerComponent = &*componentIterator;
+								}
+							}
+							if (!managerComponent) {
+								addIssue(
+									SceneValidationSeverity::Error,
+									entity.id,
+									"Event PostProcess action has an unresolved or disabled manager"
+								);
+							} else if (action.type == "NextPostProcessProfile" &&
+								managerComponent->postProcessProfiles.empty()) {
+								addIssue(
+									SceneValidationSeverity::Warning,
+									entity.id,
+									"NextPostProcessProfile manager has no profiles"
+								);
+							} else if (action.type == "SetPostProcessProfile") {
+								const bool profileExists = std::any_of(
+									managerComponent->postProcessProfiles.begin(),
+									managerComponent->postProcessProfiles.end(),
+									[&action](const ScenePostProcessProfile& profile) {
+										return profile.id == action.postProcessProfileId;
+									}
+								);
+								if (!profileExists) {
+									addIssue(
+										SceneValidationSeverity::Error,
+										entity.id,
+										"SetPostProcessProfile profile cannot be resolved: " +
+											action.postProcessProfileId
+									);
+								}
+							}
+						}
 						if (
 							action.type == "ChangeState" &&
 							action.stateName.empty()
@@ -578,6 +777,145 @@ bool SceneValidator::ValidateDocument(
 								"Event SceneTransition target is not registered: " +
 									action.sceneId
 							);
+						}
+					}
+				}
+			} else if (component.type == "PostProcessProfileManager") {
+				std::unordered_set<std::string> profileIds;
+				for (const ScenePostProcessProfile& profile :
+					component.postProcessProfiles) {
+					if (profile.id.empty()) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"PostProcessProfileManager contains an empty Profile Id"
+						);
+					} else if (!profileIds.insert(profile.id).second) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"PostProcessProfileManager contains a duplicate Profile Id: " +
+								profile.id
+						);
+					}
+					if (profile.label.empty()) {
+						addIssue(
+							SceneValidationSeverity::Warning,
+							entity.id,
+							"PostProcessProfileManager Profile has an empty label: " +
+								profile.id
+						);
+					}
+					const ScenePostProcessSettings& settings = profile.settings;
+					if (
+						settings.pixelationBlockSize < 1 ||
+						settings.pixelationBlockSize > 64 ||
+						settings.motionBlurStrength < 0.0f ||
+						settings.motionBlurStrength > 1.0f ||
+						settings.motionBlurSamples < 2 ||
+						settings.motionBlurSamples > 32 ||
+						settings.motionBlurMaxRadius < 0.0f ||
+						settings.motionBlurMaxRadius > 64.0f ||
+						settings.chromaticAberrationCenter.x < 0.0f ||
+						settings.chromaticAberrationCenter.x > 1.0f ||
+						settings.chromaticAberrationCenter.y < 0.0f ||
+						settings.chromaticAberrationCenter.y > 1.0f ||
+						settings.chromaticAberrationIntensity < 0.0f ||
+						settings.chromaticAberrationFalloff <= 0.0f
+					) {
+						addIssue(
+							SceneValidationSeverity::Warning,
+							entity.id,
+							"Post Process settings are outside the supported range: " + profile.id
+						);
+					}
+				}
+			} else if (component.type == "AttackSet") {
+				for (const SceneAttackDefinition& attack : component.attackDefinitions) {
+					for (size_t windowIndex = 0;
+						windowIndex < attack.hitWindows.size(); ++windowIndex) {
+						const SceneAttackHitWindow& window =
+							attack.hitWindows[windowIndex];
+						if (window.payloadSource != "HitBox") {
+							addIssue(
+								SceneValidationSeverity::Warning,
+								entity.id,
+								"Attack '" + attack.name + "' Hit Window " +
+									std::to_string(windowIndex + 1) +
+									" uses WindowLegacy payload"
+							);
+							continue;
+						}
+						const SceneEntity* hitBox = window.hitBoxEntityId != 0
+							? document.FindEntity(window.hitBoxEntityId)
+							: nullptr;
+						if (!hitBox && !window.hitBoxEntityName.empty()) {
+							hitBox = document.FindEntityByName(window.hitBoxEntityName);
+						}
+						if (!hitBox) {
+							addIssue(
+								SceneValidationSeverity::Error,
+								entity.id,
+								"Attack '" + attack.name + "' Hit Window " +
+									std::to_string(windowIndex + 1) +
+									" has no resolvable Dedicated HitBox"
+							);
+							continue;
+						}
+						const bool hasEnabledHitBox = std::any_of(
+							hitBox->components.begin(), hitBox->components.end(),
+							[](const SceneComponent& candidate) {
+								return candidate.enabled && candidate.type == "HitBox";
+							}
+						);
+						const bool hasEnabledTrigger = std::any_of(
+							hitBox->components.begin(), hitBox->components.end(),
+							[](const SceneComponent& candidate) {
+								return candidate.enabled && candidate.type == "OBBCollider" &&
+									candidate.colliderIsTrigger;
+							}
+						);
+						if (!hasEnabledHitBox || !hasEnabledTrigger) {
+							addIssue(
+								SceneValidationSeverity::Error,
+								entity.id,
+								"Attack '" + attack.name + "' Dedicated HitBox '" +
+									hitBox->name +
+									" requires enabled HitBox and Trigger Collider"
+							);
+						}
+						if (hitBox->active) {
+							addIssue(
+								SceneValidationSeverity::Warning,
+								entity.id,
+								"Attack '" + attack.name + "' Dedicated HitBox '" +
+									hitBox->name + "' is saved active"
+							);
+						}
+					}
+					for (size_t leftIndex = 0;
+						leftIndex < attack.hitWindows.size(); ++leftIndex) {
+						const SceneAttackHitWindow& left = attack.hitWindows[leftIndex];
+						if (left.payloadSource != "HitBox" || left.hitBoxEntityId == 0) {
+							continue;
+						}
+						for (size_t rightIndex = leftIndex + 1;
+							rightIndex < attack.hitWindows.size(); ++rightIndex) {
+							const SceneAttackHitWindow& right = attack.hitWindows[rightIndex];
+							if (
+								right.payloadSource == "HitBox" &&
+								left.hitBoxEntityId == right.hitBoxEntityId &&
+								left.startTime < right.endTime &&
+								right.startTime < left.endTime
+							) {
+								addIssue(
+									SceneValidationSeverity::Warning,
+									entity.id,
+									"Attack '" + attack.name + "' has overlapping Dedicated HitBox Windows " +
+										std::to_string(leftIndex + 1) + " and " +
+										std::to_string(rightIndex + 1)
+								);
+							}
 						}
 					}
 				}

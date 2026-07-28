@@ -153,6 +153,7 @@
     <ClCompile Include="engine\debug\DebugRenderer.cpp" />
     <ClCompile Include="engine\debug\EditorGridRenderer.cpp" />
     <ClCompile Include="engine\effect\LightningRenderer.cpp" />
+	<ClCompile Include="engine\effect\GroundCrackRenderer.cpp" />
     <ClCompile Include="engine\effect\WaterSurfaceRenderer.cpp" />
     <ClCompile Include="application\camera\ThirdPersonCameraController.cpp" />
     <ClCompile Include="application\player\Player.cpp" />
@@ -176,6 +177,7 @@
     <ClCompile Include="engine\utility\Logger.cpp" />
     <ClCompile Include="engine\utility\SystemPerformanceMonitor.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
+    <ClCompile Include="engine\base\PostProcessSettingsEditor.cpp" />
     <ClCompile Include="engine\base\Framework.cpp" />
     <ClCompile Include="application\Game.cpp" />
     <ClCompile Include="application\PrefabPreviewRenderer.cpp" />
@@ -185,10 +187,14 @@
     <ClCompile Include="application\scene\system\SceneCameraSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneCombatSystem.cpp" />
 	<ClCompile Include="application\scene\system\SceneHitReactionSystem.cpp" />
+	<ClCompile Include="application\scene\system\SceneHitStopSystem.cpp" />
+	<ClCompile Include="application\scene\system\SceneRuntimeEffectSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEnemySystem.cpp" />
 	<ClCompile Include="application\scene\system\SceneEnemySpawnerSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEventSystem.cpp" />
+	<ClCompile Include="application\scene\system\ScenePostProcessProfileSystem.cpp" />
+	<ClCompile Include="application\scene\system\SceneAttackRunnerSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneStateMachineSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEffectRenderSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEnvironmentSystem.cpp" />
@@ -249,6 +255,28 @@
 	<ClCompile Include="engine\3d\StarFieldGenerator.cpp" />
   </ItemGroup>
   <ItemGroup>
+	<FxCompile Include="resources\shaders\ChromaticAberration.PS.hlsl">
+	  <ShaderType>Pixel</ShaderType>
+	</FxCompile>
+	<FxCompile Include="resources\shaders\Pixelation.PS.hlsl">
+	  <ShaderType>Pixel</ShaderType>
+	</FxCompile>
+	<FxCompile Include="resources\shaders\MotionBlur.PS.hlsl">
+	  <ShaderType>Pixel</ShaderType>
+	  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+	  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+	  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
+	</FxCompile>
+	<FxCompile Include="resources\shaders\GroundCrack.VS.hlsl">
+	  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+	  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+	  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
+	</FxCompile>
+	<FxCompile Include="resources\shaders\GroundCrack.PS.hlsl">
+	  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+	  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+	  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
+	</FxCompile>
     <FxCompile Include="resources\shaders\DebugLine.PS.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -329,6 +357,7 @@
     <ClInclude Include="engine\debug\DebugRenderer.h" />
     <ClInclude Include="engine\debug\EditorGridRenderer.h" />
     <ClInclude Include="engine\effect\LightningRenderer.h" />
+	<ClInclude Include="engine\effect\GroundCrackRenderer.h" />
     <ClInclude Include="engine\effect\WaterSurfaceRenderer.h" />
     <ClInclude Include="application\camera\ThirdPersonCameraController.h" />
     <ClInclude Include="application\player\Player.h" />
@@ -383,6 +412,7 @@
     <ClInclude Include="engine\particle\ParticleManager.h" />
     <ClInclude Include="engine\particle\ParticleEmitter.h" />
     <ClInclude Include="engine\base\ImGuiManager.h" />
+    <ClInclude Include="engine\base\PostProcessSettingsEditor.h" />
     <ClInclude Include="engine\base\Framework.h" />
     <ClInclude Include="application\Game.h" />
     <ClInclude Include="application\PrefabPreviewRenderer.h" />
@@ -393,10 +423,14 @@
     <ClInclude Include="application\scene\system\SceneCameraSystem.h" />
     <ClInclude Include="application\scene\system\SceneCombatSystem.h" />
 	<ClInclude Include="application\scene\system\SceneHitReactionSystem.h" />
+	<ClInclude Include="application\scene\system\SceneHitStopSystem.h" />
+	<ClInclude Include="application\scene\system\SceneRuntimeEffectSystem.h" />
     <ClInclude Include="application\scene\system\SceneDebugSystem.h" />
     <ClInclude Include="application\scene\system\SceneEnemySystem.h" />
 	<ClInclude Include="application\scene\system\SceneEnemySpawnerSystem.h" />
     <ClInclude Include="application\scene\system\SceneEventSystem.h" />
+	<ClInclude Include="application\scene\system\ScenePostProcessProfileSystem.h" />
+	<ClInclude Include="application\scene\system\SceneAttackRunnerSystem.h" />
     <ClInclude Include="application\scene\system\SceneStateMachineSystem.h" />
     <ClInclude Include="application\scene\system\SceneEffectRenderSystem.h" />
     <ClInclude Include="application\scene\system\SceneEnvironmentSystem.h" />
@@ -422,6 +456,7 @@
     <ClInclude Include="engine\scene\SceneCatalog.h" />
     <ClInclude Include="engine\scene\PrefabAssetRegistry.h" />
     <ClInclude Include="engine\scene\SceneDocument.h" />
+	<ClInclude Include="engine\scene\SceneInputKey.h" />
     <ClInclude Include="engine\scene\SceneEntityQuery.h" />
 	<ClInclude Include="engine\scene\ScenePrefabAnimationEvaluator.h" />
     <ClInclude Include="engine\scene\SceneSettings.h" />

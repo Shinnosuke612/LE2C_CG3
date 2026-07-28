@@ -1,6 +1,7 @@
-// 役割: State遷移を遅延確定し、組み込みIdle/Move/MeleeAttack/Combo行動を提供する。
+// 役割: State遷移を遅延確定し、移動・攻撃・被弾・死亡の組み込み行動を提供する。
 #include "SceneStateMachineSystem.h"
 
+#include "SceneAttackRunnerSystem.h"
 #include "ScenePrefabAnimationSystem.h"
 #include "../../../engine/3d/Object3d.h"
 #include "../../../engine/io/Input.h"
@@ -294,9 +295,19 @@ namespace {
 			activeHitWindowIndex_ = -1;
 			activeHitBox_ = nullptr;
 			hasAttackDefinition_ = false;
-			if (const SceneAttackDefinition* definition = ResolveAttackDefinition(context)) {
-				attackDefinition_ = *definition;
-				hasAttackDefinition_ = true;
+			runnerAttack_ = false;
+			SceneEntity* animationTarget =
+				context.GetEntityParameter("AnimationTarget");
+			if (
+				animationTarget &&
+				ResolveAttackDefinition(context) &&
+				context.StartAttack(
+					animationTarget,
+					context.GetString("AttackName", context.GetString("Animation"))
+				)
+			) {
+				runnerAttack_ = true;
+				return;
 			}
 			// 攻撃中のCamera操作で突進軌道が曲がらないよう、開始時の向きを固定する。
 			ResolvePlanarAttackAxes(context, forward_, right_);
@@ -307,11 +318,11 @@ namespace {
 			if (animation.empty()) {
 				return;
 			}
-			SceneEntity* animationTarget =
+			SceneEntity* legacyAnimationTarget =
 				context.GetEntityParameter("AnimationTarget");
-			if (animationTarget) {
+			if (legacyAnimationTarget) {
 				context.PlayPrefabAnimation(
-					animationTarget,
+					legacyAnimationTarget,
 					animation,
 					true,
 					(std::max)(
@@ -326,6 +337,46 @@ namespace {
 
 		void Update(StateContext& context, float deltaTime) override {
 			context.StopHorizontalMovement();
+			if (runnerAttack_) {
+				const float time = context.GetAttackTime();
+				const float transitionTime = (std::max)(
+					context.GetFloat("ComboTransitionTime", context.GetAttackDuration()),
+					0.0f
+				);
+				const float windowStart = std::clamp(
+					context.GetFloat("ComboWindowStart", 0.0f),
+					0.0f,
+					transitionTime
+				);
+				const float windowEnd = std::clamp(
+					context.GetFloat("ComboWindowEnd", transitionTime),
+					windowStart,
+					transitionTime
+				);
+				const float inputStart = (std::max)(
+					windowStart - (std::max)(context.GetFloat("ComboInputBuffer", 0.15f), 0.0f),
+					0.0f
+				);
+				const std::string nextState = context.GetString("NextState");
+				if (
+					!nextState.empty() &&
+					time >= inputStart &&
+					time <= windowEnd &&
+					context.IsInputTriggered(GetAttackInput(context))
+				) {
+					comboQueued_ = true;
+				}
+				if (!context.IsAttackFinished() && time < transitionTime) {
+					return;
+				}
+				if (comboQueued_ && !nextState.empty()) {
+					context.RequestState(nextState);
+					return;
+				}
+				PlayReturnPrefabAnimation(context);
+				context.RequestState(context.GetString("ReturnState", "Idle"));
+				return;
+			}
 			const float windup = hasAttackDefinition_ ? attackDefinition_.windup : (std::max)(context.GetFloat("Windup", 0.15f), 0.0f);
 			const float activeTime = hasAttackDefinition_ ? attackDefinition_.activeTime : (std::max)(context.GetFloat("ActiveTime", 0.2f), 0.0f);
 			const float recovery = hasAttackDefinition_ ? attackDefinition_.recovery : (std::max)(context.GetFloat("Recovery", 0.35f), 0.0f);
@@ -454,6 +505,11 @@ namespace {
 		}
 
 		void Exit(StateContext& context) override {
+			if (runnerAttack_) {
+				context.StopAttack();
+				runnerAttack_ = false;
+				return;
+			}
 			context.SetEntityActive(activeHitBox_, false);
 			context.SetEntityActive(context.GetEntityParameter("HitBox"), false);
 			activeHitBox_ = nullptr;
@@ -461,6 +517,7 @@ namespace {
 
 	private:
 		bool comboQueued_ = false;
+		bool runnerAttack_ = false;
 		bool hasAttackDefinition_ = false;
 		SceneAttackDefinition attackDefinition_{};
 		int activeHitWindowIndex_ = -1;
@@ -468,6 +525,130 @@ namespace {
 		float lastMotionAmount_ = 0.0f;
 		Vector3 forward_{ 0.0f, 0.0f, 1.0f };
 		Vector3 right_{ 1.0f, 0.0f, 0.0f };
+	};
+
+	class BuiltinReactionAnimationState final : public IEntityStateAction {
+	public:
+		void Enter(StateContext& context) override {
+			context.StopHorizontalMovement();
+			Play(context, "Animation", "Hit");
+		}
+
+		void Update(StateContext& context, float) override {
+			context.StopHorizontalMovement();
+			const float duration = (std::max)(
+				context.GetFloat("Duration", 0.2f),
+				0.0f
+			);
+			if (context.GetStateTime() < duration) {
+				return;
+			}
+			Play(context, "ReturnAnimation", "Idle");
+			context.RequestState(context.GetString("ReturnState", "Idle"));
+		}
+
+	private:
+		static void Play(
+			StateContext& context,
+			const char* parameter,
+			const char* fallback
+		) {
+			const std::string animation = context.GetString(parameter, fallback);
+			if (animation.empty()) {
+				return;
+			}
+			if (SceneEntity* target = context.GetEntityParameter("AnimationTarget")) {
+				context.PlayPrefabAnimation(
+					target,
+					animation,
+					true,
+					(std::max)(context.GetFloat("AnimationBlend", 0.05f), 0.0f)
+				);
+			} else {
+				context.PlayAnimation(animation, true);
+			}
+		}
+	};
+
+	class BuiltinSpinLoopAttackState final : public IEntityStateAction {
+	public:
+		void Enter(StateContext& context) override {
+			SceneEntity* target = context.GetEntityParameter("AnimationTarget");
+			started_ = target && context.StartAttack(
+				target, context.GetString("AttackName", "SpinLoop")
+			);
+		}
+		void Update(StateContext& context, float) override {
+			context.StopHorizontalMovement();
+			if (!started_) {
+				context.RequestState(context.GetString("FailureState", "SpinFinish"));
+				return;
+			}
+			const bool held = context.IsInputDown(
+				context.GetString("Input", "MouseLeft")
+			);
+			context.SetAttackLoopRequested(held);
+			if (!held || context.IsAttackFinished()) {
+				context.RequestState(context.GetString("FinishState", "SpinFinish"));
+			}
+		}
+		void Exit(StateContext& context) override { context.StopAttack(); }
+	private:
+		bool started_ = false;
+	};
+
+	class BuiltinSpinStartAttackState final : public IEntityStateAction {
+	public:
+		void Enter(StateContext& context) override {
+			SceneEntity* target = context.GetEntityParameter("AnimationTarget");
+			started_ = target && context.StartAttack(
+				target, context.GetString("AttackName", "SpinStart")
+			);
+		}
+		void Update(StateContext& context, float) override {
+			context.StopHorizontalMovement();
+			if (!started_) {
+				context.RequestState(context.GetString("FailureState", "Idle"));
+				return;
+			}
+			if (!context.IsAttackFinished()) {
+				return;
+			}
+			const bool held = context.IsInputDown(
+				context.GetString("Input", "MouseLeft")
+			);
+			context.RequestState(context.GetString(
+				held ? "LoopState" : "FinishState",
+				held ? "SpinLoop" : "SpinFinish"
+			));
+		}
+	private:
+		bool started_ = false;
+	};
+
+	class BuiltinDeathAnimationState final : public IEntityStateAction {
+	public:
+		void Enter(StateContext& context) override {
+			context.StopHorizontalMovement();
+			const std::string animation = context.GetString("Animation", "Dead");
+			if (animation.empty()) {
+				return;
+			}
+			if (SceneEntity* target = context.GetEntityParameter("AnimationTarget")) {
+				context.PlayPrefabAnimation(
+					target,
+					animation,
+					true,
+					(std::max)(context.GetFloat("AnimationBlend", 0.05f), 0.0f)
+				);
+			} else {
+				context.PlayAnimation(animation, true);
+			}
+		}
+
+		void Update(StateContext& context, float) override {
+			context.StopHorizontalMovement();
+		}
 	};
 
 	void RegisterBuiltinStates() {
@@ -486,6 +667,22 @@ namespace {
 				"Builtin.MeleeComboAttack"
 			);
 		}
+		if (!registry.Contains("Builtin.ReactionAnimation")) {
+			registry.Register<BuiltinReactionAnimationState>(
+				"Builtin.ReactionAnimation"
+			);
+		}
+		if (!registry.Contains("Builtin.SpinLoopAttack")) {
+			registry.Register<BuiltinSpinLoopAttackState>("Builtin.SpinLoopAttack");
+		}
+		if (!registry.Contains("Builtin.SpinStartAttack")) {
+			registry.Register<BuiltinSpinStartAttackState>("Builtin.SpinStartAttack");
+		}
+		if (!registry.Contains("Builtin.DeathAnimation")) {
+			registry.Register<BuiltinDeathAnimationState>(
+				"Builtin.DeathAnimation"
+			);
+		}
 	}
 }
 
@@ -494,6 +691,7 @@ StateContext::StateContext(
 	SceneEntity& entity,
 	Object3d* object,
 	PhysicsBody* body,
+	SceneAttackRunnerSystem& attackRunnerSystem,
 	ScenePrefabAnimationSystem& prefabAnimationSystem,
 	const SceneStateDefinition& state,
 	float stateTime,
@@ -503,6 +701,7 @@ StateContext::StateContext(
 	entity_(entity),
 	object_(object),
 	body_(body),
+	attackRunnerSystem_(attackRunnerSystem),
 	prefabAnimationSystem_(prefabAnimationSystem),
 	state_(state),
 	stateTime_(stateTime),
@@ -642,6 +841,35 @@ bool StateContext::PlayPrefabAnimation(
 	);
 }
 
+bool StateContext::StartAttack(
+	SceneEntity* attackSetEntity,
+	const std::string& attackName
+) {
+	return attackSetEntity && attackRunnerSystem_.Start(
+		document_, entity_.id, attackSetEntity->id, attackName
+	);
+}
+
+void StateContext::StopAttack() {
+	attackRunnerSystem_.Stop(document_, entity_.id);
+}
+
+bool StateContext::IsAttackFinished() const {
+	return attackRunnerSystem_.IsFinished(entity_.id);
+}
+
+float StateContext::GetAttackTime() const {
+	return attackRunnerSystem_.GetTime(entity_.id);
+}
+
+float StateContext::GetAttackDuration() const {
+	return attackRunnerSystem_.GetDuration(entity_.id);
+}
+
+void StateContext::SetAttackLoopRequested(bool requested) {
+	attackRunnerSystem_.SetLoopRequested(entity_.id, requested);
+}
+
 void StateContext::RequestState(const std::string& stateName) {
 	if (!stateName.empty()) {
 		requestedState_ = stateName;
@@ -678,6 +906,7 @@ void SceneStateMachineSystem::Update(
 	SceneDocument& document,
 	const std::vector<SceneRuntimeObjectBinding>& bindings,
 	Player* player,
+	SceneAttackRunnerSystem& attackRunnerSystem,
 	ScenePrefabAnimationSystem& prefabAnimationSystem,
 	float deltaTime
 ) {
@@ -703,7 +932,7 @@ void SceneStateMachineSystem::Update(
 			body = &player->GetPhysicsBody();
 		}
 		return StateContext(
-			document, entity, object, body, prefabAnimationSystem,
+			document, entity, object, body, attackRunnerSystem, prefabAnimationSystem,
 			state, stateTime, requestedState
 		);
 	};

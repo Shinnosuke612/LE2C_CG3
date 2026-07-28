@@ -10,6 +10,7 @@
 class SceneDocument;
 class SceneHitReactionSystem;
 class ScenePrefabAnimationSystem;
+class SceneStateMachineSystem;
 class SceneStatSystem;
 
 class SceneEnemySystem {
@@ -20,8 +21,13 @@ public:
 		SceneStatSystem& statSystem,
 		ScenePrefabAnimationSystem& prefabAnimationSystem,
 		const SceneHitReactionSystem& hitReactionSystem,
+		const SceneStateMachineSystem& stateMachineSystem,
 		float deltaTime
 	);
+	// GroundXZ Agentの離隔補正後に、Hit／Dead中の移動停止を再適用する。
+	void ApplyMovementStops(
+		const std::vector<SceneRuntimeObjectBinding>& bindings
+	) const;
 	void ResetEntity(uint64_t entityId);
 	void Clear();
 
@@ -40,6 +46,7 @@ private:
 		float cooldown = 0.0f;
 		bool hasTarget = false;
 		bool hitBoxSuppressedByReaction = false;
+		bool movementSuppressed = false;
 		bool initialized = false;
 	};
 

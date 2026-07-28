@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+	<FxCompile Include="resources\shaders\ChromaticAberration.PS.hlsl" />
+	<FxCompile Include="resources\shaders\Pixelation.PS.hlsl" />
+	<FxCompile Include="resources\shaders\MotionBlur.PS.hlsl" />
     <FxCompile Include="resources\shaders\Object3D.PS.hlsl" />
     <FxCompile Include="resources\shaders\Object3D.VS.hlsl" />
     <FxCompile Include="resources\shaders\DebugLine.PS.hlsl" />
     <FxCompile Include="resources\shaders\DebugLine.VS.hlsl" />
+	<FxCompile Include="resources\shaders\GroundCrack.VS.hlsl" />
+	<FxCompile Include="resources\shaders\GroundCrack.PS.hlsl" />
     <FxCompile Include="resources\shaders\Particle.PS.hlsl" />
     <FxCompile Include="resources\shaders\Particle.VS.hlsl" />
     <FxCompile Include="resources\shaders\Sprite.VS.hlsl" />
@@ -27,6 +32,7 @@
     <ClCompile Include="engine\debug\DebugRenderer.cpp" />
     <ClCompile Include="engine\debug\EditorGridRenderer.cpp" />
     <ClCompile Include="engine\effect\LightningRenderer.cpp" />
+	<ClCompile Include="engine\effect\GroundCrackRenderer.cpp" />
     <ClCompile Include="engine\effect\WaterSurfaceRenderer.cpp" />
     <ClCompile Include="application\camera\ThirdPersonCameraController.cpp">
       <Filter>Application\Camera</Filter>
@@ -66,6 +72,7 @@
     <ClCompile Include="engine\particle\ParticleEmitter.cpp" />
     <ClCompile Include="engine\math\Matrix4x4.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
+    <ClCompile Include="engine\base\PostProcessSettingsEditor.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
     <ClCompile Include="engine\utility\SystemPerformanceMonitor.cpp" />
     <ClCompile Include="application\Game.cpp">
@@ -93,6 +100,12 @@
 	<ClCompile Include="application\scene\system\SceneHitReactionSystem.cpp">
 	  <Filter>Application\Scene\System</Filter>
 	</ClCompile>
+	<ClCompile Include="application\scene\system\SceneHitStopSystem.cpp">
+		<Filter>Application\Scene\System</Filter>
+	</ClCompile>
+	<ClCompile Include="application\scene\system\SceneRuntimeEffectSystem.cpp">
+		<Filter>Application\Scene\System</Filter>
+	</ClCompile>
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
@@ -103,6 +116,12 @@
 	  <Filter>Application\Scene\System</Filter>
 	</ClCompile>
     <ClCompile Include="application\scene\system\SceneEventSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
+	<ClCompile Include="application\scene\system\ScenePostProcessProfileSystem.cpp">
+	  <Filter>Application\Scene\System</Filter>
+	</ClCompile>
+    <ClCompile Include="application\scene\system\SceneAttackRunnerSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
     <ClCompile Include="application\scene\system\SceneStateMachineSystem.cpp">
@@ -227,6 +246,7 @@
     <ClInclude Include="engine\debug\DebugRenderer.h" />
     <ClInclude Include="engine\debug\EditorGridRenderer.h" />
     <ClInclude Include="engine\effect\LightningRenderer.h" />
+	<ClInclude Include="engine\effect\GroundCrackRenderer.h" />
     <ClInclude Include="engine\effect\WaterSurfaceRenderer.h" />
     <ClInclude Include="application\camera\ThirdPersonCameraController.h">
       <Filter>Application\Camera</Filter>
@@ -277,6 +297,7 @@
     <ClInclude Include="engine\math\Vector3.h" />
     <ClInclude Include="engine\math\Vector4.h" />
     <ClInclude Include="engine\base\ImGuiManager.h" />
+    <ClInclude Include="engine\base\PostProcessSettingsEditor.h" />
     <ClInclude Include="engine\Audio\Audio.h" />
     <ClInclude Include="application\Game.h">
       <Filter>Application</Filter>
@@ -306,6 +327,12 @@
 	<ClInclude Include="application\scene\system\SceneHitReactionSystem.h">
 	  <Filter>Application\Scene\System</Filter>
 	</ClInclude>
+	<ClInclude Include="application\scene\system\SceneHitStopSystem.h">
+		<Filter>Application\Scene\System</Filter>
+	</ClInclude>
+	<ClInclude Include="application\scene\system\SceneRuntimeEffectSystem.h">
+		<Filter>Application\Scene\System</Filter>
+	</ClInclude>
     <ClInclude Include="application\scene\system\SceneDebugSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
@@ -316,6 +343,12 @@
 	  <Filter>Application\Scene\System</Filter>
 	</ClInclude>
     <ClInclude Include="application\scene\system\SceneEventSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+	<ClInclude Include="application\scene\system\ScenePostProcessProfileSystem.h">
+	  <Filter>Application\Scene\System</Filter>
+	</ClInclude>
+    <ClInclude Include="application\scene\system\SceneAttackRunnerSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
     <ClInclude Include="application\scene\system\SceneStateMachineSystem.h">
@@ -411,6 +444,9 @@
     <ClInclude Include="engine\scene\SceneDocument.h">
       <Filter>Engine\Scene</Filter>
     </ClInclude>
+	<ClInclude Include="engine\scene\SceneInputKey.h">
+	  <Filter>Engine\Scene</Filter>
+	</ClInclude>
     <ClInclude Include="engine\scene\PrefabAssetRegistry.h">
       <Filter>Engine\Scene</Filter>
     </ClInclude>

@@ -1,0 +1,47 @@
+{
+  "assetId": "f5d23b93-7bb9-4eaf-aef2-8057bb6e3a65",
+  "debug": { "showColliders": false, "showJointAxes": false, "showJointNames": false, "showSkeleton": false },
+  "entities": [
+    {
+      "active": true,
+      "components": [
+        { "cullMode": "Back", "enabled": true, "environmentReflectionIntensity": 0.3, "environmentReflectionOverride": false, "materialOverrides": [], "modelPath": "Cube.obj", "type": "MeshRenderer" },
+        { "active": true, "debugColor": [0.25, 0.32, 0.85, 1.0], "debugVisible": true, "enabled": true, "isTrigger": false, "layer": 4294967295, "mask": 4294967295, "offset": [0.0, 0.0, 0.0], "shape": "Box", "sizeMultiplier": [1.0, 1.0, 1.0], "type": "OBBCollider" },
+        { "bodyType": "Dynamic", "drag": 0.0, "enabled": true, "friction": 0.0, "gravityScale": 8.0, "mass": 8.0, "maxFallSpeed": 60.0, "restitution": 0.0, "type": "PhysicsBody", "useGravity": true, "velocity": [0.0, 0.0, 0.0] },
+        { "enabled": true, "stats": [{ "displayName": "HP", "id": "hp", "initial": 180.0, "max": 180.0, "min": 0.0 }, { "displayName": "Poise", "id": "poise", "initial": 60.0, "max": 60.0, "min": 0.0 }], "type": "StatSet" },
+        { "enabled": true, "name": "Enemy", "type": "Faction" },
+        { "attackActiveTime": 0.3, "attackCooldown": 1.5, "attackHitBoxEntityId": 3, "attackHitBoxEntityName": "HeavyEnemyAttackHitBox", "attackRange": 3.0, "attackRecovery": 0.55, "attackWindup": 0.35, "detectionRange": 14.0, "enabled": true, "healthStatId": "hp", "loseRange": 20.0, "moveSpeed": 1.7, "targetEntityId": 0, "targetEntityName": "Player", "turnSpeed": 5.0, "type": "EnemyBehavior" },
+        { "behaviorName": "HeavyMeleeEnemy", "enabled": true, "groupName": "HeavyMeleeEnemies", "maxSpeed": 1.7, "minSpeed": 1.7, "movementMode": "GroundXZ", "neighborLimit": 8, "profileName": "HeavyMelee", "separationRadius": 3.2, "separationWeight": 2.6, "type": "AgentBehavior", "useWaterBounds": false },
+        { "clips": [{ "duration": 1.0, "loop": true, "name": "Idle", "playOnStart": true, "tracks": [{ "easing": "Linear", "keyframes": [{ "time": 0.0, "value": [1.0, 1.0, 1.0] }], "property": "LocalScale", "targetEntityId": 1, "targetEntityName": "HeavyEnemy" }] }, { "duration": 0.3, "loop": false, "name": "Hit", "playOnStart": false, "tracks": [{ "easing": "EaseOut", "keyframes": [{ "time": 0.0, "value": [1.0, 1.0, 1.0] }, { "time": 0.12, "value": [1.1, 0.86, 1.1] }, { "time": 0.3, "value": [1.0, 1.0, 1.0] }], "property": "LocalScale", "targetEntityId": 1, "targetEntityName": "HeavyEnemy" }] }, { "duration": 0.6, "loop": false, "name": "Dead", "playOnStart": false, "tracks": [{ "easing": "EaseIn", "keyframes": [{ "time": 0.0, "value": [1.0, 1.0, 1.0] }, { "time": 0.3, "value": [1.12, 0.25, 1.12] }, { "time": 0.6, "value": [0.05, 0.05, 0.05] }], "property": "LocalScale", "targetEntityId": 1, "targetEntityName": "HeavyEnemy" }] }], "enabled": true, "type": "PrefabAnimator" },
+        { "enabled": true, "initialState": "Idle", "resetOnDisable": true, "states": [{ "actionId": "", "name": "Idle", "parameters": [] }, { "actionId": "Builtin.ReactionAnimation", "name": "Hit", "parameters": [{ "entityId": 1, "entityName": "HeavyEnemy", "name": "AnimationTarget", "type": "Entity" }, { "floatValue": 0.3, "name": "Duration", "type": "Float" }, { "name": "Animation", "stringValue": "Hit", "type": "String" }, { "name": "ReturnAnimation", "stringValue": "Idle", "type": "String" }, { "name": "ReturnState", "stringValue": "Idle", "type": "String" }] }, { "actionId": "Builtin.DeathAnimation", "name": "Dead", "parameters": [{ "entityId": 1, "entityName": "HeavyEnemy", "name": "AnimationTarget", "type": "Entity" }, { "name": "Animation", "stringValue": "Dead", "type": "String" }] }], "type": "StateMachine" },
+        { "enabled": true, "knockbackMultiplier": 0.35, "minimumPoiseDamage": 0.0, "poiseRecoveryDelay": 1.2, "poiseStatId": "poise", "stateDuration": 0.3, "stateName": "Hit", "triggerMode": "PoiseBreak", "type": "HitReaction" },
+        { "deactivateDelay": 0.6, "effectPath": "resources/particles/ring_burst.json", "enabled": true, "stateName": "Dead", "type": "DeathPresentation" }
+      ],
+      "folder": false, "folderTeamEnabled": false, "id": 1, "locked": false, "modelPath": "Cube.obj", "name": "HeavyEnemy", "parentId": 0, "team": "",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0], "translate": [0.0, 1.0, 0.0] }
+    },
+    {
+      "active": true,
+      "components": [
+        { "active": true, "debugColor": [0.25, 0.55, 1.0, 1.0], "debugVisible": true, "enabled": true, "isTrigger": true, "layer": 4294967295, "mask": 4294967295, "offset": [0.0, 0.0, 0.0], "shape": "Box", "sizeMultiplier": [1.0, 1.0, 1.0], "type": "OBBCollider" },
+        { "damageMultiplier": 1.0, "enabled": true, "healthStatId": "hp", "statsEntityId": 1, "statsEntityName": "HeavyEnemy", "type": "HurtBox" }
+      ],
+      "folder": false, "folderTeamEnabled": false, "id": 2, "locked": false, "modelPath": "", "name": "HeavyEnemyHurtBox", "parentId": 1, "team": "",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0], "translate": [0.0, 0.0, 0.0] }
+    },
+    {
+      "active": false,
+      "components": [
+        { "active": true, "debugColor": [0.2, 0.2, 1.0, 1.0], "debugVisible": true, "enabled": true, "isTrigger": true, "layer": 4294967295, "mask": 4294967295, "offset": [0.0, 0.0, 0.0], "shape": "Box", "sizeMultiplier": [1.4, 1.0, 1.6], "type": "OBBCollider" },
+        { "damage": 18.0, "damageStatId": "hp", "enabled": true, "ignoreSameFaction": true, "ownerEntityId": 1, "ownerEntityName": "HeavyEnemy", "knockback": 7.0, "poiseDamage": 14.0, "poiseStatId": "poise", "reactionTag": "HeavyMelee", "type": "HitBox" }
+      ],
+      "folder": false, "folderTeamEnabled": false, "id": 3, "locked": false, "modelPath": "", "name": "HeavyEnemyAttackHitBox", "parentId": 1, "team": "",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0], "translate": [0.0, 0.0, 1.8] }
+    }
+  ],
+  "lighting": { "shadowMapSize": 1024 },
+  "postProcess": {},
+  "sceneName": "HeavyEnemy",
+  "teams": [],
+  "version": 27
+}

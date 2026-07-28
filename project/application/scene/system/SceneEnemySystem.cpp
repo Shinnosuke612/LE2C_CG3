@@ -3,6 +3,7 @@
 
 #include "SceneHitReactionSystem.h"
 #include "ScenePrefabAnimationSystem.h"
+#include "SceneStateMachineSystem.h"
 #include "SceneStatSystem.h"
 #include "../../../engine/3d/Object3d.h"
 #include "../../../engine/math/Math.h"
@@ -66,6 +67,7 @@ void SceneEnemySystem::Update(
 	SceneStatSystem& statSystem,
 	ScenePrefabAnimationSystem& prefabAnimationSystem,
 	const SceneHitReactionSystem& hitReactionSystem,
+	const SceneStateMachineSystem& stateMachineSystem,
 	float deltaTime
 ) {
 	std::unordered_set<uint64_t> requiredEntities;
@@ -84,18 +86,51 @@ void SceneEnemySystem::Update(
 		}
 		requiredEntities.insert(binding.entity->id);
 		EnemyRuntime& runtime = runtimes_[binding.entity->id];
+		runtime.movementSuppressed = false;
 		SceneEntity* hitBox = ResolveAttackHitBox(document, *behavior);
 		if (!runtime.initialized) {
 			runtime.initialized = true;
 			SetHitBoxActive(hitBox, false);
 		}
-		if (hitReactionSystem.IsKnockbackActive(binding.entity->id)) {
+		const SceneComponent* hitReaction =
+			SceneEntityQuery::FindEnabledComponent(*binding.entity, "HitReaction");
+		const SceneComponent* deathPresentation =
+			SceneEntityQuery::FindEnabledComponent(*binding.entity, "DeathPresentation");
+		const std::string* currentState =
+			stateMachineSystem.GetCurrentState(binding.entity->id);
+		const bool inHitState =
+			currentState && hitReaction &&
+			*currentState == hitReaction->hitReactionStateName;
+		const bool inDeadState =
+			currentState && deathPresentation &&
+			*currentState == deathPresentation->deathPresentationStateName;
+		if (
+			inDeadState ||
+			statSystem.IsAtMin(
+				binding.entity->id,
+				behavior->enemyHealthStatId
+			)
+		) {
+			runtime.phase = AttackPhase::Dead;
+			runtime.movementSuppressed = true;
+			SetHitBoxActive(hitBox, false);
+			StopHorizontalMovement(binding.body);
+			continue;
+		}
+		if (
+			inHitState ||
+			hitReactionSystem.IsKnockbackActive(binding.entity->id)
+		) {
 			// 被弾中にAttack Phaseを進めると、吹き飛ばされながら攻撃判定だけが
-			// 残る。移動はReactionがPhysics直前に所有するため、ここではAIと
-			// 攻撃判定だけを止め、Knockback終了後に同じPhaseから復帰させる。
+			// 残る。移動はStateまたはReactionが所有するため、ここではAIと
+			// 攻撃判定を止め、被弾終了後に同じPhaseから復帰させる。
 			runtime.hitBoxSuppressedByReaction =
 				runtime.phase == AttackPhase::Active;
+			runtime.movementSuppressed = true;
 			SetHitBoxActive(hitBox, false);
+			if (inHitState) {
+				StopHorizontalMovement(binding.body);
+			}
 			continue;
 		}
 		if (runtime.hitBoxSuppressedByReaction) {
@@ -103,16 +138,6 @@ void SceneEnemySystem::Update(
 			SetHitBoxActive(hitBox, runtime.phase == AttackPhase::Active);
 			runtime.hitBoxSuppressedByReaction = false;
 		}
-		if (statSystem.IsAtMin(
-			binding.entity->id,
-			behavior->enemyHealthStatId
-		)) {
-			runtime.phase = AttackPhase::Dead;
-			SetHitBoxActive(hitBox, false);
-			StopHorizontalMovement(binding.body);
-			continue;
-		}
-
 		SceneEntity* target = ResolveEnemyTarget(document, *behavior);
 		if (!target || !SceneEntityQuery::IsEntityActiveInHierarchy(document, *target)) {
 			runtime.hasTarget = false;
@@ -246,6 +271,21 @@ void SceneEnemySystem::Update(
 		} else {
 			++iterator;
 		}
+	}
+}
+
+void SceneEnemySystem::ApplyMovementStops(
+	const std::vector<SceneRuntimeObjectBinding>& bindings
+) const {
+	for (const SceneRuntimeObjectBinding& binding : bindings) {
+		if (!binding.entity || !binding.body) {
+			continue;
+		}
+		const auto runtime = runtimes_.find(binding.entity->id);
+		if (runtime == runtimes_.end() || !runtime->second.movementSuppressed) {
+			continue;
+		}
+		StopHorizontalMovement(binding.body);
 	}
 }
 

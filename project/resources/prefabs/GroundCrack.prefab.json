@@ -1,0 +1,51 @@
+{
+  "assetId": "7d7ebf8a-32d5-4e10-91bc-62762d50266b",
+  "debug": {
+    "showColliders": false,
+    "showJointAxes": false,
+    "showJointNames": false,
+    "showSkeleton": false
+  },
+  "entities": [
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "None",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "materialOverrides": [
+            {
+              "color": [1.0, 1.0, 1.0, 1.0],
+              "colorOverrideEnabled": false,
+              "enabled": true,
+              "materialName": "Material.001",
+              "texturePath": "resources/textures/effects/ground_crack.png"
+            }
+          ],
+          "modelPath": "plane.obj",
+          "type": "MeshRenderer"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 1,
+      "locked": false,
+      "modelPath": "plane.obj",
+      "name": "GroundCrack",
+      "parentId": 0,
+      "team": "",
+      "transform": {
+        "rotation": [0.70710677, 0.0, 0.0, 0.70710677],
+        "scale": [3.2, 3.2, 3.2],
+        "translate": [0.0, 0.015, 0.0]
+      }
+    }
+  ],
+  "lighting": { "shadowMapSize": 1024 },
+  "postProcess": {},
+  "sceneName": "GroundCrack",
+  "teams": [],
+  "version": 27
+}

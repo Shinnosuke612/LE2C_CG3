@@ -6,6 +6,7 @@
 #include "../engine/scene/SceneManager.h"
 #include "../engine/math/Vector3.h"
 #include "../engine/math/Vector4.h"
+#include "../engine/math/Matrix4x4.h"
 #include <string>
 
 class SceneRenderTarget;
@@ -65,11 +66,12 @@ private:
 	};
 
 	int GetEnabledPostEffectCount() const;
-	SceneRenderTarget* GetPostProcessOutputTarget() const;
 	ScenePostProcessSettings CapturePostProcessSettings() const;
 	void ApplyPostProcessSettings(const ScenePostProcessSettings& settings);
+	void ApplyRuntimePostProcessSettings();
 	std::string GetActivePostProcessSourceKey() const;
 	void StorePostProcessSettingsToDocument();
+	void InvalidateMotionBlurHistory();
 	WaterPostEffectState ResolveWaterPostEffectState(const Camera* camera) const;
 	void DrawModelPreview();
 	void DrawPrefabPreview();
@@ -97,6 +99,7 @@ private:
 	SceneTemplateRegistry* sceneTemplateRegistry_ = nullptr;
 	SceneRenderTarget* sceneRenderTarget_ = nullptr;
 	SceneRenderTarget* postProcessRenderTargets_[2]{};
+	SceneRenderTarget* motionBlurHistoryRenderTarget_ = nullptr;
 	SceneRenderTarget* foregroundComposeRenderTarget_ = nullptr;
 	FullscreenCopy* fullscreenCopy_ = nullptr;
 	BloomRenderer* bloomRenderer_ = nullptr;
@@ -110,6 +113,8 @@ private:
 	bool wasPausedLastFrame_ = false;
 	uint64_t appliedPostProcessRevision_ = static_cast<uint64_t>(-1);
 	std::string appliedPostProcessSourceKey_;
+	uint64_t appliedRuntimePostProcessGeneration_ = static_cast<uint64_t>(-1);
+	SceneInstanceId appliedRuntimePostProcessInstanceId_ = kInvalidSceneInstanceId;
 	std::string modelPreviewPath_;
 	float modelPreviewFitDistance_ = 5.0f;
 	BloomRenderer::Parameters bloomParameters_{};
@@ -126,6 +131,9 @@ private:
 	bool outlineEnabled_ = false;
 	bool underwaterEnabled_ = false;
 	bool waterRefractionEnabled_ = false;
+	bool pixelationEnabled_ = false;
+	bool chromaticAberrationEnabled_ = false;
+	bool motionBlurEnabled_ = false;
 	bool depthOfFieldEnabled_ = false;
 	bool outlineLuminanceEnabled_ = false;
 	bool outlineDepthEnabled_ = true;
@@ -170,4 +178,16 @@ private:
 	float waterRefractionStrength_ = 0.018f;
 	float waterRefractionEdgeSoftness_ = 0.08f;
 	float waterRefractionTintStrength_ = 0.12f;
+	int pixelationBlockSize_ = 4;
+	float motionBlurStrength_ = 0.5f;
+	int motionBlurSamples_ = 8;
+	float motionBlurMaxRadius_ = 24.0f;
+	Matrix4x4 previousMotionBlurViewProjection_{};
+	bool motionBlurHistoryValid_ = false;
+	bool motionBlurWasEnabled_ = false;
+	bool motionBlurLastPlaying_ = false;
+	SceneInstanceId motionBlurLastSceneInstanceId_ = kInvalidSceneInstanceId;
+	float chromaticAberrationCenter_[2]{ 0.5f, 0.5f };
+	float chromaticAberrationIntensity_ = 0.003f;
+	float chromaticAberrationFalloff_ = 1.5f;
 };

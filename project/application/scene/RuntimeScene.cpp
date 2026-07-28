@@ -9,6 +9,7 @@
 #include "../../engine/3d/Camera.h"
 #include "../../engine/3d/Object3dCommon.h"
 #include "../../engine/3d/Object3d.h"
+#include "../../engine/math/Math.h"
 #include "../../engine/particle/ParticleManager.h"
 #include "../player/Player.h"
 
@@ -73,6 +74,15 @@ Camera* RuntimeScene::GetSceneViewCamera() const {
 	);
 }
 
+bool RuntimeScene::TryGetRuntimePostProcessSettings(
+	ScenePostProcessSettings& settings,
+	uint64_t& generation
+) const {
+	settings = postProcessProfileSystem_.GetEffectiveSettings();
+	generation = postProcessProfileSystem_.GetGeneration();
+	return true;
+}
+
 void RuntimeScene::DrawSceneView(Camera* viewCamera, uint64_t skipEntityId) {
 	DrawEnvironment(viewCamera);
 	PrepareSceneContent(viewCamera);
@@ -120,6 +130,7 @@ void RuntimeScene::Initialize()
 	Object3dCommon::GetInstance()->SetDefaultCamera(camera_);
 	particleSystem_.Initialize(camera_);
 	SceneDocument* initialDocument = GetSceneDocument();
+	postProcessProfileSystem_.Reset(initialDocument);
 	debugSystem_.LoadSettings(initialDocument);
 	SceneExecutionContext* initialExecutionContext = sceneManager_
 		? sceneManager_->GetExecutionContext()
@@ -199,10 +210,18 @@ void RuntimeScene::Update(float deltaTime)
 	const bool editing = executionContext && executionContext->IsEditing();
 	const bool playing = !executionContext || executionContext->IsPlaying();
 	SceneDocument* activeDocument = GetSceneDocument();
+	if (activeDocument) {
+		postProcessProfileSystem_.Sync(*activeDocument);
+	} else {
+		postProcessProfileSystem_.Reset();
+	}
 	std::vector<uint64_t> spawnerResetEntityIds;
+	const float gameplayDeltaTime = playing
+		? hitStopSystem_.Advance(deltaTime)
+		: deltaTime;
 
 	// 遷移が成立したフレームは旧Sceneの状態をこれ以上変更しない。
-	if (playing && activeDocument) {
+	if (playing && gameplayDeltaTime > 0.0f && activeDocument) {
 		const std::string targetSceneId =
 			transitionSystem_.Update(*activeDocument);
 		if (!targetSceneId.empty()) {
@@ -257,22 +276,42 @@ void RuntimeScene::Update(float deltaTime)
 		projectileSystem_.FlushRemovals(*activeDocument);
 		// 保存値を実行時状態へ展開し、Transform AnimationをObject同期前に反映する。
 		statSystem_.Update(*activeDocument);
-		enemySpawnerSystem_.Update(*activeDocument, deltaTime);
+		enemySpawnerSystem_.Update(*activeDocument, gameplayDeltaTime);
 		spawnerResetEntityIds = enemySpawnerSystem_.ConsumeResetEntityIds();
 		for (uint64_t entityId : spawnerResetEntityIds) {
+			attackRunnerSystem_.ResetEntity(*activeDocument, entityId);
 			stateMachineSystem_.ResetEntity(entityId);
 			prefabAnimationSystem_.ResetEntity(entityId);
 			enemySystem_.ResetEntity(entityId);
 			hitReactionSystem_.ResetEntity(entityId);
 		}
-		prefabAnimationSystem_.Update(*activeDocument, deltaTime);
+		hitReactionSystem_.AdvanceRecoveries(statSystem_, gameplayDeltaTime);
+		attackRunnerSystem_.Advance(
+			*activeDocument,
+			prefabAnimationSystem_,
+			gameplayDeltaTime
+		);
+		runtimeEffectSystem_.Spawn(
+			*activeDocument,
+			physicsSystem_,
+			attackRunnerSystem_.ConsumeEffectRequests()
+		);
+		effectRenderSystem_.SpawnGroundCracks(
+			runtimeEffectSystem_.ConsumeGroundCrackRequests()
+		);
+		runtimeEffectSystem_.Advance(*activeDocument, deltaTime);
+		prefabAnimationSystem_.Update(*activeDocument, gameplayDeltaTime);
 	} else {
 		statSystem_.Clear();
+		attackRunnerSystem_.Clear(activeDocument);
+		runtimeEffectSystem_.Clear(activeDocument);
 		prefabAnimationSystem_.Clear();
 		eventSystem_.Clear();
+		postProcessProfileSystem_.Reset(activeDocument);
 		stateMachineSystem_.Clear();
 		combatSystem_.Clear();
 		hitReactionSystem_.Clear();
+		hitStopSystem_.Clear();
 		enemySystem_.Clear();
 		enemySpawnerSystem_.Clear();
 		projectileSystem_.Clear();
@@ -283,7 +322,7 @@ void RuntimeScene::Update(float deltaTime)
 	objectSystem_.SyncModels(
 		activeDocument,
 		physicsSystem_,
-		deltaTime,
+		gameplayDeltaTime,
 		playing,
 		editing
 	);
@@ -302,25 +341,27 @@ void RuntimeScene::Update(float deltaTime)
 			runtimeObjectBindings_,
 			spawnerResetEntityIds
 		);
-		if (playing) {
+		if (playing && gameplayDeltaTime > 0.0f) {
 			enemySystem_.Update(
 				*activeDocument,
 				runtimeObjectBindings_,
 				statSystem_,
 				prefabAnimationSystem_,
 				hitReactionSystem_,
-				deltaTime
+				stateMachineSystem_,
+				gameplayDeltaTime
 			);
 			// GroundXZ Agentは敵AIが決めた速度へ離隔補正だけを加える。
 			agentSystem_.Update(
 				*activeDocument,
 				runtimeObjectBindings_,
-				deltaTime
+				gameplayDeltaTime
 			);
+			enemySystem_.ApplyMovementStops(runtimeObjectBindings_);
 			projectileSystem_.Update(
 				*activeDocument,
 				runtimeObjectBindings_,
-				deltaTime
+				gameplayDeltaTime
 			);
 		}
 	} else {
@@ -329,9 +370,12 @@ void RuntimeScene::Update(float deltaTime)
 		attachmentSystem_.Clear(&objectSystem_);
 		combatSystem_.Clear();
 		hitReactionSystem_.Clear();
+		hitStopSystem_.Clear();
 		enemySystem_.Clear();
 		eventSystem_.Clear();
+		postProcessProfileSystem_.Reset();
 		stateMachineSystem_.Clear();
+		attackRunnerSystem_.Clear();
 		prefabAnimationSystem_.Clear();
 		projectileSystem_.Clear();
 		statSystem_.Clear();
@@ -351,34 +395,48 @@ void RuntimeScene::Update(float deltaTime)
 			playing
 		);
 	}
-	if (player_ && playing) {
+	Vector3 playerAttackInputDirection{};
+	if (player_ && playing && gameplayDeltaTime > 0.0f) {
 		player_->Update(camera_);
+		const Vector3& playerVelocity = player_->GetPhysicsBody().velocity;
+		playerAttackInputDirection = { playerVelocity.x, 0.0f, playerVelocity.z };
+		if (Math::Length(playerAttackInputDirection) > 0.0001f) {
+			playerAttackInputDirection = Math::Normalize(playerAttackInputDirection);
+		}
 	}
-	if (activeDocument && playing) {
+	if (activeDocument && playing && gameplayDeltaTime > 0.0f) {
 		// State行動は入力取得後、Physics確定前に速度・攻撃判定を更新する。
 		stateMachineSystem_.Update(
 			*activeDocument,
 			runtimeObjectBindings_,
 			player_,
+			attackRunnerSystem_,
 			prefabAnimationSystem_,
-			deltaTime
+			gameplayDeltaTime
+		);
+		attackRunnerSystem_.ApplyMotion(
+			*activeDocument,
+			runtimeObjectBindings_,
+			player_,
+			playerAttackInputDirection,
+			gameplayDeltaTime
 		);
 		// Combat後に予約した被弾速度を、AI/Agent/Stateの書込み後に上書きする。
 		hitReactionSystem_.ApplyMotionOverrides(
 			*activeDocument,
 			runtimeObjectBindings_,
-			deltaTime
+			gameplayDeltaTime
 		);
 	}
-	if (activeDocument) {
+	if (activeDocument && (!playing || gameplayDeltaTime > 0.0f)) {
 		physicsSystem_.Step(
 			player_,
 			runtimeObjectBindings_,
-			deltaTime,
+			gameplayDeltaTime,
 			playing
 		);
 	}
-	if (player_ && playing) {
+	if (player_ && playing && gameplayDeltaTime > 0.0f) {
 		player_->PostPhysicsUpdate();
 		SceneEntity* playerEntity = activeDocument
 			? activeDocument->FindEntityByName("Player")
@@ -390,7 +448,7 @@ void RuntimeScene::Update(float deltaTime)
 			);
 		}
 	}
-	if (activeDocument && playing) {
+	if (activeDocument && playing && gameplayDeltaTime > 0.0f) {
 		// Bone追従はAnimation/Physics後、当たり判定とEventは最終Transform後に評価する。
 		attachmentSystem_.Update(
 			*activeDocument,
@@ -400,15 +458,25 @@ void RuntimeScene::Update(float deltaTime)
 		combatSystem_.Update(
 			*activeDocument,
 			runtimeObjectBindings_,
-			statSystem_
+			statSystem_,
+			gameplayDeltaTime
 		);
+		std::vector<SceneCombatHitEvent> hitEvents = combatSystem_.ConsumeHitEvents();
+		for (const SceneCombatHitEvent& hitEvent : hitEvents) {
+			hitStopSystem_.Request(hitEvent.hitStopDuration);
+		}
+		runtimeEffectSystem_.SpawnHitEffects(hitEvents);
 		hitReactionSystem_.Update(
 			*activeDocument,
 			runtimeObjectBindings_,
 			statSystem_,
 			stateMachineSystem_,
-			combatSystem_.ConsumeHitEvents(),
-			deltaTime
+			hitEvents,
+			gameplayDeltaTime
+		);
+		runtimeEffectSystem_.SpawnDeathEffects(
+			*activeDocument,
+			hitReactionSystem_.ConsumeDeathEffectRequests()
 		);
 	}
 	objectSystem_.SyncSprites(activeDocument);
@@ -440,18 +508,30 @@ void RuntimeScene::Update(float deltaTime)
 		false
 	);
 #endif
-	if (activeDocument && playing) {
+	if (activeDocument && playing && gameplayDeltaTime > 0.0f) {
 		// Prefab生成はEntity配列を再配置し得るため、bindingを使い終えた最後に行う。
-		const std::string eventTargetSceneId = eventSystem_.Update(
+		const SceneEventRuntimeSignals eventSignals{
+			cameraSystem_.ConsumeCompletedCameraPathEntityId()
+		};
+		const SceneEventResult eventResult = eventSystem_.Update(
 			*activeDocument,
 			statSystem_,
 			stateMachineSystem_,
-			deltaTime
+			gameplayDeltaTime,
+			eventSignals
 		);
-		if (!eventTargetSceneId.empty()) {
-			sceneManager_->ChangeScene(eventTargetSceneId);
+		if (!eventResult.sceneTransitionId.empty()) {
+			postProcessProfileSystem_.Reset(activeDocument);
+			sceneManager_->ChangeScene(eventResult.sceneTransitionId);
 			return;
 		}
+		cameraSystem_.ApplyEventRequests(
+			*activeDocument,
+			camera_,
+			player_,
+			eventResult.cameraRequests
+		);
+		postProcessProfileSystem_.ApplyEventResult(*activeDocument, eventResult);
 	}
 }
 
@@ -596,9 +676,12 @@ void RuntimeScene::Finalize()
 	attachmentSystem_.Clear(&objectSystem_);
 	combatSystem_.Clear();
 	hitReactionSystem_.Clear();
+	hitStopSystem_.Clear();
 	enemySystem_.Clear();
 	eventSystem_.Clear();
+	postProcessProfileSystem_.Reset();
 	stateMachineSystem_.Clear();
+	attackRunnerSystem_.Clear();
 	physicsSystem_.Clear();
 	prefabAnimationSystem_.Clear();
 	projectileSystem_.Clear();

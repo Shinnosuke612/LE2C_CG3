@@ -5,6 +5,8 @@
 #include <d3d12.h>
 #include <wrl.h>
 
+#include "../math/Matrix4x4.h"
+
 class DirectXCommon;
 
 class FullscreenCopy {
@@ -23,6 +25,9 @@ public:
 		kUnderwater,
 		kWaterRefraction,
 		kWaterLightShafts
+		,kPixelation
+		,kChromaticAberration
+		,kMotionBlur
 	};
 
 	enum class OutputFormat {
@@ -78,6 +83,13 @@ public:
 		float waterLightDirectionDensity[4]{ -0.25f, -1.0f, 0.18f, 0.045f };
 		float waterLightParams[4]{ 0.35f, 0.08f, 1.0f, 16.0f };
 		float waterLightNoiseParams[4]{ 1.0f, 1.0f, 1.0f, 0.0f };
+		float chromaticCenterIntensity[4]{ 0.5f, 0.5f, 0.003f, 0.0f };
+		float chromaticParams[4]{ 1.5f, 0.0f, 0.0f, 0.0f };
+		float pixelationParams[4]{ 4.0f, 0.0f, 0.0f, 0.0f };
+		Matrix4x4 motionBlurInverseCurrentViewProjection{};
+		Matrix4x4 motionBlurPreviousViewProjection{};
+		float motionBlurParams[4]{ 0.5f, 8.0f, 24.0f, 0.0f };
+		float motionBlurTextureSizeHistoryValid[4]{};
 	};
 
 	void Initialize(DirectXCommon* dxCommon);
@@ -88,6 +100,14 @@ public:
 		D3D12_GPU_DESCRIPTOR_HANDLE depthTextureHandle,
 		D3D12_GPU_DESCRIPTOR_HANDLE maskTextureHandle,
 		Effect effect = Effect::kCopy,
+		OutputFormat outputFormat = OutputFormat::kDisplay
+	);
+	void Draw(
+		D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
+		D3D12_GPU_DESCRIPTOR_HANDLE depthTextureHandle,
+		D3D12_GPU_DESCRIPTOR_HANDLE maskTextureHandle,
+		D3D12_GPU_DESCRIPTOR_HANDLE historyTextureHandle,
+		Effect effect,
 		OutputFormat outputFormat = OutputFormat::kDisplay
 	);
 
@@ -111,6 +131,9 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> underwaterPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> waterRefractionPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> waterLightShaftsPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> pixelationPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> chromaticAberrationPipelineState_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> motionBlurPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState>
 		waterRefractionSceneHdrPipelineState_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState>

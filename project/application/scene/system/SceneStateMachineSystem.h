@@ -12,6 +12,7 @@
 
 class Object3d;
 class Player;
+class SceneAttackRunnerSystem;
 class SceneDocument;
 class ScenePrefabAnimationSystem;
 struct PhysicsBody;
@@ -53,6 +54,12 @@ public:
 		bool restart = true,
 		float transitionDuration = 0.0f
 	);
+	bool StartAttack(SceneEntity* attackSetEntity, const std::string& attackName);
+	void StopAttack();
+	bool IsAttackFinished() const;
+	float GetAttackTime() const;
+	float GetAttackDuration() const;
+	void SetAttackLoopRequested(bool requested);
 	void RequestState(const std::string& stateName);
 
 private:
@@ -62,6 +69,7 @@ private:
 		SceneEntity& entity,
 		Object3d* object,
 		PhysicsBody* body,
+		SceneAttackRunnerSystem& attackRunnerSystem,
 		ScenePrefabAnimationSystem& prefabAnimationSystem,
 		const SceneStateDefinition& state,
 		float stateTime,
@@ -72,6 +80,7 @@ private:
 	SceneEntity& entity_;
 	Object3d* object_ = nullptr;
 	PhysicsBody* body_ = nullptr;
+	SceneAttackRunnerSystem& attackRunnerSystem_;
 	ScenePrefabAnimationSystem& prefabAnimationSystem_;
 	const SceneStateDefinition& state_;
 	float stateTime_ = 0.0f;
@@ -113,6 +122,7 @@ public:
 		SceneDocument& document,
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
 		Player* player,
+		SceneAttackRunnerSystem& attackRunnerSystem,
 		ScenePrefabAnimationSystem& prefabAnimationSystem,
 		float deltaTime
 	);

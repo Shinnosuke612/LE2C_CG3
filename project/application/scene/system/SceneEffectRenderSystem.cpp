@@ -3,6 +3,7 @@
 
 #include "SceneEnvironmentSystem.h"
 #include "SceneObjectSystem.h"
+#include "../../../engine/effect/GroundCrackRenderer.h"
 #include "../../../engine/3d/Camera.h"
 #include "../../../engine/effect/LightningRenderer.h"
 #include "../../../engine/particle/ParticleManager.h"
@@ -86,6 +87,8 @@ void SceneEffectRenderSystem::Initialize(DirectXCommon* dxCommon) {
 	}
 	lightningRenderer_ = std::make_unique<LightningRenderer>();
 	lightningRenderer_->Initialize(dxCommon);
+	groundCrackRenderer_ = std::make_unique<GroundCrackRenderer>();
+	groundCrackRenderer_->Initialize(dxCommon);
 }
 
 void SceneEffectRenderSystem::Update(float deltaTime) {
@@ -111,6 +114,21 @@ void SceneEffectRenderSystem::Update(float deltaTime) {
 		lightningRenderer_->Trigger(settings);
 	}
 	lightningRenderer_->Update(deltaTime);
+	if (groundCrackRenderer_) { groundCrackRenderer_->Update(deltaTime); }
+}
+
+void SceneEffectRenderSystem::SpawnGroundCracks(
+	const std::vector<SceneGroundCrackSpawnRequest>& requests
+) {
+	if (!groundCrackRenderer_) { return; }
+	for (const SceneGroundCrackSpawnRequest& request : requests) {
+		groundCrackRenderer_->Spawn({
+			request.position, request.normal, request.radius,
+			request.primaryBranchCount, request.segmentsPerBranch,
+			request.branchProbability, request.width, request.lifetime,
+			request.surfaceOffset, request.seed
+		});
+	}
 }
 
 void SceneEffectRenderSystem::DrawScenePass(
@@ -132,6 +150,7 @@ void SceneEffectRenderSystem::DrawScenePass(
 	if (lightningRenderer_) {
 		lightningRenderer_->Draw(camera);
 	}
+	if (groundCrackRenderer_) { groundCrackRenderer_->Draw(camera); }
 
 	if (deferForegroundEffects_) {
 		DrawParticles(document, camera, false);
@@ -198,6 +217,10 @@ void SceneEffectRenderSystem::DrawParticles(
 }
 
 void SceneEffectRenderSystem::Finalize() {
+	if (groundCrackRenderer_) {
+		groundCrackRenderer_->Finalize();
+		groundCrackRenderer_.reset();
+	}
 	if (lightningRenderer_) {
 		lightningRenderer_->Finalize();
 		lightningRenderer_.reset();

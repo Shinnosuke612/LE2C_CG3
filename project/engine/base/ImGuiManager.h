@@ -226,6 +226,7 @@ private:
 	void DrawPrefabAnimationTimeline();
 	void DrawPrefabTransformPoseInspector(SceneEntity& entity);
 	void RebuildPrefabAnimationPreviewDocument();
+	void RebuildPlayerCombatPreviewDocument();
 	void RebuildPrefabHitBoxGhostDocument();
 	const SceneDocument& GetPrefabStageDocument() const;
 	void DrawPrefabGizmo(float x, float y, float width, float height);
@@ -360,7 +361,7 @@ private:
 	uint64_t prefabSelectedEntityId_ = 0;
 	bool prefabClosePopupRequested_ = false;
 	bool prefabOpenPopupRequested_ = false;
-	bool prefabFocusRequested_ = false;
+	int prefabFocusFramesRemaining_ = 0;
 	std::string pendingPrefabOpenPath_;
 	int pendingPrefabHistoryIndex_ = -1;
 	std::vector<PrefabAssetReference> prefabNavigationHistory_;
@@ -462,6 +463,12 @@ private:
 	float prefabPreviewPitch_ = 0.25f;
 	float prefabPreviewZoom_ = 1.0f;
 	uint64_t prefabPreviewFramingSerial_ = 1;
+	// The request producer owns the identity used to accept the asynchronously
+	// returned preview texture. Combat Rig uses a composed document, not the
+	// currently open prefab document, so DrawPrefabPreview must not reconstruct it.
+	std::string prefabPreviewRequestedPath_;
+	uint64_t prefabPreviewRequestedRevision_ = 0;
+	bool prefabPreviewRequestUsesCombatRig_ = false;
 	bool prefabPreviewShowSkeleton_ = true;
 	bool prefabPreviewShowJointAxes_ = false;
 	bool prefabPreviewShowColliders_ = true;
@@ -469,14 +476,23 @@ private:
 	std::string prefabNestedTargetDocumentPath_;
 	uint64_t prefabNestedTargetRootId_ = 0;
 	SceneDocument* prefabAnimationPreviewDocument_ = nullptr;
+	SceneDocument* playerCombatPreviewDocument_ = nullptr;
 	SceneDocument* prefabHitBoxGhostDocument_ = nullptr;
 	std::string prefabAnimationPreviewAssetPath_;
 	uint64_t prefabAnimationPreviewSourceRevision_ = 0;
 	uint64_t prefabAnimationPreviewOwnerEntityId_ = 0;
 	int prefabAnimationPreviewClipIndex_ = 0;
+	bool prefabClipFocusEnabled_ = true;
+	bool playerCombatPreviewEnabled_ = false;
+	uint64_t playerCombatPreviewRootId_ = 0;
+	uint64_t playerCombatPreviewWeaponId_ = 0;
+	std::string playerCombatPreviewStatus_;
 	float prefabAnimationPreviewTime_ = 0.0f;
 	bool prefabAnimationPreviewPlaying_ = false;
 	bool prefabAnimationPreviewActive_ = false;
+	int prefabAnimationPreviewFrameRate_ = 60;
+	bool prefabAnimationPreviewSnapToFrames_ = true;
+	float prefabAnimationPreviewFrameAccumulator_ = 0.0f;
 	bool prefabHitBoxSetupMode_ = false;
 	bool prefabHitBoxGhostVisible_ = false;
 	float prefabHitBoxGhostTime_ = 0.0f;

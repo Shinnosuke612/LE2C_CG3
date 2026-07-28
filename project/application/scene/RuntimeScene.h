@@ -3,6 +3,7 @@
 #include "../../engine/scene/BaseScene.h"
 #include "SceneRuntimeObjectBinding.h"
 #include "system/SceneAgentSystem.h"
+#include "system/SceneAttackRunnerSystem.h"
 #include "system/SceneAttachmentSystem.h"
 #include "system/SceneCameraSystem.h"
 #include "system/SceneCombatSystem.h"
@@ -11,15 +12,18 @@
 #include "system/SceneEnemySpawnerSystem.h"
 #include "system/SceneEventSystem.h"
 #include "system/SceneHitReactionSystem.h"
+#include "system/SceneHitStopSystem.h"
 #include "system/SceneEffectRenderSystem.h"
 #include "system/SceneEnvironmentSystem.h"
 #include "system/SceneLightingSystem.h"
 #include "system/SceneMonitorSystem.h"
 #include "system/SceneObjectSystem.h"
 #include "system/SceneParticleSystem.h"
+#include "system/ScenePostProcessProfileSystem.h"
 #include "system/ScenePhysicsSystem.h"
 #include "system/ScenePrefabAnimationSystem.h"
 #include "system/SceneProjectileSystem.h"
+#include "system/SceneRuntimeEffectSystem.h"
 #include "system/SceneStatSystem.h"
 #include "system/SceneStateMachineSystem.h"
 #include "system/SceneTransitionSystem.h"
@@ -59,6 +63,10 @@ public:
 	void SetDeferForegroundEffects(bool defer) override {
 		effectRenderSystem_.SetDeferForegroundEffects(defer);
 	}
+	bool TryGetRuntimePostProcessSettings(
+		ScenePostProcessSettings& settings,
+		uint64_t& generation
+	) const override;
 
 private:
 	void DrawSceneView(Camera* viewCamera, uint64_t skipEntityId = 0);
@@ -76,6 +84,7 @@ private:
 	std::vector<SceneRuntimeObjectBinding> runtimeObjectBindings_;
 
 	SceneAgentSystem agentSystem_;
+	SceneAttackRunnerSystem attackRunnerSystem_;
 	SceneAttachmentSystem attachmentSystem_;
 	SceneCameraSystem cameraSystem_;
 	SceneCombatSystem combatSystem_;
@@ -84,6 +93,7 @@ private:
 	SceneEnemySpawnerSystem enemySpawnerSystem_;
 	SceneEventSystem eventSystem_;
 	SceneHitReactionSystem hitReactionSystem_;
+	SceneHitStopSystem hitStopSystem_;
 	SceneEffectRenderSystem effectRenderSystem_;
 	SceneEnvironmentSystem environmentSystem_;
 	SceneLightingSystem lightingSystem_;
@@ -91,9 +101,11 @@ private:
 	SceneObjectSystem objectSystem_;
 	SceneTransitionSystem transitionSystem_;
 	SceneParticleSystem particleSystem_;
+	ScenePostProcessProfileSystem postProcessProfileSystem_;
 	ScenePhysicsSystem physicsSystem_;
 	ScenePrefabAnimationSystem prefabAnimationSystem_;
 	SceneProjectileSystem projectileSystem_;
+	SceneRuntimeEffectSystem runtimeEffectSystem_;
 	SceneStatSystem statSystem_;
 	SceneStateMachineSystem stateMachineSystem_;
 };

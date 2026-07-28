@@ -80,6 +80,14 @@ void SceneCameraSystem::Reset() {
 	wasPlaying_ = false;
 	activeCameraEntityId_ = 0;
 	thirdPersonCameraEntityId_ = 0;
+	activeCameraPathEntityId_ = 0;
+	completedCameraPathEntityId_ = 0;
+}
+
+uint64_t SceneCameraSystem::ConsumeCompletedCameraPathEntityId() {
+	const uint64_t completed = completedCameraPathEntityId_;
+	completedCameraPathEntityId_ = 0;
+	return completed;
 }
 
 void SceneCameraSystem::UpdateBeforeSimulation(
@@ -99,6 +107,8 @@ void SceneCameraSystem::UpdateBeforeSimulation(
 			activeCameraEntityId_ = 0;
 			thirdPersonCameraEntityId_ = 0;
 		}
+		activeCameraPathEntityId_ = 0;
+		completedCameraPathEntityId_ = 0;
 		wasPlaying_ = false;
 	} else if (!wasPlaying_) {
 		playerCameraController_ = ThirdPersonCameraController{};
@@ -116,7 +126,7 @@ void SceneCameraSystem::UpdateBeforeSimulation(
 	if (cameraPathRuntime_.IsPlaying()) {
 		cameraPathRuntime_.Update(deltaTime, *camera);
 		if (cameraPathRuntime_.ConsumeFinishedThisFrame()) {
-			SyncPlayerController(document, camera, player);
+			HandlePathFinished(document, camera, player);
 		}
 	} else {
 		UpdateCameraSwitch(document, playing);
@@ -134,7 +144,7 @@ void SceneCameraSystem::UpdateBeforeSimulation(
 		if (cameraPathRuntime_.IsPlaying()) {
 			cameraPathRuntime_.Update(deltaTime, *camera);
 			if (cameraPathRuntime_.ConsumeFinishedThisFrame()) {
-				SyncPlayerController(document, camera, player);
+				HandlePathFinished(document, camera, player);
 			}
 		}
 	}
@@ -625,39 +635,110 @@ bool SceneCameraSystem::TryStartCameraPath(
 			continue;
 		}
 
-		const SceneEntity* targetEntity = nullptr;
-		const SceneComponent* targetCamera = nullptr;
-		if (!path->cameraPathTargetCameraName.empty()) {
-			targetEntity =
-				document.FindEntityByName(path->cameraPathTargetCameraName);
-			targetCamera = targetEntity
-				? FindEnabledComponent(*targetEntity, "Camera")
-				: nullptr;
-		} else {
-			targetEntity = ResolveActiveCameraEntity(document);
-			targetCamera = targetEntity
-				? FindEnabledComponent(*targetEntity, "Camera")
-				: nullptr;
+		if (StartCameraPath(document, camera, entity, *path)) {
+			return true;
 		}
-		if (!targetEntity || !targetCamera) {
-			continue;
-		}
-
-		camera->SetFovY(std::clamp(
-			targetCamera->cameraFovY,
-			kMinimumFov,
-			kMaximumFov
-		));
-		camera->SetNearClip((std::max)(targetCamera->cameraNearClip, 0.001f));
-		camera->SetFarClip((std::max)(
-			targetCamera->cameraFarClip,
-			targetCamera->cameraNearClip + 0.001f
-		));
-		camera->Update();
-		cameraPathRuntime_.Play(document, entity, *path, *camera);
-		return cameraPathRuntime_.IsPlaying();
 	}
 	return false;
+}
+
+bool SceneCameraSystem::StartCameraPath(
+	SceneDocument& document,
+	Camera* camera,
+	const SceneEntity& pathEntity,
+	const SceneComponent& path
+) {
+	if (!camera || cameraPathRuntime_.IsPlaying()) {
+		return false;
+	}
+	const SceneEntity* targetEntity = nullptr;
+	const SceneComponent* targetCamera = nullptr;
+	if (!path.cameraPathTargetCameraName.empty()) {
+		targetEntity = document.FindEntityByName(path.cameraPathTargetCameraName);
+		targetCamera = targetEntity
+			? FindEnabledComponent(*targetEntity, "Camera")
+			: nullptr;
+	} else {
+		targetEntity = ResolveActiveCameraEntity(document);
+		targetCamera = targetEntity
+			? FindEnabledComponent(*targetEntity, "Camera")
+			: nullptr;
+	}
+	if (!targetEntity || !targetCamera) {
+		return false;
+	}
+
+	camera->SetFovY(std::clamp(
+		targetCamera->cameraFovY,
+		kMinimumFov,
+		kMaximumFov
+	));
+	camera->SetNearClip((std::max)(targetCamera->cameraNearClip, 0.001f));
+	camera->SetFarClip((std::max)(
+		targetCamera->cameraFarClip,
+		targetCamera->cameraNearClip + 0.001f
+	));
+	camera->Update();
+	cameraPathRuntime_.Play(document, pathEntity, path, *camera);
+	if (cameraPathRuntime_.IsPlaying()) {
+		activeCameraPathEntityId_ = pathEntity.id;
+		return true;
+	}
+	return false;
+}
+
+void SceneCameraSystem::HandlePathFinished(
+	const SceneDocument& document,
+	Camera* camera,
+	Player* player
+) {
+	completedCameraPathEntityId_ = activeCameraPathEntityId_;
+	activeCameraPathEntityId_ = 0;
+	SyncPlayerController(document, camera, player);
+}
+
+void SceneCameraSystem::ApplyEventRequests(
+	SceneDocument& document,
+	Camera* camera,
+	Player* player,
+	const std::vector<SceneCameraRequest>& requests
+) {
+	for (const SceneCameraRequest& request : requests) {
+		const SceneEntity* target = ResolveEntityReference(
+			document, request.entityId, request.entityName
+		);
+		if (!target || !IsEntityActiveInHierarchy(document, *target)) {
+			continue;
+		}
+		if (request.type == SceneCameraRequestType::PlayPath) {
+			const SceneComponent* path =
+				FindEnabledComponent(*target, "CameraPath");
+			if (path) {
+				StartCameraPath(document, camera, *target, *path);
+			}
+		} else if (request.type == SceneCameraRequestType::StopPath) {
+			if (
+				target->id == activeCameraPathEntityId_ &&
+				FindEnabledComponent(*target, "CameraPath")
+			) {
+				cameraPathRuntime_.Stop();
+				activeCameraPathEntityId_ = 0;
+				ApplyActiveCamera(document, camera);
+				SyncPlayerController(document, camera, player);
+			}
+		} else if (request.type == SceneCameraRequestType::SelectCamera) {
+			if (!FindEnabledComponent(*target, "Camera")) {
+				continue;
+			}
+			activeCameraEntityId_ = target->id;
+			playerCameraInitialized_ = false;
+			thirdPersonCameraEntityId_ = 0;
+			if (!cameraPathRuntime_.IsPlaying()) {
+				ApplyActiveCamera(document, camera);
+				SyncPlayerController(document, camera, player);
+			}
+		}
+	}
 }
 
 void SceneCameraSystem::SyncPlayerController(

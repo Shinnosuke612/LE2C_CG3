@@ -65,13 +65,20 @@ namespace {
 		value ^= attackWindowSerial + 0x9E3779B97F4A7C15ull + (value << 6) + (value >> 2);
 		return value;
 	}
+
+	uint64_t MakeHitBoxWindowKey(uint64_t hitBoxId, uint64_t attackWindowSerial) {
+		return hitBoxId ^ (attackWindowSerial + 0x9E3779B97F4A7C15ull +
+			(hitBoxId << 6) + (hitBoxId >> 2));
+	}
 }
 
 void SceneCombatSystem::Update(
 	SceneDocument& document,
 	const std::vector<SceneRuntimeObjectBinding>& bindings,
-	SceneStatSystem& statSystem
+	SceneStatSystem& statSystem,
+	float deltaTime
 ) {
+	elapsedTime_ += (std::max)(deltaTime, 0.0f);
 	struct CombatBinding {
 		SceneEntity* entity = nullptr;
 		Collider* collider = nullptr;
@@ -98,7 +105,12 @@ void SceneCombatSystem::Update(
 		}
 	}
 
-	std::unordered_set<uint64_t> currentContacts;
+	std::unordered_set<uint64_t> currentHitBoxWindows;
+	for (const CombatBinding& hit : hitBoxes) {
+		currentHitBoxWindows.insert(MakeHitBoxWindowKey(
+			hit.entity->id, hit.component->hitBoxAttackWindowSerial
+		));
+	}
 	std::unordered_set<uint64_t> removeProjectiles;
 	for (const CombatBinding& hit : hitBoxes) {
 		SceneEntity* explicitOwner = ResolveEntity(
@@ -155,9 +167,26 @@ void SceneCombatSystem::Update(
 				hurt.entity->id,
 				hit.component->hitBoxAttackWindowSerial
 			);
-			currentContacts.insert(contactKey);
-			if (activeContacts_.contains(contactKey)) {
-				continue;
+			const uint64_t hitBoxWindowKey = MakeHitBoxWindowKey(
+				hit.entity->id, hit.component->hitBoxAttackWindowSerial
+			);
+			if (hit.component->hitBoxHitPolicy == "TargetCooldown") {
+				const auto cooldown = targetCooldownContacts_.find(contactKey);
+				if (
+					cooldown != targetCooldownContacts_.end() &&
+					elapsedTime_ < cooldown->second.nextHitTime
+				) {
+					continue;
+				}
+				targetCooldownContacts_[contactKey] = {
+					hitBoxWindowKey,
+					elapsedTime_ + (std::max)(hit.component->hitBoxTargetCooldown, 0.0f)
+				};
+			} else {
+				if (consumedActivationContacts_.contains(contactKey)) {
+					continue;
+				}
+				consumedActivationContacts_[contactKey] = hitBoxWindowKey;
 			}
 			const float damage = (std::max)(
 				hit.component->hitBoxDamage *
@@ -199,6 +228,11 @@ void SceneCombatSystem::Update(
 			knockbackDirection = Math::Length(knockbackDirection) > 0.0001f
 				? Math::Normalize(knockbackDirection)
 				: Vector3{ 0.0f, 0.0f, 1.0f };
+			// Collider APIは接触点を返さないため、Effect用の暫定位置はHurtBox中心とする。
+			const Vector3 hitPosition = SceneTransformResolver::ResolveScene3DTransform(
+				document, *hurt.entity
+			).translate;
+			const Vector3 hitNormal = Math::Multiply(knockbackDirection, -1.0f);
 			statSystem.Modify(
 				statsEntity->id,
 				hurt.component->hurtBoxHealthStatId.empty()
@@ -213,11 +247,17 @@ void SceneCombatSystem::Update(
 				damage,
 				hit.component->hitBoxPoiseDamage,
 				hit.component->hitBoxKnockback,
+				hit.component->hitBoxVerticalKnockback,
 				knockbackDirection,
+				(std::max)(hit.component->hitBoxHitStopDuration, 0.0f),
+				hitPosition,
+				hitNormal,
 				hurt.component->hurtBoxHealthStatId.empty()
 					? hit.component->hitBoxDamageStatId
 					: hurt.component->hurtBoxHealthStatId,
-				hit.component->hitBoxReactionTag
+				hit.component->hitBoxReactionTag,
+				hit.component->hitBoxAttackExecutionId,
+				hit.component->hitBoxReactionPriority
 			});
 			if (hit.component->hitBoxPoiseDamage > 0.0f) {
 				statSystem.Modify(
@@ -242,7 +282,23 @@ void SceneCombatSystem::Update(
 			}
 		}
 	}
-	activeContacts_ = std::move(currentContacts);
+	activeHitBoxWindows_ = std::move(currentHitBoxWindows);
+	for (auto iterator = consumedActivationContacts_.begin();
+		iterator != consumedActivationContacts_.end();) {
+		if (!activeHitBoxWindows_.contains(iterator->second)) {
+			iterator = consumedActivationContacts_.erase(iterator);
+		} else {
+			++iterator;
+		}
+	}
+	for (auto iterator = targetCooldownContacts_.begin();
+		iterator != targetCooldownContacts_.end();) {
+		if (!activeHitBoxWindows_.contains(iterator->second.hitBoxWindowKey)) {
+			iterator = targetCooldownContacts_.erase(iterator);
+		} else {
+			++iterator;
+		}
+	}
 
 	for (uint64_t entityId : removeProjectiles) {
 		pendingRemovals_.insert(entityId);
@@ -270,6 +326,9 @@ void SceneCombatSystem::FlushRemovals(SceneDocument& document) {
 }
 
 void SceneCombatSystem::Clear() {
-	activeContacts_.clear();
+	consumedActivationContacts_.clear();
+	targetCooldownContacts_.clear();
+	activeHitBoxWindows_.clear();
 	pendingRemovals_.clear();
+	elapsedTime_ = 0.0f;
 }

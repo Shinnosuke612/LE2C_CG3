@@ -4,6 +4,9 @@
 #include "../../../engine/3d/Object3d.h"
 #include "../../../engine/agent/AgentSettingsResolver.h"
 #include "../../../engine/agent/AgentSteering.h"
+#include "../../../engine/collision/Collider.h"
+#include "../../../engine/collision/OBBCollider.h"
+#include "../../../engine/collision/SphereCollider.h"
 #include "../../../engine/math/Math.h"
 #include "../../../engine/physics/PhysicsBody.h"
 #include "../../../engine/scene/SceneDocument.h"
@@ -362,6 +365,7 @@ void SceneAgentSystem::Update(
 		SceneEntity* entity = nullptr;
 		SceneComponent behavior{};
 		PhysicsBody* body = nullptr;
+		Collider* collider = nullptr;
 		Transform transform{};
 		std::string crowdKey;
 	};
@@ -396,6 +400,7 @@ void SceneAgentSystem::Update(
 				&entity,
 				resolvedBehavior,
 				binding.body,
+				binding.collider,
 				object->GetTransform(),
 				ResolveGroundCrowdKey(document, entity, resolvedBehavior)
 			});
@@ -527,6 +532,246 @@ void SceneAgentSystem::Update(
 		);
 		agent.body->velocity.x += correction.x;
 		agent.body->velocity.z += correction.z;
+	}
+
+	// GroundXZの接触は、全Dynamic BodyをPhysicsWorldで衝突させず、
+	// 通常移動の速度補正だけで解く。後段のHit/Dead停止とKnockback Overrideは優先する。
+	struct GroundContactAgent {
+		GroundAgentUpdateEntry* agent = nullptr;
+		float radius = 0.0f;
+		Vector3 predictedPosition{};
+		Vector3 velocityCorrection{};
+	};
+	struct GroundContactNeighbor {
+		size_t contactIndex = 0;
+		float distance = 0.0f;
+	};
+	struct GroundContactPair {
+		size_t first = 0;
+		size_t second = 0;
+		float initialDistance = 0.0f;
+	};
+
+	constexpr size_t kGroundContactMaxNeighbors = 12;
+	constexpr size_t kGroundContactPairBudget = 300;
+	constexpr uint32_t kGroundContactSolverPasses = 2;
+	constexpr float kGroundContactMaxSpeed = 6.0f;
+	constexpr float kGroundContactEpsilon = 0.0001f;
+
+	auto resolveGroundContactRadius = [](const Collider* collider) {
+		if (!collider || !collider->IsActive() || collider->IsTrigger()) {
+			return 0.0f;
+		}
+		if (collider->GetType() == Collider::Type::Sphere) {
+			return (std::max)(
+				static_cast<const SphereCollider*>(collider)->GetRadius(),
+				0.0f
+			);
+		}
+		const OBBCollider::OBB obb =
+			static_cast<const OBBCollider*>(collider)->GetOBB();
+		return std::sqrt(
+			obb.halfSize.x * obb.halfSize.x +
+			obb.halfSize.z * obb.halfSize.z
+		);
+	};
+
+	std::vector<GroundContactAgent> contactAgents;
+	contactAgents.reserve(groundAgents.size());
+	for (GroundAgentUpdateEntry& agent : groundAgents) {
+		if (
+			!agent.entity ||
+			!agent.body ||
+			agent.body->type != PhysicsBodyType::Dynamic ||
+			agent.crowdKey.empty()
+		) {
+			continue;
+		}
+		const float radius = resolveGroundContactRadius(agent.collider);
+		if (radius <= kGroundContactEpsilon) {
+			continue;
+		}
+		contactAgents.push_back({ &agent, radius, agent.transform.translate, {} });
+	}
+	std::sort(
+		contactAgents.begin(),
+		contactAgents.end(),
+		[](const GroundContactAgent& a, const GroundContactAgent& b) {
+			return a.agent->entity->id < b.agent->entity->id;
+		}
+	);
+
+	std::vector<GroundContactPair> contactPairs;
+	for (size_t firstIndex = 0; firstIndex < contactAgents.size(); ++firstIndex) {
+		const GroundContactAgent& first = contactAgents[firstIndex];
+		std::vector<GroundContactNeighbor> neighbors;
+		for (size_t secondIndex = 0; secondIndex < contactAgents.size(); ++secondIndex) {
+			if (firstIndex == secondIndex) {
+				continue;
+			}
+			const GroundContactAgent& second = contactAgents[secondIndex];
+			if (first.agent->crowdKey != second.agent->crowdKey) {
+				continue;
+			}
+			const Vector3 offset = {
+				first.predictedPosition.x - second.predictedPosition.x,
+				0.0f,
+				first.predictedPosition.z - second.predictedPosition.z
+			};
+			const float distance = Math::Length(offset);
+			if (distance >= first.radius + second.radius) {
+				continue;
+			}
+			neighbors.push_back({ secondIndex, distance });
+		}
+		std::sort(
+			neighbors.begin(),
+			neighbors.end(),
+			[&contactAgents](
+				const GroundContactNeighbor& a,
+				const GroundContactNeighbor& b
+			) {
+				if (a.distance != b.distance) {
+					return a.distance < b.distance;
+				}
+				return contactAgents[a.contactIndex].agent->entity->id <
+					contactAgents[b.contactIndex].agent->entity->id;
+			}
+		);
+		const size_t neighborCount = (std::min)(
+			neighbors.size(),
+			kGroundContactMaxNeighbors
+		);
+		for (size_t neighborIndex = 0; neighborIndex < neighborCount; ++neighborIndex) {
+			const size_t secondIndex = neighbors[neighborIndex].contactIndex;
+			contactPairs.push_back({
+				(std::min)(firstIndex, secondIndex),
+				(std::max)(firstIndex, secondIndex),
+				0.0f
+			});
+		}
+	}
+	std::sort(
+		contactPairs.begin(),
+		contactPairs.end(),
+		[](const GroundContactPair& a, const GroundContactPair& b) {
+			return a.first != b.first ? a.first < b.first : a.second < b.second;
+		}
+	);
+	contactPairs.erase(
+		std::unique(
+			contactPairs.begin(),
+			contactPairs.end(),
+			[](const GroundContactPair& a, const GroundContactPair& b) {
+				return a.first == b.first && a.second == b.second;
+			}
+		),
+		contactPairs.end()
+	);
+	for (GroundContactPair& pair : contactPairs) {
+		const Vector3 offset = {
+			contactAgents[pair.first].predictedPosition.x -
+				contactAgents[pair.second].predictedPosition.x,
+			0.0f,
+			contactAgents[pair.first].predictedPosition.z -
+				contactAgents[pair.second].predictedPosition.z
+		};
+		pair.initialDistance = Math::Length(offset);
+	}
+	std::sort(
+		contactPairs.begin(),
+		contactPairs.end(),
+		[&contactAgents](const GroundContactPair& a, const GroundContactPair& b) {
+			if (a.initialDistance != b.initialDistance) {
+				return a.initialDistance < b.initialDistance;
+			}
+			const uint64_t aFirstId = contactAgents[a.first].agent->entity->id;
+			const uint64_t bFirstId = contactAgents[b.first].agent->entity->id;
+			if (aFirstId != bFirstId) {
+				return aFirstId < bFirstId;
+			}
+			return contactAgents[a.second].agent->entity->id <
+				contactAgents[b.second].agent->entity->id;
+		}
+	);
+	if (contactPairs.size() > kGroundContactPairBudget) {
+		contactPairs.resize(kGroundContactPairBudget);
+	}
+
+	auto mobilityAlongNormal = [](const PhysicsBody& body, const Vector3& normal) {
+		const float inverseMass = 1.0f / (std::max)(body.mass, 0.001f);
+		const float xMobility = body.freezePositionX ? 0.0f : normal.x * normal.x;
+		const float zMobility = body.freezePositionZ ? 0.0f : normal.z * normal.z;
+		return (xMobility + zMobility) * inverseMass;
+	};
+	auto applyPositionConstraints = [](const PhysicsBody& body, Vector3& displacement) {
+		if (body.freezePositionX) {
+			displacement.x = 0.0f;
+		}
+		if (body.freezePositionZ) {
+			displacement.z = 0.0f;
+		}
+	};
+
+	for (uint32_t pass = 0; pass < kGroundContactSolverPasses; ++pass) {
+		for (const GroundContactPair& pair : contactPairs) {
+			GroundContactAgent& first = contactAgents[pair.first];
+			GroundContactAgent& second = contactAgents[pair.second];
+			const Vector3 offset = {
+				first.predictedPosition.x - second.predictedPosition.x,
+				0.0f,
+				first.predictedPosition.z - second.predictedPosition.z
+			};
+			const float distance = Math::Length(offset);
+			const float penetration = first.radius + second.radius - distance;
+			if (penetration <= kGroundContactEpsilon) {
+				continue;
+			}
+			Vector3 normal{};
+			if (distance > kGroundContactEpsilon) {
+				normal = Math::Multiply(offset, 1.0f / distance);
+			} else {
+				const float angle = Hash01(
+					first.agent->entity->id ^ second.agent->entity->id,
+					911u
+				) * 6.28318530718f;
+				normal = { std::cos(angle), 0.0f, std::sin(angle) };
+			}
+			const float firstMobility = mobilityAlongNormal(*first.agent->body, normal);
+			const float secondMobility = mobilityAlongNormal(*second.agent->body, normal);
+			const float totalMobility = firstMobility + secondMobility;
+			if (totalMobility <= kGroundContactEpsilon) {
+				continue;
+			}
+			Vector3 firstDisplacement = Math::Multiply(
+				normal,
+				penetration * (firstMobility / totalMobility)
+			);
+			Vector3 secondDisplacement = Math::Multiply(
+				normal,
+				-penetration * (secondMobility / totalMobility)
+			);
+			applyPositionConstraints(*first.agent->body, firstDisplacement);
+			applyPositionConstraints(*second.agent->body, secondDisplacement);
+			first.predictedPosition = Math::Add(first.predictedPosition, firstDisplacement);
+			second.predictedPosition = Math::Add(second.predictedPosition, secondDisplacement);
+			first.velocityCorrection = Math::Add(
+				first.velocityCorrection,
+				Math::Multiply(firstDisplacement, 1.0f / dt)
+			);
+			second.velocityCorrection = Math::Add(
+				second.velocityCorrection,
+				Math::Multiply(secondDisplacement, 1.0f / dt)
+			);
+		}
+	}
+	for (GroundContactAgent& contact : contactAgents) {
+		const Vector3 correction = ClampVectorLength(
+			contact.velocityCorrection,
+			kGroundContactMaxSpeed
+		);
+		contact.agent->body->velocity.x += correction.x;
+		contact.agent->body->velocity.z += correction.z;
 	}
 
 	struct TeamFrameState {

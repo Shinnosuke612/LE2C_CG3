@@ -324,6 +324,14 @@ BaseScene* SceneManager::GetActiveScene() const {
 	return instance ? instance->GetScene() : nullptr;
 }
 
+bool SceneManager::TryGetActiveRuntimePostProcessSettings(
+	ScenePostProcessSettings& settings,
+	uint64_t& generation
+) const {
+	BaseScene* scene = GetActiveScene();
+	return scene && scene->TryGetRuntimePostProcessSettings(settings, generation);
+}
+
 void SceneManager::Update(float deltaTime)
 {
 	ProcessPendingSceneUnloads();

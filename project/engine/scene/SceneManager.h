@@ -1,6 +1,7 @@
 // 役割: SceneInstance集合とSceneFactoryを管理し、Active Sceneの遷移を実行する。
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -12,6 +13,7 @@ class BaseScene;
 class SceneCatalog;
 class SceneDocument;
 struct SceneEntity;
+struct ScenePostProcessSettings;
 class SceneExecutionContext;
 
 enum class SceneLoadMode {
@@ -73,6 +75,10 @@ public:
 	}
 	SceneDocument* GetActiveSceneDocument();
 	const SceneDocument* GetActiveSceneDocument() const;
+	bool TryGetActiveRuntimePostProcessSettings(
+		ScenePostProcessSettings& settings,
+		uint64_t& generation
+	) const;
 	SceneInstanceId GetActiveSceneInstanceId() const {
 		return activeSceneInstanceId_;
 	}

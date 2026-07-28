@@ -43,6 +43,24 @@ void FullscreenCopy::Draw(
 	Effect effect,
 	OutputFormat outputFormat
 ) {
+	Draw(
+		textureHandle,
+		depthTextureHandle,
+		maskTextureHandle,
+		textureHandle,
+		effect,
+		outputFormat
+	);
+}
+
+void FullscreenCopy::Draw(
+	D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
+	D3D12_GPU_DESCRIPTOR_HANDLE depthTextureHandle,
+	D3D12_GPU_DESCRIPTOR_HANDLE maskTextureHandle,
+	D3D12_GPU_DESCRIPTOR_HANDLE historyTextureHandle,
+	Effect effect,
+	OutputFormat outputFormat
+) {
 	assert(dxCommon_);
 	assert(drawIndex_ < kMaxDrawsPerFrame);
 
@@ -97,21 +115,31 @@ void FullscreenCopy::Draw(
 	else if (effect == Effect::kWaterLightShafts) {
 		pipelineState = waterLightShaftsPipelineState_.Get();
 	}
+	else if (effect == Effect::kPixelation) {
+		pipelineState = pixelationPipelineState_.Get();
+	}
+	else if (effect == Effect::kChromaticAberration) {
+		pipelineState = chromaticAberrationPipelineState_.Get();
+	}
+	else if (effect == Effect::kMotionBlur) {
+		pipelineState = motionBlurPipelineState_.Get();
+	}
 	commandList->SetPipelineState(pipelineState);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	commandList->SetGraphicsRootDescriptorTable(0, textureHandle);
 	commandList->SetGraphicsRootDescriptorTable(1, depthTextureHandle);
 	commandList->SetGraphicsRootDescriptorTable(2, maskTextureHandle);
+	commandList->SetGraphicsRootDescriptorTable(3, historyTextureHandle);
 	commandList->SetGraphicsRootConstantBufferView(
-		3,
+		4,
 		parameterResources_[parameterIndex]->GetGPUVirtualAddress()
 	);
 	commandList->DrawInstanced(3, 1, 0, 0);
 }
 
 void FullscreenCopy::CreateRootSignature() {
-	D3D12_DESCRIPTOR_RANGE descriptorRanges[3]{};
-	for (uint32_t index = 0; index < 3; ++index) {
+	D3D12_DESCRIPTOR_RANGE descriptorRanges[4]{};
+	for (uint32_t index = 0; index < 4; ++index) {
 		descriptorRanges[index].RangeType =
 			D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 		descriptorRanges[index].NumDescriptors = 1;
@@ -120,7 +148,7 @@ void FullscreenCopy::CreateRootSignature() {
 			D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 	}
 
-	D3D12_ROOT_PARAMETER rootParameters[4]{};
+	D3D12_ROOT_PARAMETER rootParameters[5]{};
 	rootParameters[0].ParameterType =
 		D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -142,9 +170,16 @@ void FullscreenCopy::CreateRootSignature() {
 		&descriptorRanges[2];
 	rootParameters[2].DescriptorTable.NumDescriptorRanges = 1;
 
-	rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[3].ParameterType =
+		D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	rootParameters[3].Descriptor.ShaderRegister = 0;
+	rootParameters[3].DescriptorTable.pDescriptorRanges =
+		&descriptorRanges[3];
+	rootParameters[3].DescriptorTable.NumDescriptorRanges = 1;
+
+	rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[4].Descriptor.ShaderRegister = 0;
 
 	D3D12_STATIC_SAMPLER_DESC samplers[2]{};
 	for (uint32_t index = 0; index < 2; ++index) {
@@ -249,6 +284,9 @@ void FullscreenCopy::CreatePipelineState() {
 		L"resources/shaders/WaterLightShafts.PS.hlsl",
 		L"ps_6_0"
 	);
+	const auto chromaticAberrationPixelShader = dxCommon_->CompileShader(L"resources/shaders/ChromaticAberration.PS.hlsl", L"ps_6_0");
+	const auto pixelationPixelShader = dxCommon_->CompileShader(L"resources/shaders/Pixelation.PS.hlsl", L"ps_6_0");
+	const auto motionBlurPixelShader = dxCommon_->CompileShader(L"resources/shaders/MotionBlur.PS.hlsl", L"ps_6_0");
 	assert(vertexShader);
 	assert(copyPixelShader);
 	assert(grayscalePixelShader);
@@ -263,6 +301,9 @@ void FullscreenCopy::CreatePipelineState() {
 	assert(underwaterPixelShader);
 	assert(waterRefractionPixelShader);
 	assert(waterLightShaftsPixelShader);
+	assert(chromaticAberrationPixelShader);
+	assert(pixelationPixelShader);
+	assert(motionBlurPixelShader);
 
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
@@ -423,6 +464,18 @@ void FullscreenCopy::CreatePipelineState() {
 		&pipelineDesc,
 		IID_PPV_ARGS(&waterLightShaftsPipelineState_)
 	);
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = { chromaticAberrationPixelShader->GetBufferPointer(), chromaticAberrationPixelShader->GetBufferSize() };
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(&chromaticAberrationPipelineState_));
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = { pixelationPixelShader->GetBufferPointer(), pixelationPixelShader->GetBufferSize() };
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(&pixelationPipelineState_));
+	assert(SUCCEEDED(result));
+
+	pipelineDesc.PS = { motionBlurPixelShader->GetBufferPointer(), motionBlurPixelShader->GetBufferSize() };
+	result = dxCommon_->GetDevice()->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(&motionBlurPipelineState_));
 	assert(SUCCEEDED(result));
 
 	pipelineDesc.RTVFormats[0] = RenderFormats::kSceneHdrFormat;

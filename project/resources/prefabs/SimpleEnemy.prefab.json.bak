@@ -1,4 +1,5 @@
 {
+  "assetId": "50154724-3a2b-4385-a2ec-867b136df541",
   "debug": {
     "showColliders": false,
     "showJointAxes": false,
@@ -20,15 +21,28 @@
         },
         {
           "active": true,
-          "debugColor": [0.9, 0.3, 0.25, 1.0],
+          "debugColor": [
+            0.9,
+            0.3,
+            0.25,
+            1.0
+          ],
           "debugVisible": true,
           "enabled": true,
           "isTrigger": false,
           "layer": 4294967295,
           "mask": 4294967295,
-          "offset": [0.0, 0.0, 0.0],
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
           "shape": "Box",
-          "sizeMultiplier": [1.0, 1.0, 1.0],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         },
         {
@@ -42,7 +56,11 @@
           "restitution": 0.0,
           "type": "PhysicsBody",
           "useGravity": true,
-          "velocity": [0.0, 0.0, 0.0]
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
         },
         {
           "enabled": true,
@@ -50,8 +68,15 @@
             {
               "displayName": "HP",
               "id": "hp",
-              "initial": 60.0,
-              "max": 60.0,
+              "initial": 40.0,
+              "max": 40.0,
+              "min": 0.0
+            },
+            {
+              "displayName": "Poise",
+              "id": "poise",
+              "initial": 15.0,
+              "max": 15.0,
               "min": 0.0
             }
           ],
@@ -79,6 +104,131 @@
           "targetEntityName": "Player",
           "turnSpeed": 8.0,
           "type": "EnemyBehavior"
+        },
+        {
+          "behaviorName": "LightMeleeEnemy",
+          "enabled": true,
+          "groupName": "LightMeleeEnemies",
+          "maxSpeed": 3.0,
+          "minSpeed": 3.0,
+          "movementMode": "GroundXZ",
+          "neighborLimit": 8,
+          "profileName": "LightMelee",
+          "separationRadius": 1.5,
+          "separationWeight": 2.2,
+          "type": "AgentBehavior",
+          "useWaterBounds": false
+        },
+        {
+          "clips": [
+            {
+              "duration": 1.0,
+              "loop": true,
+              "name": "Idle",
+              "playOnStart": true,
+              "tracks": [
+                {
+                  "easing": "Linear",
+                  "keyframes": [
+                    { "time": 0.0, "value": [1.0, 1.0, 1.0] }
+                  ],
+                  "property": "LocalScale",
+                  "targetEntityId": 1,
+                  "targetEntityName": "SimpleEnemy"
+                }
+              ]
+            },
+            {
+              "duration": 0.2,
+              "loop": false,
+              "name": "Hit",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "EaseOut",
+                  "keyframes": [
+                    { "time": 0.0, "value": [1.0, 1.0, 1.0] },
+                    { "time": 0.08, "value": [1.15, 0.75, 1.15] },
+                    { "time": 0.2, "value": [1.0, 1.0, 1.0] }
+                  ],
+                  "property": "LocalScale",
+                  "targetEntityId": 1,
+                  "targetEntityName": "SimpleEnemy"
+                }
+              ]
+            },
+            {
+              "duration": 0.45,
+              "loop": false,
+              "name": "Dead",
+              "playOnStart": false,
+              "tracks": [
+                {
+                  "easing": "EaseIn",
+                  "keyframes": [
+                    { "time": 0.0, "value": [1.0, 1.0, 1.0] },
+                    { "time": 0.2, "value": [1.1, 0.35, 1.1] },
+                    { "time": 0.45, "value": [0.05, 0.05, 0.05] }
+                  ],
+                  "property": "LocalScale",
+                  "targetEntityId": 1,
+                  "targetEntityName": "SimpleEnemy"
+                }
+              ]
+            }
+          ],
+          "enabled": true,
+          "type": "PrefabAnimator"
+        },
+        {
+          "enabled": true,
+          "initialState": "Idle",
+          "resetOnDisable": true,
+          "states": [
+            {
+              "actionId": "",
+              "name": "Idle",
+              "parameters": []
+            },
+            {
+              "actionId": "Builtin.ReactionAnimation",
+              "name": "Hit",
+              "parameters": [
+                { "entityId": 1, "entityName": "SimpleEnemy", "name": "AnimationTarget", "type": "Entity" },
+                { "floatValue": 0.2, "name": "Duration", "type": "Float" },
+                { "name": "Animation", "stringValue": "Hit", "type": "String" },
+                { "name": "ReturnAnimation", "stringValue": "Idle", "type": "String" },
+                { "name": "ReturnState", "stringValue": "Idle", "type": "String" }
+              ]
+            },
+            {
+              "actionId": "Builtin.DeathAnimation",
+              "name": "Dead",
+              "parameters": [
+                { "entityId": 1, "entityName": "SimpleEnemy", "name": "AnimationTarget", "type": "Entity" },
+                { "name": "Animation", "stringValue": "Dead", "type": "String" }
+              ]
+            }
+          ],
+          "type": "StateMachine"
+        },
+        {
+          "enabled": true,
+          "knockbackMultiplier": 1.35,
+          "minimumPoiseDamage": 0.0,
+          "poiseRecoveryDelay": 0.8,
+          "poiseStatId": "poise",
+          "stateDuration": 0.2,
+          "stateName": "Hit",
+          "triggerMode": "PoiseBreak",
+          "type": "HitReaction"
+        },
+        {
+          "deactivateDelay": 0.45,
+          "effectPath": "resources/particles/ring_burst.json",
+          "enabled": true,
+          "stateName": "Dead",
+          "type": "DeathPresentation"
         }
       ],
       "folder": false,
@@ -90,9 +240,22 @@
       "parentId": 0,
       "team": "",
       "transform": {
-        "rotation": [0.0, 0.0, 0.0, 1.0],
-        "scale": [1.0, 1.0, 1.0],
-        "translate": [0.0, 1.0, 0.0]
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          1.0,
+          0.0
+        ]
       }
     },
     {
@@ -100,15 +263,28 @@
       "components": [
         {
           "active": true,
-          "debugColor": [1.0, 0.6, 0.2, 1.0],
+          "debugColor": [
+            1.0,
+            0.6,
+            0.2,
+            1.0
+          ],
           "debugVisible": true,
           "enabled": true,
           "isTrigger": true,
           "layer": 4294967295,
           "mask": 4294967295,
-          "offset": [0.0, 0.0, 0.0],
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
           "shape": "Box",
-          "sizeMultiplier": [1.0, 1.0, 1.0],
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
           "type": "OBBCollider"
         },
         {
@@ -129,9 +305,22 @@
       "parentId": 1,
       "team": "",
       "transform": {
-        "rotation": [0.0, 0.0, 0.0, 1.0],
-        "scale": [1.0, 1.0, 1.0],
-        "translate": [0.0, 0.0, 0.0]
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
       }
     },
     {
@@ -139,15 +328,28 @@
       "components": [
         {
           "active": true,
-          "debugColor": [1.0, 0.1, 0.1, 1.0],
+          "debugColor": [
+            1.0,
+            0.1,
+            0.1,
+            1.0
+          ],
           "debugVisible": true,
           "enabled": true,
           "isTrigger": true,
           "layer": 4294967295,
           "mask": 4294967295,
-          "offset": [0.0, 0.0, 0.0],
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
           "shape": "Box",
-          "sizeMultiplier": [0.8, 0.8, 1.0],
+          "sizeMultiplier": [
+            0.8,
+            0.8,
+            1.0
+          ],
           "type": "OBBCollider"
         },
         {
@@ -157,8 +359,10 @@
           "ignoreSameFaction": true,
           "ownerEntityId": 1,
           "ownerEntityName": "SimpleEnemy",
-          "poiseDamage": 0.0,
+          "knockback": 2.5,
+          "poiseDamage": 6.0,
           "poiseStatId": "poise",
+          "reactionTag": "LightMelee",
           "type": "HitBox"
         }
       ],
@@ -171,9 +375,22 @@
       "parentId": 1,
       "team": "",
       "transform": {
-        "rotation": [0.0, 0.0, 0.0, 1.0],
-        "scale": [1.0, 1.0, 1.0],
-        "translate": [0.0, 0.0, 1.4]
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          1.4
+        ]
       }
     }
   ],

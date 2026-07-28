@@ -18,6 +18,7 @@
 #include "../engine/base/BloomRenderer.h"
 #include "../engine/base/FullscreenCopy.h"
 #include "../engine/base/ImGuiManager.h"
+#include "../engine/base/PostProcessSettingsEditor.h"
 #include "../engine/base/RenderFormats.h"
 #include "../engine/base/SceneRenderTarget.h"
 #include "../engine/io/Input.h"
@@ -112,12 +113,23 @@ namespace {
 			a.boxBlurEnabled == b.boxBlurEnabled &&
 			a.gaussianBlurEnabled == b.gaussianBlurEnabled &&
 			a.depthOfFieldEnabled == b.depthOfFieldEnabled &&
+			a.motionBlurEnabled == b.motionBlurEnabled &&
+			NearlyEqual(a.motionBlurStrength, b.motionBlurStrength) &&
+			a.motionBlurSamples == b.motionBlurSamples &&
+			NearlyEqual(a.motionBlurMaxRadius, b.motionBlurMaxRadius) &&
 			a.radialBlurEnabled == b.radialBlurEnabled &&
 			a.noiseEnabled == b.noiseEnabled &&
 			a.dissolveEnabled == b.dissolveEnabled &&
 			a.outlineEnabled == b.outlineEnabled &&
 			a.underwaterEnabled == b.underwaterEnabled &&
 			a.waterRefractionEnabled == b.waterRefractionEnabled &&
+			a.pixelationEnabled == b.pixelationEnabled &&
+			a.pixelationBlockSize == b.pixelationBlockSize &&
+			a.chromaticAberrationEnabled == b.chromaticAberrationEnabled &&
+			NearlyEqual(a.chromaticAberrationCenter.x, b.chromaticAberrationCenter.x) &&
+			NearlyEqual(a.chromaticAberrationCenter.y, b.chromaticAberrationCenter.y) &&
+			NearlyEqual(a.chromaticAberrationIntensity, b.chromaticAberrationIntensity) &&
+			NearlyEqual(a.chromaticAberrationFalloff, b.chromaticAberrationFalloff) &&
 			NearlyEqual(a.vignetteScale, b.vignetteScale) &&
 			NearlyEqual(a.vignettePower, b.vignettePower) &&
 			NearlyEqual(a.vignetteIntensity, b.vignetteIntensity) &&
@@ -293,6 +305,16 @@ void Game::Initialize() {
 		postTargetDesc.clearColor[3] = 1.0f;
 		renderTarget->Initialize(dxCommon_, srvManager_, postTargetDesc);
 	}
+	motionBlurHistoryRenderTarget_ = new SceneRenderTarget();
+	SceneRenderTarget::Desc motionBlurHistoryDesc{};
+	motionBlurHistoryDesc.width = dxCommon_->GetClientWidth();
+	motionBlurHistoryDesc.height = dxCommon_->GetClientHeight();
+	motionBlurHistoryDesc.format = RenderFormats::kDisplayFormat;
+	motionBlurHistoryDesc.createDepth = false;
+	motionBlurHistoryDesc.clearColor[3] = 1.0f;
+	motionBlurHistoryRenderTarget_->Initialize(
+		dxCommon_, srvManager_, motionBlurHistoryDesc
+	);
 	foregroundComposeRenderTarget_ = new SceneRenderTarget();
 	SceneRenderTarget::Desc foregroundComposeDesc{};
 	foregroundComposeDesc.width = dxCommon_->GetClientWidth();
@@ -431,404 +453,38 @@ void Game::Update() {
 	if (editorSession_) {
 
 	ImGui::Begin("Post Process Stack");
+	ScenePostProcessSettings postProcessSettings = CapturePostProcessSettings();
+	bool postProcessSettingsChanged = false;
 	ImGui::Text("Active: %d", GetEnabledPostEffectCount());
 	ImGui::SameLine();
 	if (ImGui::SmallButton("Disable All")) {
-		bloomParameters_.enabled = 0;
-		grayscaleEnabled_ = false;
-		vignetteEnabled_ = false;
-		boxBlurEnabled_ = false;
-		gaussianBlurEnabled_ = false;
-		radialBlurEnabled_ = false;
-		depthOfFieldEnabled_ = false;
-		noiseEnabled_ = false;
-		dissolveEnabled_ = false;
-		outlineEnabled_ = false;
-		underwaterEnabled_ = false;
-		waterRefractionEnabled_ = false;
+		postProcessSettings.bloomEnabled = false;
+		postProcessSettings.grayscaleEnabled = false;
+		postProcessSettings.vignetteEnabled = false;
+		postProcessSettings.boxBlurEnabled = false;
+		postProcessSettings.gaussianBlurEnabled = false;
+		postProcessSettings.radialBlurEnabled = false;
+		postProcessSettings.depthOfFieldEnabled = false;
+		postProcessSettings.noiseEnabled = false;
+		postProcessSettings.dissolveEnabled = false;
+		postProcessSettings.outlineEnabled = false;
+		postProcessSettings.underwaterEnabled = false;
+		postProcessSettings.waterRefractionEnabled = false;
+		postProcessSettings.pixelationEnabled = false;
+		postProcessSettings.chromaticAberrationEnabled = false;
+		postProcessSettingsChanged = true;
 	}
 	ImGui::TextDisabled("Applied from top to bottom");
+	ImGui::Text("Current Exposure: %.2f", currentExposure_);
 	ImGui::Separator();
-
-	ImGui::BeginChild("EffectStack", ImVec2(0.0f, 0.0f), true);
-
-	ImGui::PushID("HDRBloom");
-	if (ImGui::TreeNodeEx(
-		"HDR / Bloom / ToneMap",
-		ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		bool bloomEnabled = bloomParameters_.enabled != 0;
-		if (ImGui::Checkbox("Bloom", &bloomEnabled)) {
-			bloomParameters_.enabled = bloomEnabled ? 1 : 0;
-		}
-		ImGui::SliderFloat("Base Exposure", &baseExposure_, 0.01f, 5.0f);
-		ImGui::Text("Current Exposure: %.2f", currentExposure_);
-		const char* toneMapNames[] = { "ACES", "Reinhard" };
-		ImGui::Combo(
-			"Tone Map",
-			&bloomParameters_.toneMapMode,
-			toneMapNames,
-			IM_ARRAYSIZE(toneMapNames)
-		);
-		ImGui::SliderFloat("Threshold", &bloomParameters_.threshold, 0.0f, 10.0f);
-		ImGui::SliderFloat("Soft Knee", &bloomParameters_.softKnee, 0.0f, 1.0f);
-		ImGui::SliderFloat("Intensity", &bloomParameters_.intensity, 0.0f, 5.0f);
-		ImGui::SliderInt("Blur Iterations", &bloomParameters_.blurIterations, 0, 12);
-		ImGui::SliderInt("Downsample", &bloomParameters_.downsampleScale, 1, 8);
-		ImGui::SliderFloat("Blur Radius", &bloomParameters_.blurRadius, 0.0f, 8.0f);
-		ImGui::TreePop();
+	postProcessSettingsChanged |= DrawPostProcessSettingsEditor(postProcessSettings);
+	if (ImGui::SmallButton("Reset Noise Time")) {
+		noiseTime_ = 0.0f;
 	}
-	ImGui::PopID();
-	ImGui::Separator();
-
-	ImGui::PushID("Grayscale");
-	ImGui::Checkbox("##Enabled", &grayscaleEnabled_);
-	ImGui::SameLine();
-	ImGui::TextUnformatted("Grayscale");
-	ImGui::PopID();
-	ImGui::Separator();
-
-	ImGui::PushID("Vignette");
-	ImGui::Checkbox("##Enabled", &vignetteEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Vignette",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		ImGui::SliderFloat("Scale", &vignetteScale_, 0.0f, 32.0f);
-		ImGui::SliderFloat("Power", &vignettePower_, 0.05f, 4.0f);
-		ImGui::SliderFloat(
-			"Intensity",
-			&vignetteIntensity_,
-			0.0f,
-			1.0f
-		);
-		ImGui::TreePop();
+	if (postProcessSettingsChanged) {
+		ApplyPostProcessSettings(postProcessSettings);
 	}
-	ImGui::PopID();
-	ImGui::Separator();
 
-	ImGui::PushID("BoxBlur");
-	ImGui::Checkbox("##Enabled", &boxBlurEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Box Blur",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		const char* kernelNames[] = { "3 x 3", "5 x 5" };
-		int kernelIndex = boxBlurKernelSize_ == 5 ? 1 : 0;
-		if (ImGui::Combo(
-			"Kernel",
-			&kernelIndex,
-			kernelNames,
-			IM_ARRAYSIZE(kernelNames)
-		)) {
-			boxBlurKernelSize_ = kernelIndex == 1 ? 5 : 3;
-		}
-		ImGui::SliderFloat(
-			"Strength",
-			&boxBlurStrength_,
-			0.0f,
-			1.0f
-		);
-		ImGui::TreePop();
-	}
-	ImGui::PopID();
-	ImGui::Separator();
-
-	ImGui::PushID("GaussianBlur");
-	ImGui::Checkbox("##Enabled", &gaussianBlurEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Gaussian Blur",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		const char* kernelNames[] = { "3 x 3", "5 x 5" };
-		int kernelIndex = gaussianBlurKernelSize_ == 5 ? 1 : 0;
-		if (ImGui::Combo(
-			"Kernel",
-			&kernelIndex,
-			kernelNames,
-			IM_ARRAYSIZE(kernelNames)
-		)) {
-			gaussianBlurKernelSize_ = kernelIndex == 1 ? 5 : 3;
-		}
-		ImGui::SliderFloat(
-			"Sigma",
-			&gaussianBlurSigma_,
-			0.1f,
-			5.0f
-		);
-		ImGui::SliderFloat(
-			"Strength",
-			&gaussianBlurStrength_,
-			0.0f,
-			1.0f
-		);
-		ImGui::TreePop();
-	}
-	ImGui::PopID();
-	ImGui::Separator();
-
-	ImGui::PushID("DepthOfField");
-	ImGui::Checkbox("##Enabled", &depthOfFieldEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Depth Of Field",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		ImGui::TextDisabled("Depth based focus blur");
-		ImGui::SliderFloat(
-			"Focus Distance",
-			&dofFocusDistance_,
-			0.1f,
-			200.0f
-		);
-		ImGui::SliderFloat(
-			"Focus Range",
-			&dofFocusRange_,
-			0.1f,
-			100.0f
-		);
-		ImGui::SliderFloat(
-			"Blur Strength",
-			&dofBlurStrength_,
-			0.0f,
-			1.0f
-		);
-		ImGui::SliderFloat(
-			"Max Radius",
-			&dofMaxRadius_,
-			0.0f,
-			8.0f
-		);
-		ImGui::SliderFloat(
-			"Near Strength",
-			&dofNearStrength_,
-			0.0f,
-			2.0f
-		);
-		ImGui::SliderFloat(
-			"Far Strength",
-			&dofFarStrength_,
-			0.0f,
-			2.0f
-		);
-		ImGui::TreePop();
-	}
-	ImGui::PopID();
-	ImGui::Separator();
-
-	ImGui::PushID("RadialBlur");
-	ImGui::Checkbox("##Enabled", &radialBlurEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Radial Blur",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		ImGui::DragFloat2(
-			"Center",
-			radialBlurCenter_,
-			0.005f,
-			0.0f,
-			1.0f,
-			"%.3f"
-		);
-		ImGui::SliderFloat(
-			"Blur Width",
-			&radialBlurWidth_,
-			0.0f,
-			0.1f,
-			"%.4f"
-		);
-		ImGui::SliderInt(
-			"Samples",
-			&radialBlurSamples_,
-			2,
-			32
-		);
-		ImGui::TreePop();
-	}
-	ImGui::PopID();
-	ImGui::Separator();
-
-	ImGui::PushID("Noise");
-	ImGui::Checkbox("##Enabled", &noiseEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Noise",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		ImGui::Checkbox("Animate", &noiseAnimate_);
-		ImGui::SliderFloat("Amount", &noiseAmount_, 0.0f, 1.0f);
-		ImGui::SliderFloat("Scale", &noiseScale_, 0.25f, 8.0f);
-		if (noiseAnimate_) {
-			ImGui::SliderFloat("Speed", &noiseSpeed_, 0.0f, 10.0f);
-		}
-		ImGui::DragFloat("Seed", &noiseSeed_, 0.01f);
-		if (ImGui::SmallButton("Reset Time")) {
-			noiseTime_ = 0.0f;
-		}
-		ImGui::TreePop();
-	}
-	ImGui::PopID();
-	ImGui::Separator();
-
-	ImGui::PushID("Dissolve");
-	ImGui::Checkbox("##Enabled", &dissolveEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Dissolve",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		const char* maskNames[] = { "Noise 0", "Noise 1" };
-		ImGui::Combo(
-			"Mask",
-			&dissolveMaskIndex_,
-			maskNames,
-			IM_ARRAYSIZE(maskNames)
-		);
-		ImGui::SliderFloat(
-			"Threshold",
-			&dissolveThreshold_,
-			0.0f,
-			1.0f
-		);
-		ImGui::SliderFloat(
-			"Edge Width",
-			&dissolveEdgeWidth_,
-			0.001f,
-			0.25f
-		);
-		ImGui::ColorEdit4("Edge Color", dissolveEdgeColor_);
-		ImGui::TreePop();
-	}
-	ImGui::PopID();
-	ImGui::Separator();
-
-	ImGui::PushID("Outline");
-	ImGui::Checkbox("##Enabled", &outlineEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Outline",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		ImGui::TextUnformatted("Sources");
-		ImGui::Checkbox("Luminance", &outlineLuminanceEnabled_);
-		ImGui::SameLine();
-		ImGui::Checkbox("Depth", &outlineDepthEnabled_);
-		if (!outlineLuminanceEnabled_ && !outlineDepthEnabled_) {
-			ImGui::TextDisabled("Enable at least one source");
-		}
-
-		ImGui::SeparatorText("Detection");
-		if (outlineLuminanceEnabled_) {
-			ImGui::SliderFloat(
-				"Luminance Weight",
-				&outlineLuminanceWeight_,
-				0.0f,
-				10.0f
-			);
-		}
-		if (outlineDepthEnabled_) {
-			ImGui::SliderFloat(
-				"Depth Weight",
-				&outlineDepthWeight_,
-				0.0f,
-				10.0f
-			);
-		}
-		ImGui::SliderFloat(
-			"Threshold",
-			&outlineThreshold_,
-			0.0f,
-			2.0f
-		);
-		ImGui::SliderFloat(
-			"Softness",
-			&outlineSoftness_,
-			0.001f,
-			1.0f
-		);
-		ImGui::SliderFloat(
-			"Thickness",
-			&outlineThickness_,
-			1.0f,
-			5.0f
-		);
-		ImGui::ColorEdit4("Color", outlineColor_);
-		ImGui::TreePop();
-	}
-	ImGui::PopID();
-
-	ImGui::Separator();
-	ImGui::PushID("Underwater");
-	ImGui::Checkbox("##Enabled", &underwaterEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Underwater",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		ImGui::ColorEdit4("Tint", underwaterTintColor_);
-		ImGui::SliderFloat(
-			"Intensity",
-			&underwaterIntensity_,
-			0.0f,
-			1.0f
-		);
-		ImGui::SliderFloat(
-			"Fog Density",
-			&underwaterFogDensity_,
-			0.0f,
-			0.25f,
-			"%.4f"
-		);
-		ImGui::SliderFloat(
-			"Distortion",
-			&underwaterDistortion_,
-			0.0f,
-			0.08f,
-			"%.4f"
-		);
-		ImGui::TreePop();
-	}
-	ImGui::PopID();
-
-	ImGui::Separator();
-	ImGui::PushID("WaterRefraction");
-	ImGui::Checkbox("##Enabled", &waterRefractionEnabled_);
-	ImGui::SameLine();
-	if (ImGui::TreeNodeEx(
-		"Water Refraction",
-		ImGuiTreeNodeFlags_SpanAvailWidth
-	)) {
-		ImGui::ColorEdit4("Tint", waterRefractionTintColor_);
-		ImGui::SliderFloat(
-			"Strength",
-			&waterRefractionStrength_,
-			0.0f,
-			0.08f,
-			"%.4f"
-		);
-		ImGui::SliderFloat(
-			"Edge Softness",
-			&waterRefractionEdgeSoftness_,
-			0.0f,
-			1.0f,
-			"%.4f"
-		);
-		ImGui::SliderFloat(
-			"Tint Strength",
-			&waterRefractionTintStrength_,
-			0.0f,
-			1.0f,
-			"%.4f"
-		);
-		ImGui::TreePop();
-	}
-	ImGui::PopID();
-
-	ImGui::EndChild();
 	ImGui::End();
 
 	StorePostProcessSettingsToDocument();
@@ -940,6 +596,7 @@ void Game::Update() {
 	} else {
 		sceneManager_->UpdatePaused();
 	}
+	ApplyRuntimePostProcessSettings();
 	if (preserveEditorCamera) {
 		RestoreCameraSnapshot(editorCameraSnapshot);
 	}
@@ -1208,6 +865,13 @@ void Game::Draw() {
 	}
 #endif
 	sceneRenderTarget_->Resize(renderWidth, renderHeight);
+	if (
+		motionBlurHistoryRenderTarget_->GetWidth() != renderWidth ||
+		motionBlurHistoryRenderTarget_->GetHeight() != renderHeight
+	) {
+		motionBlurHistoryRenderTarget_->Resize(renderWidth, renderHeight);
+		InvalidateMotionBlurHistory();
+	}
 	for (SceneRenderTarget* renderTarget : postProcessRenderTargets_) {
 		renderTarget->Resize(renderWidth, renderHeight);
 	}
@@ -1501,6 +1165,87 @@ void Game::Draw() {
 		}
 		applyEffect(FullscreenCopy::Effect::kDepthOfField, parameters);
 	}
+	const bool motionBlurPlaying =
+		executionContext_ && executionContext_->IsPlaying();
+	const SceneInstanceId motionBlurSceneInstanceId = sceneManager_
+		? sceneManager_->GetActiveSceneInstanceId()
+		: kInvalidSceneInstanceId;
+	if (
+		motionBlurPlaying != motionBlurLastPlaying_ ||
+		motionBlurSceneInstanceId != motionBlurLastSceneInstanceId_
+	) {
+		InvalidateMotionBlurHistory();
+	}
+	motionBlurLastPlaying_ = motionBlurPlaying;
+	motionBlurLastSceneInstanceId_ = motionBlurSceneInstanceId;
+
+	if (!motionBlurEnabled_) {
+		motionBlurWasEnabled_ = false;
+		InvalidateMotionBlurHistory();
+	} else {
+		Camera* motionBlurCamera =
+			Object3dCommon::GetInstance()->GetDefaultCamera();
+		if (!motionBlurCamera) {
+			InvalidateMotionBlurHistory();
+		} else {
+			const D3D12_GPU_DESCRIPTOR_HANDLE preBlurSourceHandle = sourceHandle;
+			const Matrix4x4 currentViewProjection =
+				motionBlurCamera->GetViewProjectionMatrix();
+			auto storeMotionBlurHistory = [&] {
+				motionBlurHistoryRenderTarget_->Begin();
+				srvManager_->PreDraw();
+				fullscreenCopy_->SetParameters(FullscreenCopy::Parameters{});
+				fullscreenCopy_->Draw(
+					preBlurSourceHandle,
+					depthHandle,
+					maskHandle,
+					FullscreenCopy::Effect::kCopy
+				);
+				motionBlurHistoryRenderTarget_->End();
+			};
+
+			if (!motionBlurWasEnabled_ || !motionBlurHistoryValid_) {
+				storeMotionBlurHistory();
+				previousMotionBlurViewProjection_ = currentViewProjection;
+				motionBlurHistoryValid_ = true;
+			} else {
+				FullscreenCopy::Parameters parameters{};
+				parameters.motionBlurInverseCurrentViewProjection =
+					Inverse(currentViewProjection);
+				parameters.motionBlurPreviousViewProjection =
+					previousMotionBlurViewProjection_;
+				parameters.motionBlurParams[0] = motionBlurStrength_;
+				parameters.motionBlurParams[1] =
+					static_cast<float>(motionBlurSamples_);
+				parameters.motionBlurParams[2] = motionBlurMaxRadius_;
+				parameters.motionBlurTextureSizeHistoryValid[0] =
+					static_cast<float>(postProcessRenderTargets_[0]->GetWidth());
+				parameters.motionBlurTextureSizeHistoryValid[1] =
+					static_cast<float>(postProcessRenderTargets_[0]->GetHeight());
+				parameters.motionBlurTextureSizeHistoryValid[2] = 1.0f;
+
+				SceneRenderTarget* destination =
+					postProcessRenderTargets_[passIndex % 2];
+				destination->Begin();
+				srvManager_->PreDraw();
+				fullscreenCopy_->SetParameters(parameters);
+				fullscreenCopy_->Draw(
+					preBlurSourceHandle,
+					depthHandle,
+					maskHandle,
+					motionBlurHistoryRenderTarget_->GetSrvGpuHandle(),
+					FullscreenCopy::Effect::kMotionBlur
+				);
+				destination->End();
+				sourceHandle = destination->GetSrvGpuHandle();
+				++passIndex;
+
+				storeMotionBlurHistory();
+				previousMotionBlurViewProjection_ = currentViewProjection;
+			}
+			motionBlurWasEnabled_ = true;
+		}
+	}
 	if (radialBlurEnabled_) {
 		FullscreenCopy::Parameters parameters{};
 		parameters.radialBlurCenter[0] = radialBlurCenter_[0];
@@ -1565,13 +1310,30 @@ void Game::Draw() {
 		fillWaterParameters(parameters);
 		applyEffect(FullscreenCopy::Effect::kUnderwater, parameters);
 	}
+	if (pixelationEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.pixelationParams[0] = static_cast<float>(pixelationBlockSize_);
+		parameters.pixelationParams[1] = static_cast<float>(postProcessRenderTargets_[0]->GetWidth());
+		parameters.pixelationParams[2] = static_cast<float>(postProcessRenderTargets_[0]->GetHeight());
+		applyEffect(FullscreenCopy::Effect::kPixelation, parameters);
+	}
+	if (chromaticAberrationEnabled_) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.chromaticCenterIntensity[0] = chromaticAberrationCenter_[0];
+		parameters.chromaticCenterIntensity[1] = chromaticAberrationCenter_[1];
+		parameters.chromaticCenterIntensity[2] = chromaticAberrationIntensity_;
+		parameters.chromaticParams[0] = chromaticAberrationFalloff_;
+		applyEffect(FullscreenCopy::Effect::kChromaticAberration, parameters);
+	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
+	SceneRenderTarget* const postProcessOutputTarget =
+		postProcessRenderTargets_[(passIndex - 1) % 2];
 	if (editorSession_) {
 		imguiManager_->DrawEditorWorkspace(
 			sourceHandle,
-			GetPostProcessOutputTarget()->GetWidth(),
-			GetPostProcessOutputTarget()->GetHeight(),
+			postProcessOutputTarget->GetWidth(),
+			postProcessOutputTarget->GetHeight(),
 			sceneManager_->GetCurrentSceneName().c_str()
 		);
 	}
@@ -1767,12 +1529,22 @@ ScenePostProcessSettings Game::CapturePostProcessSettings() const {
 	settings.boxBlurEnabled = boxBlurEnabled_;
 	settings.gaussianBlurEnabled = gaussianBlurEnabled_;
 	settings.depthOfFieldEnabled = depthOfFieldEnabled_;
+	settings.motionBlurEnabled = motionBlurEnabled_;
+	settings.motionBlurStrength = motionBlurStrength_;
+	settings.motionBlurSamples = motionBlurSamples_;
+	settings.motionBlurMaxRadius = motionBlurMaxRadius_;
 	settings.radialBlurEnabled = radialBlurEnabled_;
 	settings.noiseEnabled = noiseEnabled_;
 	settings.dissolveEnabled = dissolveEnabled_;
 	settings.outlineEnabled = outlineEnabled_;
 	settings.underwaterEnabled = underwaterEnabled_;
 	settings.waterRefractionEnabled = waterRefractionEnabled_;
+	settings.pixelationEnabled = pixelationEnabled_;
+	settings.pixelationBlockSize = pixelationBlockSize_;
+	settings.chromaticAberrationEnabled = chromaticAberrationEnabled_;
+	settings.chromaticAberrationCenter = { chromaticAberrationCenter_[0], chromaticAberrationCenter_[1] };
+	settings.chromaticAberrationIntensity = chromaticAberrationIntensity_;
+	settings.chromaticAberrationFalloff = chromaticAberrationFalloff_;
 	settings.vignetteScale = vignetteScale_;
 	settings.vignettePower = vignettePower_;
 	settings.vignetteIntensity = vignetteIntensity_;
@@ -1860,12 +1632,23 @@ void Game::ApplyPostProcessSettings(
 	boxBlurEnabled_ = settings.boxBlurEnabled;
 	gaussianBlurEnabled_ = settings.gaussianBlurEnabled;
 	depthOfFieldEnabled_ = settings.depthOfFieldEnabled;
+	motionBlurEnabled_ = settings.motionBlurEnabled;
+	motionBlurStrength_ = settings.motionBlurStrength;
+	motionBlurSamples_ = settings.motionBlurSamples;
+	motionBlurMaxRadius_ = settings.motionBlurMaxRadius;
 	radialBlurEnabled_ = settings.radialBlurEnabled;
 	noiseEnabled_ = settings.noiseEnabled;
 	dissolveEnabled_ = settings.dissolveEnabled;
 	outlineEnabled_ = settings.outlineEnabled;
 	underwaterEnabled_ = settings.underwaterEnabled;
 	waterRefractionEnabled_ = settings.waterRefractionEnabled;
+	pixelationEnabled_ = settings.pixelationEnabled;
+	pixelationBlockSize_ = settings.pixelationBlockSize;
+	chromaticAberrationEnabled_ = settings.chromaticAberrationEnabled;
+	chromaticAberrationCenter_[0] = settings.chromaticAberrationCenter.x;
+	chromaticAberrationCenter_[1] = settings.chromaticAberrationCenter.y;
+	chromaticAberrationIntensity_ = settings.chromaticAberrationIntensity;
+	chromaticAberrationFalloff_ = settings.chromaticAberrationFalloff;
 	vignetteScale_ = settings.vignetteScale;
 	vignettePower_ = settings.vignettePower;
 	vignetteIntensity_ = settings.vignetteIntensity;
@@ -1921,6 +1704,31 @@ void Game::ApplyPostProcessSettings(
 	waterRefractionStrength_ = settings.waterRefractionStrength;
 	waterRefractionEdgeSoftness_ = settings.waterRefractionEdgeSoftness;
 	waterRefractionTintStrength_ = settings.waterRefractionTintStrength;
+}
+
+void Game::ApplyRuntimePostProcessSettings() {
+	if (!sceneManager_ || !executionContext_ || !executionContext_->IsPlaying()) {
+		appliedRuntimePostProcessGeneration_ = static_cast<uint64_t>(-1);
+		appliedRuntimePostProcessInstanceId_ = kInvalidSceneInstanceId;
+		return;
+	}
+	ScenePostProcessSettings settings{};
+	uint64_t generation = 0;
+	if (!sceneManager_->TryGetActiveRuntimePostProcessSettings(
+		settings, generation
+	)) {
+		return;
+	}
+	const SceneInstanceId instanceId = sceneManager_->GetActiveSceneInstanceId();
+	if (
+		instanceId == appliedRuntimePostProcessInstanceId_ &&
+		generation == appliedRuntimePostProcessGeneration_
+	) {
+		return;
+	}
+	ApplyPostProcessSettings(settings);
+	appliedRuntimePostProcessInstanceId_ = instanceId;
+	appliedRuntimePostProcessGeneration_ = generation;
 }
 
 void Game::StorePostProcessSettingsToDocument() {
@@ -2133,6 +1941,9 @@ void Game::Finalize() {
 	delete sceneRenderTarget_;
 	sceneRenderTarget_ = nullptr;
 
+	delete motionBlurHistoryRenderTarget_;
+	motionBlurHistoryRenderTarget_ = nullptr;
+
 	for (SceneRenderTarget*& renderTarget : postProcessRenderTargets_) {
 		delete renderTarget;
 		renderTarget = nullptr;
@@ -2168,9 +1979,12 @@ int Game::GetEnabledPostEffectCount() const {
 		static_cast<int>(dissolveEnabled_) +
 		static_cast<int>(outlineEnabled_) +
 		static_cast<int>(underwaterEnabled_) +
-		static_cast<int>(waterRefractionEnabled_);
+		static_cast<int>(waterRefractionEnabled_) +
+		static_cast<int>(pixelationEnabled_) +
+		static_cast<int>(chromaticAberrationEnabled_) +
+		static_cast<int>(motionBlurEnabled_);
 }
 
-SceneRenderTarget* Game::GetPostProcessOutputTarget() const {
-	return postProcessRenderTargets_[GetEnabledPostEffectCount() % 2];
+void Game::InvalidateMotionBlurHistory() {
+	motionBlurHistoryValid_ = false;
 }

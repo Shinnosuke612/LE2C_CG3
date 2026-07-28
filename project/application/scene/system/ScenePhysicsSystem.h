@@ -13,6 +13,12 @@ class Player;
 class SceneDocument;
 struct SceneComponent;
 
+struct SceneStaticRaycastHit {
+	Vector3 position{};
+	Vector3 normal{ 0.0f, 1.0f, 0.0f };
+	float distance = 0.0f;
+};
+
 // PhysicsWorldを所有するが、Collider・PhysicsBody・Playerは外部から借用する。
 // Object同期後にSyncSceneSettingsを呼び、Object破棄前にClearする必要がある。
 class ScenePhysicsSystem {
@@ -39,6 +45,13 @@ public:
 	void ResetBodies(
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
 		const std::vector<uint64_t>& entityIds
+	) const;
+	// Static Colliderだけを対象にし、短命の地面Effectを動的Bodyへ重ねない。
+	bool RaycastStatic(
+		const Vector3& origin,
+		const Vector3& direction,
+		float maxDistance,
+		SceneStaticRaycastHit& outHit
 	) const;
 	void Clear();
 

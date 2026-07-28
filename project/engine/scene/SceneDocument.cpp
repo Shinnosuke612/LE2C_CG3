@@ -323,12 +323,22 @@ namespace {
 			{ "boxBlurEnabled", settings.boxBlurEnabled },
 			{ "gaussianBlurEnabled", settings.gaussianBlurEnabled },
 			{ "depthOfFieldEnabled", settings.depthOfFieldEnabled },
+			{ "motionBlurEnabled", settings.motionBlurEnabled },
+			{ "motionBlurStrength", settings.motionBlurStrength },
+			{ "motionBlurSamples", settings.motionBlurSamples },
+			{ "motionBlurMaxRadius", settings.motionBlurMaxRadius },
 			{ "radialBlurEnabled", settings.radialBlurEnabled },
 			{ "noiseEnabled", settings.noiseEnabled },
 			{ "dissolveEnabled", settings.dissolveEnabled },
 			{ "outlineEnabled", settings.outlineEnabled },
 			{ "underwaterEnabled", settings.underwaterEnabled },
 			{ "waterRefractionEnabled", settings.waterRefractionEnabled },
+			{ "pixelationEnabled", settings.pixelationEnabled },
+			{ "pixelationBlockSize", settings.pixelationBlockSize },
+			{ "chromaticAberrationEnabled", settings.chromaticAberrationEnabled },
+			{ "chromaticAberrationCenter", VectorToJson(settings.chromaticAberrationCenter) },
+			{ "chromaticAberrationIntensity", settings.chromaticAberrationIntensity },
+			{ "chromaticAberrationFalloff", settings.chromaticAberrationFalloff },
 			{ "vignetteScale", settings.vignetteScale },
 			{ "vignettePower", settings.vignettePower },
 			{ "vignetteIntensity", settings.vignetteIntensity },
@@ -397,12 +407,32 @@ namespace {
 		settings.boxBlurEnabled = source.value("boxBlurEnabled", settings.boxBlurEnabled);
 		settings.gaussianBlurEnabled = source.value("gaussianBlurEnabled", settings.gaussianBlurEnabled);
 		settings.depthOfFieldEnabled = source.value("depthOfFieldEnabled", settings.depthOfFieldEnabled);
+		settings.motionBlurEnabled = source.value("motionBlurEnabled", settings.motionBlurEnabled);
+		settings.motionBlurStrength = std::clamp(
+			source.value("motionBlurStrength", settings.motionBlurStrength), 0.0f, 1.0f
+		);
+		settings.motionBlurSamples = std::clamp(
+			source.value("motionBlurSamples", settings.motionBlurSamples), 2, 32
+		);
+		settings.motionBlurMaxRadius = std::clamp(
+			source.value("motionBlurMaxRadius", settings.motionBlurMaxRadius), 0.0f, 64.0f
+		);
 		settings.radialBlurEnabled = source.value("radialBlurEnabled", settings.radialBlurEnabled);
 		settings.noiseEnabled = source.value("noiseEnabled", settings.noiseEnabled);
 		settings.dissolveEnabled = source.value("dissolveEnabled", settings.dissolveEnabled);
 		settings.outlineEnabled = source.value("outlineEnabled", settings.outlineEnabled);
 		settings.underwaterEnabled = source.value("underwaterEnabled", settings.underwaterEnabled);
 		settings.waterRefractionEnabled = source.value("waterRefractionEnabled", settings.waterRefractionEnabled);
+		settings.pixelationEnabled = source.value("pixelationEnabled", settings.pixelationEnabled);
+		settings.pixelationBlockSize = std::clamp(
+			source.value("pixelationBlockSize", settings.pixelationBlockSize),
+			1,
+			64
+		);
+		settings.chromaticAberrationEnabled = source.value("chromaticAberrationEnabled", settings.chromaticAberrationEnabled);
+		if (source.contains("chromaticAberrationCenter")) settings.chromaticAberrationCenter = JsonToVector(source.at("chromaticAberrationCenter"), settings.chromaticAberrationCenter);
+		settings.chromaticAberrationIntensity = source.value("chromaticAberrationIntensity", settings.chromaticAberrationIntensity);
+		settings.chromaticAberrationFalloff = source.value("chromaticAberrationFalloff", settings.chromaticAberrationFalloff);
 		settings.vignetteScale = source.value("vignetteScale", settings.vignetteScale);
 		settings.vignettePower = source.value("vignettePower", settings.vignettePower);
 		settings.vignetteIntensity = source.value("vignetteIntensity", settings.vignetteIntensity);
@@ -1078,7 +1108,10 @@ namespace {
 				{ "prefabPath", action.prefabPath },
 				{ "prefabParentToTarget", action.prefabParentToTarget },
 				{ "prefabUseTargetTransform", action.prefabUseTargetTransform },
-				{ "stateName", action.stateName }
+				{ "stateName", action.stateName },
+				{ "postProcessManagerEntityId", action.postProcessManagerEntityId },
+				{ "postProcessManagerEntityName", action.postProcessManagerEntityName },
+				{ "postProcessProfileId", action.postProcessProfileId }
 			});
 		}
 		return result;
@@ -1089,6 +1122,7 @@ namespace {
 		for (const SceneEventBinding& binding : bindings) {
 			result.push_back({
 				{ "triggerType", binding.triggerType },
+				{ "triggerKey", binding.triggerKey },
 				{ "targetEntityId", binding.targetEntityId },
 				{ "targetEntityName", binding.targetEntityName },
 				{ "statId", binding.statId },
@@ -1177,19 +1211,74 @@ namespace {
 		return result;
 	}
 
+	json PostProcessProfilesToJson(
+		const std::vector<ScenePostProcessProfile>& profiles
+	) {
+		json result = json::array();
+		for (const ScenePostProcessProfile& profile : profiles) {
+			result.push_back({
+				{ "id", profile.id },
+				{ "label", profile.label },
+				{ "settings", PostProcessToJson(profile.settings) }
+			});
+		}
+		return result;
+	}
+
 	json AttackDefinitionsToJson(const std::vector<SceneAttackDefinition>& attacks) {
 		json result = json::array();
 		for (const SceneAttackDefinition& attack : attacks) {
 			json windows = json::array();
 			for (const SceneAttackHitWindow& window : attack.hitWindows) {
-				windows.push_back({
+				json serializedWindow = {
 					{ "startTime", window.startTime }, { "endTime", window.endTime },
 					{ "hitBoxEntityId", window.hitBoxEntityId },
-					{ "hitBoxEntityName", window.hitBoxEntityName },
+					{ "hitBoxEntityName", window.hitBoxEntityName }
+				};
+				if (window.payloadSource == "HitBox") {
+					serializedWindow["payloadSource"] = "HitBox";
+				} else {
+					serializedWindow = {
+						{ "startTime", window.startTime }, { "endTime", window.endTime },
+						{ "hitBoxEntityId", window.hitBoxEntityId },
+						{ "hitBoxEntityName", window.hitBoxEntityName },
+						{ "payloadSource", "WindowLegacy" },
 					{ "damage", window.damage }, { "poiseDamage", window.poiseDamage },
-					{ "knockback", window.knockback }, { "reactionTag", window.reactionTag },
+					{ "knockback", window.knockback },
+					{ "verticalKnockback", window.verticalKnockback },
+					{ "hitStopDuration", window.hitStopDuration },
+					{ "reactionTag", window.reactionTag },
 					{ "knockbackDirectionMode", window.knockbackDirectionMode },
-					{ "knockbackLocalDirection", VectorToJson(window.knockbackLocalDirection) }
+					{ "knockbackLocalDirection", VectorToJson(window.knockbackLocalDirection) },
+					{ "hitPolicy", window.hitPolicy },
+					{ "targetCooldown", window.targetCooldown }
+					};
+					if (window.overrideHitBoxHalfSize) {
+						serializedWindow["overrideHitBoxHalfSize"] = true;
+						serializedWindow["hitBoxHalfSize"] = VectorToJson(window.hitBoxHalfSize);
+					}
+				}
+				windows.push_back(std::move(serializedWindow));
+			}
+			json effects = json::array();
+			for (const SceneAttackEffectEvent& effect : attack.effectEvents) {
+				effects.push_back({
+					{ "time", effect.time },
+					{ "particleEffectPath", effect.particleEffectPath },
+					{ "spawnEntityId", effect.spawnEntityId },
+					{ "spawnEntityName", effect.spawnEntityName },
+					{ "localOffset", VectorToJson(effect.localOffset) },
+					{ "groundPrefabPath", effect.groundPrefabPath },
+					{ "groundProbeDistance", effect.groundProbeDistance },
+					{ "groundPrefabLifetime", effect.groundPrefabLifetime },
+					{ "groundEffectType", effect.groundEffectType },
+					{ "groundCrackRadius", effect.groundCrackRadius },
+					{ "groundCrackPrimaryBranchCount", effect.groundCrackPrimaryBranchCount },
+					{ "groundCrackSegmentsPerBranch", effect.groundCrackSegmentsPerBranch },
+					{ "groundCrackBranchProbability", effect.groundCrackBranchProbability },
+					{ "groundCrackWidth", effect.groundCrackWidth },
+					{ "groundCrackLifetime", effect.groundCrackLifetime },
+					{ "groundCrackSurfaceOffset", effect.groundCrackSurfaceOffset }
 				});
 			}
 			result.push_back({
@@ -1199,7 +1288,14 @@ namespace {
 				{ "hitBoxEntityId", attack.hitBoxEntityId }, { "hitBoxEntityName", attack.hitBoxEntityName },
 				{ "windup", attack.windup }, { "activeTime", attack.activeTime }, { "recovery", attack.recovery },
 				{ "forwardDistance", attack.forwardDistance }, { "sideDistance", attack.sideDistance },
-				{ "motionEasing", attack.motionEasing }, { "hitWindows", std::move(windows) }
+				{ "motionEasing", attack.motionEasing }, { "facingMode", attack.facingMode },
+				{ "facingTargetEntityId", attack.facingTargetEntityId },
+				{ "facingTargetEntityName", attack.facingTargetEntityName },
+				{ "facingRotateAngle", attack.facingRotateAngle },
+				{ "loopEnabled", attack.loopEnabled }, { "loopMaxCount", attack.loopMaxCount },
+				{ "loopSafetyTimeout", attack.loopSafetyTimeout },
+				{ "hitWindows", std::move(windows) },
+				{ "effectEvents", std::move(effects) }
 			});
 		}
 		return result;
@@ -1555,6 +1651,10 @@ namespace {
 			result["stats"] = StatsToJson(component.stats);
 		} else if (component.type == "EventTrigger") {
 			result["bindings"] = EventsToJson(component.eventBindings);
+		} else if (component.type == "PostProcessProfileManager") {
+			result["profiles"] = PostProcessProfilesToJson(
+				component.postProcessProfiles
+			);
 		} else if (component.type == "PrefabAnimator") {
 			result["clips"] = PrefabAnimationsToJson(
 				component.prefabAnimationClips
@@ -1573,8 +1673,11 @@ namespace {
 			result["damage"] = component.hitBoxDamage;
 			result["poiseDamage"] = component.hitBoxPoiseDamage;
 			result["knockback"] = component.hitBoxKnockback;
+			result["verticalKnockback"] = component.hitBoxVerticalKnockback;
 			result["knockbackDirectionMode"] = component.hitBoxKnockbackDirectionMode;
 			result["knockbackLocalDirection"] = VectorToJson(component.hitBoxKnockbackLocalDirection);
+			result["hitPolicy"] = component.hitBoxHitPolicy;
+			result["targetCooldown"] = component.hitBoxTargetCooldown;
 			result["hitStopDuration"] = component.hitBoxHitStopDuration;
 			result["reactionTag"] = component.hitBoxReactionTag;
 			result["damageStatId"] = component.hitBoxDamageStatId;
@@ -1590,14 +1693,19 @@ namespace {
 		} else if (component.type == "HitReaction") {
 			result["knockbackMultiplier"] =
 				component.hitReactionKnockbackMultiplier;
+			result["triggerMode"] = component.hitReactionTriggerMode;
 			result["minimumPoiseDamage"] =
 				component.hitReactionMinimumPoiseDamage;
+			result["poiseStatId"] = component.hitReactionPoiseStatId;
+			result["poiseRecoveryDelay"] =
+				component.hitReactionPoiseRecoveryDelay;
 			result["stateName"] = component.hitReactionStateName;
 			result["stateDuration"] = component.hitReactionStateDuration;
 		} else if (component.type == "DeathPresentation") {
 			result["stateName"] = component.deathPresentationStateName;
 			result["deactivateDelay"] =
 				component.deathPresentationDeactivateDelay;
+			result["effectPath"] = component.deathPresentationEffectPath;
 		} else if (component.type == "BoneAttachment") {
 			result["targetEntityId"] = component.boneAttachmentTargetEntityId;
 			result["targetEntityName"] = component.boneAttachmentTargetEntityName;
@@ -1704,6 +1812,15 @@ namespace {
 			"prefabUseTargetTransform", action.prefabUseTargetTransform
 		);
 		action.stateName = value.value("stateName", action.stateName);
+		action.postProcessManagerEntityId = value.value(
+			"postProcessManagerEntityId", action.postProcessManagerEntityId
+		);
+		action.postProcessManagerEntityName = value.value(
+			"postProcessManagerEntityName", action.postProcessManagerEntityName
+		);
+		action.postProcessProfileId = value.value(
+			"postProcessProfileId", action.postProcessProfileId
+		);
 		return action;
 	}
 
@@ -1722,6 +1839,7 @@ namespace {
 			binding.triggerType = value.value(
 				"triggerType", binding.triggerType
 			);
+			binding.triggerKey = value.value("triggerKey", binding.triggerKey);
 			binding.targetEntityId = value.value(
 				"targetEntityId", binding.targetEntityId
 			);
@@ -1754,6 +1872,29 @@ namespace {
 				}
 			}
 			destination.push_back(std::move(binding));
+		}
+	}
+
+	void ReadPostProcessProfiles(
+		const json& source,
+		std::vector<ScenePostProcessProfile>& destination
+	) {
+		if (!source.is_array()) {
+			return;
+		}
+		for (const json& value : source) {
+			if (!value.is_object()) {
+				continue;
+			}
+			ScenePostProcessProfile profile{};
+			profile.id = value.value("id", profile.id);
+			profile.label = value.value("label", profile.label);
+			profile.settings = PostProcessFromJson(
+				value.value("settings", json::object()), profile.settings
+			);
+			if (!profile.id.empty()) {
+				destination.push_back(std::move(profile));
+			}
 		}
 	}
 
@@ -1898,6 +2039,30 @@ namespace {
 			attack.forwardDistance = value.value("forwardDistance", attack.forwardDistance);
 			attack.sideDistance = value.value("sideDistance", attack.sideDistance);
 			attack.motionEasing = value.value("motionEasing", attack.motionEasing);
+			attack.facingMode = value.value("facingMode", attack.facingMode);
+			if (
+				attack.facingMode != "InputDirection" &&
+				attack.facingMode != "TargetDirection" &&
+				attack.facingMode != "RotateByAngle"
+			) {
+				attack.facingMode = "FixedAtStart";
+			}
+			attack.facingTargetEntityId = value.value(
+				"facingTargetEntityId", attack.facingTargetEntityId
+			);
+			attack.facingTargetEntityName = value.value(
+				"facingTargetEntityName", attack.facingTargetEntityName
+			);
+			attack.facingRotateAngle = value.value(
+				"facingRotateAngle", attack.facingRotateAngle
+			);
+			attack.loopEnabled = value.value("loopEnabled", attack.loopEnabled);
+			attack.loopMaxCount = (std::max)(
+				value.value("loopMaxCount", attack.loopMaxCount), 0
+			);
+			attack.loopSafetyTimeout = (std::max)(
+				value.value("loopSafetyTimeout", attack.loopSafetyTimeout), 0.0f
+			);
 			if (const auto windows = value.find("hitWindows"); windows != value.end() && windows->is_array()) {
 				for (const json& windowValue : *windows) {
 					if (!windowValue.is_object()) { continue; }
@@ -1906,13 +2071,100 @@ namespace {
 					window.endTime = (std::max)(windowValue.value("endTime", window.endTime), window.startTime);
 					window.hitBoxEntityId = windowValue.value("hitBoxEntityId", window.hitBoxEntityId);
 					window.hitBoxEntityName = windowValue.value("hitBoxEntityName", window.hitBoxEntityName);
-					window.damage = (std::max)(windowValue.value("damage", window.damage), 0.0f);
-					window.poiseDamage = (std::max)(windowValue.value("poiseDamage", window.poiseDamage), 0.0f);
-					window.knockback = (std::max)(windowValue.value("knockback", window.knockback), 0.0f);
-					window.reactionTag = windowValue.value("reactionTag", window.reactionTag);
-					window.knockbackDirectionMode = windowValue.value("knockbackDirectionMode", window.knockbackDirectionMode);
-					if (windowValue.contains("knockbackLocalDirection")) window.knockbackLocalDirection = JsonToVector(windowValue.at("knockbackLocalDirection"), window.knockbackLocalDirection);
+					window.payloadSource = windowValue.value("payloadSource", "WindowLegacy");
+					if (window.payloadSource != "HitBox") {
+						window.payloadSource = "WindowLegacy";
+						window.damage = (std::max)(windowValue.value("damage", window.damage), 0.0f);
+						window.poiseDamage = (std::max)(windowValue.value("poiseDamage", window.poiseDamage), 0.0f);
+						window.knockback = (std::max)(windowValue.value("knockback", window.knockback), 0.0f);
+						window.verticalKnockback = (std::max)(
+							windowValue.value("verticalKnockback", window.verticalKnockback), 0.0f
+						);
+						window.overrideHitBoxHalfSize = windowValue.value(
+							"overrideHitBoxHalfSize", window.overrideHitBoxHalfSize
+						);
+						if (window.overrideHitBoxHalfSize && windowValue.contains("hitBoxHalfSize")) {
+							window.hitBoxHalfSize = JsonToVector(
+								windowValue.at("hitBoxHalfSize"), window.hitBoxHalfSize
+							);
+							window.hitBoxHalfSize.x = (std::max)(window.hitBoxHalfSize.x, 0.001f);
+							window.hitBoxHalfSize.y = (std::max)(window.hitBoxHalfSize.y, 0.001f);
+							window.hitBoxHalfSize.z = (std::max)(window.hitBoxHalfSize.z, 0.001f);
+						}
+						window.hitStopDuration = (std::max)(
+							windowValue.value("hitStopDuration", window.hitStopDuration), 0.0f
+						);
+						window.reactionTag = windowValue.value("reactionTag", window.reactionTag);
+						window.knockbackDirectionMode = windowValue.value("knockbackDirectionMode", window.knockbackDirectionMode);
+						window.hitPolicy = windowValue.value("hitPolicy", window.hitPolicy);
+						if (window.hitPolicy != "OncePerLoop" && window.hitPolicy != "TargetCooldown") {
+							window.hitPolicy = "OncePerActivation";
+						}
+						window.targetCooldown = (std::max)(
+							windowValue.value("targetCooldown", window.targetCooldown), 0.0f
+						);
+						if (windowValue.contains("knockbackLocalDirection")) window.knockbackLocalDirection = JsonToVector(windowValue.at("knockbackLocalDirection"), window.knockbackLocalDirection);
+					}
 					attack.hitWindows.push_back(std::move(window));
+				}
+			}
+			if (const auto effects = value.find("effectEvents"); effects != value.end() && effects->is_array()) {
+				for (const json& effectValue : *effects) {
+					if (!effectValue.is_object()) { continue; }
+					SceneAttackEffectEvent effect{};
+					effect.time = (std::max)(effectValue.value("time", effect.time), 0.0f);
+					effect.particleEffectPath = effectValue.value(
+						"particleEffectPath", effect.particleEffectPath
+					);
+					effect.spawnEntityId = effectValue.value(
+						"spawnEntityId", effect.spawnEntityId
+					);
+					effect.spawnEntityName = effectValue.value(
+						"spawnEntityName", effect.spawnEntityName
+					);
+					if (effectValue.contains("localOffset")) {
+						effect.localOffset = JsonToVector(
+							effectValue.at("localOffset"), effect.localOffset
+						);
+					}
+					effect.groundPrefabPath = effectValue.value(
+						"groundPrefabPath", effect.groundPrefabPath
+					);
+					effect.groundProbeDistance = (std::max)(
+						effectValue.value(
+							"groundProbeDistance", effect.groundProbeDistance
+						),
+						0.0f
+					);
+					effect.groundPrefabLifetime = (std::max)(
+						effectValue.value(
+							"groundPrefabLifetime", effect.groundPrefabLifetime
+						),
+						0.0f
+					);
+					effect.groundEffectType = effectValue.value(
+						"groundEffectType",
+						effect.groundPrefabPath.empty() ? "None" : "Prefab"
+					);
+					if (effect.groundEffectType != "Prefab" &&
+						effect.groundEffectType != "ProceduralCrack") {
+						effect.groundEffectType = "None";
+					}
+					effect.groundCrackRadius = (std::max)(effectValue.value(
+						"groundCrackRadius", effect.groundCrackRadius), 0.0f);
+					effect.groundCrackPrimaryBranchCount = (std::min)(
+						(std::max)(effectValue.value("groundCrackPrimaryBranchCount", effect.groundCrackPrimaryBranchCount), 1u), 24u);
+					effect.groundCrackSegmentsPerBranch = (std::min)(
+						(std::max)(effectValue.value("groundCrackSegmentsPerBranch", effect.groundCrackSegmentsPerBranch), 1u), 12u);
+					effect.groundCrackBranchProbability = (std::clamp)(effectValue.value(
+						"groundCrackBranchProbability", effect.groundCrackBranchProbability), 0.0f, 1.0f);
+					effect.groundCrackWidth = (std::max)(effectValue.value(
+						"groundCrackWidth", effect.groundCrackWidth), 0.0f);
+					effect.groundCrackLifetime = (std::max)(effectValue.value(
+						"groundCrackLifetime", effect.groundCrackLifetime), 0.0f);
+					effect.groundCrackSurfaceOffset = (std::max)(effectValue.value(
+						"groundCrackSurfaceOffset", effect.groundCrackSurfaceOffset), 0.0f);
+					attack.effectEvents.push_back(std::move(effect));
 				}
 			}
 			destination.push_back(std::move(attack));
@@ -1999,6 +2251,27 @@ namespace {
 			for (SceneAnimationTrack& track : clip.tracks) {
 				track.targetEntityId = RemapEntityId(
 					track.targetEntityId, idMap, preserveUnmappedIds
+				);
+			}
+		}
+		for (SceneAttackDefinition& attack : component.attackDefinitions) {
+			attack.animationTargetEntityId = RemapEntityId(
+				attack.animationTargetEntityId, idMap, preserveUnmappedIds
+			);
+			attack.hitBoxEntityId = RemapEntityId(
+				attack.hitBoxEntityId, idMap, preserveUnmappedIds
+			);
+			attack.facingTargetEntityId = RemapEntityId(
+				attack.facingTargetEntityId, idMap, preserveUnmappedIds
+			);
+			for (SceneAttackHitWindow& window : attack.hitWindows) {
+				window.hitBoxEntityId = RemapEntityId(
+					window.hitBoxEntityId, idMap, preserveUnmappedIds
+				);
+			}
+			for (SceneAttackEffectEvent& effect : attack.effectEvents) {
+				effect.spawnEntityId = RemapEntityId(
+					effect.spawnEntityId, idMap, preserveUnmappedIds
 				);
 			}
 		}
@@ -3039,6 +3312,14 @@ namespace {
 				if (component.type == "EventTrigger" && value.contains("bindings")) {
 					ReadEvents(value.at("bindings"), component.eventBindings);
 				}
+				if (
+					component.type == "PostProcessProfileManager" &&
+					value.contains("profiles")
+				) {
+					ReadPostProcessProfiles(
+						value.at("profiles"), component.postProcessProfiles
+					);
+				}
 				if (component.type == "PrefabAnimator" && value.contains("clips")) {
 					ReadPrefabAnimations(
 						value.at("clips"),
@@ -3070,6 +3351,10 @@ namespace {
 					component.hitBoxKnockback = value.value(
 						"knockback", component.hitBoxKnockback
 					);
+					component.hitBoxVerticalKnockback = (std::max)(
+						value.value("verticalKnockback", component.hitBoxVerticalKnockback),
+						0.0f
+					);
 					component.hitBoxKnockbackDirectionMode = value.value(
 						"knockbackDirectionMode", component.hitBoxKnockbackDirectionMode
 					);
@@ -3078,6 +3363,18 @@ namespace {
 							value.at("knockbackLocalDirection"), component.hitBoxKnockbackLocalDirection
 						);
 					}
+					component.hitBoxHitPolicy = value.value(
+						"hitPolicy", component.hitBoxHitPolicy
+					);
+					if (
+						component.hitBoxHitPolicy != "OncePerLoop" &&
+						component.hitBoxHitPolicy != "TargetCooldown"
+					) {
+						component.hitBoxHitPolicy = "OncePerActivation";
+					}
+					component.hitBoxTargetCooldown = (std::max)(
+						value.value("targetCooldown", component.hitBoxTargetCooldown), 0.0f
+					);
 					component.hitBoxHitStopDuration = value.value(
 						"hitStopDuration", component.hitBoxHitStopDuration
 					);
@@ -3122,9 +3419,25 @@ namespace {
 						"knockbackMultiplier",
 						component.hitReactionKnockbackMultiplier
 					);
+					component.hitReactionTriggerMode = value.value(
+						"triggerMode", component.hitReactionTriggerMode
+					);
+					if (component.hitReactionTriggerMode != "PoiseBreak") {
+						component.hitReactionTriggerMode = "MinimumDamage";
+					}
 					component.hitReactionMinimumPoiseDamage = value.value(
 						"minimumPoiseDamage",
 						component.hitReactionMinimumPoiseDamage
+					);
+					component.hitReactionPoiseStatId = value.value(
+						"poiseStatId", component.hitReactionPoiseStatId
+					);
+					component.hitReactionPoiseRecoveryDelay = (std::max)(
+						value.value(
+							"poiseRecoveryDelay",
+							component.hitReactionPoiseRecoveryDelay
+						),
+						0.0f
 					);
 					component.hitReactionStateName = value.value(
 						"stateName", component.hitReactionStateName
@@ -3140,6 +3453,9 @@ namespace {
 					component.deathPresentationDeactivateDelay = value.value(
 						"deactivateDelay",
 						component.deathPresentationDeactivateDelay
+					);
+					component.deathPresentationEffectPath = value.value(
+						"effectPath", component.deathPresentationEffectPath
 					);
 				}
 				if (component.type == "BoneAttachment") {
@@ -7781,7 +8097,10 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.hurtBoxHealthStatId = "hp";
 	} else if (type == "HitReaction") {
 		component.hitReactionKnockbackMultiplier = 1.0f;
+		component.hitReactionTriggerMode = "MinimumDamage";
 		component.hitReactionMinimumPoiseDamage = 0.0f;
+		component.hitReactionPoiseStatId = "poise";
+		component.hitReactionPoiseRecoveryDelay = 1.0f;
 		component.hitReactionStateName = "Hit";
 		component.hitReactionStateDuration = 0.2f;
 	} else if (type == "DeathPresentation") {

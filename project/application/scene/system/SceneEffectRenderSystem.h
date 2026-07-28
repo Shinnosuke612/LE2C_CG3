@@ -3,10 +3,14 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
+
+#include "SceneRuntimeEffectSystem.h"
 
 class Camera;
 class DirectXCommon;
 class LightningRenderer;
+class GroundCrackRenderer;
 class SceneDocument;
 class SceneEnvironmentSystem;
 class SceneObjectSystem;
@@ -20,6 +24,7 @@ public:
 
 	void Initialize(DirectXCommon* dxCommon);
 	void Update(float deltaTime);
+	void SpawnGroundCracks(const std::vector<SceneGroundCrackSpawnRequest>& requests);
 	void SetDeferForegroundEffects(bool defer) {
 		deferForegroundEffects_ = defer;
 	}
@@ -47,5 +52,6 @@ private:
 	) const;
 
 	std::unique_ptr<LightningRenderer> lightningRenderer_;
+	std::unique_ptr<GroundCrackRenderer> groundCrackRenderer_;
 	bool deferForegroundEffects_ = false;
 };

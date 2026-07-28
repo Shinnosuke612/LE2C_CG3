@@ -103,10 +103,14 @@ struct SceneEventAction {
 	bool prefabParentToTarget = false;
 	bool prefabUseTargetTransform = true;
 	std::string stateName;
+	uint64_t postProcessManagerEntityId = 0;
+	std::string postProcessManagerEntityName;
+	std::string postProcessProfileId;
 };
 
 struct SceneEventBinding {
 	std::string triggerType = "OnStart";
+	std::string triggerKey;
 	uint64_t targetEntityId = 0;
 	std::string targetEntityName;
 	std::string statId = "hp";
@@ -117,6 +121,14 @@ struct SceneEventBinding {
 	bool triggerOnce = true;
 	float cooldown = 0.0f;
 	std::vector<SceneEventAction> actions;
+};
+
+// 完全なPost Process設定をManager Entity単位で切り替えるAuthoring Profile。
+// Runtime中の選択状態は保存せず、SceneEventSystemから要求として渡す。
+struct ScenePostProcessProfile {
+	std::string id = "Profile1";
+	std::string label = "Profile 1";
+	ScenePostProcessSettings settings{};
 };
 
 struct SceneAnimationKeyframe {
@@ -134,12 +146,44 @@ struct SceneAttackHitWindow {
 	float endTime = 0.35f;
 	uint64_t hitBoxEntityId = 0;
 	std::string hitBoxEntityName;
+	// HitBoxは新規専用EntityのPayloadを使い、WindowLegacyは旧Window Payloadを適用する。
+	std::string payloadSource = "HitBox";
 	float damage = 10.0f;
 	float poiseDamage = 0.0f;
 	float knockback = 0.0f;
+	// 水平Knockbackとは独立した、被弾時に一度だけ適用する上向き初速。
+	float verticalKnockback = 0.0f;
+	// 有効Window中だけBox ColliderのHalf Sizeを置き換えるAuthoring値。
+	bool overrideHitBoxHalfSize = false;
+	Vector3 hitBoxHalfSize = { 1.0f, 1.0f, 1.0f };
+	float hitStopDuration = 0.0f;
 	std::string reactionTag = "Light";
 	std::string knockbackDirectionMode = "RadialFromAttacker";
 	Vector3 knockbackLocalDirection = { 0.0f, 0.0f, 1.0f };
+	std::string hitPolicy = "OncePerActivation";
+	float targetCooldown = 0.15f;
+};
+
+// AttackRunner時刻から一発Particleを発火するためのAuthoringデータ。
+struct SceneAttackEffectEvent {
+	float time = 0.15f;
+	std::string particleEffectPath;
+	uint64_t spawnEntityId = 0;
+	std::string spawnEntityName;
+	Vector3 localOffset{};
+	// 空でない場合、Spawn Entity下方のStatic Colliderへ設置する短命Prefab。
+	std::string groundPrefabPath;
+	float groundProbeDistance = 6.0f;
+	float groundPrefabLifetime = 1.2f;
+	// None / Prefab / ProceduralCrack。旧Prefab Pathだけのデータは読込時にPrefabへ正規化する。
+	std::string groundEffectType;
+	float groundCrackRadius = 3.2f;
+	uint32_t groundCrackPrimaryBranchCount = 10;
+	uint32_t groundCrackSegmentsPerBranch = 6;
+	float groundCrackBranchProbability = 0.25f;
+	float groundCrackWidth = 0.06f;
+	float groundCrackLifetime = 1.2f;
+	float groundCrackSurfaceOffset = 0.03f;
 };
 
 // AttackDefinitionはStateMachineから再生する攻撃時系列の共有データ。
@@ -156,7 +200,16 @@ struct SceneAttackDefinition {
 	float forwardDistance = 0.0f;
 	float sideDistance = 0.0f;
 	std::string motionEasing = "SmoothStep";
+	// FixedAtStartは既存互換。InputDirectionはRuntimeSceneがPlayer入力から渡すXZ方向を使う。
+	std::string facingMode = "FixedAtStart";
+	uint64_t facingTargetEntityId = 0;
+	std::string facingTargetEntityName;
+	float facingRotateAngle = 0.0f;
+	bool loopEnabled = false;
+	int loopMaxCount = 0;
+	float loopSafetyTimeout = 0.0f;
 	std::vector<SceneAttackHitWindow> hitWindows;
+	std::vector<SceneAttackEffectEvent> effectEvents;
 };
 
 struct SceneAnimationTrack {
@@ -435,10 +488,16 @@ struct SceneComponent {
 	float hitBoxDamage = 10.0f;
 	float hitBoxPoiseDamage = 0.0f;
 	float hitBoxKnockback = 0.0f;
+	float hitBoxVerticalKnockback = 0.0f;
 	std::string hitBoxKnockbackDirectionMode = "RadialFromAttacker";
 	Vector3 hitBoxKnockbackLocalDirection = { 0.0f, 0.0f, 1.0f };
 	// Runtime専用。Attack Windowが切り替わった接触を別Hitとして扱うための世代番号。
 	uint64_t hitBoxAttackWindowSerial = 0;
+	// Runtime専用。同一Attack内で同Frameに重なったReactionの優先判定に使う。
+	uint64_t hitBoxAttackExecutionId = 0;
+	uint32_t hitBoxReactionPriority = 0xffffffffu;
+	std::string hitBoxHitPolicy = "OncePerActivation";
+	float hitBoxTargetCooldown = 0.15f;
 	float hitBoxHitStopDuration = 0.0f;
 	std::string hitBoxReactionTag = "Light";
 	std::string hitBoxDamageStatId = "hp";
@@ -451,11 +510,15 @@ struct SceneComponent {
 	uint64_t hurtBoxStatsEntityId = 0;
 	std::string hurtBoxStatsEntityName;
 	float hitReactionKnockbackMultiplier = 1.0f;
+	std::string hitReactionTriggerMode = "MinimumDamage";
 	float hitReactionMinimumPoiseDamage = 0.0f;
+	std::string hitReactionPoiseStatId = "poise";
+	float hitReactionPoiseRecoveryDelay = 1.0f;
 	std::string hitReactionStateName = "Hit";
 	float hitReactionStateDuration = 0.2f;
 	std::string deathPresentationStateName = "Dead";
 	float deathPresentationDeactivateDelay = 2.0f;
+	std::string deathPresentationEffectPath;
 	uint64_t boneAttachmentTargetEntityId = 0;
 	std::string boneAttachmentTargetEntityName;
 	std::string boneAttachmentJointName;
@@ -494,6 +557,7 @@ struct SceneComponent {
 	uint64_t projectileHomingTargetEntityId = 0;
 	std::string projectileHomingTargetEntityName;
 	float projectileHomingStrength = 0.0f;
+	std::vector<ScenePostProcessProfile> postProcessProfiles;
 };
 
 struct ScenePrefabLink {

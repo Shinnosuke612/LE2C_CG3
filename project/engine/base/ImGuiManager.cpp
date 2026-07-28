@@ -1,5 +1,6 @@
 // 役割: ImGuiエディタ各ウィンドウの描画、入力、シーン編集操作を実装する。
 #include "ImGuiManager.h"
+#include "PostProcessSettingsEditor.h"
 
 #include <cassert>
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <unordered_set>
 #include <utility>
 
 #include "WinApp.h"
@@ -35,6 +37,7 @@
 #include "../scene/SceneCatalog.h"
 #include "../scene/SceneDocument.h"
 #include "../scene/SceneEntityQuery.h"
+#include "../scene/SceneInputKey.h"
 #include "../scene/SceneManager.h"
 #include "../scene/ScenePrefabAnimationEvaluator.h"
 #include "../scene/SceneTemplateRegistry.h"
@@ -110,6 +113,29 @@ namespace {
 		}
 		value = buffer;
 		return true;
+	}
+
+	std::string BuildEntityHierarchyLabel(
+		const SceneDocument& document,
+		const SceneEntity& entity
+	) {
+		std::vector<std::string> names;
+		const SceneEntity* current = &entity;
+		while (current) {
+			names.push_back(current->name.empty() ? "Entity" : current->name);
+			current = current->parentId != 0
+				? document.FindEntity(current->parentId)
+				: nullptr;
+		}
+		std::reverse(names.begin(), names.end());
+		std::string result;
+		for (const std::string& name : names) {
+			if (!result.empty()) {
+				result += " / ";
+			}
+			result += name;
+		}
+		return result;
 	}
 
 	std::vector<std::string> CollectEntityJointNames(
@@ -710,6 +736,7 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 	sceneViewHeight_ = dxCommon_->GetClientHeight();
 	prefabEditorSession_ = new PrefabEditorSession();
 	prefabAnimationPreviewDocument_ = new SceneDocument();
+	playerCombatPreviewDocument_ = new SceneDocument();
 	prefabHitBoxGhostDocument_ = new SceneDocument();
 
 	IMGUI_CHECKVERSION();
@@ -1766,8 +1793,159 @@ void ImGuiManager::RebuildPrefabAnimationPreviewDocument() {
 		animator->prefabAnimationClips[prefabAnimationPreviewClipIndex_],
 		prefabAnimationPreviewTime_
 	);
+	if (prefabAttackPreviewMode_) {
+		const SceneComponent* attackSet = FindEnabledComponent(*owner, "AttackSet");
+		if (attackSet && prefabAttackPreviewIndex_ >= 0 &&
+			prefabAttackPreviewIndex_ < static_cast<int>(attackSet->attackDefinitions.size())) {
+			const SceneAttackDefinition& attack =
+				attackSet->attackDefinitions[prefabAttackPreviewIndex_];
+			std::unordered_set<uint64_t> windowHitBoxIds;
+			std::unordered_set<uint64_t> activeHitBoxIds;
+			for (const SceneAttackHitWindow& window : attack.hitWindows) {
+				SceneEntity* hitBox = window.hitBoxEntityId != 0
+					? prefabAnimationPreviewDocument_->FindEntity(window.hitBoxEntityId)
+					: nullptr;
+				if (!hitBox && !window.hitBoxEntityName.empty()) {
+					hitBox = prefabAnimationPreviewDocument_->FindEntityByName(
+						window.hitBoxEntityName
+					);
+				}
+				if (!hitBox || !FindComponent(*hitBox, "HitBox")) {
+					continue;
+				}
+				windowHitBoxIds.insert(hitBox->id);
+				if (prefabAnimationPreviewTime_ >= window.startTime &&
+					prefabAnimationPreviewTime_ < window.endTime) {
+					activeHitBoxIds.insert(hitBox->id);
+					if (window.payloadSource == "WindowLegacy" &&
+						window.overrideHitBoxHalfSize) {
+						if (SceneComponent* collider = FindComponent(*hitBox, "OBBCollider");
+							collider && collider->enabled && collider->colliderShape == "Box") {
+							Vector3 halfSize = window.hitBoxHalfSize;
+							halfSize.x = (std::max)(halfSize.x, 0.001f);
+							halfSize.y = (std::max)(halfSize.y, 0.001f);
+							halfSize.z = (std::max)(halfSize.z, 0.001f);
+							collider->colliderSizeMultiplier = halfSize;
+						}
+					}
+				}
+			}
+			// Sourceを変更せず、Attackが参照するColliderだけをPreview Copyで
+			// active/ghost表示へ分ける。選択Entityはこの表示で書き換えない。
+			for (uint64_t hitBoxId : windowHitBoxIds) {
+				if (SceneEntity* hitBox = prefabAnimationPreviewDocument_->FindEntity(hitBoxId)) {
+					hitBox->active = activeHitBoxIds.contains(hitBoxId);
+				}
+			}
+		}
+	}
 	prefabAnimationPreviewAssetPath_ = prefabEditorSession_->GetFilePath();
 	prefabAnimationPreviewSourceRevision_ = sourceDocument.GetRevision();
+}
+
+void ImGuiManager::RebuildPlayerCombatPreviewDocument() {
+	if (!playerCombatPreviewEnabled_ || !playerCombatPreviewDocument_ ||
+		!editorSession_ || !editorSession_->IsEditing() ||
+		!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
+		return;
+	}
+
+	const SceneDocument& source = editorSession_->GetEditDocument();
+	const SceneEntity* root = source.FindEntity(playerCombatPreviewRootId_);
+	const SceneEntity* weapon = source.FindEntity(playerCombatPreviewWeaponId_);
+	if (!root || !weapon ||
+		(weapon->id != root->id && !source.IsDescendantOf(weapon->id, root->id))) {
+		playerCombatPreviewStatus_ = "Select a Player Root and its PlayerWeapon instance.";
+		return;
+	}
+	const SceneComponent* animator = FindEnabledComponent(*weapon, "PrefabAnimator");
+	const SceneComponent* attackSet = FindEnabledComponent(*weapon, "AttackSet");
+	const SceneDocument& prefab = prefabEditorSession_->GetDocument();
+	const SceneEntity* prefabOwner = prefab.FindEntity(
+		prefabAnimationPreviewOwnerEntityId_
+	);
+	const SceneComponent* prefabAnimator = prefabOwner
+		? FindEnabledComponent(*prefabOwner, "PrefabAnimator") : nullptr;
+	if (!animator || !attackSet || !prefabAnimator ||
+		prefabAnimationPreviewClipIndex_ < 0 ||
+		prefabAnimationPreviewClipIndex_ >= static_cast<int>(
+			prefabAnimator->prefabAnimationClips.size()
+		)) {
+		playerCombatPreviewStatus_ = "The selected Weapon needs PrefabAnimator, AttackSet, and a Clip.";
+		return;
+	}
+	const std::string& clipName = prefabAnimator->prefabAnimationClips[
+		prefabAnimationPreviewClipIndex_
+	].name;
+	auto sourceClip = std::find_if(
+		animator->prefabAnimationClips.begin(),
+		animator->prefabAnimationClips.end(),
+		[&clipName](const ScenePrefabAnimationClip& candidate) {
+			return candidate.name == clipName;
+		}
+	);
+	auto attack = std::find_if(
+		attackSet->attackDefinitions.begin(),
+		attackSet->attackDefinitions.end(),
+		[&clipName](const SceneAttackDefinition& candidate) {
+			return candidate.animation == clipName;
+		}
+	);
+	if (sourceClip == animator->prefabAnimationClips.end() ||
+		attack == attackSet->attackDefinitions.end()) {
+		playerCombatPreviewStatus_ = "The selected title Scene Weapon has no matching Clip or Attack.";
+		return;
+	}
+	if (attack->facingMode != "FixedAtStart") {
+		playerCombatPreviewStatus_ = "Combat Rig Preview currently supports Fixed At Start facing only.";
+		return;
+	}
+
+	*playerCombatPreviewDocument_ = source;
+	for (SceneEntity& entity : playerCombatPreviewDocument_->GetEntities()) {
+		if (entity.id != root->id &&
+			!playerCombatPreviewDocument_->IsDescendantOf(entity.id, root->id)) {
+			entity.active = false;
+		}
+	}
+	SceneEntity* previewRoot = playerCombatPreviewDocument_->FindEntity(root->id);
+	ScenePrefabAnimationEvaluator::ApplyClip(
+		*playerCombatPreviewDocument_, weapon->id, *sourceClip,
+		prefabAnimationPreviewTime_
+	);
+	for (const SceneAttackHitWindow& window : attack->hitWindows) {
+		SceneEntity* hitBox = window.hitBoxEntityId != 0
+			? playerCombatPreviewDocument_->FindEntity(window.hitBoxEntityId)
+			: nullptr;
+		if (!hitBox && !window.hitBoxEntityName.empty()) {
+			hitBox = playerCombatPreviewDocument_->FindEntityByName(
+				window.hitBoxEntityName
+			);
+		}
+		if (hitBox) {
+			hitBox->active = prefabAnimationPreviewTime_ >= window.startTime &&
+				prefabAnimationPreviewTime_ < window.endTime;
+		}
+	}
+	const float activeDuration = (std::max)(attack->activeTime, 0.0001f);
+	const float rawProgress = std::clamp(
+		(prefabAnimationPreviewTime_ - attack->windup) / activeDuration,
+		0.0f, 1.0f
+	);
+	float progress = Math::SmoothStep(rawProgress);
+	if (attack->motionEasing == "Linear") progress = rawProgress;
+	if (attack->motionEasing == "EaseIn") progress = rawProgress * rawProgress * rawProgress;
+	if (attack->motionEasing == "EaseOut") progress = Math::EaseOutCubic(rawProgress);
+	if (attack->motionEasing == "EaseInOut") {
+		progress = rawProgress < 0.5f
+			? 4.0f * rawProgress * rawProgress * rawProgress
+			: 1.0f - std::pow(-2.0f * rawProgress + 2.0f, 3.0f) * 0.5f;
+	}
+	if (previewRoot) {
+		previewRoot->transform.translate.x += attack->sideDistance * progress;
+		previewRoot->transform.translate.z += attack->forwardDistance * progress;
+	}
+	playerCombatPreviewStatus_.clear();
 }
 
 void ImGuiManager::RebuildPrefabHitBoxGhostDocument() {
@@ -1818,29 +1996,50 @@ bool ImGuiManager::GetPrefabPreviewRequest(PrefabPreviewRequest& request) {
 	// Snapshotを作り直し、編集FrameだけAuthoring Poseへ戻る表示を防ぐ。
 	RebuildPrefabAnimationPreviewDocument();
 	RebuildPrefabHitBoxGhostDocument();
+	RebuildPlayerCombatPreviewDocument();
 
 	const SceneDocument& sourceDocument = prefabEditorSession_->GetDocument();
-	request.document = &GetPrefabStageDocument();
-	request.ghostDocument = (
+	const bool useCombatRigPreview =
+		playerCombatPreviewEnabled_ &&
+		playerCombatPreviewDocument_ &&
+		editorSession_ &&
+		editorSession_->IsEditing() &&
+		!prefabHitBoxSetupMode_ &&
+		playerCombatPreviewStatus_.empty();
+	request.document = useCombatRigPreview
+		? playerCombatPreviewDocument_
+		: &GetPrefabStageDocument();
+	request.ghostDocument = (!useCombatRigPreview &&
 		prefabHitBoxSetupMode_ &&
 		prefabHitBoxGhostVisible_ &&
 		prefabHitBoxGhostDocument_
 	) ? prefabHitBoxGhostDocument_ : nullptr;
-	request.assetPath = prefabEditorSession_->GetFilePath();
-	request.revision = sourceDocument.GetRevision();
+	request.assetPath = useCombatRigPreview
+		? editorSession_->GetSceneFilePath() + "#CombatRig"
+		: prefabEditorSession_->GetFilePath();
+	request.revision = useCombatRigPreview
+		? editorSession_->GetEditDocument().GetRevision()
+		: sourceDocument.GetRevision();
 	request.yaw = prefabPreviewYaw_;
 	request.pitch = prefabPreviewPitch_;
 	request.zoom = prefabPreviewZoom_;
 	request.width = prefabPreviewRequestedWidth_;
 	request.height = prefabPreviewRequestedHeight_;
-	request.selectedEntityId = prefabSelectedEntityId_;
 	request.showSkeleton = prefabPreviewShowSkeleton_;
 	request.showJointAxes = prefabPreviewShowJointAxes_;
 	request.showColliders = prefabPreviewShowColliders_;
 	request.showCombatVolumes = prefabPreviewShowCombatVolumes_;
-	request.isolateSelectedCollider = prefabHitBoxSetupMode_;
+	request.selectedEntityId = useCombatRigPreview
+		? playerCombatPreviewWeaponId_
+		: prefabSelectedEntityId_;
+	request.isolateSelectedCollider = !useCombatRigPreview && prefabHitBoxSetupMode_;
 	request.showGrid = prefabGridVisible_;
 	request.framingSerial = prefabPreviewFramingSerial_;
+	// Keep the exact final request identity. The renderer returns this one on a
+	// later frame, including the composed Combat Rig's source scene identity.
+	prefabPreviewRequestedPath_ = request.assetPath;
+	prefabPreviewRequestedRevision_ = request.revision;
+	prefabPreviewRequestUsesCombatRig_ = useCombatRigPreview;
 	return true;
 }
 
@@ -2318,6 +2517,8 @@ void ImGuiManager::Finalize(){
 	prefabEditorSession_ = nullptr;
 	delete prefabAnimationPreviewDocument_;
 	prefabAnimationPreviewDocument_ = nullptr;
+	delete playerCombatPreviewDocument_;
+	playerCombatPreviewDocument_ = nullptr;
 	delete prefabHitBoxGhostDocument_;
 	prefabHitBoxGhostDocument_ = nullptr;
 	ImGui_ImplDX12_Shutdown();
@@ -2982,7 +3183,7 @@ void ImGuiManager::CreateDockSpace(){
 		if (ImGui::BeginMenu("Prefab")) {
 			if (ImGui::MenuItem("Show Prefab Window")) {
 				showPrefab_ = true;
-				prefabFocusRequested_ = true;
+				prefabFocusFramesRemaining_ = 2;
 			}
 			if (ImGui::MenuItem("Show Prefab Inspector")) {
 				showPrefab_ = true;
@@ -7898,6 +8099,52 @@ void ImGuiManager::DrawInspectorWindow() {
 			} else if (component.type == "EventTrigger") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool eventsChanged = false;
+				auto drawComponentTargetCombo = [
+					&document,
+					&eventsChanged
+				](
+					const char* label,
+					uint64_t& targetId,
+					std::string& targetName,
+					const char* componentName,
+					const char* missingLabel
+				) {
+					const SceneEntity* selected = targetId != 0
+						? document.FindEntity(targetId)
+						: nullptr;
+					if (!selected && !targetName.empty()) {
+						selected = document.FindEntityByName(targetName);
+					}
+					const SceneComponent* selectedComponent = selected
+						? FindComponent(*selected, componentName)
+						: nullptr;
+					const bool selectedValid = selectedComponent && selectedComponent->enabled;
+					const std::string preview = selectedValid
+						? BuildEntityHierarchyLabel(document, *selected)
+						: missingLabel;
+					if (ImGui::BeginCombo(label, preview.c_str())) {
+						for (const SceneEntity& candidate : document.GetEntities()) {
+							const SceneComponent* candidateComponent =
+								FindComponent(candidate, componentName);
+							if (!candidateComponent || !candidateComponent->enabled) {
+								continue;
+							}
+							const std::string candidateLabel =
+								BuildEntityHierarchyLabel(document, candidate);
+							if (ImGui::Selectable(
+								candidateLabel.c_str(), targetId == candidate.id
+							)) {
+								targetId = candidate.id;
+								targetName = candidate.name;
+								eventsChanged = true;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					if (!selectedValid) {
+						ImGui::TextDisabled("%s", missingLabel);
+					}
+				};
 				int removeBindingIndex = -1;
 				for (size_t bindingIndex = 0;
 					bindingIndex < component.eventBindings.size();
@@ -7914,13 +8161,17 @@ void ImGuiManager::DrawInspectorWindow() {
 						if (ImGui::BeginCombo("Trigger", binding.triggerType.c_str())) {
 							for (const char* trigger : {
 								"OnStart", "OnInterval", "OnStatReachedMin", "OnStatCompare",
-								"OnPositionReached"
+								"OnPositionReached", "OnKeyPressed",
+								"OnCameraPathCompleted"
 							}) {
 								if (ImGui::Selectable(
 									trigger,
 									binding.triggerType == trigger
 								)) {
 									binding.triggerType = trigger;
+									if (binding.triggerType == "OnKeyPressed") {
+										binding.triggerOnce = false;
+									}
 									if (binding.triggerType == "OnInterval") {
 										binding.triggerOnce = false;
 										if (binding.cooldown <= 0.0f) {
@@ -7932,14 +8183,28 @@ void ImGuiManager::DrawInspectorWindow() {
 							}
 							ImGui::EndCombo();
 						}
-						eventsChanged |= ImGui::InputScalar(
-							"Target Entity Id",
-							ImGuiDataType_U64,
-							&binding.targetEntityId
-						);
-						eventsChanged |= InputTextString(
-							"Target Entity Name", binding.targetEntityName
-						);
+						const bool triggerNeedsTarget =
+							binding.triggerType == "OnStatReachedMin" ||
+							binding.triggerType == "OnStatCompare" ||
+							binding.triggerType == "OnPositionReached";
+						if (binding.triggerType == "OnCameraPathCompleted") {
+							drawComponentTargetCombo(
+								"Camera Path",
+								binding.targetEntityId,
+								binding.targetEntityName,
+								"CameraPath",
+								"Missing CameraPath"
+							);
+						} else if (triggerNeedsTarget) {
+							eventsChanged |= ImGui::InputScalar(
+								"Target Entity Id",
+								ImGuiDataType_U64,
+								&binding.targetEntityId
+							);
+							eventsChanged |= InputTextString(
+								"Target Entity Name", binding.targetEntityName
+							);
+						}
 						if (
 							binding.triggerType == "OnStatReachedMin" ||
 							binding.triggerType == "OnStatCompare"
@@ -7976,6 +8241,26 @@ void ImGuiManager::DrawInspectorWindow() {
 								"Radius", &binding.radius, 0.05f, 0.0f, 10000.0f
 							);
 						}
+						if (binding.triggerType == "OnKeyPressed") {
+							if (ImGui::BeginCombo(
+								"Key",
+								binding.triggerKey.empty()
+									? "Select..."
+									: binding.triggerKey.c_str()
+							)) {
+								for (const SceneInputKeyDefinition& key :
+									kSceneInputKeyDefinitions) {
+									if (ImGui::Selectable(
+										key.name,
+										binding.triggerKey == key.name
+									)) {
+										binding.triggerKey = key.name;
+										eventsChanged = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+						}
 						eventsChanged |= ImGui::Checkbox(
 							"Trigger Once", &binding.triggerOnce
 						);
@@ -8003,7 +8288,10 @@ void ImGuiManager::DrawInspectorWindow() {
 									for (const char* actionType : {
 										"ModifyStat", "SetEntityActive",
 										"InstantiatePrefab", "ChangeState",
-										"SceneTransition"
+										"SceneTransition", "SetPostProcessProfile",
+										"NextPostProcessProfile",
+										"ResetPostProcessProfile", "PlayCameraPath",
+										"StopCameraPath", "SelectCamera"
 									}) {
 										if (ImGui::Selectable(
 											actionType,
@@ -8015,7 +8303,15 @@ void ImGuiManager::DrawInspectorWindow() {
 									}
 									ImGui::EndCombo();
 								}
-								if (action.type != "SceneTransition") {
+								if (
+								action.type != "SceneTransition" &&
+								action.type != "SetPostProcessProfile" &&
+								action.type != "NextPostProcessProfile" &&
+								action.type != "ResetPostProcessProfile" &&
+								action.type != "PlayCameraPath" &&
+								action.type != "StopCameraPath" &&
+								action.type != "SelectCamera"
+								) {
 									eventsChanged |= ImGui::InputScalar(
 										"Action Target Entity Id",
 										ImGuiDataType_U64,
@@ -8073,6 +8369,107 @@ void ImGuiManager::DrawInspectorWindow() {
 									eventsChanged |= InputTextString(
 										"Scene Id", action.sceneId
 									);
+								} else if (
+									action.type == "PlayCameraPath" ||
+									action.type == "StopCameraPath"
+								) {
+									drawComponentTargetCombo(
+										"Camera Path",
+										action.targetEntityId,
+										action.targetEntityName,
+										"CameraPath",
+										"Missing CameraPath"
+									);
+								} else if (action.type == "SelectCamera") {
+									drawComponentTargetCombo(
+										"Camera",
+										action.targetEntityId,
+										action.targetEntityName,
+										"Camera",
+										"Missing Camera"
+									);
+								} else if (
+									action.type == "SetPostProcessProfile" ||
+									action.type == "NextPostProcessProfile"
+								) {
+									const SceneEntity* selectedManager =
+										action.postProcessManagerEntityId != 0
+										? document.FindEntity(action.postProcessManagerEntityId)
+										: nullptr;
+									if (
+										!selectedManager &&
+										!action.postProcessManagerEntityName.empty()
+									) {
+										selectedManager = document.FindEntityByName(
+											action.postProcessManagerEntityName
+										);
+									}
+									const SceneComponent* managerComponent =
+										selectedManager
+										? FindComponent(
+											*selectedManager,
+											"PostProcessProfileManager"
+										)
+										: nullptr;
+									const std::string managerPreview = managerComponent
+										? BuildEntityHierarchyLabel(document, *selectedManager)
+										: "Missing Manager";
+									if (ImGui::BeginCombo(
+										"Manager", managerPreview.c_str()
+									)) {
+										for (const SceneEntity& candidate : document.GetEntities()) {
+											if (!FindComponent(
+												candidate, "PostProcessProfileManager"
+											)) {
+												continue;
+											}
+											const std::string label =
+												BuildEntityHierarchyLabel(document, candidate);
+											if (ImGui::Selectable(
+												label.c_str(),
+												action.postProcessManagerEntityId == candidate.id
+											)) {
+												action.postProcessManagerEntityId = candidate.id;
+												action.postProcessManagerEntityName = candidate.name;
+												action.postProcessProfileId.clear();
+												eventsChanged = true;
+											}
+										}
+										ImGui::EndCombo();
+									}
+									if (!managerComponent) {
+										ImGui::TextDisabled("Select a PostProcessProfileManager.");
+									} else if (action.type == "SetPostProcessProfile") {
+										const ScenePostProcessProfile* selectedProfile = nullptr;
+										for (const ScenePostProcessProfile& profile :
+											managerComponent->postProcessProfiles) {
+											if (profile.id == action.postProcessProfileId) {
+												selectedProfile = &profile;
+												break;
+											}
+										}
+										const char* profilePreview = selectedProfile
+											? (selectedProfile->label.empty()
+												? selectedProfile->id.c_str()
+												: selectedProfile->label.c_str())
+											: "Missing Profile";
+										if (ImGui::BeginCombo("Profile", profilePreview)) {
+											for (const ScenePostProcessProfile& profile :
+												managerComponent->postProcessProfiles) {
+												const char* label = profile.label.empty()
+													? profile.id.c_str()
+													: profile.label.c_str();
+												if (ImGui::Selectable(
+													label,
+													profile.id == action.postProcessProfileId
+												)) {
+													action.postProcessProfileId = profile.id;
+													eventsChanged = true;
+												}
+											}
+											ImGui::EndCombo();
+										}
+									}
 								}
 								if (ImGui::SmallButton("Remove Action")) {
 									removeActionIndex = static_cast<int>(actionIndex);
@@ -8109,6 +8506,108 @@ void ImGuiManager::DrawInspectorWindow() {
 					eventsChanged = true;
 				}
 				if (eventsChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "PostProcessProfileManager") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool profilesChanged = false;
+				int removeProfileIndex = -1;
+				int moveProfileIndex = -1;
+				int moveProfileDirection = 0;
+				for (size_t profileIndex = 0;
+					profileIndex < component.postProcessProfiles.size();
+					++profileIndex
+				) {
+					ScenePostProcessProfile& profile =
+						component.postProcessProfiles[profileIndex];
+					ImGui::PushID(static_cast<int>(profileIndex));
+					if (ImGui::TreeNodeEx(
+						"Profile", ImGuiTreeNodeFlags_DefaultOpen,
+						"Profile %zu: %s", profileIndex + 1, profile.label.c_str()
+					)) {
+						ImGui::TextDisabled("Id: %s", profile.id.c_str());
+						profilesChanged |= InputTextString("Label", profile.label);
+						const bool duplicateProfileId = !profile.id.empty() &&
+							std::any_of(
+								component.postProcessProfiles.begin(),
+								component.postProcessProfiles.end(),
+								[&profile](const ScenePostProcessProfile& candidate) {
+									return &candidate != &profile &&
+										candidate.id == profile.id;
+								}
+							);
+						if (duplicateProfileId) {
+							ImGui::TextDisabled(
+								"Profile Id must be unique within this Manager."
+							);
+						}
+						if (ImGui::SmallButton("Copy Scene Baseline")) {
+							profile.settings = document.GetPostProcessSettings();
+							profilesChanged = true;
+						}
+						profilesChanged |= DrawPostProcessSettingsEditor(profile.settings);
+						if (profile.id.empty()) {
+							ImGui::TextDisabled("Profile Id is required for Event actions.");
+						}
+						if (ImGui::SmallButton("Remove Profile")) {
+							removeProfileIndex = static_cast<int>(profileIndex);
+						}
+						ImGui::SameLine();
+						ImGui::BeginDisabled(profileIndex == 0);
+						if (ImGui::SmallButton("Move Up")) {
+							moveProfileIndex = static_cast<int>(profileIndex);
+							moveProfileDirection = -1;
+						}
+						ImGui::EndDisabled();
+						ImGui::SameLine();
+						ImGui::BeginDisabled(
+							profileIndex + 1 == component.postProcessProfiles.size()
+						);
+						if (ImGui::SmallButton("Move Down")) {
+							moveProfileIndex = static_cast<int>(profileIndex);
+							moveProfileDirection = 1;
+						}
+						ImGui::EndDisabled();
+						ImGui::TreePop();
+					}
+					ImGui::PopID();
+				}
+				if (removeProfileIndex >= 0) {
+					component.postProcessProfiles.erase(
+						component.postProcessProfiles.begin() + removeProfileIndex
+					);
+					profilesChanged = true;
+				}
+				if (moveProfileIndex >= 0) {
+					const int destination =
+						moveProfileIndex + moveProfileDirection;
+					std::swap(
+						component.postProcessProfiles[moveProfileIndex],
+						component.postProcessProfiles[destination]
+					);
+					profilesChanged = true;
+				}
+				if (ImGui::Button("Add Profile")) {
+					ScenePostProcessProfile profile{};
+					for (size_t candidateIndex = 1;; ++candidateIndex) {
+						profile.id = "Profile" + std::to_string(candidateIndex);
+						const bool alreadyExists = std::any_of(
+							component.postProcessProfiles.begin(),
+							component.postProcessProfiles.end(),
+							[&profile](const ScenePostProcessProfile& candidate) {
+								return candidate.id == profile.id;
+							}
+						);
+						if (!alreadyExists) {
+							break;
+						}
+					}
+					profile.label = profile.id;
+					component.postProcessProfiles.push_back(std::move(profile));
+					profilesChanged = true;
+				}
+				if (profilesChanged) {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
@@ -8332,6 +8831,16 @@ void ImGuiManager::DrawInspectorWindow() {
 					&component.hitBoxKnockback,
 					0.1f, 0.0f, 100000.0f
 				);
+				hitBoxChanged |= ImGui::DragFloat(
+					"Vertical Knockback",
+					&component.hitBoxVerticalKnockback,
+					0.1f, 0.0f, 100000.0f
+				);
+				hitBoxChanged |= ImGui::DragFloat(
+					"Hit Stop Duration",
+					&component.hitBoxHitStopDuration,
+					0.001f, 0.0f, 1.0f
+				);
 				hitBoxChanged |= InputTextString(
 					"Reaction Tag", component.hitBoxReactionTag
 				);
@@ -8400,11 +8909,42 @@ void ImGuiManager::DrawInspectorWindow() {
 					&component.hitReactionKnockbackMultiplier,
 					0.01f, 0.0f, 100.0f
 				);
-				reactionChanged |= ImGui::DragFloat(
-					"Minimum Poise Damage",
-					&component.hitReactionMinimumPoiseDamage,
-					0.1f, 0.0f, 100000.0f
-				);
+				const char* reactionModePreview =
+					component.hitReactionTriggerMode == "PoiseBreak"
+					? "Poise Break" : "Minimum Damage";
+				if (ImGui::BeginCombo("Reaction Trigger", reactionModePreview)) {
+					if (ImGui::Selectable(
+						"Minimum Damage",
+						component.hitReactionTriggerMode == "MinimumDamage"
+					)) {
+						component.hitReactionTriggerMode = "MinimumDamage";
+						reactionChanged = true;
+					}
+					if (ImGui::Selectable(
+						"Poise Break",
+						component.hitReactionTriggerMode == "PoiseBreak"
+					)) {
+						component.hitReactionTriggerMode = "PoiseBreak";
+						reactionChanged = true;
+					}
+					ImGui::EndCombo();
+				}
+				if (component.hitReactionTriggerMode == "PoiseBreak") {
+					reactionChanged |= InputTextString(
+						"Poise Stat", component.hitReactionPoiseStatId
+					);
+					reactionChanged |= ImGui::DragFloat(
+						"Poise Recovery Delay",
+						&component.hitReactionPoiseRecoveryDelay,
+						0.05f, 0.0f, 60.0f
+					);
+				} else {
+					reactionChanged |= ImGui::DragFloat(
+						"Minimum Poise Damage",
+						&component.hitReactionMinimumPoiseDamage,
+						0.1f, 0.0f, 100000.0f
+					);
+				}
 				reactionChanged |= InputTextString(
 					"Hit State", component.hitReactionStateName
 				);
@@ -8420,6 +8960,9 @@ void ImGuiManager::DrawInspectorWindow() {
 					"Deactivate Delay",
 					&component.deathPresentationDeactivateDelay,
 					0.05f, 0.0f, 60.0f
+				);
+				deathChanged |= InputTextString(
+					"Death Effect Path", component.deathPresentationEffectPath
 				);
 				if (deathChanged) { document.MarkDirty(); }
 				ImGui::EndDisabled();
@@ -9832,6 +10375,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				"StatSet",
 				"StateMachine",
 				"EventTrigger",
+				"PostProcessProfileManager",
 				"PrefabAnimator",
 				"Faction",
 				"HitBox",
@@ -10537,7 +11081,7 @@ void ImGuiManager::RequestOpenPrefab(
 		).lexically_normal()
 	);
 	showPrefab_ = true;
-	prefabFocusRequested_ = true;
+	prefabFocusFramesRemaining_ = 2;
 
 	if (prefabEditorSession_->IsOpen()) {
 		const std::filesystem::path currentPath =
@@ -10596,7 +11140,7 @@ bool ImGuiManager::OpenPrefab(
 	}
 
 	showPrefab_ = true;
-	prefabFocusRequested_ = true;
+	prefabFocusFramesRemaining_ = 2;
 	const SceneDocument& prefab = prefabEditorSession_->GetDocument();
 	prefabSelectedEntityId_ = prefab.GetEntities().empty()
 		? 0
@@ -11244,15 +11788,19 @@ void ImGuiManager::DrawPrefabWindow() {
 		return;
 	}
 
-	if (prefabFocusRequested_) {
+	const bool requestPrefabFocus = prefabFocusFramesRemaining_ > 0;
+	if (requestPrefabFocus) {
 		ImGui::SetNextWindowFocus();
-		prefabFocusRequested_ = false;
 	}
 	bool windowOpen = true;
 	const bool prefabWindowContentsVisible = ImGui::Begin(
 		"Prefab",
 		&windowOpen
 	);
+	if (requestPrefabFocus) {
+		ImGui::SetWindowFocus("Prefab");
+		--prefabFocusFramesRemaining_;
+	}
 	prefabKeyboardFocusThisFrame_ |= ImGui::IsWindowFocused(
 		ImGuiFocusedFlags_RootAndChildWindows
 	);
@@ -11804,6 +12352,8 @@ void ImGuiManager::DrawPrefabPreview() {
 			prefabAnimationPreviewPlaying_ = false;
 			prefabAnimationPreviewActive_ = false;
 			prefabAttackPreviewMode_ = false;
+			playerCombatPreviewEnabled_ = false;
+			playerCombatPreviewStatus_.clear();
 		}
 	}
 	ImGui::SameLine();
@@ -11931,8 +12481,8 @@ void ImGuiManager::DrawPrefabPreview() {
 		if (wheel != 0.0f) {
 			prefabPreviewZoom_ = std::clamp(
 				prefabPreviewZoom_ * (1.0f - wheel * 0.1f),
-				0.15f,
-				8.0f
+				0.02f,
+				1.75f
 			);
 		}
 	}
@@ -11951,8 +12501,8 @@ void ImGuiManager::DrawPrefabPreview() {
 	const bool previewReady =
 		prefabPreviewTexture_.ptr != 0 &&
 		prefabPreviewCameraValid_ &&
-		prefabPreviewRenderedPath_ == prefabEditorSession_->GetFilePath() &&
-		prefabPreviewRenderedRevision_ == document.GetRevision();
+		prefabPreviewRenderedPath_ == prefabPreviewRequestedPath_ &&
+		prefabPreviewRenderedRevision_ == prefabPreviewRequestedRevision_;
 	if (previewReady) {
 		const ImVec2 imageMin = ImGui::GetCursorScreenPos();
 		ImGui::Image(
@@ -11971,7 +12521,9 @@ void ImGuiManager::DrawPrefabPreview() {
 				);
 			}
 		}
-		DrawPrefabGizmo(imageMin.x, imageMin.y, imageSize.x, imageSize.y);
+		if (!prefabPreviewRequestUsesCombatRig_) {
+			DrawPrefabGizmo(imageMin.x, imageMin.y, imageSize.x, imageSize.y);
+		}
 		if (prefabAxisVisible_) {
 			DrawWorldAxisIndicator(
 				imageMin,
@@ -11982,7 +12534,13 @@ void ImGuiManager::DrawPrefabPreview() {
 				prefabPreviewViewMatrix_
 			);
 		}
-		if (prefabAnimationPreviewActive_) {
+		if (prefabPreviewRequestUsesCombatRig_) {
+			ImGui::GetWindowDrawList()->AddText(
+				ImVec2(imageMin.x + 8.0f, imageMin.y + 8.0f),
+				IM_COL32(130, 220, 150, 255),
+				"Combat Rig Preview: read-only composition."
+			);
+		} else if (prefabAnimationPreviewActive_) {
 			ImGui::GetWindowDrawList()->AddText(
 				ImVec2(imageMin.x + 8.0f, imageMin.y + 8.0f),
 				IM_COL32(130, 220, 150, 255),
@@ -11990,6 +12548,7 @@ void ImGuiManager::DrawPrefabPreview() {
 			);
 		}
 		if (
+			!prefabPreviewRequestUsesCombatRig_ &&
 			imageHovered &&
 			ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
 			!ImGuizmo::IsOver() &&
@@ -12387,6 +12946,7 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 			ImGui::PushID(static_cast<int>(index));
 			if (ImGui::Selectable(label, selected)) {
 				prefabAnimationPreviewClipIndex_ = static_cast<int>(index);
+				prefabSelectedEntityId_ = animatorEntry.entity->id;
 				prefabAnimationPreviewTime_ = 0.0f;
 				prefabAnimationPreviewPlaying_ = false;
 				prefabAnimationPreviewActive_ = true;
@@ -12398,6 +12958,13 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		ImGui::EndCombo();
 	}
 	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::Checkbox("Clip Focus", &prefabClipFocusEnabled_);
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip(
+			"When the Animator owner is selected, show only this Clip and its Attack."
+		);
+	}
 
 	const ScenePrefabAnimationClip& clip =
 		clips[prefabAnimationPreviewClipIndex_];
@@ -12415,6 +12982,123 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 			timelineAttack = &*found;
 		}
 	}
+	ImGui::SameLine();
+	if (ImGui::Checkbox("Combat Rig Preview", &playerCombatPreviewEnabled_)) {
+		playerCombatPreviewStatus_.clear();
+	}
+	if (playerCombatPreviewEnabled_) {
+		if (!editorSession_ || !editorSession_->IsEditing()) {
+			playerCombatPreviewStatus_ = "Open the title Scene in Edit mode to use Combat Rig Preview.";
+		} else {
+			const SceneDocument& scene = editorSession_->GetEditDocument();
+			struct RigCandidate { uint64_t rootId; uint64_t weaponId; };
+			std::vector<RigCandidate> candidates;
+			for (const SceneEntity& weapon : scene.GetEntities()) {
+				if (!FindEnabledComponent(weapon, "PrefabAnimator") ||
+					!FindEnabledComponent(weapon, "AttackSet")) {
+					continue;
+				}
+				const SceneEntity* root = scene.FindEntity(weapon.parentId);
+				if (root) candidates.push_back({ root->id, weapon.id });
+			}
+			if (candidates.empty()) {
+				playerCombatPreviewStatus_ = "No PlayerWeapon instance with Animator and AttackSet was found.";
+			} else {
+				auto selected = std::find_if(
+					candidates.begin(), candidates.end(), [this](const RigCandidate& candidate) {
+						return candidate.rootId == playerCombatPreviewRootId_ &&
+							candidate.weaponId == playerCombatPreviewWeaponId_;
+					}
+				);
+				if (selected == candidates.end()) {
+					selected = candidates.begin();
+					playerCombatPreviewRootId_ = selected->rootId;
+					playerCombatPreviewWeaponId_ = selected->weaponId;
+				}
+				const SceneEntity* selectedRoot = scene.FindEntity(selected->rootId);
+				const SceneEntity* selectedWeapon = scene.FindEntity(selected->weaponId);
+				const std::string label = (selectedRoot ? selectedRoot->name : "Missing") +
+					" / " + (selectedWeapon ? selectedWeapon->name : "Missing");
+				if (ImGui::BeginCombo("Rig Source", label.c_str())) {
+					for (const RigCandidate& candidate : candidates) {
+						const SceneEntity* root = scene.FindEntity(candidate.rootId);
+						const SceneEntity* weapon = scene.FindEntity(candidate.weaponId);
+						const std::string candidateLabel =
+							(root ? root->name : "Missing") + " / " +
+							(weapon ? weapon->name : "Missing");
+						if (ImGui::Selectable(
+							candidateLabel.c_str(), candidate.weaponId == selected->weaponId
+						)) {
+							playerCombatPreviewRootId_ = candidate.rootId;
+							playerCombatPreviewWeaponId_ = candidate.weaponId;
+							playerCombatPreviewStatus_.clear();
+						}
+					}
+					ImGui::EndCombo();
+				}
+			}
+		}
+		if (!playerCombatPreviewStatus_.empty()) {
+			ImGui::TextDisabled("%s", playerCombatPreviewStatus_.c_str());
+		}
+	}
+	static constexpr int kPreviewFrameRates[] = { 30, 60, 120 };
+	const int previewFrameRate = std::clamp(
+		prefabAnimationPreviewFrameRate_,
+		kPreviewFrameRates[0],
+		kPreviewFrameRates[2]
+	);
+	prefabAnimationPreviewFrameRate_ = previewFrameRate;
+	const int previewFrameCount = (std::max)(
+		1,
+		static_cast<int>(std::ceil(duration * static_cast<float>(previewFrameRate)))
+	);
+	const auto frameToTime = [&](int frame) {
+		return (std::min)(
+			static_cast<float>(std::clamp(frame, 0, previewFrameCount)) /
+				static_cast<float>(previewFrameRate),
+			duration
+		);
+	};
+	const auto timeToFrame = [&](float time) {
+		return std::clamp(
+			static_cast<int>(std::round(time * static_cast<float>(previewFrameRate))),
+			0,
+			previewFrameCount
+		);
+	};
+	const auto snapPreviewTimeToFrame = [&]() {
+		if (prefabAnimationPreviewSnapToFrames_) {
+			prefabAnimationPreviewTime_ = frameToTime(
+				timeToFrame(prefabAnimationPreviewTime_)
+			);
+		}
+	};
+	const auto evaluateDistanceEasedMotionProgress = [&](float time) {
+		if (!timelineAttack) {
+			return 0.0f;
+		}
+		const float activeDuration = (std::max)(timelineAttack->activeTime, 0.0001f);
+		float progress = std::clamp(
+			(time - timelineAttack->windup) / activeDuration,
+			0.0f,
+			1.0f
+		);
+		if (timelineAttack->motionEasing == "EaseOut") {
+			return Math::EaseOutCubic(progress);
+		}
+		if (timelineAttack->motionEasing == "EaseIn") {
+			return progress * progress * progress;
+		}
+		if (timelineAttack->motionEasing == "EaseInOut") {
+			return progress < 0.5f
+				? 4.0f * progress * progress * progress
+				: 1.0f - std::pow(-2.0f * progress + 2.0f, 3.0f) * 0.5f;
+		}
+		return timelineAttack->motionEasing == "Linear"
+			? progress
+			: Math::SmoothStep(progress);
+	};
 	prefabAnimationPreviewTime_ = std::clamp(
 		prefabAnimationPreviewTime_,
 		0.0f,
@@ -12422,18 +13106,42 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 	);
 	if (prefabAnimationPreviewPlaying_) {
 		prefabAnimationPreviewActive_ = true;
-		prefabAnimationPreviewTime_ += (std::max)(
-			ImGui::GetIO().DeltaTime,
-			0.0f
-		);
-		if (clip.loop) {
-			prefabAnimationPreviewTime_ = std::fmod(
-				prefabAnimationPreviewTime_,
-				duration
+		if (prefabAnimationPreviewSnapToFrames_) {
+			const float frameDuration = 1.0f / static_cast<float>(previewFrameRate);
+			prefabAnimationPreviewFrameAccumulator_ += (std::max)(
+				ImGui::GetIO().DeltaTime,
+				0.0f
 			);
-		} else if (prefabAnimationPreviewTime_ >= duration) {
-			prefabAnimationPreviewTime_ = duration;
-			prefabAnimationPreviewPlaying_ = false;
+			while (prefabAnimationPreviewFrameAccumulator_ >= frameDuration) {
+				prefabAnimationPreviewFrameAccumulator_ -= frameDuration;
+				const int nextFrame = timeToFrame(prefabAnimationPreviewTime_) + 1;
+				if (nextFrame > previewFrameCount) {
+					if (clip.loop) {
+						prefabAnimationPreviewTime_ = 0.0f;
+					} else {
+						prefabAnimationPreviewTime_ = duration;
+						prefabAnimationPreviewPlaying_ = false;
+						prefabAnimationPreviewFrameAccumulator_ = 0.0f;
+						break;
+					}
+				} else {
+					prefabAnimationPreviewTime_ = frameToTime(nextFrame);
+				}
+			}
+		} else {
+			prefabAnimationPreviewTime_ += (std::max)(
+				ImGui::GetIO().DeltaTime,
+				0.0f
+			);
+			if (clip.loop) {
+				prefabAnimationPreviewTime_ = std::fmod(
+					prefabAnimationPreviewTime_,
+					duration
+				);
+			} else if (prefabAnimationPreviewTime_ >= duration) {
+				prefabAnimationPreviewTime_ = duration;
+				prefabAnimationPreviewPlaying_ = false;
+			}
 		}
 	}
 
@@ -12446,18 +13154,21 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 			prefabAnimationPreviewTime_ = 0.0f;
 		}
 		prefabAnimationPreviewPlaying_ = !prefabAnimationPreviewPlaying_;
+		prefabAnimationPreviewFrameAccumulator_ = 0.0f;
 		prefabAnimationPreviewActive_ = true;
 	}
 	ImGui::SameLine();
 	if (ImGui::Button("Stop")) {
 		prefabAnimationPreviewPlaying_ = false;
 		prefabAnimationPreviewTime_ = 0.0f;
+		prefabAnimationPreviewFrameAccumulator_ = 0.0f;
 		prefabAnimationPreviewActive_ = true;
 	}
 	ImGui::SameLine();
 	if (ImGui::Button("Reset Pose")) {
 		prefabAnimationPreviewPlaying_ = false;
 		prefabAnimationPreviewTime_ = 0.0f;
+		prefabAnimationPreviewFrameAccumulator_ = 0.0f;
 		prefabAnimationPreviewActive_ = false;
 	}
 	ImGui::SameLine();
@@ -12472,6 +13183,53 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 		duration,
 		"%.3f s"
 	)) {
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = true;
+		snapPreviewTimeToFrame();
+	}
+	if (ImGui::BeginCombo("Preview FPS", (std::to_string(previewFrameRate) + " FPS").c_str())) {
+		for (const int frameRate : kPreviewFrameRates) {
+			const bool selected = frameRate == previewFrameRate;
+			const std::string label = std::to_string(frameRate) + " FPS";
+			if (ImGui::Selectable(label.c_str(), selected)) {
+				prefabAnimationPreviewFrameRate_ = frameRate;
+				prefabAnimationPreviewFrameAccumulator_ = 0.0f;
+				const int selectedFrame = std::clamp(
+					static_cast<int>(std::round(
+						prefabAnimationPreviewTime_ * static_cast<float>(frameRate)
+					)),
+					0,
+					(std::max)(1, static_cast<int>(std::ceil(
+						duration * static_cast<float>(frameRate)
+					)))
+				);
+				prefabAnimationPreviewTime_ = (std::min)(
+					static_cast<float>(selectedFrame) / static_cast<float>(frameRate),
+					duration
+				);
+			}
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::Checkbox("Frame Snap", &prefabAnimationPreviewSnapToFrames_);
+	if (prefabAnimationPreviewSnapToFrames_) {
+		snapPreviewTimeToFrame();
+	}
+	int previewFrame = timeToFrame(prefabAnimationPreviewTime_);
+	if (ImGui::Button("< Frame")) {
+		prefabAnimationPreviewTime_ = frameToTime(previewFrame - 1);
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = true;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Frame >")) {
+		prefabAnimationPreviewTime_ = frameToTime(previewFrame + 1);
+		prefabAnimationPreviewPlaying_ = false;
+		prefabAnimationPreviewActive_ = true;
+	}
+	ImGui::SameLine();
+	if (ImGui::DragInt("Frame", &previewFrame, 1.0f, 0, previewFrameCount)) {
+		prefabAnimationPreviewTime_ = frameToTime(previewFrame);
 		prefabAnimationPreviewPlaying_ = false;
 		prefabAnimationPreviewActive_ = true;
 	}
@@ -12502,6 +13260,18 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 			ImGui::CalcTextSize(makeTrackLabel(track).c_str()).x + 12.0f
 		);
 	}
+	if (timelineAttack) {
+		desiredLabelWidth = (std::max)(
+			desiredLabelWidth,
+			ImGui::CalcTextSize("Player Motion / Distance Eased").x + 12.0f
+		);
+		desiredLabelWidth = (std::max)(
+			desiredLabelWidth,
+			ImGui::CalcTextSize(
+				("Effect / " + timelineAttack->name).c_str()
+			).x + 12.0f
+		);
+	}
 	const float maximumLabelWidth = (std::max)(
 		120.0f,
 		(std::min)(280.0f, timelineWidth - 160.0f)
@@ -12516,8 +13286,13 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 	const size_t hitWindowCount = timelineAttack
 		? timelineAttack->hitWindows.size()
 		: 0;
+	const size_t effectEventRowCount = timelineAttack &&
+		!timelineAttack->effectEvents.empty()
+		? size_t{ 1 }
+		: size_t{ 0 };
+	const size_t motionRowCount = timelineAttack ? size_t{ 1 } : size_t{ 0 };
 	const size_t rowCount = (std::max)(
-		clip.tracks.size() + hitWindowCount,
+		clip.tracks.size() + hitWindowCount + effectEventRowCount + motionRowCount,
 		size_t{ 1 }
 	);
 	const float timelineHeight = headerHeight + rowHeight * rowCount;
@@ -12540,6 +13315,7 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 			1.0f
 		);
 		prefabAnimationPreviewTime_ = amount * duration;
+		snapPreviewTimeToFrame();
 		prefabAnimationPreviewPlaying_ = false;
 		prefabAnimationPreviewActive_ = true;
 	}
@@ -12719,15 +13495,6 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 			const float endTime = std::clamp(window.endTime, startTime, duration);
 			const bool active = prefabAnimationPreviewTime_ >= startTime &&
 				prefabAnimationPreviewTime_ < endTime;
-			if (
-				prefabAttackPreviewMode_ &&
-				active &&
-				hitBox &&
-				FindEnabledComponent(*hitBox, "OBBCollider")
-			) {
-				// Attack Preview中は有効WindowのColliderをStage選択色で示す。
-				prefabSelectedEntityId_ = hitBox->id;
-			}
 			const ImU32 hitColor = active
 				? IM_COL32(255, 92, 48, 245)
 				: IM_COL32(220, 92, 42, 185);
@@ -12762,6 +13529,154 @@ void ImGuiManager::DrawPrefabAnimationTimeline() {
 					window.knockback
 				);
 			}
+		}
+
+		if (effectEventRowCount != 0) {
+			const size_t rowIndex = clip.tracks.size() + hitWindowCount;
+			const float rowTop =
+				timelineOrigin.y + headerHeight + rowHeight * rowIndex;
+			const float rowCenter = rowTop + rowHeight * 0.5f;
+			if ((rowIndex & 1u) != 0u) {
+				drawList->AddRectFilled(
+					ImVec2(timelineOrigin.x, rowTop),
+					ImVec2(trackRight, rowTop + rowHeight),
+					IM_COL32(35, 39, 44, 255)
+				);
+			}
+			const std::string rowLabel = "Effect / " + timelineAttack->name;
+			const ImVec2 labelMin(timelineOrigin.x, rowTop);
+			const ImVec2 labelMax(trackLeft - 4.0f, rowTop + rowHeight);
+			drawList->PushClipRect(labelMin, labelMax, true);
+			drawList->AddText(
+				ImVec2(timelineOrigin.x + 5.0f, rowTop + 4.0f),
+				IM_COL32(135, 224, 244, 255),
+				rowLabel.c_str()
+			);
+			drawList->PopClipRect();
+			for (size_t effectIndex = 0;
+				effectIndex < timelineAttack->effectEvents.size();
+				++effectIndex) {
+				const SceneAttackEffectEvent& effect =
+					timelineAttack->effectEvents[effectIndex];
+				const float effectTime = std::clamp(effect.time, 0.0f, duration);
+				const float effectX = trackLeft + trackWidth * (effectTime / duration);
+				const ImVec2 markerMin(effectX - 6.0f, rowCenter - 6.0f);
+				const ImVec2 markerMax(effectX + 6.0f, rowCenter + 6.0f);
+				drawList->AddQuadFilled(
+					ImVec2(effectX, rowCenter - 6.0f),
+					ImVec2(effectX + 6.0f, rowCenter),
+					ImVec2(effectX, rowCenter + 6.0f),
+					ImVec2(effectX - 6.0f, rowCenter),
+					IM_COL32(82, 205, 236, 245)
+				);
+				if (ImGui::IsMouseHoveringRect(markerMin, markerMax)) {
+					if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+						prefabAnimationPreviewTime_ = effectTime;
+						snapPreviewTimeToFrame();
+						prefabAnimationPreviewPlaying_ = false;
+						prefabAnimationPreviewActive_ = true;
+					}
+					ImGui::SetTooltip(
+						"Effect Event %zu | %.3f s | %s",
+						effectIndex + 1,
+						effect.time,
+						effect.groundEffectType.empty()
+							? "Particle"
+							: effect.groundEffectType.c_str()
+					);
+				}
+			}
+		}
+
+		const size_t rowIndex = clip.tracks.size() + hitWindowCount + effectEventRowCount;
+		const float rowTop = timelineOrigin.y + headerHeight + rowHeight * rowIndex;
+		const float rowCenter = rowTop + rowHeight * 0.5f;
+		if ((rowIndex & 1u) != 0u) {
+			drawList->AddRectFilled(
+				ImVec2(timelineOrigin.x, rowTop),
+				ImVec2(trackRight, rowTop + rowHeight),
+				IM_COL32(35, 39, 44, 255)
+			);
+		}
+		const std::string motionLabel = "Player Motion / Distance Eased";
+		const ImVec2 labelMin(timelineOrigin.x, rowTop);
+		const ImVec2 labelMax(trackLeft - 4.0f, rowTop + rowHeight);
+		drawList->PushClipRect(labelMin, labelMax, true);
+		drawList->AddText(
+			ImVec2(timelineOrigin.x + 5.0f, rowTop + 4.0f),
+			IM_COL32(150, 215, 255, 255),
+			motionLabel.c_str()
+		);
+		drawList->PopClipRect();
+		const float motionStart = std::clamp(timelineAttack->windup, 0.0f, duration);
+		const float motionEnd = std::clamp(
+			timelineAttack->windup + timelineAttack->activeTime,
+			motionStart,
+			duration
+		);
+		const int firstMotionFrame = timeToFrame(motionStart);
+		const int lastMotionFrame = timeToFrame(motionEnd);
+		float maxMotionSpeed = 0.0f;
+		for (int frame = firstMotionFrame; frame < lastMotionFrame; ++frame) {
+			const float firstTime = frameToTime(frame);
+			const float secondTime = frameToTime(frame + 1);
+			const float deltaTime = secondTime - firstTime;
+			if (deltaTime <= 0.000001f) { continue; }
+			const float deltaProgress = evaluateDistanceEasedMotionProgress(secondTime) -
+				evaluateDistanceEasedMotionProgress(firstTime);
+			const float distance = std::sqrt(
+				timelineAttack->forwardDistance * timelineAttack->forwardDistance +
+				timelineAttack->sideDistance * timelineAttack->sideDistance
+			) * std::abs(deltaProgress);
+			maxMotionSpeed = (std::max)(maxMotionSpeed, distance / deltaTime);
+		}
+		for (int frame = firstMotionFrame; frame < lastMotionFrame; ++frame) {
+			const float firstTime = frameToTime(frame);
+			const float secondTime = frameToTime(frame + 1);
+			const float deltaTime = secondTime - firstTime;
+			if (deltaTime <= 0.000001f) { continue; }
+			const float deltaProgress = evaluateDistanceEasedMotionProgress(secondTime) -
+				evaluateDistanceEasedMotionProgress(firstTime);
+			const float distance = std::sqrt(
+				timelineAttack->forwardDistance * timelineAttack->forwardDistance +
+				timelineAttack->sideDistance * timelineAttack->sideDistance
+			) * std::abs(deltaProgress);
+			const float speedRate = maxMotionSpeed > 0.000001f
+				? std::clamp((distance / deltaTime) / maxMotionSpeed, 0.0f, 1.0f)
+				: 0.0f;
+			const ImU32 speedColor = IM_COL32(
+				static_cast<int>(70.0f + 120.0f * speedRate),
+				static_cast<int>(130.0f + 100.0f * speedRate),
+				255,
+				220
+			);
+			drawList->AddRectFilled(
+				ImVec2(trackLeft + trackWidth * (firstTime / duration), rowCenter - 6.0f),
+				ImVec2(trackLeft + trackWidth * (secondTime / duration), rowCenter + 6.0f),
+				speedColor,
+				1.0f
+			);
+		}
+		if (ImGui::IsMouseHoveringRect(labelMin, ImVec2(trackRight, rowTop + rowHeight))) {
+			const float progress = evaluateDistanceEasedMotionProgress(prefabAnimationPreviewTime_);
+			const float previousTime = frameToTime((std::max)(previewFrame - 1, 0));
+			const float previewDeltaTime = prefabAnimationPreviewTime_ - previousTime;
+			const float previewDeltaProgress = progress -
+				evaluateDistanceEasedMotionProgress(previousTime);
+			const float previewDistance = std::sqrt(
+				timelineAttack->forwardDistance * timelineAttack->forwardDistance +
+				timelineAttack->sideDistance * timelineAttack->sideDistance
+			) * std::abs(previewDeltaProgress);
+			const float previewSpeed = previewDeltaTime > 0.000001f
+				? previewDistance / previewDeltaTime
+				: 0.0f;
+			ImGui::SetTooltip(
+				"Frame %d | Local X %.3f, Z %.3f | XZ Speed %.3f units/s",
+				previewFrame,
+				timelineAttack->sideDistance * progress,
+				timelineAttack->forwardDistance * progress,
+				previewSpeed
+			);
 		}
 	}
 
@@ -13258,8 +14173,8 @@ void ImGuiManager::DrawPrefabTransformPoseInspector(SceneEntity& entity) {
 					}
 					ImGui::TextDisabled(
 						"Local offset from the straight path at the interpolation midpoint."
-					);
-				}
+		);
+	}
 			}
 
 			if (!complete && ImGui::SmallButton("Complete Pose")) {
@@ -13449,17 +14364,6 @@ void ImGuiManager::DrawPrefabGizmo(
 		prefabSelectedEntityId_
 	);
 	if (!sourceEntity || !stageEntity || sourceEntity->locked) {
-		return;
-	}
-	if (
-		prefabHitBoxSetupMode_ &&
-		!FindEnabledComponent(*sourceEntity, "OBBCollider")
-	) {
-		ImGui::GetWindowDrawList()->AddText(
-			ImVec2(x + 8.0f, y + 8.0f),
-			IM_COL32(255, 190, 80, 255),
-			"HitBox Setup: select an Entity with a Collider."
-		);
 		return;
 	}
 	if (
@@ -13916,6 +14820,25 @@ void ImGuiManager::DrawPrefabInspector() {
 		ImGui::TextDisabled("Select a Prefab Entity.");
 		return;
 	}
+	const SceneEntity* clipFocusOwner = document.FindEntity(
+		prefabAnimationPreviewOwnerEntityId_
+	);
+	const SceneComponent* clipFocusAnimator = clipFocusOwner
+		? FindEnabledComponent(*clipFocusOwner, "PrefabAnimator")
+		: nullptr;
+	const bool clipFocusActive =
+		prefabClipFocusEnabled_ &&
+		clipFocusOwner == entity &&
+		clipFocusAnimator &&
+		prefabAnimationPreviewClipIndex_ >= 0 &&
+		prefabAnimationPreviewClipIndex_ < static_cast<int>(
+			clipFocusAnimator->prefabAnimationClips.size()
+		);
+	const std::string* clipFocusName = clipFocusActive
+		? &clipFocusAnimator->prefabAnimationClips[
+			prefabAnimationPreviewClipIndex_
+		].name
+		: nullptr;
 
 	if (document.IsPrefabVariant()) {
 		static std::string variantStatusDocumentPath;
@@ -14388,6 +15311,13 @@ void ImGuiManager::DrawPrefabInspector() {
 		componentIndex < entity->components.size();
 		++componentIndex) {
 		SceneComponent& component = entity->components[componentIndex];
+		if (
+			clipFocusActive &&
+			component.type != "AttackSet" &&
+			component.type != "PrefabAnimator"
+		) {
+			continue;
+		}
 		ImGui::PushID(static_cast<int>(componentIndex));
 		const bool open = ImGui::CollapsingHeader(
 			component.type.c_str(),
@@ -14425,6 +15355,58 @@ void ImGuiManager::DrawPrefabInspector() {
 			changed |= ImGui::DragInt(
 				"Default Clip", &component.animatorDefaultClip, 1.0f, 0, 1024
 			);
+		} else if (component.type == "StatSet") {
+			int removeStatIndex = -1;
+			for (size_t statIndex = 0; statIndex < component.stats.size(); ++statIndex) {
+				SceneStatDefinition& stat = component.stats[statIndex];
+				ImGui::PushID(static_cast<int>(statIndex));
+				const std::string statLabel = stat.displayName.empty()
+					? stat.id
+					: stat.displayName;
+				if (ImGui::TreeNodeEx(
+					"Stat",
+					ImGuiTreeNodeFlags_DefaultOpen,
+					"%s",
+					statLabel.empty() ? "Stat" : statLabel.c_str()
+				)) {
+					changed |= InputTextString("Id", stat.id);
+					changed |= InputTextString("Display Name", stat.displayName);
+					changed |= ImGui::DragFloat("Min", &stat.minValue, 0.1f);
+					changed |= ImGui::DragFloat("Max", &stat.maxValue, 0.1f);
+					changed |= ImGui::DragFloat(
+						"Initial", &stat.initialValue, 0.1f
+					);
+					if (stat.maxValue < stat.minValue) {
+						stat.maxValue = stat.minValue;
+						changed = true;
+					}
+					const float clampedInitial = std::clamp(
+						stat.initialValue,
+						stat.minValue,
+						stat.maxValue
+					);
+					if (clampedInitial != stat.initialValue) {
+						stat.initialValue = clampedInitial;
+						changed = true;
+					}
+					if (ImGui::SmallButton("Remove Stat")) {
+						removeStatIndex = static_cast<int>(statIndex);
+					}
+					ImGui::TreePop();
+				}
+				ImGui::PopID();
+			}
+			if (removeStatIndex >= 0) {
+				component.stats.erase(component.stats.begin() + removeStatIndex);
+				changed = true;
+			}
+			if (ImGui::Button("Add Stat")) {
+				SceneStatDefinition stat{};
+				stat.id = "stat" + std::to_string(component.stats.size() + 1);
+				stat.displayName = stat.id;
+				component.stats.push_back(std::move(stat));
+				changed = true;
+			}
 		} else if (component.type == "OBBCollider") {
 			if (ImGui::BeginCombo("Shape", component.colliderShape.c_str())) {
 				for (const char* shape : { "Box", "Sphere" }) {
@@ -14463,6 +15445,13 @@ void ImGuiManager::DrawPrefabInspector() {
 			);
 			changed |= ImGui::DragFloat(
 				"Knockback", &component.hitBoxKnockback, 0.1f, 0.0f, 100000.0f
+			);
+			changed |= ImGui::DragFloat(
+				"Vertical Knockback", &component.hitBoxVerticalKnockback,
+				0.1f, 0.0f, 100000.0f
+			);
+			changed |= ImGui::DragFloat(
+				"Hit Stop Duration", &component.hitBoxHitStopDuration, 0.001f, 0.0f, 1.0f
 			);
 			changed |= InputTextString(
 				"Reaction Tag", component.hitBoxReactionTag
@@ -14543,11 +15532,42 @@ void ImGuiManager::DrawPrefabInspector() {
 				&component.hitReactionKnockbackMultiplier,
 				0.01f, 0.0f, 100.0f
 			);
-			changed |= ImGui::DragFloat(
-				"Minimum Poise Damage",
-				&component.hitReactionMinimumPoiseDamage,
-				0.1f, 0.0f, 100000.0f
-			);
+			const char* reactionModePreview =
+				component.hitReactionTriggerMode == "PoiseBreak"
+				? "Poise Break" : "Minimum Damage";
+			if (ImGui::BeginCombo("Reaction Trigger", reactionModePreview)) {
+				if (ImGui::Selectable(
+					"Minimum Damage",
+					component.hitReactionTriggerMode == "MinimumDamage"
+				)) {
+					component.hitReactionTriggerMode = "MinimumDamage";
+					changed = true;
+				}
+				if (ImGui::Selectable(
+					"Poise Break",
+					component.hitReactionTriggerMode == "PoiseBreak"
+				)) {
+					component.hitReactionTriggerMode = "PoiseBreak";
+					changed = true;
+				}
+				ImGui::EndCombo();
+			}
+			if (component.hitReactionTriggerMode == "PoiseBreak") {
+				changed |= InputTextString(
+					"Poise Stat", component.hitReactionPoiseStatId
+				);
+				changed |= ImGui::DragFloat(
+					"Poise Recovery Delay",
+					&component.hitReactionPoiseRecoveryDelay,
+					0.05f, 0.0f, 60.0f
+				);
+			} else {
+				changed |= ImGui::DragFloat(
+					"Minimum Poise Damage",
+					&component.hitReactionMinimumPoiseDamage,
+					0.1f, 0.0f, 100000.0f
+				);
+			}
 			changed |= InputTextString(
 				"Hit State", component.hitReactionStateName
 			);
@@ -14559,6 +15579,9 @@ void ImGuiManager::DrawPrefabInspector() {
 				"Deactivate Delay",
 				&component.deathPresentationDeactivateDelay,
 				0.05f, 0.0f, 60.0f
+			);
+			changed |= InputTextString(
+				"Death Effect Path", component.deathPresentationEffectPath
 			);
 		} else if (component.type == "EnemySpawner") {
 				changed |= InputTextString(
@@ -14689,6 +15712,18 @@ void ImGuiManager::DrawPrefabInspector() {
 				"Inherit Bone Scale", &component.boneAttachmentInheritScale
 			);
 		} else if (component.type == "AttackSet") {
+			if (clipFocusName) {
+				const bool hasFocusedAttack = std::any_of(
+					component.attackDefinitions.begin(),
+					component.attackDefinitions.end(),
+					[&clipFocusName](const SceneAttackDefinition& attack) {
+						return attack.animation == *clipFocusName;
+					}
+				);
+				if (!hasFocusedAttack) {
+					ImGui::TextDisabled("No Attack Definition for this Clip.");
+				}
+			}
 			auto hasHitBox = [](const SceneEntity& candidate) {
 				return std::any_of(
 					candidate.components.begin(),
@@ -14698,9 +15733,143 @@ void ImGuiManager::DrawPrefabInspector() {
 					}
 				);
 			};
+			auto resolveHitBox = [&document](const SceneAttackHitWindow& window) {
+				SceneEntity* hitBox = window.hitBoxEntityId != 0
+					? document.FindEntity(window.hitBoxEntityId)
+					: nullptr;
+				if (!hitBox && !window.hitBoxEntityName.empty()) {
+					hitBox = document.FindEntityByName(window.hitBoxEntityName);
+				}
+				return hitBox;
+			};
+			auto makeDedicatedHitBoxName = [&document](
+				const SceneAttackDefinition& attack,
+				size_t windowIndex
+			) {
+				const std::string base = attack.name + "_HitBox_" +
+					std::to_string(windowIndex + 1);
+				std::string result = base;
+				for (uint32_t suffix = 2; document.FindEntityByName(result); ++suffix) {
+					result = base + "_" + std::to_string(suffix);
+				}
+				return result;
+			};
+			auto copyLegacyPayloadToHitBox = [](
+				SceneComponent& hitBox,
+				const SceneAttackHitWindow& window
+			) {
+				hitBox.hitBoxDamage = window.damage;
+				hitBox.hitBoxPoiseDamage = window.poiseDamage;
+				hitBox.hitBoxKnockback = window.knockback;
+				hitBox.hitBoxVerticalKnockback = window.verticalKnockback;
+				hitBox.hitBoxHitStopDuration = window.hitStopDuration;
+				hitBox.hitBoxReactionTag = window.reactionTag;
+				hitBox.hitBoxKnockbackDirectionMode = window.knockbackDirectionMode;
+				hitBox.hitBoxKnockbackLocalDirection = window.knockbackLocalDirection;
+				hitBox.hitBoxHitPolicy = window.hitPolicy;
+				hitBox.hitBoxTargetCooldown = window.targetCooldown;
+			};
+			auto isDedicatedHitBox = [&component](uint64_t entityId) {
+				for (const SceneAttackDefinition& attack : component.attackDefinitions) {
+					for (const SceneAttackHitWindow& window : attack.hitWindows) {
+						if (window.payloadSource == "HitBox" &&
+							window.hitBoxEntityId == entityId) {
+							return true;
+						}
+					}
+				}
+				return false;
+			};
+			auto createDedicatedHitBox = [
+				&document,
+				&hasHitBox,
+				&resolveHitBox,
+				&makeDedicatedHitBoxName,
+				&copyLegacyPayloadToHitBox,
+				&isDedicatedHitBox
+			](
+				SceneAttackDefinition& attack,
+				size_t windowIndex,
+				bool copyWindowPayload
+			) -> uint64_t {
+				SceneAttackHitWindow& window = attack.hitWindows[windowIndex];
+				SceneEntity* templateEntity = resolveHitBox(window);
+				if (!templateEntity && !copyWindowPayload) {
+					// 新規Windowは既存の専用HitBoxを連鎖複製せず、Dedicated
+					// Windowから未参照のAuthoring HitBoxを基準Shapeとして使う。
+					for (const SceneEntity& candidate : document.GetEntities()) {
+						if (hasHitBox(candidate) && !isDedicatedHitBox(candidate.id)) {
+							templateEntity = document.FindEntity(candidate.id);
+							break;
+						}
+					}
+				}
+				if (!templateEntity) {
+					for (const SceneAttackHitWindow& candidate : attack.hitWindows) {
+						if (SceneEntity* candidateEntity = resolveHitBox(candidate)) {
+							templateEntity = candidateEntity;
+							break;
+						}
+					}
+				}
+				if (!templateEntity) {
+					for (const SceneEntity& candidate : document.GetEntities()) {
+						if (hasHitBox(candidate)) {
+							templateEntity = document.FindEntity(candidate.id);
+							break;
+						}
+					}
+				}
+				if (!templateEntity) {
+					return 0;
+				}
+				const uint64_t dedicatedId = document.DuplicateEntity(templateEntity->id);
+				SceneEntity* dedicated = document.FindEntity(dedicatedId);
+				SceneComponent* dedicatedHitBox = dedicated
+					? FindComponent(*dedicated, "HitBox") : nullptr;
+				if (!dedicated || !dedicatedHitBox) {
+					if (dedicatedId != 0) {
+						document.RemoveEntity(dedicatedId);
+					}
+					return 0;
+				}
+				dedicated->name = makeDedicatedHitBoxName(attack, windowIndex);
+				dedicated->active = false;
+				if (!copyWindowPayload) {
+					SceneComponent* collider = FindComponent(*dedicated, "OBBCollider");
+					if (!collider) {
+						document.RemoveEntity(dedicatedId);
+						return 0;
+					}
+					dedicated->transform.scale = { 1.0f, 1.0f, 1.0f };
+					collider->enabled = true;
+					collider->colliderShape = "Box";
+					collider->colliderOffset = { 0.0f, 0.0f, 0.0f };
+					collider->colliderSizeMultiplier = { 0.5f, 0.5f, 0.5f };
+					collider->colliderIsTrigger = true;
+					collider->colliderActive = true;
+				}
+				else {
+					copyLegacyPayloadToHitBox(*dedicatedHitBox, window);
+					if (window.overrideHitBoxHalfSize) {
+						if (SceneComponent* collider = FindComponent(*dedicated, "OBBCollider");
+							collider && collider->enabled && collider->colliderShape == "Box") {
+							collider->colliderSizeMultiplier = window.hitBoxHalfSize;
+						}
+					}
+				}
+				window.hitBoxEntityId = dedicatedId;
+				window.hitBoxEntityName = dedicated->name;
+				window.payloadSource = "HitBox";
+				window.overrideHitBoxHalfSize = false;
+				return dedicatedId;
+			};
 			int removeAttack = -1;
 			for (size_t attackIndex = 0; attackIndex < component.attackDefinitions.size(); ++attackIndex) {
 				SceneAttackDefinition& attack = component.attackDefinitions[attackIndex];
+				if (clipFocusName && attack.animation != *clipFocusName) {
+					continue;
+				}
 				ImGui::PushID(static_cast<int>(attackIndex));
 				if (ImGui::TreeNodeEx("Attack", ImGuiTreeNodeFlags_DefaultOpen, "%s", attack.name.c_str())) {
 					ImGui::SeparatorText("Identity");
@@ -14754,6 +15923,73 @@ void ImGuiManager::DrawPrefabInspector() {
 					ImGui::SeparatorText("Motion");
 					changed |= ImGui::DragFloat("Forward Distance", &attack.forwardDistance, 0.01f, -100.0f, 100.0f);
 					changed |= ImGui::DragFloat("Side Distance", &attack.sideDistance, 0.01f, -100.0f, 100.0f);
+					const char* facingPreview = "Fixed At Start";
+					if (attack.facingMode == "InputDirection") facingPreview = "Input Direction";
+					if (attack.facingMode == "TargetDirection") facingPreview = "Target Direction";
+					if (attack.facingMode == "RotateByAngle") facingPreview = "Rotate By Angle";
+					if (ImGui::BeginCombo("Facing", facingPreview)) {
+						for (const char* mode : {
+							"FixedAtStart", "InputDirection", "TargetDirection", "RotateByAngle"
+						}) {
+							const bool selected = attack.facingMode == mode;
+							const char* label = mode[0] == 'I'
+								? "Input Direction"
+								: mode[0] == 'T'
+									? "Target Direction"
+									: mode[0] == 'R'
+										? "Rotate By Angle"
+										: "Fixed At Start";
+							if (ImGui::Selectable(label, selected)) {
+								attack.facingMode = mode;
+								changed = true;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					if (attack.facingMode == "TargetDirection") {
+						const SceneEntity* target = attack.facingTargetEntityId != 0
+							? document.FindEntity(attack.facingTargetEntityId)
+							: nullptr;
+						if (!target && !attack.facingTargetEntityName.empty()) {
+							target = document.FindEntityByName(attack.facingTargetEntityName);
+						}
+						const char* targetPreview = target ? target->name.c_str() : "None (keep start facing)";
+						if (ImGui::BeginCombo("Facing Target", targetPreview)) {
+							if (ImGui::Selectable("None (keep start facing)", !target)) {
+								attack.facingTargetEntityId = 0;
+								attack.facingTargetEntityName.clear();
+								changed = true;
+							}
+							for (const SceneEntity& candidate : document.GetEntities()) {
+								if (candidate.id == entity->id) { continue; }
+								const bool selected = candidate.id == attack.facingTargetEntityId;
+								const std::string label = candidate.name + " (" + std::to_string(candidate.id) + ")";
+								if (ImGui::Selectable(label.c_str(), selected)) {
+									attack.facingTargetEntityId = candidate.id;
+									attack.facingTargetEntityName = candidate.name;
+									changed = true;
+								}
+							}
+							ImGui::EndCombo();
+						}
+					} else if (attack.facingMode == "RotateByAngle") {
+						changed |= ImGui::DragFloat(
+							"Rotate Angle (radians)", &attack.facingRotateAngle,
+							0.01f, -25.1328f, 25.1328f
+						);
+					}
+					ImGui::SeparatorText("Loop");
+					changed |= ImGui::Checkbox("Loop Enabled", &attack.loopEnabled);
+					ImGui::BeginDisabled(!attack.loopEnabled);
+					changed |= ImGui::DragInt(
+						"Loop Max Count (0 = Unlimited)", &attack.loopMaxCount,
+						1.0f, 0, 1000
+					);
+					changed |= ImGui::DragFloat(
+						"Loop Safety Timeout", &attack.loopSafetyTimeout,
+						0.05f, 0.0f, 120.0f
+					);
+					ImGui::EndDisabled();
 					ImGui::SeparatorText("Hit Windows");
 					int removeWindow = -1;
 					for (size_t windowIndex = 0; windowIndex < attack.hitWindows.size(); ++windowIndex) {
@@ -14769,6 +16005,42 @@ void ImGuiManager::DrawPrefabInspector() {
 							if (!selectedHitBox && !window.hitBoxEntityName.empty()) {
 								selectedHitBox = document.FindEntityByName(window.hitBoxEntityName);
 							}
+							if (window.payloadSource == "HitBox") {
+								ImGui::TextDisabled("Payload Source: Dedicated HitBox");
+								const char* hitBoxPreview = selectedHitBox && hasHitBox(*selectedHitBox)
+									? selectedHitBox->name.c_str()
+									: "Missing Dedicated HitBox";
+								if (ImGui::BeginCombo("Dedicated HitBox", hitBoxPreview)) {
+									for (const SceneEntity& candidate : document.GetEntities()) {
+										if (!hasHitBox(candidate)) { continue; }
+										const bool selected = candidate.id == window.hitBoxEntityId;
+										const std::string label = candidate.name + " (" +
+											std::to_string(candidate.id) + ")";
+										if (ImGui::Selectable(label.c_str(), selected)) {
+											window.hitBoxEntityId = candidate.id;
+											window.hitBoxEntityName = candidate.name;
+											changed = true;
+										}
+									}
+									ImGui::EndCombo();
+								}
+								if (selectedHitBox) {
+									const SceneComponent* hitBox = FindComponent(*selectedHitBox, "HitBox");
+									if (hitBox) {
+										ImGui::TextDisabled(
+											"Damage %.1f | Poise %.1f | Knockback %.1f | Vertical %.1f",
+											hitBox->hitBoxDamage,
+											hitBox->hitBoxPoiseDamage,
+											hitBox->hitBoxKnockback,
+											hitBox->hitBoxVerticalKnockback
+										);
+									}
+									if (ImGui::SmallButton("Select Dedicated HitBox")) {
+										prefabSelectedEntityId_ = selectedHitBox->id;
+									}
+								}
+							} else {
+								ImGui::TextDisabled("Payload Source: Window Legacy (migrate before new authoring)");
 							std::string hitBoxPreview = "StateMachine HitBox (Fallback)";
 							if (selectedHitBox && hasHitBox(*selectedHitBox)) {
 								hitBoxPreview = selectedHitBox->name;
@@ -14795,11 +16067,75 @@ void ImGuiManager::DrawPrefabInspector() {
 								}
 								ImGui::EndCombo();
 							}
+							const SceneComponent* selectedCollider = selectedHitBox
+								? FindEnabledComponent(*selectedHitBox, "OBBCollider")
+								: nullptr;
+							const bool canOverrideHalfSize = selectedCollider &&
+								selectedCollider->colliderShape == "Box";
+							if (!canOverrideHalfSize) {
+								ImGui::TextDisabled(
+									"Half Size Override requires the selected HitBox to have a Box OBBCollider."
+								);
+							}
+							changed |= ImGui::Checkbox(
+								"Override HitBox Half Size", &window.overrideHitBoxHalfSize
+							);
+							ImGui::BeginDisabled(!canOverrideHalfSize);
+							if (window.overrideHitBoxHalfSize) {
+								changed |= ImGui::DragFloat3(
+									"HitBox Half Size", &window.hitBoxHalfSize.x,
+									0.01f, 0.001f, 10000.0f
+								);
+								window.hitBoxHalfSize.x = (std::max)(window.hitBoxHalfSize.x, 0.001f);
+								window.hitBoxHalfSize.y = (std::max)(window.hitBoxHalfSize.y, 0.001f);
+								window.hitBoxHalfSize.z = (std::max)(window.hitBoxHalfSize.z, 0.001f);
+							}
+							ImGui::EndDisabled();
 							ImGui::SeparatorText("Damage & Reaction");
 							changed |= ImGui::DragFloat("Damage", &window.damage, 0.1f, 0.0f, 100000.0f);
 							changed |= ImGui::DragFloat("Poise Damage", &window.poiseDamage, 0.1f, 0.0f, 100000.0f);
 							changed |= ImGui::DragFloat("Knockback", &window.knockback, 0.1f, 0.0f, 100000.0f);
+							changed |= ImGui::DragFloat(
+								"Vertical Knockback", &window.verticalKnockback,
+								0.1f, 0.0f, 100000.0f
+							);
+							changed |= ImGui::DragFloat(
+								"Hit Stop Duration", &window.hitStopDuration,
+								0.001f, 0.0f, 1.0f
+							);
 							changed |= InputTextString("Reaction Tag", window.reactionTag);
+							struct HitPolicyOption {
+								const char* value;
+								const char* label;
+							};
+							static constexpr HitPolicyOption hitPolicies[] = {
+								{ "OncePerActivation", "Once Per Activation" },
+								{ "OncePerLoop", "Once Per Loop" },
+								{ "TargetCooldown", "Target Cooldown" }
+							};
+							const char* policyPreview = "Once Per Activation";
+							for (const HitPolicyOption& option : hitPolicies) {
+								if (window.hitPolicy == option.value) {
+									policyPreview = option.label;
+									break;
+								}
+							}
+							if (ImGui::BeginCombo("Hit Policy", policyPreview)) {
+								for (const HitPolicyOption& option : hitPolicies) {
+									const bool selected = window.hitPolicy == option.value;
+									if (ImGui::Selectable(option.label, selected)) {
+										window.hitPolicy = option.value;
+										changed = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+							if (window.hitPolicy == "TargetCooldown") {
+								changed |= ImGui::DragFloat(
+									"Target Cooldown", &window.targetCooldown,
+									0.01f, 0.0f, 60.0f
+								);
+							}
 							struct DirectionModeOption {
 								const char* value;
 								const char* label;
@@ -14832,25 +16168,194 @@ void ImGuiManager::DrawPrefabInspector() {
 							ImGui::BeginDisabled(!usesLocalDirection);
 							changed |= ImGui::DragFloat3("Local Direction", &window.knockbackLocalDirection.x, 0.01f);
 							ImGui::EndDisabled();
+							if (selectedHitBox && ImGui::SmallButton("Create Dedicated HitBox From Window")) {
+								const uint64_t dedicatedId = createDedicatedHitBox(
+									attack, windowIndex, true
+								);
+								if (dedicatedId != 0) {
+									prefabSelectedEntityId_ = dedicatedId;
+									changed = true;
+								}
+							}
+							}
 							if (ImGui::SmallButton("Remove Hit Window")) removeWindow = static_cast<int>(windowIndex);
 							ImGui::TreePop();
 						}
 						ImGui::PopID();
 					}
 					if (removeWindow >= 0) { attack.hitWindows.erase(attack.hitWindows.begin() + removeWindow); changed = true; }
-					if (ImGui::SmallButton("Add Hit Window")) { attack.hitWindows.push_back(SceneAttackHitWindow{}); changed = true; }
+					if (ImGui::SmallButton("Add Hit Window")) {
+						attack.hitWindows.push_back(SceneAttackHitWindow{});
+						const size_t newWindowIndex = attack.hitWindows.size() - 1;
+						const uint64_t dedicatedId = createDedicatedHitBox(
+							attack, newWindowIndex, false
+						);
+						if (dedicatedId == 0) {
+							attack.hitWindows.pop_back();
+						} else {
+							prefabSelectedEntityId_ = dedicatedId;
+							changed = true;
+						}
+					}
+					ImGui::SeparatorText("Effect Events");
+					int removeEffect = -1;
+					for (size_t effectIndex = 0;
+						effectIndex < attack.effectEvents.size(); ++effectIndex) {
+						SceneAttackEffectEvent& effect = attack.effectEvents[effectIndex];
+						ImGui::PushID(static_cast<int>(effectIndex));
+						if (ImGui::TreeNodeEx(
+							"Effect Event", ImGuiTreeNodeFlags_DefaultOpen,
+							"Effect Event %zu", effectIndex + 1
+						)) {
+							changed |= ImGui::DragFloat(
+								"Time", &effect.time, 0.01f, 0.0f, 60.0f
+							);
+							changed |= InputTextString(
+								"Particle Effect Path", effect.particleEffectPath
+							);
+							const SceneEntity* selectedSpawn = effect.spawnEntityId != 0
+								? document.FindEntity(effect.spawnEntityId)
+								: nullptr;
+							if (!selectedSpawn && !effect.spawnEntityName.empty()) {
+								selectedSpawn = document.FindEntityByName(effect.spawnEntityName);
+							}
+							const char* spawnPreview = selectedSpawn
+								? selectedSpawn->name.c_str()
+								: "AttackSet (Fallback)";
+							if (ImGui::BeginCombo("Spawn Entity", spawnPreview)) {
+								if (ImGui::Selectable(
+									"AttackSet (Fallback)", effect.spawnEntityId == 0 &&
+									effect.spawnEntityName.empty()
+								)) {
+									effect.spawnEntityId = 0;
+									effect.spawnEntityName.clear();
+									changed = true;
+								}
+								for (const SceneEntity& candidate : document.GetEntities()) {
+									const bool selected = candidate.id == effect.spawnEntityId;
+									const std::string label = candidate.name + " (" +
+										std::to_string(candidate.id) + ")";
+									if (ImGui::Selectable(label.c_str(), selected)) {
+										effect.spawnEntityId = candidate.id;
+										effect.spawnEntityName = candidate.name;
+										changed = true;
+									}
+								}
+								ImGui::EndCombo();
+							}
+							changed |= ImGui::DragFloat3(
+								"Local Offset", &effect.localOffset.x, 0.01f
+							);
+							const char* groundEffectTypes[] = {
+								"None", "Prefab", "ProceduralCrack"
+							};
+							int groundEffectTypeIndex = effect.groundEffectType == "Prefab"
+								? 1
+								: effect.groundEffectType == "ProceduralCrack" ? 2 : 0;
+							if (ImGui::Combo(
+								"Ground Effect Type",
+								&groundEffectTypeIndex,
+								groundEffectTypes,
+								IM_ARRAYSIZE(groundEffectTypes)
+							)) {
+								effect.groundEffectType =
+									groundEffectTypes[groundEffectTypeIndex];
+								changed = true;
+							}
+							if (groundEffectTypeIndex != 0) {
+								changed |= ImGui::DragFloat(
+									"Ground Probe Distance", &effect.groundProbeDistance,
+									0.05f, 0.0f, 100.0f
+								);
+							}
+							if (groundEffectTypeIndex == 1) {
+								changed |= InputTextString(
+									"Ground Prefab Path", effect.groundPrefabPath
+								);
+								changed |= ImGui::DragFloat(
+									"Ground Prefab Lifetime", &effect.groundPrefabLifetime,
+									0.05f, 0.0f, 60.0f
+								);
+							} else if (groundEffectTypeIndex == 2) {
+								int primaryBranchCount = static_cast<int>(
+									effect.groundCrackPrimaryBranchCount
+								);
+								int segmentsPerBranch = static_cast<int>(
+									effect.groundCrackSegmentsPerBranch
+								);
+								changed |= ImGui::DragFloat(
+									"Crack Radius", &effect.groundCrackRadius,
+									0.05f, 0.0f, 100.0f
+								);
+								if (ImGui::DragInt(
+									"Primary Branch Count", &primaryBranchCount, 1.0f, 1, 24
+								)) {
+									effect.groundCrackPrimaryBranchCount =
+										static_cast<uint32_t>(primaryBranchCount);
+									changed = true;
+								}
+								if (ImGui::DragInt(
+									"Segments Per Branch", &segmentsPerBranch, 1.0f, 1, 12
+								)) {
+									effect.groundCrackSegmentsPerBranch =
+										static_cast<uint32_t>(segmentsPerBranch);
+									changed = true;
+								}
+								changed |= ImGui::DragFloat(
+									"Branch Probability", &effect.groundCrackBranchProbability,
+									0.01f, 0.0f, 1.0f
+								);
+								changed |= ImGui::DragFloat(
+									"Crack Width", &effect.groundCrackWidth,
+									0.005f, 0.0f, 10.0f
+								);
+								changed |= ImGui::DragFloat(
+									"Crack Lifetime", &effect.groundCrackLifetime,
+									0.05f, 0.0f, 60.0f
+								);
+								changed |= ImGui::DragFloat(
+									"Crack Surface Offset", &effect.groundCrackSurfaceOffset,
+									0.001f, 0.0f, 1.0f
+								);
+							}
+							if (ImGui::SmallButton("Remove Effect Event")) {
+								removeEffect = static_cast<int>(effectIndex);
+							}
+							ImGui::TreePop();
+						}
+						ImGui::PopID();
+					}
+					if (removeEffect >= 0) {
+						attack.effectEvents.erase(
+							attack.effectEvents.begin() + removeEffect
+						);
+						changed = true;
+					}
+					if (ImGui::SmallButton("Add Effect Event")) {
+						attack.effectEvents.push_back(SceneAttackEffectEvent{});
+						changed = true;
+					}
 					if (ImGui::SmallButton("Remove Attack")) removeAttack = static_cast<int>(attackIndex);
 					ImGui::TreePop();
 				}
 				ImGui::PopID();
 			}
 			if (removeAttack >= 0) { component.attackDefinitions.erase(component.attackDefinitions.begin() + removeAttack); changed = true; }
-			if (ImGui::Button("Add Attack")) { component.attackDefinitions.push_back(SceneAttackDefinition{}); changed = true; }
+			if (!clipFocusName && ImGui::Button("Add Attack")) {
+				component.attackDefinitions.push_back(SceneAttackDefinition{});
+				changed = true;
+			}
 		} else if (component.type == "PrefabAnimator") {
 			int removeClipIndex = -1;
 			for (size_t clipIndex = 0;
 				clipIndex < component.prefabAnimationClips.size();
 				++clipIndex) {
+				if (
+					clipFocusActive &&
+					static_cast<int>(clipIndex) != prefabAnimationPreviewClipIndex_
+				) {
+					continue;
+				}
 				ScenePrefabAnimationClip& clip =
 					component.prefabAnimationClips[clipIndex];
 				ImGui::PushID(static_cast<int>(clipIndex));

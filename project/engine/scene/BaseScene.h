@@ -1,6 +1,7 @@
 // 役割: すべてのシーンに共通する更新と描画のライフサイクルを定義する。
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -11,6 +12,7 @@ class Object3d;
 class SceneDocument;
 class SceneInstance;
 class SceneManager;
+struct ScenePostProcessSettings;
 
 // SceneInstanceを介してSceneManagerが所有するSceneの共通契約。派生側は各Passの順序を変えない。
 class BaseScene
@@ -61,6 +63,16 @@ public:
 	}
 	virtual void DrawOffscreenViews() {}
 	virtual void SetDeferForegroundEffects(bool defer) { (void)defer; }
+	// Runtime-only Profileなど、Scene更新後に有効になる描画設定を返す任意口。
+	// 非Runtime Sceneはfalseのままで既存のDocument Baselineを使う。
+	virtual bool TryGetRuntimePostProcessSettings(
+		ScenePostProcessSettings& settings,
+		uint64_t& generation
+	) const {
+		(void)settings;
+		(void)generation;
+		return false;
+	}
 
 	virtual void SetSceneManager(SceneManager* sceneManager) { sceneManager_ = sceneManager; }
 	virtual void SetSceneInstance(SceneInstance* sceneInstance) {

@@ -2,6 +2,10 @@
 #include "ScenePhysicsSystem.h"
 
 #include "../../../engine/3d/Object3d.h"
+#include "../../../engine/collision/Collider.h"
+#include "../../../engine/collision/OBBCollider.h"
+#include "../../../engine/collision/SphereCollider.h"
+#include "../../../engine/math/Math.h"
 #include "../../../engine/scene/SceneDocument.h"
 #include "../../../engine/scene/SceneEntityQuery.h"
 #include "../../../engine/scene/SceneTransformResolver.h"
@@ -9,10 +13,85 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cfloat>
 #include <cmath>
 #include <string>
 
 namespace {
+	bool RayIntersectObb(
+		const Vector3& origin,
+		const Vector3& direction,
+		float maxDistance,
+		const OBBCollider& collider,
+		float& outDistance
+	) {
+		const OBBCollider::OBB obb = collider.GetOBB();
+		const Vector3 delta = Math::Subtract(obb.center, origin);
+		const float halfSizes[3] = {
+			obb.halfSize.x, obb.halfSize.y, obb.halfSize.z
+		};
+		float minDistance = 0.0f;
+		float maxHitDistance = maxDistance;
+		for (uint32_t index = 0; index < 3; ++index) {
+			const Vector3& axis = obb.axis[index];
+			const float projectedOrigin = Math::Dot(axis, delta);
+			const float projectedDirection = Math::Dot(axis, direction);
+			if (std::abs(projectedDirection) > 0.000001f) {
+				float first = (projectedOrigin + halfSizes[index]) / projectedDirection;
+				float second = (projectedOrigin - halfSizes[index]) / projectedDirection;
+				if (first > second) { std::swap(first, second); }
+				minDistance = (std::max)(minDistance, first);
+				maxHitDistance = (std::min)(maxHitDistance, second);
+				if (minDistance > maxHitDistance) { return false; }
+			} else if (
+				-projectedOrigin - halfSizes[index] > 0.0f ||
+				-projectedOrigin + halfSizes[index] < 0.0f
+			) {
+				return false;
+			}
+		}
+		outDistance = minDistance;
+		return outDistance >= 0.0f && outDistance <= maxDistance;
+	}
+
+	Vector3 GetObbSurfaceNormal(const OBBCollider& collider, const Vector3& position) {
+		const OBBCollider::OBB obb = collider.GetOBB();
+		const Vector3 delta = Math::Subtract(position, obb.center);
+		const float halfSizes[3] = { obb.halfSize.x, obb.halfSize.y, obb.halfSize.z };
+		uint32_t closestAxis = 0;
+		float closestDifference = FLT_MAX;
+		float projected[3]{};
+		for (uint32_t index = 0; index < 3; ++index) {
+			projected[index] = Math::Dot(delta, obb.axis[index]);
+			const float difference = std::abs(std::abs(projected[index]) - halfSizes[index]);
+			if (difference < closestDifference) {
+				closestDifference = difference;
+				closestAxis = index;
+			}
+		}
+		return Math::Multiply(obb.axis[closestAxis], projected[closestAxis] >= 0.0f ? 1.0f : -1.0f);
+	}
+
+	bool RayIntersectSphere(
+		const Vector3& origin,
+		const Vector3& direction,
+		float maxDistance,
+		const SphereCollider& collider,
+		float& outDistance
+	) {
+		const Vector3 toCenter = Math::Subtract(collider.GetWorldCenter(), origin);
+		const float projectedDistance = Math::Dot(toCenter, direction);
+		const float centerDistanceSq = Math::Dot(toCenter, toCenter);
+		const float radius = collider.GetRadius();
+		const float perpendicularDistanceSq = centerDistanceSq -
+			projectedDistance * projectedDistance;
+		if (perpendicularDistanceSq > radius * radius) { return false; }
+		const float offset = std::sqrt((std::max)(radius * radius - perpendicularDistanceSq, 0.0f));
+		outDistance = projectedDistance - offset;
+		if (outDistance < 0.0f) { outDistance = projectedDistance + offset; }
+		return outDistance >= 0.0f && outDistance <= maxDistance;
+	}
+
 	PhysicsBodyType ToPhysicsBodyType(const std::string& bodyType) {
 		if (bodyType == "Dynamic") {
 			return PhysicsBodyType::Dynamic;
@@ -169,6 +248,54 @@ void ScenePhysicsSystem::ResetBodies(
 			binding.body->velocity = component->physicsVelocity;
 		}
 	}
+}
+
+bool ScenePhysicsSystem::RaycastStatic(
+	const Vector3& origin,
+	const Vector3& direction,
+	float maxDistance,
+	SceneStaticRaycastHit& outHit
+) const {
+	const float safeDistance = (std::max)(maxDistance, 0.0f);
+	if (safeDistance <= 0.0f || Math::Length(direction) <= 0.000001f) {
+		return false;
+	}
+	const Vector3 normalizedDirection = Math::Normalize(direction);
+	float closestDistance = safeDistance;
+	const Collider* closestCollider = nullptr;
+	bool found = false;
+	for (const Collider* collider : staticColliders_) {
+		if (!collider || !collider->IsActive() || collider->IsTrigger()) {
+			continue;
+		}
+		float distance = 0.0f;
+		const bool hit = collider->GetType() == Collider::Type::OBB
+			? RayIntersectObb(
+				origin, normalizedDirection, closestDistance,
+				static_cast<const OBBCollider&>(*collider), distance
+			)
+			: RayIntersectSphere(
+				origin, normalizedDirection, closestDistance,
+				static_cast<const SphereCollider&>(*collider), distance
+			);
+		if (!hit) { continue; }
+		closestDistance = distance;
+		closestCollider = collider;
+		found = true;
+	}
+	if (found) {
+		outHit.distance = closestDistance;
+		outHit.position = Math::Add(
+			origin, Math::Multiply(normalizedDirection, closestDistance)
+		);
+		outHit.normal = closestCollider->GetType() == Collider::Type::OBB
+			? GetObbSurfaceNormal(static_cast<const OBBCollider&>(*closestCollider), outHit.position)
+			: Math::Normalize(Math::Subtract(
+				outHit.position,
+				static_cast<const SphereCollider&>(*closestCollider).GetWorldCenter()
+			));
+	}
+	return found;
 }
 
 void ScenePhysicsSystem::Clear() {

@@ -3,9 +3,11 @@
 
 #include "SceneStatSystem.h"
 #include "SceneStateMachineSystem.h"
+#include "../../../engine/io/Input.h"
 #include "../../../engine/math/Math.h"
 #include "../../../engine/scene/SceneDocument.h"
 #include "../../../engine/scene/SceneEntityQuery.h"
+#include "../../../engine/scene/SceneInputKey.h"
 #include "../../../engine/scene/SceneTransformResolver.h"
 
 #include <algorithm>
@@ -29,7 +31,10 @@ namespace {
 				return entity;
 			}
 		}
-		return document.FindEntity(fallbackId);
+		// 明示参照が壊れたActionをOwnerへ誤適用しない。
+		return id == 0 && name.empty()
+			? document.FindEntity(fallbackId)
+			: nullptr;
 	}
 
 	bool CompareStat(float value, const SceneEventBinding& binding) {
@@ -47,14 +52,89 @@ namespace {
 		}
 		return value <= binding.statValue;
 	}
+
+	bool IsValidPostProcessProfileAction(
+		const SceneDocument& document,
+		const SceneEventAction& action
+	) {
+		const SceneEntity* manager = action.postProcessManagerEntityId != 0
+			? document.FindEntity(action.postProcessManagerEntityId)
+			: nullptr;
+		if (!manager && !action.postProcessManagerEntityName.empty()) {
+			manager = document.FindEntityByName(
+				action.postProcessManagerEntityName
+			);
+		}
+		if (!manager || action.postProcessProfileId.empty() ||
+			!SceneEntityQuery::IsEntityActiveInHierarchy(document, *manager)) {
+			return false;
+		}
+		const SceneComponent* component =
+			SceneEntityQuery::FindEnabledComponent(
+				*manager,
+				"PostProcessProfileManager"
+			);
+		if (!component) {
+			return false;
+		}
+		return std::any_of(
+			component->postProcessProfiles.begin(),
+			component->postProcessProfiles.end(),
+			[&action](const ScenePostProcessProfile& profile) {
+				return profile.id == action.postProcessProfileId;
+			}
+		);
+	}
+
+	bool IsValidPostProcessManagerAction(
+		const SceneDocument& document,
+		const SceneEventAction& action
+	) {
+		const SceneEntity* manager = action.postProcessManagerEntityId != 0
+			? document.FindEntity(action.postProcessManagerEntityId)
+			: nullptr;
+		if (!manager && !action.postProcessManagerEntityName.empty()) {
+			manager = document.FindEntityByName(
+				action.postProcessManagerEntityName
+			);
+		}
+		const SceneComponent* component = manager &&
+			SceneEntityQuery::IsEntityActiveInHierarchy(document, *manager)
+			? SceneEntityQuery::FindEnabledComponent(
+				*manager, "PostProcessProfileManager"
+			)
+			: nullptr;
+		return component && !component->postProcessProfiles.empty();
+	}
+
+	bool IsValidCameraAction(
+		const SceneDocument& document,
+		const SceneEventAction& action,
+		const char* componentName
+	) {
+		if (action.targetEntityId == 0 && action.targetEntityName.empty()) {
+			return false;
+		}
+		const SceneEntity* entity = action.targetEntityId != 0
+			? document.FindEntity(action.targetEntityId)
+			: nullptr;
+		if (!entity && !action.targetEntityName.empty()) {
+			entity = document.FindEntityByName(action.targetEntityName);
+		}
+		return entity &&
+			SceneEntityQuery::IsEntityActiveInHierarchy(document, *entity) &&
+			SceneEntityQuery::FindEnabledComponent(*entity, componentName);
+	}
 }
 
-std::string SceneEventSystem::Update(
+SceneEventResult SceneEventSystem::Update(
 	SceneDocument& document,
 	SceneStatSystem& statSystem,
 	SceneStateMachineSystem& stateMachineSystem,
-	float deltaTime
+	float deltaTime,
+	const SceneEventRuntimeSignals& signals
 ) {
+	SceneEventResult result{};
 	struct QueuedAction {
 		uint64_t ownerEntityId = 0;
 		SceneEventAction action{};
@@ -117,6 +197,18 @@ std::string SceneEventSystem::Update(
 					)) <= (std::max)(binding.radius, 0.0f);
 				}
 				shouldFire = condition && !state.wasConditionTrue;
+			} else if (binding.triggerType == "OnKeyPressed") {
+				Input* input = Input::GetInstance();
+				const BYTE key = ResolveSceneInputKey(binding.triggerKey);
+				condition = input && key != 0 && input->TriggerKey(key);
+				shouldFire = condition;
+			} else if (binding.triggerType == "OnCameraPathCompleted") {
+				condition =
+					(binding.targetEntityId != 0 ||
+						!binding.targetEntityName.empty()) &&
+					target &&
+					target->id == signals.completedCameraPathEntityId;
+				shouldFire = condition && !state.wasConditionTrue;
 			}
 
 			if (
@@ -143,7 +235,6 @@ std::string SceneEventSystem::Update(
 		}
 	}
 
-	std::string sceneTransition;
 	for (const QueuedAction& queued : queuedActions) {
 		const SceneEventAction& action = queued.action;
 		SceneEntity* target = ResolveEntity(
@@ -197,12 +288,71 @@ std::string SceneEventSystem::Update(
 			}
 		} else if (
 			action.type == "SceneTransition" &&
-			sceneTransition.empty()
+			result.sceneTransitionId.empty()
 		) {
-			sceneTransition = action.sceneId;
+			result.sceneTransitionId = action.sceneId;
+		} else if (
+			action.type == "SetPostProcessProfile" &&
+			IsValidPostProcessProfileAction(document, action)
+		) {
+			result.postProcessRequest.type =
+				ScenePostProcessRequestType::SetProfile;
+			result.postProcessRequest.managerEntityId =
+				action.postProcessManagerEntityId;
+			result.postProcessRequest.managerEntityName =
+				action.postProcessManagerEntityName;
+			result.postProcessRequest.profileId = action.postProcessProfileId;
+		} else if (
+			action.type == "NextPostProcessProfile" &&
+			IsValidPostProcessManagerAction(document, action)
+		) {
+			result.postProcessRequest.type =
+				ScenePostProcessRequestType::NextProfile;
+			result.postProcessRequest.managerEntityId =
+				action.postProcessManagerEntityId;
+			result.postProcessRequest.managerEntityName =
+				action.postProcessManagerEntityName;
+			result.postProcessRequest.profileId.clear();
+		} else if (action.type == "ResetPostProcessProfile") {
+			result.postProcessRequest.type =
+				ScenePostProcessRequestType::ResetToSceneDefault;
+			result.postProcessRequest.managerEntityId = 0;
+			result.postProcessRequest.managerEntityName.clear();
+			result.postProcessRequest.profileId.clear();
+		} else if (
+			action.type == "PlayCameraPath" &&
+			IsValidCameraAction(document, action, "CameraPath")
+		) {
+			result.cameraRequests.push_back({
+				SceneCameraRequestType::PlayPath,
+				action.targetEntityId,
+				action.targetEntityName
+			});
+		} else if (
+			action.type == "StopCameraPath" &&
+			IsValidCameraAction(document, action, "CameraPath")
+		) {
+			result.cameraRequests.push_back({
+				SceneCameraRequestType::StopPath,
+				action.targetEntityId,
+				action.targetEntityName
+			});
+		} else if (
+			action.type == "SelectCamera" &&
+			IsValidCameraAction(document, action, "Camera")
+		) {
+			result.cameraRequests.push_back({
+				SceneCameraRequestType::SelectCamera,
+				action.targetEntityId,
+				action.targetEntityName
+			});
 		}
 	}
-	return sceneTransition;
+	if (!result.sceneTransitionId.empty()) {
+		result.postProcessRequest.type = ScenePostProcessRequestType::None;
+		result.cameraRequests.clear();
+	}
+	return result;
 }
 
 void SceneEventSystem::Clear() {
