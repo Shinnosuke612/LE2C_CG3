@@ -281,7 +281,107 @@ bool SceneValidator::ValidateDocument(
 					);
 				}
 			};
-			if (component.type == "Light") {
+			if (component.type == "TextRenderer") {
+				if (
+					component.textRenderSpace != "ScreenOverlay" &&
+					component.textRenderSpace != "Scene2D"
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"TextRenderer has an unknown renderSpace: " +
+							component.textRenderSpace
+					);
+				}
+				if (component.textFontFamily.empty()) {
+					addIssue(
+						SceneValidationSeverity::Warning,
+						entity.id,
+						"TextRenderer fontFamily is empty; runtime fallback will be used"
+					);
+				}
+				if (component.textFontSize < 1.0f || component.textFontSize > 512.0f) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"TextRenderer fontSize must be between 1 and 512"
+					);
+				}
+				if (
+					component.textFontWeight != "Regular" &&
+					component.textFontWeight != "Bold"
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"TextRenderer has an unknown fontWeight: " +
+							component.textFontWeight
+					);
+				}
+				if (
+					component.textFontStyle != "Normal" &&
+					component.textFontStyle != "Italic"
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"TextRenderer has an unknown fontStyle: " +
+							component.textFontStyle
+					);
+				}
+				if (
+					component.textHorizontalAlignment != "Left" &&
+					component.textHorizontalAlignment != "Center" &&
+					component.textHorizontalAlignment != "Right"
+				) {
+					addIssue(SceneValidationSeverity::Error, entity.id,
+						"TextRenderer has an unknown horizontalAlignment");
+				}
+				if (
+					component.textVerticalAlignment != "Top" &&
+					component.textVerticalAlignment != "Center" &&
+					component.textVerticalAlignment != "Bottom"
+				) {
+					addIssue(SceneValidationSeverity::Error, entity.id,
+						"TextRenderer has an unknown verticalAlignment");
+				}
+				if (
+					component.textWrapMode != "NoWrap" &&
+					component.textWrapMode != "Word"
+				) {
+					addIssue(SceneValidationSeverity::Error, entity.id,
+						"TextRenderer has an unknown wrapMode");
+				}
+				if (
+					component.textOverflowMode != "Overflow" &&
+					component.textOverflowMode != "Clip" &&
+					component.textOverflowMode != "Ellipsis"
+				) {
+					addIssue(SceneValidationSeverity::Error, entity.id,
+						"TextRenderer has an unknown overflowMode");
+				}
+				if (
+					component.textLayoutSize.x < 0.0f ||
+					component.textLayoutSize.y < 0.0f ||
+					component.textLineSpacing < 0.1f ||
+					component.textOpacity < 0.0f || component.textOpacity > 1.0f
+				) {
+					addIssue(SceneValidationSeverity::Error, entity.id,
+					"TextRenderer contains an invalid layout or opacity value");
+				}
+				if (component.textHasPlacementProfiles) {
+					const auto validPlacement = [](const Text2DPlacement& placement, bool overlay) {
+						return placement.scale.x > 0.0f && placement.scale.y > 0.0f &&
+							(!overlay || (placement.viewportAnchor.x >= 0.0f && placement.viewportAnchor.x <= 1.0f &&
+								placement.viewportAnchor.y >= 0.0f && placement.viewportAnchor.y <= 1.0f));
+					};
+					if (!validPlacement(component.textOverlayPlacement, true) ||
+						!validPlacement(component.textScene2DPlacement, false)) {
+						addIssue(SceneValidationSeverity::Error, entity.id,
+							"TextRenderer contains an invalid 2D placement profile");
+					}
+				}
+			} else if (component.type == "Light") {
 				if (
 					component.lightType != "Directional" &&
 					component.lightType != "Point" &&

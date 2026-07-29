@@ -51,6 +51,11 @@ public:
 		(void)viewCamera;
 		DrawForegroundEffects();
 	}
+	virtual bool HasScreenOverlay() const { return false; }
+	virtual void DrawScreenOverlay(uint32_t width, uint32_t height) {
+		(void)width;
+		(void)height;
+	}
 	virtual void DrawShadow() {}
 	virtual void CollectShadowCasters(std::vector<Object3d*>& shadowCasters) {
 		(void)shadowCasters;

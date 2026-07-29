@@ -125,10 +125,35 @@ struct SceneEventBinding {
 
 // 完全なPost Process設定をManager Entity単位で切り替えるAuthoring Profile。
 // Runtime中の選択状態は保存せず、SceneEventSystemから要求として渡す。
+enum class ScenePostProcessAutomationParameter {
+	DissolveThreshold
+};
+
+enum class ScenePostProcessAutomationPlayback {
+	OneShot
+};
+
+enum class ScenePostProcessAutomationEasing {
+	Linear
+};
+
+struct ScenePostProcessAutomation {
+	ScenePostProcessAutomationParameter parameter =
+		ScenePostProcessAutomationParameter::DissolveThreshold;
+	float startValue = 0.0f;
+	float endValue = 1.0f;
+	float duration = 2.0f;
+	ScenePostProcessAutomationPlayback playback =
+		ScenePostProcessAutomationPlayback::OneShot;
+	ScenePostProcessAutomationEasing easing =
+		ScenePostProcessAutomationEasing::Linear;
+};
+
 struct ScenePostProcessProfile {
 	std::string id = "Profile1";
 	std::string label = "Profile 1";
 	ScenePostProcessSettings settings{};
+	std::vector<ScenePostProcessAutomation> automations;
 };
 
 struct SceneAnimationKeyframe {
@@ -250,6 +275,16 @@ struct SceneStateDefinition {
 	std::vector<SceneStateParameter> parameters;
 };
 
+struct Text2DPlacement {
+	Vector2 position = { 0.0f, 0.0f };
+	float rotation = 0.0f;
+	Vector2 scale = { 1.0f, 1.0f };
+	Vector2 pivot = { 0.0f, 0.0f };
+	Vector2 viewportAnchor = { 0.0f, 0.0f };
+	int sortingOrder = 0;
+	bool clipEnabled = false;
+};
+
 struct SceneComponent {
 	SceneComponent() = default;
 	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
@@ -275,6 +310,34 @@ struct SceneComponent {
 	Vector4 spriteColor = { 1.0f, 1.0f, 1.0f, 1.0f };
 	bool spriteFlipX = false;
 	bool spriteFlipY = false;
+	std::string textValue = "Text";
+	std::string textRenderSpace = "ScreenOverlay";
+	std::string textFontFamily = "Yu Gothic UI";
+	float textFontSize = 32.0f;
+	std::string textFontWeight = "Regular";
+	std::string textFontStyle = "Normal";
+	Vector4 textColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+	float textOpacity = 1.0f;
+	std::string textHorizontalAlignment = "Left";
+	std::string textVerticalAlignment = "Top";
+	std::string textWrapMode = "NoWrap";
+	std::string textOverflowMode = "Overflow";
+	Vector2 textLayoutSize = { 0.0f, 0.0f };
+	float textCharacterSpacing = 0.0f;
+	float textLineSpacing = 1.0f;
+	bool textOutlineEnabled = false;
+	Vector4 textOutlineColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+	float textOutlineWidth = 2.0f;
+	bool textShadowEnabled = false;
+	Vector4 textShadowColor = { 0.0f, 0.0f, 0.0f, 0.5f };
+	Vector2 textShadowOffset = { 2.0f, 2.0f };
+	Vector2 textViewportAnchor = { 0.0f, 0.0f };
+	Vector2 textPivot = { 0.0f, 0.0f };
+	int textSortingOrder = 0;
+	bool textClipEnabled = false;
+	bool textHasPlacementProfiles = false;
+	Text2DPlacement textOverlayPlacement{};
+	Text2DPlacement textScene2DPlacement{};
 	bool cameraIsMain = false;
 	float cameraFovY = 0.45f;
 	float cameraNearClip = 0.1f;
@@ -558,6 +621,9 @@ struct SceneComponent {
 	std::string projectileHomingTargetEntityName;
 	float projectileHomingStrength = 0.0f;
 	std::vector<ScenePostProcessProfile> postProcessProfiles;
+	uint64_t postProcessStatusTextEntityId = 0;
+	std::string postProcessStatusTextEntityName;
+	std::string postProcessStatusTextPrefix = "PostEffect: ";
 };
 
 struct ScenePrefabLink {

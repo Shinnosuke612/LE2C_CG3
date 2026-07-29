@@ -99,6 +99,7 @@ private:
 	SceneTemplateRegistry* sceneTemplateRegistry_ = nullptr;
 	SceneRenderTarget* sceneRenderTarget_ = nullptr;
 	SceneRenderTarget* postProcessRenderTargets_[2]{};
+	SceneRenderTarget* textOverlayRenderTarget_ = nullptr;
 	SceneRenderTarget* motionBlurHistoryRenderTarget_ = nullptr;
 	SceneRenderTarget* foregroundComposeRenderTarget_ = nullptr;
 	FullscreenCopy* fullscreenCopy_ = nullptr;

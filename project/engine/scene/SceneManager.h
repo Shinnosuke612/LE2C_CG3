@@ -32,6 +32,8 @@ public:
 
 	void Draw();
 	void DrawForegroundEffects();
+	bool HasScreenOverlay() const;
+	void DrawScreenOverlay(uint32_t width, uint32_t height);
 	void DrawShadow();
 	void DrawOffscreenViews();
 	void SetDeferForegroundEffects(bool defer);

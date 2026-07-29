@@ -28,10 +28,70 @@ namespace {
 	}
 }
 
+void ScenePostProcessProfileSystem::ApplyStatusBinding(
+	const SceneComponent* component
+) {
+	statusTextEntityId_ = component
+		? component->postProcessStatusTextEntityId
+		: 0;
+	statusTextEntityName_ = component
+		? component->postProcessStatusTextEntityName
+		: std::string{};
+	statusTextPrefix_ = component
+		? component->postProcessStatusTextPrefix
+		: "PostEffect: ";
+}
+
+void ScenePostProcessProfileSystem::ClearAutomation() {
+	automationActive_ = false;
+	automationStartValue_ = 0.0f;
+	automationEndValue_ = 1.0f;
+	automationDuration_ = 1.0f;
+	automationElapsed_ = 0.0f;
+}
+
+void ScenePostProcessProfileSystem::ApplyProfile(
+	const SceneEntity& manager,
+	const SceneComponent& component,
+	const ScenePostProcessProfile& profile
+) {
+	effectiveSettings_ = profile.settings;
+	activeManagerEntityId_ = manager.id;
+	activeProfileId_ = profile.id;
+	activeProfileLabel_ = profile.label;
+	ApplyStatusBinding(&component);
+	ClearAutomation();
+	if (!profile.automations.empty()) {
+		const ScenePostProcessAutomation& automation =
+			profile.automations.front();
+		automationActive_ = true;
+		automationStartValue_ = automation.startValue;
+		automationEndValue_ = automation.endValue;
+		automationDuration_ = (std::max)(automation.duration, 0.001f);
+		effectiveSettings_.dissolveThreshold = automationStartValue_;
+	}
+	++generation_;
+}
+
 void ScenePostProcessProfileSystem::ApplyBaseline(const SceneDocument& document) {
 	effectiveSettings_ = document.GetPostProcessSettings();
 	activeManagerEntityId_ = 0;
 	activeProfileId_.clear();
+	activeProfileLabel_ = "None";
+	ClearAutomation();
+	ApplyStatusBinding(nullptr);
+	for (const SceneEntity& entity : document.GetEntities()) {
+		const SceneComponent* component =
+			SceneEntityQuery::FindEnabledComponent(
+				entity, "PostProcessProfileManager"
+			);
+		if (component &&
+			(component->postProcessStatusTextEntityId != 0 ||
+				!component->postProcessStatusTextEntityName.empty())) {
+			ApplyStatusBinding(component);
+			break;
+		}
+	}
 	++generation_;
 }
 
@@ -43,11 +103,27 @@ void ScenePostProcessProfileSystem::Reset(const SceneDocument* document) {
 	effectiveSettings_ = {};
 	activeManagerEntityId_ = 0;
 	activeProfileId_.clear();
+	activeProfileLabel_ = "None";
+	ClearAutomation();
+	ApplyStatusBinding(nullptr);
 	++generation_;
 }
 
 void ScenePostProcessProfileSystem::Sync(const SceneDocument& document) {
 	if (activeManagerEntityId_ == 0) {
+		ApplyStatusBinding(nullptr);
+		for (const SceneEntity& entity : document.GetEntities()) {
+			const SceneComponent* component =
+				SceneEntityQuery::FindEnabledComponent(
+					entity, "PostProcessProfileManager"
+				);
+			if (component &&
+				(component->postProcessStatusTextEntityId != 0 ||
+					!component->postProcessStatusTextEntityName.empty())) {
+				ApplyStatusBinding(component);
+				break;
+			}
+		}
 		return;
 	}
 	const SceneEntity* manager = ResolveManager(
@@ -60,6 +136,7 @@ void ScenePostProcessProfileSystem::Sync(const SceneDocument& document) {
 	const SceneComponent* component = SceneEntityQuery::FindEnabledComponent(
 		*manager, "PostProcessProfileManager"
 	);
+	ApplyStatusBinding(component);
 	const auto profile = std::find_if(
 		component->postProcessProfiles.begin(),
 		component->postProcessProfiles.end(),
@@ -112,10 +189,7 @@ void ScenePostProcessProfileSystem::ApplyEventResult(
 			std::next(current) == component->postProcessProfiles.end()
 			? component->postProcessProfiles.begin()
 			: std::next(current);
-		effectiveSettings_ = next->settings;
-		activeManagerEntityId_ = manager->id;
-		activeProfileId_ = next->id;
-		++generation_;
+		ApplyProfile(*manager, *component, *next);
 		return;
 	}
 	if (
@@ -134,8 +208,23 @@ void ScenePostProcessProfileSystem::ApplyEventResult(
 	if (profile == component->postProcessProfiles.end()) {
 		return;
 	}
-	effectiveSettings_ = profile->settings;
-	activeManagerEntityId_ = manager->id;
-	activeProfileId_ = profile->id;
+	ApplyProfile(*manager, *component, *profile);
+}
+
+void ScenePostProcessProfileSystem::Update(float deltaTime) {
+	if (!automationActive_ || deltaTime <= 0.0f) {
+		return;
+	}
+	automationElapsed_ = (std::min)(
+		automationElapsed_ + deltaTime,
+		automationDuration_
+	);
+	const float progress = automationElapsed_ / automationDuration_;
+	effectiveSettings_.dissolveThreshold =
+		automationStartValue_ +
+		(automationEndValue_ - automationStartValue_) * progress;
+	if (automationElapsed_ >= automationDuration_) {
+		automationActive_ = false;
+	}
 	++generation_;
 }

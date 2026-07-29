@@ -305,6 +305,14 @@ void Game::Initialize() {
 		postTargetDesc.clearColor[3] = 1.0f;
 		renderTarget->Initialize(dxCommon_, srvManager_, postTargetDesc);
 	}
+	textOverlayRenderTarget_ = new SceneRenderTarget();
+	SceneRenderTarget::Desc textOverlayDesc{};
+	textOverlayDesc.width = dxCommon_->GetClientWidth();
+	textOverlayDesc.height = dxCommon_->GetClientHeight();
+	textOverlayDesc.format = RenderFormats::kDisplayFormat;
+	textOverlayDesc.createDepth = false;
+	textOverlayDesc.clearColor[3] = 1.0f;
+	textOverlayRenderTarget_->Initialize(dxCommon_, srvManager_, textOverlayDesc);
 	motionBlurHistoryRenderTarget_ = new SceneRenderTarget();
 	SceneRenderTarget::Desc motionBlurHistoryDesc{};
 	motionBlurHistoryDesc.width = dxCommon_->GetClientWidth();
@@ -875,6 +883,7 @@ void Game::Draw() {
 	for (SceneRenderTarget* renderTarget : postProcessRenderTargets_) {
 		renderTarget->Resize(renderWidth, renderHeight);
 	}
+	textOverlayRenderTarget_->Resize(renderWidth, renderHeight);
 	foregroundComposeRenderTarget_->Resize(
 		renderWidth,
 		renderHeight
@@ -1324,6 +1333,20 @@ void Game::Draw() {
 		parameters.chromaticCenterIntensity[2] = chromaticAberrationIntensity_;
 		parameters.chromaticParams[0] = chromaticAberrationFalloff_;
 		applyEffect(FullscreenCopy::Effect::kChromaticAberration, parameters);
+	}
+	if (sceneManager_ && sceneManager_->HasScreenOverlay()) {
+		textOverlayRenderTarget_->Begin(false, false);
+		srvManager_->PreDraw();
+		fullscreenCopy_->SetParameters(FullscreenCopy::Parameters{});
+		fullscreenCopy_->Draw(
+			sourceHandle,
+			depthHandle,
+			maskHandle,
+			FullscreenCopy::Effect::kCopy
+		);
+		sceneManager_->DrawScreenOverlay(renderWidth, renderHeight);
+		textOverlayRenderTarget_->End();
+		sourceHandle = textOverlayRenderTarget_->GetSrvGpuHandle();
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
@@ -1948,6 +1971,8 @@ void Game::Finalize() {
 		delete renderTarget;
 		renderTarget = nullptr;
 	}
+	delete textOverlayRenderTarget_;
+	textOverlayRenderTarget_ = nullptr;
 	delete foregroundComposeRenderTarget_;
 	foregroundComposeRenderTarget_ = nullptr;
 

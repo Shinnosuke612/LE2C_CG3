@@ -69,6 +69,14 @@ public:
 		const std::string& formatHint,
 		TextureColorSpace colorSpace = TextureColorSpace::Automatic
 	);
+	// Runtime生成Textureを同じkeyへ再登録する場合は、既存SRVを再利用する。
+	bool UpdateTextureFromPixels(
+		const std::string& textureKey,
+		const uint8_t* pixels,
+		uint32_t width,
+		uint32_t height,
+		DXGI_FORMAT format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB
+	);
 	void ClearFailedTextureCache();
 private:
 	bool RegisterTexture(

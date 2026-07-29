@@ -115,6 +115,21 @@ namespace {
 		return true;
 	}
 
+	bool InputTextMultilineString(const char* label, std::string& value) {
+		char buffer[2048]{};
+		CopyTextBuffer(buffer, sizeof(buffer), value);
+		if (!ImGui::InputTextMultiline(
+			label,
+			buffer,
+			sizeof(buffer),
+			ImVec2(-1.0f, ImGui::GetTextLineHeight() * 5.0f)
+		)) {
+			return false;
+		}
+		value = buffer;
+		return true;
+	}
+
 	std::string BuildEntityHierarchyLabel(
 		const SceneDocument& document,
 		const SceneEntity& entity
@@ -1396,12 +1411,6 @@ void ImGuiManager::DrawEditorWorkspace(
 	) {
 		FocusSceneCameraOnSelection();
 	}
-
-	ImGui::GetWindowDrawList()->AddText(
-		ImVec2(sceneMin.x + 16.0f, sceneMin.y + 44.0f),
-		IM_COL32(255, 255, 255, 255),
-		"Space to change particle assets"
-	);
 
 	sceneViewInputActive_ =
 		(sceneImageHovered || ImGui::IsWindowFocused()) &&
@@ -5950,6 +5959,8 @@ void ImGuiManager::DrawInspectorWindow() {
 				0.001f,
 				1000.0f
 			);
+		} else if (HasComponent(*entity, "TextRenderer")) {
+			ImGui::TextDisabled("TextRenderer placement is edited in its active Render Space profile.");
 		} else {
 			transformChanged |= ImGui::DragFloat3(
 				"Position",
@@ -6471,6 +6482,138 @@ void ImGuiManager::DrawInspectorWindow() {
 					entity->spriteColor = component.spriteColor;
 					entity->spriteFlipX = component.spriteFlipX;
 					entity->spriteFlipY = component.spriteFlipY;
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "TextRenderer") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool textChanged = false;
+				textChanged |= InputTextMultilineString("Text", component.textValue);
+				textChanged |= InputTextString("Font Family", component.textFontFamily);
+				textChanged |= ImGui::DragFloat(
+					"Font Size", &component.textFontSize, 1.0f, 1.0f, 512.0f
+				);
+				const char* renderSpaces[] = { "ScreenOverlay", "Scene2D" };
+				int renderSpaceIndex = component.textRenderSpace == "Scene2D" ? 1 : 0;
+				if (ImGui::Combo(
+					"Render Space", &renderSpaceIndex, renderSpaces, IM_ARRAYSIZE(renderSpaces)
+				)) {
+					component.textRenderSpace = renderSpaces[renderSpaceIndex];
+					textChanged = true;
+				}
+				const char* weights[] = { "Regular", "Bold" };
+				int weightIndex = component.textFontWeight == "Bold" ? 1 : 0;
+				if (ImGui::Combo("Weight", &weightIndex, weights, IM_ARRAYSIZE(weights))) {
+					component.textFontWeight = weights[weightIndex];
+					textChanged = true;
+				}
+				const char* styles[] = { "Normal", "Italic" };
+				int styleIndex = component.textFontStyle == "Italic" ? 1 : 0;
+				if (ImGui::Combo("Style", &styleIndex, styles, IM_ARRAYSIZE(styles))) {
+					component.textFontStyle = styles[styleIndex];
+					textChanged = true;
+				}
+				textChanged |= ImGui::ColorEdit4("Color", &component.textColor.x);
+				textChanged |= ImGui::DragFloat(
+					"Opacity", &component.textOpacity, 0.01f, 0.0f, 1.0f
+				);
+				const char* horizontalAlignments[] = { "Left", "Center", "Right" };
+				int horizontalIndex = component.textHorizontalAlignment == "Center"
+					? 1 : component.textHorizontalAlignment == "Right" ? 2 : 0;
+				if (ImGui::Combo(
+					"Horizontal Align", &horizontalIndex, horizontalAlignments,
+					IM_ARRAYSIZE(horizontalAlignments)
+				)) {
+					component.textHorizontalAlignment = horizontalAlignments[horizontalIndex];
+					textChanged = true;
+				}
+				const char* verticalAlignments[] = { "Top", "Center", "Bottom" };
+				int verticalIndex = component.textVerticalAlignment == "Center"
+					? 1 : component.textVerticalAlignment == "Bottom" ? 2 : 0;
+				if (ImGui::Combo(
+					"Vertical Align", &verticalIndex, verticalAlignments,
+					IM_ARRAYSIZE(verticalAlignments)
+				)) {
+					component.textVerticalAlignment = verticalAlignments[verticalIndex];
+					textChanged = true;
+				}
+				const char* wrapModes[] = { "NoWrap", "Word" };
+				int wrapIndex = component.textWrapMode == "Word" ? 1 : 0;
+				if (ImGui::Combo("Wrap", &wrapIndex, wrapModes, IM_ARRAYSIZE(wrapModes))) {
+					component.textWrapMode = wrapModes[wrapIndex];
+					textChanged = true;
+				}
+				const char* overflowModes[] = { "Overflow", "Clip", "Ellipsis" };
+				int overflowIndex = component.textOverflowMode == "Clip"
+					? 1 : component.textOverflowMode == "Ellipsis" ? 2 : 0;
+				if (ImGui::Combo(
+					"Overflow", &overflowIndex, overflowModes, IM_ARRAYSIZE(overflowModes)
+				)) {
+					component.textOverflowMode = overflowModes[overflowIndex];
+					textChanged = true;
+				}
+				textChanged |= ImGui::DragFloat2(
+					"Layout Size", &component.textLayoutSize.x, 1.0f, 0.0f, 4096.0f
+				);
+				textChanged |= ImGui::DragFloat(
+					"Character Spacing", &component.textCharacterSpacing, 0.1f, -32.0f, 128.0f
+				);
+				textChanged |= ImGui::DragFloat(
+					"Line Spacing", &component.textLineSpacing, 0.01f, 0.1f, 8.0f
+				);
+				textChanged |= ImGui::Checkbox("Outline", &component.textOutlineEnabled);
+				if (component.textOutlineEnabled) {
+					textChanged |= ImGui::ColorEdit4("Outline Color", &component.textOutlineColor.x);
+					textChanged |= ImGui::DragFloat(
+						"Outline Width", &component.textOutlineWidth, 0.1f, 0.0f, 32.0f
+					);
+				}
+				textChanged |= ImGui::Checkbox("Shadow", &component.textShadowEnabled);
+				if (component.textShadowEnabled) {
+					textChanged |= ImGui::ColorEdit4("Shadow Color", &component.textShadowColor.x);
+					textChanged |= ImGui::DragFloat2(
+						"Shadow Offset", &component.textShadowOffset.x, 0.1f, -128.0f, 128.0f
+					);
+				}
+				if (!component.textHasPlacementProfiles) {
+					const Vector3 legacyEuler = MakeEulerFromQuaternion(entity->transform.rotate);
+					Text2DPlacement legacyPlacement{};
+					legacyPlacement.position = { entity->transform.translate.x, entity->transform.translate.y };
+					legacyPlacement.rotation = legacyEuler.z;
+					legacyPlacement.scale = { entity->transform.scale.x, entity->transform.scale.y };
+					legacyPlacement.pivot = component.textPivot;
+					legacyPlacement.viewportAnchor = component.textViewportAnchor;
+					legacyPlacement.sortingOrder = component.textSortingOrder;
+					legacyPlacement.clipEnabled = component.textClipEnabled;
+					component.textOverlayPlacement = legacyPlacement;
+					component.textScene2DPlacement = legacyPlacement;
+					component.textHasPlacementProfiles = true;
+					textChanged = true;
+				}
+				Text2DPlacement& placement = component.textRenderSpace == "Scene2D"
+					? component.textScene2DPlacement : component.textOverlayPlacement;
+				ImGui::SeparatorText(component.textRenderSpace == "Scene2D"
+					? "Placement: Scene 2D" : "Placement: Screen Overlay");
+				if (component.textRenderSpace == "ScreenOverlay") {
+					textChanged |= ImGui::DragFloat2(
+						"Viewport Anchor", &placement.viewportAnchor.x, 0.01f, 0.0f, 1.0f
+					);
+				}
+				textChanged |= ImGui::DragFloat2("Position", &placement.position.x, 0.5f);
+				textChanged |= ImGui::DragFloat("Rotation", &placement.rotation, 0.01f);
+				textChanged |= ImGui::DragFloat2(
+					"Scale", &placement.scale.x, 0.01f, 0.001f, 1000.0f
+				);
+				textChanged |= ImGui::DragFloat2("Pivot", &placement.pivot.x, 0.01f, 0.0f, 1.0f);
+				textChanged |= ImGui::DragInt("Sorting Order", &placement.sortingOrder);
+				textChanged |= ImGui::Checkbox("Clip", &placement.clipEnabled);
+				if (textChanged) {
+					component.textFontSize = std::clamp(component.textFontSize, 1.0f, 512.0f);
+					component.textOpacity = std::clamp(component.textOpacity, 0.0f, 1.0f);
+					component.textLayoutSize.x = std::clamp(component.textLayoutSize.x, 0.0f, 4096.0f);
+					component.textLayoutSize.y = std::clamp(component.textLayoutSize.y, 0.0f, 4096.0f);
+					component.textLineSpacing = std::clamp(component.textLineSpacing, 0.1f, 8.0f);
+					component.textOutlineWidth = std::clamp(component.textOutlineWidth, 0.0f, 32.0f);
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
@@ -8547,6 +8690,52 @@ void ImGuiManager::DrawInspectorWindow() {
 							profilesChanged = true;
 						}
 						profilesChanged |= DrawPostProcessSettingsEditor(profile.settings);
+						bool dissolveAutomationEnabled =
+							!profile.automations.empty();
+						if (ImGui::Checkbox(
+							"Animate Dissolve Threshold",
+							&dissolveAutomationEnabled
+						)) {
+							if (dissolveAutomationEnabled) {
+								profile.automations = {
+									ScenePostProcessAutomation{}
+								};
+							} else {
+								profile.automations.clear();
+							}
+							profilesChanged = true;
+						}
+						if (!profile.automations.empty()) {
+							ScenePostProcessAutomation& automation =
+								profile.automations.front();
+							profilesChanged |= ImGui::SliderFloat(
+								"Automation Start",
+								&automation.startValue,
+								0.0f,
+								1.0f
+							);
+							profilesChanged |= ImGui::SliderFloat(
+								"Automation End",
+								&automation.endValue,
+								0.0f,
+								1.0f
+							);
+							profilesChanged |= ImGui::DragFloat(
+								"Automation Duration",
+								&automation.duration,
+								0.05f,
+								0.05f,
+								60.0f,
+								"%.2f s"
+							);
+							automation.duration = (std::max)(
+								automation.duration,
+								0.05f
+							);
+							ImGui::TextDisabled(
+								"Playback: OneShot / Easing: Linear"
+							);
+						}
 						if (profile.id.empty()) {
 							ImGui::TextDisabled("Profile Id is required for Event actions.");
 						}
@@ -10356,6 +10545,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				"MeshRenderer",
 				"Environment",
 				"SpriteRenderer",
+				"TextRenderer",
 				"Camera",
 				"Light",
 				"MonitorRenderer",

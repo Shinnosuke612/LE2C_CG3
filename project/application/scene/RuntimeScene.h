@@ -26,6 +26,7 @@
 #include "system/SceneRuntimeEffectSystem.h"
 #include "system/SceneStatSystem.h"
 #include "system/SceneStateMachineSystem.h"
+#include "system/SceneTextRenderSystem.h"
 #include "system/SceneTransitionSystem.h"
 
 #include <cstdint>
@@ -54,6 +55,8 @@ public:
 	void DrawPreparedSceneContent(Camera* viewCamera) override;
 	void DrawForegroundEffects() override;
 	void DrawForegroundEffectsWithCamera(Camera* viewCamera) override;
+	bool HasScreenOverlay() const override;
+	void DrawScreenOverlay(uint32_t width, uint32_t height) override;
 	void DrawOffscreenViews() override;
 	void DrawShadow() override;
 	void CollectShadowCasters(std::vector<Object3d*>& shadowCasters) override;
@@ -108,5 +111,6 @@ private:
 	SceneRuntimeEffectSystem runtimeEffectSystem_;
 	SceneStatSystem statSystem_;
 	SceneStateMachineSystem stateMachineSystem_;
+	SceneTextRenderSystem textRenderSystem_;
 };
 

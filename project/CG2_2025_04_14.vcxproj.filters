@@ -51,6 +51,8 @@
     <ClCompile Include="engine\math\Math.cpp" />
     <ClCompile Include="engine\2d\Sprite.cpp" />
     <ClCompile Include="engine\2d\SpriteCommon.cpp" />
+	<ClCompile Include="engine\2d\TextSprite.cpp" />
+	<ClCompile Include="engine\text\TextRasterizer.cpp" />
     <ClCompile Include="engine\utility\StringUtility.cpp" />
     <ClCompile Include="engine\2d\TextureManager.cpp" />
     <ClCompile Include="engine\base\WinApp.cpp" />
@@ -104,6 +106,9 @@
 		<Filter>Application\Scene\System</Filter>
 	</ClCompile>
 	<ClCompile Include="application\scene\system\SceneRuntimeEffectSystem.cpp">
+		<Filter>Application\Scene\System</Filter>
+	</ClCompile>
+	<ClCompile Include="application\scene\system\SceneTextRenderSystem.cpp">
 		<Filter>Application\Scene\System</Filter>
 	</ClCompile>
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp">
@@ -267,6 +272,8 @@
     <ClInclude Include="engine\math\Math.h" />
     <ClInclude Include="engine\2d\Sprite.h" />
     <ClInclude Include="engine\2d\SpriteCommon.h" />
+	<ClInclude Include="engine\2d\TextSprite.h" />
+	<ClInclude Include="engine\text\TextRasterizer.h" />
     <ClInclude Include="engine\utility\StringUtility.h" />
     <ClInclude Include="engine\2d\TextureManager.h" />
 	<ClInclude Include="engine\2d\TextureFormat.h" />
@@ -331,6 +338,9 @@
 		<Filter>Application\Scene\System</Filter>
 	</ClInclude>
 	<ClInclude Include="application\scene\system\SceneRuntimeEffectSystem.h">
+		<Filter>Application\Scene\System</Filter>
+	</ClInclude>
+	<ClInclude Include="application\scene\system\SceneTextRenderSystem.h">
 		<Filter>Application\Scene\System</Filter>
 	</ClInclude>
     <ClInclude Include="application\scene\system\SceneDebugSystem.h">

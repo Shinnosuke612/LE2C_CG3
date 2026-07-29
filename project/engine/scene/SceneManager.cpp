@@ -554,6 +554,34 @@ void SceneManager::DrawForegroundEffects()
 	}
 }
 
+bool SceneManager::HasScreenOverlay() const
+{
+	for (const std::unique_ptr<SceneInstance>& instance : sceneInstances_) {
+		if (const BaseScene* scene = instance->GetScene()) {
+			if (scene->HasScreenOverlay()) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+void SceneManager::DrawScreenOverlay(uint32_t width, uint32_t height)
+{
+	BaseScene* activeScene = GetActiveScene();
+	if (!activeScene) {
+		return;
+	}
+	activeScene->DrawScreenOverlay(width, height);
+	for (const std::unique_ptr<SceneInstance>& instance : sceneInstances_) {
+		if (BaseScene* scene = instance->GetScene()) {
+			if (scene != activeScene) {
+				scene->DrawScreenOverlay(width, height);
+			}
+		}
+	}
+}
+
 void SceneManager::DrawShadow()
 {
 	if (BaseScene* activeScene = GetActiveScene()) {

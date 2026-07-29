@@ -7,6 +7,7 @@
 #include "../utility/Logger.h"
 #include "../utility/EditableResourcePath.h"
 #include <cassert>
+#include <cstring>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
@@ -271,7 +272,10 @@ bool TextureManager::RegisterTexture(
 		return false;
 	}
 
-	assert(srvManager->CanAllocate());
+	const bool reusesExistingDescriptor = textureDatas.contains(textureKey);
+	if (!reusesExistingDescriptor) {
+		assert(srvManager->CanAllocate());
+	}
 
 	DirectX::ScratchImage mipImages{};
 	const DirectX::ScratchImage* uploadImage = &loadedImage;
@@ -300,10 +304,12 @@ bool TextureManager::RegisterTexture(
 	textureData.metadata = uploadImage->GetMetadata();
 	textureData.resource = dxCommon->CreateTextureResource(textureData.metadata);
 
-	// SRV確保
-	textureData.srvIndex = srvManager->Allocate();
-	textureData.srvHandleCPU = srvManager->GetCPUDescriptorHandle(textureData.srvIndex);
-	textureData.srvHandleGPU = srvManager->GetGPUDescriptorHandle(textureData.srvIndex);
+	// 既存keyの更新はDescriptorを再利用し、Runtime編集でSRVを増やさない。
+	if (!reusesExistingDescriptor) {
+		textureData.srvIndex = srvManager->Allocate();
+		textureData.srvHandleCPU = srvManager->GetCPUDescriptorHandle(textureData.srvIndex);
+		textureData.srvHandleGPU = srvManager->GetGPUDescriptorHandle(textureData.srvIndex);
+	}
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
 	srvDesc.Format = textureData.metadata.format;
@@ -338,6 +344,54 @@ bool TextureManager::RegisterTexture(
 
 	dxCommon->ExecuteCommandListAndWait();
 	return true;
+}
+
+bool TextureManager::UpdateTextureFromPixels(
+	const std::string& textureKey,
+	const uint8_t* pixels,
+	uint32_t width,
+	uint32_t height,
+	DXGI_FORMAT format
+) {
+	if (textureKey.empty() || pixels == nullptr || width == 0 || height == 0) {
+		return false;
+	}
+
+	DirectX::ScratchImage image{};
+	const HRESULT initializeResult = image.Initialize2D(
+		format,
+		width,
+		height,
+		1,
+		1
+	);
+	if (FAILED(initializeResult) || image.GetPixels() == nullptr) {
+		Logger::Log("Failed to create runtime texture: " + textureKey + "\n");
+		return false;
+	}
+
+	const size_t rowBytes = static_cast<size_t>(width) * 4;
+	const DirectX::Image* targetImage = image.GetImage(0, 0, 0);
+	if (!targetImage || targetImage->rowPitch < rowBytes) {
+		return false;
+	}
+	for (uint32_t row = 0; row < height; ++row) {
+		std::memcpy(
+			image.GetPixels() + targetImage->rowPitch * row,
+			pixels + rowBytes * row,
+			rowBytes
+		);
+	}
+
+	const bool registered = RegisterTexture(
+		textureKey,
+		image,
+		image.GetMetadata()
+	);
+	if (registered) {
+		failedTextureKeys.erase(textureKey);
+	}
+	return registered;
 }
 
 bool TextureManager::HasTexture(const std::string& textureKey) const {

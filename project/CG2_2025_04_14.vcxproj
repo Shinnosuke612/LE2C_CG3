@@ -189,6 +189,7 @@
 	<ClCompile Include="application\scene\system\SceneHitReactionSystem.cpp" />
 	<ClCompile Include="application\scene\system\SceneHitStopSystem.cpp" />
 	<ClCompile Include="application\scene\system\SceneRuntimeEffectSystem.cpp" />
+	<ClCompile Include="application\scene\system\SceneTextRenderSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEnemySystem.cpp" />
 	<ClCompile Include="application\scene\system\SceneEnemySpawnerSystem.cpp" />
@@ -225,6 +226,8 @@
     <ClCompile Include="engine\3d\Object3dCommon.cpp" />
     <ClCompile Include="engine\2d\Sprite.cpp" />
     <ClCompile Include="engine\2d\SpriteCommon.cpp" />
+	<ClCompile Include="engine\2d\TextSprite.cpp" />
+	<ClCompile Include="engine\text\TextRasterizer.cpp" />
     <ClCompile Include="engine\3d\SrvManager.cpp" />
     <ClCompile Include="engine\utility\StringUtility.cpp" />
     <ClCompile Include="engine\2d\TextureManager.cpp" />
@@ -402,6 +405,8 @@
     <ClInclude Include="engine\3d\Object3dCommon.h" />
     <ClInclude Include="engine\2d\Sprite.h" />
     <ClInclude Include="engine\2d\SpriteCommon.h" />
+	<ClInclude Include="engine\2d\TextSprite.h" />
+	<ClInclude Include="engine\text\TextRasterizer.h" />
     <ClInclude Include="engine\3d\SrvManager.h" />
     <ClInclude Include="engine\utility\StringUtility.h" />
     <ClInclude Include="engine\2d\TextureManager.h" />
@@ -425,6 +430,7 @@
 	<ClInclude Include="application\scene\system\SceneHitReactionSystem.h" />
 	<ClInclude Include="application\scene\system\SceneHitStopSystem.h" />
 	<ClInclude Include="application\scene\system\SceneRuntimeEffectSystem.h" />
+	<ClInclude Include="application\scene\system\SceneTextRenderSystem.h" />
     <ClInclude Include="application\scene\system\SceneDebugSystem.h" />
     <ClInclude Include="application\scene\system\SceneEnemySystem.h" />
 	<ClInclude Include="application\scene\system\SceneEnemySpawnerSystem.h" />

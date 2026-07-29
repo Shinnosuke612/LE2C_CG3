@@ -1216,10 +1216,23 @@ namespace {
 	) {
 		json result = json::array();
 		for (const ScenePostProcessProfile& profile : profiles) {
+			json automations = json::array();
+			for (const ScenePostProcessAutomation& automation :
+				profile.automations) {
+				automations.push_back({
+					{ "parameter", "DissolveThreshold" },
+					{ "startValue", automation.startValue },
+					{ "endValue", automation.endValue },
+					{ "duration", automation.duration },
+					{ "playback", "OneShot" },
+					{ "easing", "Linear" }
+				});
+			}
 			result.push_back({
 				{ "id", profile.id },
 				{ "label", profile.label },
-				{ "settings", PostProcessToJson(profile.settings) }
+				{ "settings", PostProcessToJson(profile.settings) },
+				{ "automations", std::move(automations) }
 			});
 		}
 		return result;
@@ -1375,6 +1388,47 @@ namespace {
 			result["color"] = VectorToJson(component.spriteColor);
 			result["flipX"] = component.spriteFlipX;
 			result["flipY"] = component.spriteFlipY;
+		} else if (component.type == "TextRenderer") {
+			result["text"] = component.textValue;
+			result["renderSpace"] = component.textRenderSpace;
+			result["fontFamily"] = component.textFontFamily;
+			result["fontSize"] = component.textFontSize;
+			result["fontWeight"] = component.textFontWeight;
+			result["fontStyle"] = component.textFontStyle;
+			result["color"] = VectorToJson(component.textColor);
+			result["opacity"] = component.textOpacity;
+			result["horizontalAlignment"] = component.textHorizontalAlignment;
+			result["verticalAlignment"] = component.textVerticalAlignment;
+			result["wrapMode"] = component.textWrapMode;
+			result["overflowMode"] = component.textOverflowMode;
+			result["layoutSize"] = VectorToJson(component.textLayoutSize);
+			result["characterSpacing"] = component.textCharacterSpacing;
+			result["lineSpacing"] = component.textLineSpacing;
+			result["outlineEnabled"] = component.textOutlineEnabled;
+			result["outlineColor"] = VectorToJson(component.textOutlineColor);
+			result["outlineWidth"] = component.textOutlineWidth;
+			result["shadowEnabled"] = component.textShadowEnabled;
+			result["shadowColor"] = VectorToJson(component.textShadowColor);
+			result["shadowOffset"] = VectorToJson(component.textShadowOffset);
+			result["viewportAnchor"] = VectorToJson(component.textViewportAnchor);
+			result["pivot"] = VectorToJson(component.textPivot);
+			result["sortingOrder"] = component.textSortingOrder;
+			result["clipEnabled"] = component.textClipEnabled;
+			if (component.textHasPlacementProfiles) {
+				auto placementToJson = [](const Text2DPlacement& placement) {
+					nlohmann::json value{};
+					value["position"] = VectorToJson(placement.position);
+					value["rotation"] = placement.rotation;
+					value["scale"] = VectorToJson(placement.scale);
+					value["pivot"] = VectorToJson(placement.pivot);
+					value["viewportAnchor"] = VectorToJson(placement.viewportAnchor);
+					value["sortingOrder"] = placement.sortingOrder;
+					value["clipEnabled"] = placement.clipEnabled;
+					return value;
+				};
+				result["overlayPlacement"] = placementToJson(component.textOverlayPlacement);
+				result["scene2DPlacement"] = placementToJson(component.textScene2DPlacement);
+			}
 		} else if (component.type == "Camera") {
 			result["isMain"] = component.cameraIsMain;
 			result["fovY"] = component.cameraFovY;
@@ -1655,6 +1709,12 @@ namespace {
 			result["profiles"] = PostProcessProfilesToJson(
 				component.postProcessProfiles
 			);
+			result["statusTextEntityId"] =
+				component.postProcessStatusTextEntityId;
+			result["statusTextEntityName"] =
+				component.postProcessStatusTextEntityName;
+			result["statusTextPrefix"] =
+				component.postProcessStatusTextPrefix;
 		} else if (component.type == "PrefabAnimator") {
 			result["clips"] = PrefabAnimationsToJson(
 				component.prefabAnimationClips
@@ -1892,6 +1952,34 @@ namespace {
 			profile.settings = PostProcessFromJson(
 				value.value("settings", json::object()), profile.settings
 			);
+			const json& automations = value.value(
+				"automations", json::array()
+			);
+			if (automations.is_array()) {
+				for (const json& automationValue : automations) {
+					if (!automationValue.is_object() ||
+						automationValue.value("parameter", std::string{}) !=
+							"DissolveThreshold" ||
+						automationValue.value("playback", std::string{ "OneShot" }) !=
+							"OneShot" ||
+						automationValue.value("easing", std::string{ "Linear" }) !=
+							"Linear") {
+						continue;
+					}
+					ScenePostProcessAutomation automation{};
+					automation.startValue = automationValue.value(
+						"startValue", automation.startValue
+					);
+					automation.endValue = automationValue.value(
+						"endValue", automation.endValue
+					);
+					automation.duration = (std::max)(
+						automationValue.value("duration", automation.duration),
+						0.001f
+					);
+					profile.automations.push_back(automation);
+				}
+			}
 			if (!profile.id.empty()) {
 				destination.push_back(std::move(profile));
 			}
@@ -2369,6 +2457,121 @@ namespace {
 				}
 				component.spriteFlipX = value.value("flipX", false);
 				component.spriteFlipY = value.value("flipY", false);
+				if (component.type == "TextRenderer") {
+					component.textValue = value.value(
+						"text", component.textValue
+					);
+					component.textRenderSpace = value.value(
+						"renderSpace", component.textRenderSpace
+					);
+					component.textFontFamily = value.value(
+						"fontFamily", component.textFontFamily
+					);
+					component.textFontSize = std::clamp(
+						value.value("fontSize", component.textFontSize),
+						1.0f,
+						512.0f
+					);
+					component.textFontWeight = value.value(
+						"fontWeight", component.textFontWeight
+					);
+					component.textFontStyle = value.value(
+						"fontStyle", component.textFontStyle
+					);
+					if (value.contains("color")) {
+						component.textColor = JsonToVector(
+							value.at("color"), component.textColor
+						);
+					}
+					component.textOpacity = std::clamp(
+						value.value("opacity", component.textOpacity),
+						0.0f,
+						1.0f
+					);
+					component.textHorizontalAlignment = value.value(
+						"horizontalAlignment", component.textHorizontalAlignment
+					);
+					component.textVerticalAlignment = value.value(
+						"verticalAlignment", component.textVerticalAlignment
+					);
+					component.textWrapMode = value.value(
+						"wrapMode", component.textWrapMode
+					);
+					component.textOverflowMode = value.value(
+						"overflowMode", component.textOverflowMode
+					);
+					if (value.contains("layoutSize")) {
+						component.textLayoutSize = JsonToVector(
+							value.at("layoutSize"), component.textLayoutSize
+						);
+					}
+					component.textCharacterSpacing = value.value(
+						"characterSpacing", component.textCharacterSpacing
+					);
+					component.textLineSpacing = (std::max)(
+						value.value("lineSpacing", component.textLineSpacing),
+						0.1f
+					);
+					component.textOutlineEnabled = value.value(
+						"outlineEnabled", component.textOutlineEnabled
+					);
+					if (value.contains("outlineColor")) {
+						component.textOutlineColor = JsonToVector(
+							value.at("outlineColor"), component.textOutlineColor
+						);
+					}
+					component.textOutlineWidth = std::clamp(
+						value.value("outlineWidth", component.textOutlineWidth),
+						0.0f,
+						32.0f
+					);
+					component.textShadowEnabled = value.value(
+						"shadowEnabled", component.textShadowEnabled
+					);
+					if (value.contains("shadowColor")) {
+						component.textShadowColor = JsonToVector(
+							value.at("shadowColor"), component.textShadowColor
+						);
+					}
+					if (value.contains("shadowOffset")) {
+						component.textShadowOffset = JsonToVector(
+							value.at("shadowOffset"), component.textShadowOffset
+						);
+					}
+					if (value.contains("viewportAnchor")) {
+						component.textViewportAnchor = JsonToVector(
+							value.at("viewportAnchor"), component.textViewportAnchor
+						);
+					}
+					if (value.contains("pivot")) {
+						component.textPivot = JsonToVector(
+							value.at("pivot"), component.textPivot
+						);
+					}
+					component.textSortingOrder = value.value(
+						"sortingOrder", component.textSortingOrder
+					);
+					component.textClipEnabled = value.value(
+						"clipEnabled", component.textClipEnabled
+					);
+					auto readPlacement = [&value](const char* key, Text2DPlacement& placement) {
+						if (!value.contains(key) || !value.at(key).is_object()) {
+							return false;
+						}
+						const auto& source = value.at(key);
+						if (source.contains("position")) placement.position = JsonToVector(source.at("position"), placement.position);
+						placement.rotation = source.value("rotation", placement.rotation);
+						if (source.contains("scale")) placement.scale = JsonToVector(source.at("scale"), placement.scale);
+						if (source.contains("pivot")) placement.pivot = JsonToVector(source.at("pivot"), placement.pivot);
+						if (source.contains("viewportAnchor")) placement.viewportAnchor = JsonToVector(source.at("viewportAnchor"), placement.viewportAnchor);
+						placement.sortingOrder = source.value("sortingOrder", placement.sortingOrder);
+						placement.clipEnabled = source.value("clipEnabled", placement.clipEnabled);
+						return true;
+					};
+					component.textHasPlacementProfiles =
+						readPlacement("overlayPlacement", component.textOverlayPlacement) |
+						readPlacement("scene2DPlacement", component.textScene2DPlacement);
+				}
 				component.cameraIsMain = value.value("isMain", false);
 				component.cameraFovY = value.value("fovY", component.cameraFovY);
 				component.cameraNearClip = value.value(
@@ -3318,6 +3521,17 @@ namespace {
 				) {
 					ReadPostProcessProfiles(
 						value.at("profiles"), component.postProcessProfiles
+					);
+				}
+				if (component.type == "PostProcessProfileManager") {
+					component.postProcessStatusTextEntityId = value.value(
+						"statusTextEntityId", uint64_t{ 0 }
+					);
+					component.postProcessStatusTextEntityName = value.value(
+						"statusTextEntityName", std::string{}
+					);
+					component.postProcessStatusTextPrefix = value.value(
+						"statusTextPrefix", std::string{ "PostEffect: " }
 					);
 				}
 				if (component.type == "PrefabAnimator" && value.contains("clips")) {
@@ -7834,6 +8048,32 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.spriteColor = entity->spriteColor;
 		component.spriteFlipX = entity->spriteFlipX;
 		component.spriteFlipY = entity->spriteFlipY;
+	} else if (type == "TextRenderer") {
+		component.textValue = "Text";
+		component.textRenderSpace = "ScreenOverlay";
+		component.textFontFamily = "Yu Gothic UI";
+		component.textFontSize = 32.0f;
+		component.textFontWeight = "Regular";
+		component.textFontStyle = "Normal";
+		component.textColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+		component.textOpacity = 1.0f;
+		component.textHorizontalAlignment = "Left";
+		component.textVerticalAlignment = "Top";
+		component.textWrapMode = "NoWrap";
+		component.textOverflowMode = "Overflow";
+		component.textLayoutSize = { 0.0f, 0.0f };
+		component.textCharacterSpacing = 0.0f;
+		component.textLineSpacing = 1.0f;
+		component.textOutlineEnabled = false;
+		component.textOutlineColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+		component.textOutlineWidth = 2.0f;
+		component.textShadowEnabled = false;
+		component.textShadowColor = { 0.0f, 0.0f, 0.0f, 0.5f };
+		component.textShadowOffset = { 2.0f, 2.0f };
+		component.textViewportAnchor = { 0.0f, 0.0f };
+		component.textPivot = { 0.0f, 0.0f };
+		component.textSortingOrder = 0;
+		component.textClipEnabled = false;
 	} else if (type == "Camera") {
 		component.cameraIsMain = false;
 		component.cameraFovY = 0.45f;

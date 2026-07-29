@@ -5,6 +5,7 @@
 #include "../../engine/scene/SceneExecutionContext.h"
 #include "../../engine/scene/SceneDocument.h"
 #include "../../engine/3d/SrvManager.h"
+#include "../../engine/base/DirectXCommon.h"
 
 #include "../../engine/3d/Camera.h"
 #include "../../engine/3d/Object3dCommon.h"
@@ -111,6 +112,14 @@ void RuntimeScene::DrawPreparedSceneContentForView(
 		environmentSystem_,
 		objectSystem_
 	);
+	if (document) {
+		DirectXCommon* dxCommon = Object3dCommon::GetInstance()->GetDxCommon();
+		textRenderSystem_.DrawScene2D(
+			*document,
+			dxCommon->GetClientWidth(),
+			dxCommon->GetClientHeight()
+		);
+	}
 }
 
 bool RuntimeScene::ShouldHidePlayerModelForCamera(Camera* viewCamera) const {
@@ -198,6 +207,10 @@ void RuntimeScene::Initialize()
 
 	effectRenderSystem_.Initialize(
 		Object3dCommon::GetInstance()->GetDxCommon()
+	);
+	textRenderSystem_.Initialize(
+		Object3dCommon::GetInstance()->GetDxCommon(),
+		GetSceneAssetId() + "_" + std::to_string(GetSceneInstanceId())
 	);
 
 }
@@ -533,6 +546,29 @@ void RuntimeScene::Update(float deltaTime)
 		);
 		postProcessProfileSystem_.ApplyEventResult(*activeDocument, eventResult);
 	}
+	postProcessProfileSystem_.Update(playing ? gameplayDeltaTime : 0.0f);
+	textRenderSystem_.ClearTextOverrides();
+	if (activeDocument) {
+		SceneEntity* statusText = postProcessProfileSystem_.GetStatusTextEntityId() != 0
+			? activeDocument->FindEntity(
+				postProcessProfileSystem_.GetStatusTextEntityId()
+			)
+			: nullptr;
+		if (!statusText &&
+			!postProcessProfileSystem_.GetStatusTextEntityName().empty()) {
+			statusText = activeDocument->FindEntityByName(
+				postProcessProfileSystem_.GetStatusTextEntityName()
+			);
+		}
+		if (statusText) {
+			textRenderSystem_.SetTextOverride(
+				statusText->id,
+				postProcessProfileSystem_.GetStatusTextPrefix() +
+					postProcessProfileSystem_.GetActiveProfileLabel()
+			);
+		}
+	}
+	textRenderSystem_.Sync(activeDocument);
 }
 
 void RuntimeScene::UpdatePaused()
@@ -624,6 +660,20 @@ void RuntimeScene::DrawForegroundEffectsWithCamera(Camera* viewCamera)
 	);
 }
 
+bool RuntimeScene::HasScreenOverlay() const
+{
+	const SceneDocument* document = GetSceneDocument();
+	return document && textRenderSystem_.HasScreenOverlay(*document);
+}
+
+void RuntimeScene::DrawScreenOverlay(uint32_t width, uint32_t height)
+{
+	SceneDocument* document = GetSceneDocument();
+	if (document) {
+		textRenderSystem_.DrawScreenOverlay(*document, width, height);
+	}
+}
+
 void RuntimeScene::DrawOffscreenViews()
 {
 	SceneDocument* document = GetSceneDocument();
@@ -694,6 +744,7 @@ void RuntimeScene::Finalize()
 	}
 
 	runtimeObjectBindings_.clear();
+	textRenderSystem_.Finalize();
 	objectSystem_.Finalize();
 
 	particleSystem_.Finalize();
