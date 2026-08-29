@@ -73,6 +73,8 @@
     <ClCompile Include="engine\particle\ParticleManager.cpp" />
     <ClCompile Include="engine\particle\ParticleEmitter.cpp" />
     <ClCompile Include="engine\math\Matrix4x4.cpp" />
+    <ClCompile Include="engine\base\EditorLocalization.cpp" />
+    <ClCompile Include="engine\base\EditorComponentCatalog.cpp" />
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
     <ClCompile Include="engine\base\PostProcessSettingsEditor.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
@@ -343,6 +345,8 @@
 	<ClInclude Include="application\scene\system\SceneTextRenderSystem.h">
 		<Filter>Application\Scene\System</Filter>
 	</ClInclude>
+    <ClInclude Include="engine\base\EditorLocalization.h" />
+    <ClInclude Include="engine\base\EditorComponentCatalog.h" />
     <ClInclude Include="application\scene\system\SceneDebugSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
