@@ -12,6 +12,7 @@
 imgui.ini
 /project/editor_settings.json
 /project/editor_settings.json.bak
+/project/editor_settings.json.tmp
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -327,3 +328,7 @@ FodyWeavers.xsd
 
 # Codex local files
 /.codex/
+
+# Generated deliverables
+/output/
+/outputs/

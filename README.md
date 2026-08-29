@@ -1,128 +1,83 @@
 [![DebugBuild](https://github.com/Shinnosuke612/LE2C_CG3/actions/workflows/DebugBuild.yml/badge.svg)](https://github.com/Shinnosuke612/LE2C_CG3/actions/workflows/DebugBuild.yml)
 
-# PostEffect実装資料
+# ツール概要
 
-## 概要
+自作C++／DirectX 12エンジン上に、SceneとPrefabを編集するゲームエディターを開発した。
 
-Editorの`Post Process Stack`では、Scene標準設定とPost Process Profileの両方から各効果の有効・無効とパラメータを編集できる。提出用Sceneには、課題項目を実行中に確認するためのProfile切替も組み込んでいる。
+モデルやPrefabをSceneへ配置するだけでなく、Prefab専用の編集画面、アニメーションTimeline、Instance差分のApply／Revert、Nested Prefab、Prefab Variant、Asset参照の検証までを一つの制作フローとして実装している。
 
-## 課題項目との対応
+# 加点項目
 
-| 課題項目 | 点数 | 実装内容 |
-| --- | ---: | --- |
-| Grayscale | 必須 | RGBを輝度へ変換して画面全体をモノクロ化 |
-| Vignetting | 3 | `Vignette`として実装 |
-| BoxFilter | 3 | `Box Blur`として3×3／5×5 Kernelに対応 |
-| GaussianFilter | 5 | `Gaussian Blur`としてKernel、Sigma、Strengthを設定可能 |
-| LuminanceBasedOutline | 5 | 輝度差によるOutline検出として実装 |
-| DepthBasedOutline | 8 | Depth差によるOutline検出として実装 |
-| Radial Blur | 5 | Center、Width、Samplesを設定可能 |
-| Dissolve | 4 | Noise Mask、Threshold、Edge表現とRuntime時間遷移を実装 |
-| Random | 4 | `Noise`として静的／時間変化Noiseを実装 |
-| その他 | 最大20 | Bloom、Depth of Field、Camera Motion Blur、Pixelation、Chromatic Aberrationを実装 |
+課題資料に記載された項目のうち、次の機能を実装した。
 
-## 提出Sceneでの確認方法
+* ローダーと配置
+* コライダーをゲーム側の当たり判定に適用
+* 無効フラグ
+* SpawnPoint相当のEnemySpawner配置
+* EventTriggerの配置
+* カメラの配置
 
-Release実行後、`P`キーを1回押すごとにPostEffectが次の順番で切り替わる。
+# 独自実装
 
-```text
-None
-→ Grayscale
-→ Vignette
-→ Bloom
-→ Box Blur
-→ Gaussian Blur
-→ Depth of Field
-→ Camera Motion Blur
-→ Radial Blur
-→ Noise
-→ Dissolve
-→ Outline
-→ Pixelation
-→ Chromatic Aberration
-→ None
-```
+* Prefab専用の編集セッション
+    * Sceneとは別のDocumentとしてPrefabを開き、Save、Reload、Closeを管理する
+    * Dirty状態とUndo／Redo履歴をSceneから分離する
+    * DirtyなPrefabを切り替える場合はSave／Discard／Cancelを選択できる
+* Prefab Stage
+    * Prefabの階層全体を専用Render TargetとOrbit CameraでPreviewする
+    * Prefab Hierarchy、Prefab Inspector、Move／Rotate／Scale Gizmoを同じ画面で操作する
+    * Local／World、Snap、Orbit、Zoom、Frame Allに対応する
+    * Gizmoのドラッグ操作を一回分のUndoとして記録する
+* 制作用の可視化と選択
+    * Skeleton、Joint Axes、Collider、HitBox／HurtBoxをPrefab Stageへ重ねて表示する
+    * 非Active EntityのColliderも編集用表示に含める
+    * Colliderだけを対象にしたPickingへ切り替えられる
+* PrefabAnimator Timeline
+    * Play／Pause／Stop／SeekしながらPrefabアニメーションを確認する
+    * TransformのPosition、Rotation、ScaleキーをPose単位にまとめて編集する
+    * Poseの追加、複製、削除、不足キーの補完に対応する
+    * 現在PoseをGizmoで直接編集し、EasingとPosition Bulge Offsetも設定できる
+    * HitBox／HurtBoxのActive区間をTimeline上で確認する
+* Prefabへのアクセスと配置
+    * Project、Hierarchy、Inspector、Quick Openから共通のOpen処理でPrefabを開く
+    * Quick Openに検索、Recent、Favorites、Prefabs Onlyを用意する
+    * BreadcrumbとBack／ForwardでPrefab間を移動する
+    * ProjectからScene ViewまたはHierarchyへDrag & Dropし、Linked Instanceとして配置する
+* Property Override
+    * Scene上で変更したPrefab Instanceの差分を収集する
+    * Property、Component、Entity Branch、Instance単位でApply／Revertする
+    * EntityLocalId、ComponentLocalId、PropertyPathを使い、配列内要素を含む差分を識別する
+* Asset IDと参照移行
+    * PrefabへUUID Asset IDを付与し、現在Pathとの対応をRegistryで管理する
+    * 旧Path参照をAsset ID＋Fallback Path形式へ移行する
+    * 未設定、重複、解決不能なAsset IDをEditor上で検出する
+* Nested Prefab
+    * Prefab内へ別Prefabを配置し、複数のPrefab境界を維持する
+    * 直接・間接の循環参照を拒否する
+    * Apply／Revert／Unpack時もNested PrefabのLinkを維持する
+    * 複数のPrefab Sourceがある場合はApply先を選択できる
+* Prefab Variant
+    * Base PrefabからVariantを作成し、差分だけを保存する
+    * Revert to Base、Apply to Base、Base更新後のRebaseに対応する
+    * Variant内の個別PropertyもApply／Revertできる
+* Diagnosticsとデータ保護
+    * Current Prefabと全Prefabを対象にValidationを実行する
+    * Load Error、Migration Required、Missing Reference、Duplicate Asset ID、Cycleを表示する
+    * Scene JSONのMigration、Validation、Backup Recoveryを実装する
+* Editor用Component
+    * Camera／CameraPath、EventTrigger、EnemySpawner、Collider、PostProcessProfileManager、TextRendererなどをInspectorから設定する
+    * Editorで保存したComponentデータをRuntime側のSystemへ反映する
 
-- 左上に`Pキーで切り替え`を固定表示する。
-- 右上に`PostEffect: <現在のProfile名>`を表示する。
-- 各Profileでは、確認対象のPostEffectだけを有効にする。
-- `P`キーは押した瞬間だけ反応し、押し続けで連続切替しない。
-- 最後のProfileの次は`None`へ戻る。
+# 制作フロー
 
-## 実装済みPostEffect
+1. ProjectまたはQuick Openから編集するPrefabを開く。
+2. Prefab HierarchyとInspectorでEntity、Component、Transformを編集する。
+3. Prefab Stageで見た目、Skeleton、Collider、HitBoxを確認する。
+4. 必要に応じてPrefabAnimator TimelineでPoseとActive区間を編集する。
+5. Prefabを保存し、ProjectからSceneへDrag & Dropして配置する。
+6. Scene固有の変更はOverrideとして保持し、必要な差分だけApplyまたはRevertする。
+7. DiagnosticsでAsset ID、Nested参照、Migration状態を確認してから保存する。
 
-### Grayscale
+# 補足
 
-画面のRGBを輝度へ変換し、モノクロ表示する。課題の必須項目に対応する。
-
-### Vignette
-
-画面端を暗くする。Scale、Power、Intensityを設定できる。
-
-### Bloom
-
-高輝度部分を抽出してぼかし、元の画面へ加算する。提出Sceneでは単独Profileとして確認できる。
-
-### Box Blur
-
-周囲の画素を均等に平均化する。3×3／5×5 KernelとStrengthを設定できる。
-
-### Gaussian Blur
-
-中心に近い画素ほど大きな重みを与えてぼかす。3×3／5×5 Kernel、Sigma、Strengthを設定できる。
-
-### Depth of Field
-
-Depth Bufferを利用し、指定距離付近へ焦点を合わせる。Focus Distance、Focus Range、Near／Far Strength、Max Radiusを設定できる。
-
-### Camera Motion Blur
-
-現在Frameと前FrameのViewProjectionを利用し、カメラ移動による残像を生成する。物体単体のVelocity Blurは対象外。
-
-### Radial Blur
-
-指定したCenterから放射状に画面をぼかす。Blur WidthとSamplesを設定できる。
-
-### Noise
-
-画面へNoiseを加える。Amount、Scale、Speed、Seedと時間アニメーションの有無を設定できる。
-
-### Dissolve
-
-Noise MaskとThresholdを利用して画面を段階的に消去し、境界へ色を付ける。
-
-提出用Dissolve Profileでは、選択後2秒間でThresholdが0から1へLinear変化する。再選択時は0から再生し、終了後は1を保持する。Pause中は進行せず、Reset、Scene Reload、Scene TransitionでRuntime状態を破棄する。
-
-### Outline
-
-輝度差またはDepth差から輪郭を検出する。両方の入力、Weight、Threshold、Softness、Thickness、Colorを設定できる。
-
-### Pixelation
-
-画面を指定Block Size単位へ分割し、低解像度風に表示する。
-
-### Chromatic Aberration
-
-画面中心からの距離に応じてRGBチャンネルをずらす。Center、Intensity、Falloffを設定できる。
-
-## Editorでの設定
-
-1. 対象Sceneを開く。
-2. `Post Process Stack`でScene標準設定を編集する。
-3. `PostProcessProfileManager`でProfileごとの設定を編集する。
-4. 必要なPostEffectを有効にしてパラメータを調整する。
-5. Sceneを保存する。
-
-複数の効果を有効にした場合は、既定のPostEffect描画順に従って順番に適用される。提出用Profileは比較しやすいよう、一つの効果だけを有効にしている。
-
-## Runtime実装
-
-- `EventTrigger(OnKeyPressed: P)`から`NextPostProcessProfile`を要求する。
-- `ScenePostProcessProfileSystem`が選択Profileと実行時PostProcess設定を保持する。
-- Dissolveの経過時間とThresholdはRuntime Copyだけへ適用し、Scene JSONを毎Frame変更しない。
-- 現在のProfile名はTextRendererのRuntime文字列として更新する。
-- HUD文字はPostEffect適用後に描画するため、GrayscaleやBlurなどの影響を受けない。
-
-## 補足実装
-
-`Underwater`と`Water Refraction`のShader、設定、Editor項目、描画Passも実装している。ただし、現在の提出Sceneでは効果を明確に確認できないため、Pキーの提出用巡回には含めていない。Enterでシーン遷移が行えるため確認は可能。
+PostEffect Profileの編集、EventTriggerからのProfile切り替え、DissolveのRuntime再生などもEditor用Componentの拡張例として実装している。ただし本資料では、ゲーム制作を支える基盤としてPrefab編集ワークフローを中心に紹介する。
