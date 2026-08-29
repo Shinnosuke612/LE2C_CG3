@@ -3,6 +3,7 @@
 #include "../../engine/scene/BaseScene.h"
 #include "SceneRuntimeObjectBinding.h"
 #include "system/SceneAgentSystem.h"
+#include "system/SceneAudioSystem.h"
 #include "system/SceneAttackRunnerSystem.h"
 #include "system/SceneAttachmentSystem.h"
 #include "system/SceneCameraSystem.h"
@@ -43,6 +44,7 @@ public:
 	// BaseSceneのライフサイクル入口。個別機能は対応するSystemへ委譲する。
 	void Initialize() override;
 	void Finalize() override;
+	void PrepareForSceneTransition() override;
 	void Update(float deltaTime) override;
 	void UpdatePaused() override;
 	void Draw() override;
@@ -87,6 +89,7 @@ private:
 	std::vector<SceneRuntimeObjectBinding> runtimeObjectBindings_;
 
 	SceneAgentSystem agentSystem_;
+	SceneAudioSystem audioSystem_;
 	SceneAttackRunnerSystem attackRunnerSystem_;
 	SceneAttachmentSystem attachmentSystem_;
 	SceneCameraSystem cameraSystem_;

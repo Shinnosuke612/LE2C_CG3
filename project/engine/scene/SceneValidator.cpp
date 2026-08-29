@@ -5,8 +5,10 @@
 #include "SceneDocument.h"
 #include "SceneEntityQuery.h"
 #include "SceneInputKey.h"
+#include "../Audio/Audio.h"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -20,6 +22,31 @@ namespace {
 			}
 		}
 		return false;
+	}
+
+	bool IsValidAudioSpatialMode(const std::string& mode) {
+		return mode == "TwoD" || mode == "ThreeD" ||
+			mode == "ThreeDPointDownmix" || mode == "ThreeDStereoArea";
+	}
+
+	std::string DescribeAudioChannelMismatch(
+		const std::string& spatialMode,
+		uint32_t channelCount
+	) {
+		if (spatialMode == "ThreeD") {
+			if (channelCount == 2) {
+				return "AudioSource clip has 2 channels, but ThreeD Point requires mono. "
+					"Use ThreeD Point Downmix or ThreeD Stereo Area.";
+			}
+			return "AudioSource clip has " + std::to_string(channelCount) +
+				" channels, but ThreeD Point requires mono.";
+		}
+		if (channelCount == 1) {
+			return "AudioSource clip has mono, but " + spatialMode +
+				" requires stereo. Use ThreeD Point.";
+		}
+		return "AudioSource clip has " + std::to_string(channelCount) +
+			" channels, but " + spatialMode + " requires stereo.";
 	}
 }
 
@@ -64,6 +91,10 @@ bool SceneValidator::ValidateDocument(
 	uint32_t spotLightCount = 0;
 	uint32_t spotShadowCount = 0;
 	uint32_t cameraSwitcherCount = 0;
+	uint32_t activeAudioListenerCount = 0;
+	uint64_t firstAudioListenerEntityId = 0;
+	uint32_t persistentBgmPlayOnStartCount = 0;
+	uint64_t firstPersistentBgmEntityId = 0;
 	std::unordered_map<uint64_t, std::unordered_set<uint64_t>> prefabLocalIds;
 	for (const SceneEntity& entity : document.GetEntities()) {
 		if (!entity.teamName.empty() && !document.FindTeam(entity.teamName)) {
@@ -281,7 +312,129 @@ bool SceneValidator::ValidateDocument(
 					);
 				}
 			};
-			if (component.type == "TextRenderer") {
+			if (component.type == "AudioSource") {
+				const bool validSpatialMode = IsValidAudioSpatialMode(
+					component.audioSpatialMode
+				);
+				if (!validSpatialMode) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"AudioSource has an invalid spatialMode: " +
+							component.audioSpatialMode
+					);
+				}
+				if (
+					component.audioSpatialMode != "TwoD" &&
+					(
+						component.audioMinimumDistance < 0.0f ||
+						component.audioMinimumDistance >= component.audioMaximumDistance
+					)
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"3D AudioSource minimumDistance must be >= 0 and below maximumDistance"
+					);
+				}
+				if (
+					component.audioSpatialMode == "ThreeDStereoArea" &&
+					(!std::isfinite(component.audioStereoAreaWidth) ||
+						component.audioStereoAreaWidth <= 0.0f)
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"ThreeD Stereo Area width must be finite and greater than zero"
+					);
+				}
+				const bool streamCompatibilityInvalid =
+					component.audioStreamFromDisk &&
+					(component.audioSpatialMode != "TwoD" || component.audioBus != "BGM");
+				if (streamCompatibilityInvalid) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"Stream From Disk requires TwoD spatial mode and BGM Bus"
+					);
+				}
+				if (
+					validSpatialMode && component.audioSpatialMode != "TwoD" &&
+					!component.audioClipPath.empty() && !streamCompatibilityInvalid
+				) {
+					if (Audio* audio = Audio::GetInstance();
+						audio && audio->CanProbeAudioFileMetadata()) {
+						AudioFileMetadata metadata{};
+						std::string metadataError;
+						if (!audio->TryGetAudioFileMetadata(
+							component.audioClipPath.c_str(), metadata, &metadataError
+						)) {
+							addIssue(
+								SceneValidationSeverity::Warning,
+								entity.id,
+								"AudioSource clip metadata could not be read: " + metadataError
+							);
+						} else {
+							const uint32_t requiredChannels =
+								component.audioSpatialMode == "ThreeD" ? 1 : 2;
+							if (metadata.channelCount != requiredChannels) {
+								addIssue(
+									SceneValidationSeverity::Warning,
+									entity.id,
+									DescribeAudioChannelMismatch(
+										component.audioSpatialMode,
+										metadata.channelCount
+									)
+								);
+							}
+						}
+					}
+				}
+				if (component.audioPersistAcrossScenes && !component.audioStreamFromDisk) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"Persist Across Scenes requires Stream From Disk"
+					);
+				}
+				if (!std::isfinite(component.audioBgmFadeSeconds) || component.audioBgmFadeSeconds < 0.0f) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"BGM Fade Seconds must be finite and greater than or equal to zero"
+					);
+				}
+				if (
+					component.enabled && activeInHierarchy &&
+					component.audioPlayOnStart && component.audioPersistAcrossScenes &&
+					component.audioStreamFromDisk &&
+					component.audioSpatialMode == "TwoD" && component.audioBus == "BGM"
+				) {
+					++persistentBgmPlayOnStartCount;
+					if (firstPersistentBgmEntityId == 0) {
+						firstPersistentBgmEntityId = entity.id;
+					}
+				}
+			} else if (component.type == "AudioListener") {
+				if (
+					component.audioListenerMode != "ActiveCamera" &&
+					component.audioListenerMode != "Entity" &&
+					component.audioListenerMode != "Hybrid"
+				) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"AudioListener has an invalid mode: " +
+							component.audioListenerMode
+					);
+				}
+				if (component.enabled && activeInHierarchy) {
+					++activeAudioListenerCount;
+					if (firstAudioListenerEntityId == 0) {
+						firstAudioListenerEntityId = entity.id;
+					}
+				}
+			} else if (component.type == "TextRenderer") {
 				if (
 					component.textRenderSpace != "ScreenOverlay" &&
 					component.textRenderSpace != "Scene2D"
@@ -765,16 +918,38 @@ bool SceneValidator::ValidateDocument(
 							true
 						);
 					}
+					if (binding.triggerType == "OnAudioFinished") {
+						validateCameraEventTarget(
+							binding.targetEntityId,
+							binding.targetEntityName,
+							"AudioSource",
+							"OnAudioFinished",
+							false
+						);
+					}
 					for (const SceneEventAction& action : binding.actions) {
 						const bool actionUsesTarget =
 							action.type == "ModifyStat" ||
 							action.type == "SetEntityActive" ||
 							action.type == "InstantiatePrefab" ||
-							action.type == "ChangeState";
+							action.type == "ChangeState" ||
+							action.type == "PlayAudio" ||
+							action.type == "StopAudio" ||
+							action.type == "PauseAudio" ||
+							action.type == "ResumeAudio";
 						if (actionUsesTarget) {
 							validateEntityReference(
 								action.targetEntityId,
 								"Event action target"
+							);
+						}
+						if (
+							(action.type == "PlayAudio" || action.type == "StopAudio" ||
+								action.type == "PauseAudio" || action.type == "ResumeAudio")
+						) {
+							validateCameraEventTarget(
+								action.targetEntityId, action.targetEntityName, "AudioSource",
+								action.type.c_str(), false
 							);
 						}
 						if (
@@ -1146,6 +1321,20 @@ bool SceneValidator::ValidateDocument(
 				);
 			}
 		}
+	}
+	if (activeAudioListenerCount > 1) {
+		addIssue(
+			SceneValidationSeverity::Error,
+			firstAudioListenerEntityId,
+			"Scene contains multiple active AudioListener components"
+		);
+	}
+	if (persistentBgmPlayOnStartCount > 1) {
+		addIssue(
+			SceneValidationSeverity::Error,
+			firstPersistentBgmEntityId,
+			"Scene contains multiple Play On Start Persistent BGM AudioSources"
+		);
 	}
 
 	for (size_t index = firstIssueIndex; index < issues.size(); ++index) {

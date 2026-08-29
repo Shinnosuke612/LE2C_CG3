@@ -1509,6 +1509,24 @@ namespace {
 			result["transitionDuration"] =
 				component.animatorTransitionDuration;
 			result["blendCurve"] = component.animatorBlendCurve;
+		} else if (component.type == "AudioSource") {
+			result["clipPath"] = component.audioClipPath;
+			result["spatialMode"] = component.audioSpatialMode;
+			result["minimumDistance"] = component.audioMinimumDistance;
+			result["maximumDistance"] = component.audioMaximumDistance;
+			result["stereoAreaWidth"] = component.audioStereoAreaWidth;
+			result["bus"] = component.audioBus;
+			result["volume"] = component.audioVolume;
+			result["pitch"] = component.audioPitch;
+			result["loop"] = component.audioLoop;
+			result["playOnStart"] = component.audioPlayOnStart;
+			result["stopOnDisable"] = component.audioStopOnDisable;
+			result["decompressOnLoad"] = component.audioDecompressOnLoad;
+			result["streamFromDisk"] = component.audioStreamFromDisk;
+			result["persistAcrossScenes"] = component.audioPersistAcrossScenes;
+			result["bgmFadeSeconds"] = component.audioBgmFadeSeconds;
+		} else if (component.type == "AudioListener") {
+			result["mode"] = component.audioListenerMode;
 		} else if (component.type == "PhysicsBody") {
 			result["bodyType"] = component.physicsBodyType;
 			result["mass"] = component.physicsMass;
@@ -3514,6 +3532,42 @@ namespace {
 				}
 				if (component.type == "EventTrigger" && value.contains("bindings")) {
 					ReadEvents(value.at("bindings"), component.eventBindings);
+				}
+				if (component.type == "AudioSource") {
+					component.audioClipPath = value.value("clipPath", component.audioClipPath);
+					component.audioSpatialMode = value.value("spatialMode", component.audioSpatialMode);
+					component.audioMinimumDistance = value.value("minimumDistance", component.audioMinimumDistance);
+					component.audioMaximumDistance = value.value("maximumDistance", component.audioMaximumDistance);
+					component.audioStereoAreaWidth = value.value("stereoAreaWidth", component.audioStereoAreaWidth);
+					component.audioBus = value.value("bus", component.audioBus);
+					component.audioVolume = (std::max)(value.value("volume", component.audioVolume), 0.0f);
+					component.audioPitch = (std::max)(value.value("pitch", component.audioPitch), 0.01f);
+					component.audioLoop = value.value("loop", component.audioLoop);
+					component.audioPlayOnStart = value.value("playOnStart", component.audioPlayOnStart);
+					component.audioStopOnDisable = value.value("stopOnDisable", component.audioStopOnDisable);
+					component.audioDecompressOnLoad = value.value("decompressOnLoad", component.audioDecompressOnLoad);
+					component.audioStreamFromDisk = value.value("streamFromDisk", component.audioStreamFromDisk);
+					component.audioPersistAcrossScenes = value.value("persistAcrossScenes", component.audioPersistAcrossScenes);
+					component.audioBgmFadeSeconds = (std::max)(
+						value.value("bgmFadeSeconds", component.audioBgmFadeSeconds),
+						0.0f
+					);
+					if (
+						component.audioSpatialMode != "ThreeD" &&
+						component.audioSpatialMode != "ThreeDPointDownmix" &&
+						component.audioSpatialMode != "ThreeDStereoArea"
+					) {
+						component.audioSpatialMode = "TwoD";
+					}
+				}
+				if (component.type == "AudioListener") {
+					component.audioListenerMode = value.value("mode", component.audioListenerMode);
+					if (
+						component.audioListenerMode != "ActiveCamera" &&
+						component.audioListenerMode != "Entity"
+					) {
+						component.audioListenerMode = "Hybrid";
+					}
 				}
 				if (
 					component.type == "PostProcessProfileManager" &&
@@ -8074,6 +8128,24 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.textPivot = { 0.0f, 0.0f };
 		component.textSortingOrder = 0;
 		component.textClipEnabled = false;
+	} else if (type == "AudioSource") {
+		component.audioClipPath.clear();
+		component.audioSpatialMode = "TwoD";
+		component.audioMinimumDistance = 1.4f;
+		component.audioMaximumDistance = 30.0f;
+		component.audioStereoAreaWidth = 1.0f;
+		component.audioBus = "SFX";
+		component.audioVolume = 1.0f;
+		component.audioPitch = 1.0f;
+		component.audioLoop = false;
+		component.audioPlayOnStart = false;
+		component.audioStopOnDisable = true;
+		component.audioDecompressOnLoad = true;
+		component.audioStreamFromDisk = false;
+		component.audioPersistAcrossScenes = false;
+		component.audioBgmFadeSeconds = 0.5f;
+	} else if (type == "AudioListener") {
+		component.audioListenerMode = "Hybrid";
 	} else if (type == "Camera") {
 		component.cameraIsMain = false;
 		component.cameraFovY = 0.45f;

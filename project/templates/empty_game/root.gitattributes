@@ -1,0 +1,6 @@
+###############################################################################
+# Normalize text while preserving the current source line-ending contract.
+###############################################################################
+* text=auto
+project/application/** text eol=crlf
+project/engine/** text eol=crlf

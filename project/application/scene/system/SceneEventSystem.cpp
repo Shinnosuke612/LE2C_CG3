@@ -125,6 +125,16 @@ namespace {
 			SceneEntityQuery::IsEntityActiveInHierarchy(document, *entity) &&
 			SceneEntityQuery::FindEnabledComponent(*entity, componentName);
 	}
+
+	bool IsValidAudioAction(const SceneDocument& document, const SceneEventAction& action) {
+		const SceneEntity* entity = action.targetEntityId != 0
+			? document.FindEntity(action.targetEntityId) : nullptr;
+		if (!entity && !action.targetEntityName.empty()) {
+			entity = document.FindEntityByName(action.targetEntityName);
+		}
+		return entity && SceneEntityQuery::IsEntityActiveInHierarchy(document, *entity) &&
+			SceneEntityQuery::FindEnabledComponent(*entity, "AudioSource");
+	}
 }
 
 SceneEventResult SceneEventSystem::Update(
@@ -209,6 +219,19 @@ SceneEventResult SceneEventSystem::Update(
 					target &&
 					target->id == signals.completedCameraPathEntityId;
 				shouldFire = condition && !state.wasConditionTrue;
+			} else if (binding.triggerType == "OnAudioFinished") {
+				condition =
+					(binding.targetEntityId != 0 ||
+						!binding.targetEntityName.empty()) &&
+					target &&
+					SceneEntityQuery::FindEnabledComponent(*target, "AudioSource") &&
+					std::find(
+						signals.finishedAudioEntityIds.begin(),
+						signals.finishedAudioEntityIds.end(),
+						target->id
+					) != signals.finishedAudioEntityIds.end();
+				// 完了は状態ではなくgenerationごとのpulseなので、連続Frameも取りこぼさない。
+				shouldFire = condition;
 			}
 
 			if (
@@ -320,6 +343,16 @@ SceneEventResult SceneEventSystem::Update(
 			result.postProcessRequest.managerEntityName.clear();
 			result.postProcessRequest.profileId.clear();
 		} else if (
+			(action.type == "PlayAudio" || action.type == "StopAudio" ||
+				action.type == "PauseAudio" || action.type == "ResumeAudio") &&
+			IsValidAudioAction(document, action)
+		) {
+			SceneAudioRequestType type = SceneAudioRequestType::Play;
+			if (action.type == "StopAudio") type = SceneAudioRequestType::Stop;
+			else if (action.type == "PauseAudio") type = SceneAudioRequestType::Pause;
+			else if (action.type == "ResumeAudio") type = SceneAudioRequestType::Resume;
+			result.audioRequests.push_back({ type, target->id });
+		} else if (
 			action.type == "PlayCameraPath" &&
 			IsValidCameraAction(document, action, "CameraPath")
 		) {
@@ -351,6 +384,7 @@ SceneEventResult SceneEventSystem::Update(
 	if (!result.sceneTransitionId.empty()) {
 		result.postProcessRequest.type = ScenePostProcessRequestType::None;
 		result.cameraRequests.clear();
+		result.audioRequests.clear();
 	}
 	return result;
 }

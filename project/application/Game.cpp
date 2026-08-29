@@ -40,13 +40,23 @@
 #include "../engine/utility/Logger.h"
 #include "../engine/utility/StringUtility.h"
 #include "../externals/imgui/imgui.h"
+#include "../engine/project/ProjectCompatibilityProbe.h"
+#include "../engine/project/ProjectCreationService.h"
+#include "../engine/project/ProjectDescriptor.h"
+#include "../engine/project/ProjectRegistry.h"
+#include "../engine/project/ProjectSolutionGenerationService.h"
+#include "../engine/project/VisualStudioLocator.h"
+#include "../engine/project/WindowsProcess.h"
 
 #include <Windows.h>
 
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <optional>
+#include <sstream>
 #include <utility>
+#include <vector>
 
 namespace {
 	using SceneEntityQuery::FindEnabledComponent;
@@ -65,6 +75,29 @@ namespace {
 
 	std::string ResolveProjectResourcePath(const std::filesystem::path& relativePath) {
 		return StringUtility::ToUtf8(EditableResourcePath::Resolve(relativePath));
+	}
+
+	std::string MakeProjectCreationSnapshotIdentity(const ProjectCreationServiceSnapshot& snapshot) {
+		std::ostringstream identity;
+		identity << static_cast<int>(snapshot.state) << '|';
+		if (snapshot.operation.has_value()) {
+			identity << snapshot.operation->operationId << '|'
+				<< static_cast<int>(snapshot.operation->state) << '|'
+				<< snapshot.operation->exitCode;
+		}
+		identity << '|' << snapshot.statusMessage;
+		return identity.str();
+	}
+
+	std::string MakeVisualStudioSnapshotIdentity(const std::vector<VisualStudioInstance>& instances) {
+		std::ostringstream identity;
+		for (const VisualStudioInstance& instance : instances) {
+			identity << instance.instanceId << '|'
+				<< instance.installationVersion << '|'
+				<< instance.openable << '|'
+				<< instance.buildReady << ';';
+		}
+		return identity.str();
 	}
 
 	bool NearlyEqual(float a, float b) {
@@ -173,6 +206,28 @@ namespace {
 			NearlyEqual(a.waterRefractionEdgeSoftness, b.waterRefractionEdgeSoftness) &&
 			NearlyEqual(a.waterRefractionTintStrength, b.waterRefractionTintStrength);
 	}
+
+	const char* ToProjectCreationOperationStateText(ProjectCreationOperationState state) {
+		switch (state) {
+		case ProjectCreationOperationState::InProgress: return "In Progress";
+		case ProjectCreationOperationState::Failed: return "Failed";
+		case ProjectCreationOperationState::RegistrationIncomplete: return "Registration Incomplete";
+		case ProjectCreationOperationState::Complete: return "Complete";
+		default: return "Unknown";
+		}
+	}
+
+	const char* ToSolutionGenerationOperationStateText(SolutionGenerationOperationState state) {
+		switch (state) {
+		case SolutionGenerationOperationState::Staged: return "Pending Migration";
+		case SolutionGenerationOperationState::CommitInProgress: return "Commit In Progress";
+		case SolutionGenerationOperationState::RollbackInProgress: return "Rollback In Progress";
+		case SolutionGenerationOperationState::RolledBack: return "Rolled Back";
+		case SolutionGenerationOperationState::Complete: return "Complete";
+		case SolutionGenerationOperationState::RecoveryRequired: return "Recovery Required";
+		default: return "Unknown";
+		}
+	}
 }
 
 void Game::Initialize() {
@@ -278,6 +333,7 @@ void Game::Initialize() {
 		imguiManager_->SetSceneCatalog(sceneCatalog_);
 		imguiManager_->SetSceneManager(sceneManager_);
 		imguiManager_->SetSceneTemplateRegistry(sceneTemplateRegistry_);
+		InitializeProjectLauncher();
 	}
 #endif
 
@@ -305,6 +361,7 @@ void Game::Initialize() {
 		postTargetDesc.clearColor[3] = 1.0f;
 		renderTarget->Initialize(dxCommon_, srvManager_, postTargetDesc);
 	}
+
 	textOverlayRenderTarget_ = new SceneRenderTarget();
 	SceneRenderTarget::Desc textOverlayDesc{};
 	textOverlayDesc.width = dxCommon_->GetClientWidth();
@@ -404,6 +461,10 @@ void Game::Update() {
 	if (IsEndRequest()) {
 		return;
 	}
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
+	UpdateProjectLauncher();
+#endif
 	const float deltaTime = GetDeltaTime();
 
 	if (noiseAnimate_) {
@@ -817,6 +878,508 @@ void Game::ProcessProjectSettingsRequests() {
 			errorMessage
 		);
 	}
+}
+
+void Game::InitializeProjectLauncher() {
+	if (projectLauncherInitialized_ || !imguiManager_) {
+		return;
+	}
+	projectLauncherInitialized_ = true;
+	projectRegistry_ = new ProjectRegistry();
+	std::string errorMessage;
+	if (!projectRegistry_->Load(errorMessage)) {
+		projectLauncherStatusMessage_ = "Project Registry: " + errorMessage;
+		RefreshProjectLauncherView();
+		return;
+	}
+
+	const std::filesystem::path currentProjectRoot =
+		EditableResourcePath::FindProjectRoot();
+	const std::filesystem::path templateSourceRoot =
+		currentProjectRoot.empty() ? std::filesystem::path{} : currentProjectRoot.parent_path();
+	std::error_code filesystemError;
+	if (
+		projectRegistry_->GetTemplateSourceRoot().empty() &&
+		std::filesystem::is_regular_file(
+			templateSourceRoot / L"project" / L"tools" / L"New-GameProject.ps1",
+			filesystemError
+		)
+	) {
+		projectRegistry_->SetTemplateSourceRoot(templateSourceRoot);
+	}
+
+	projectCreationService_ = new ProjectCreationService(*projectRegistry_);
+	projectSolutionGenerationService_ = new ProjectSolutionGenerationService(*projectRegistry_);
+	visualStudioLocator_ = new VisualStudioLocator();
+	const std::filesystem::path discoveryLog =
+		projectRegistry_->GetRegistryPath().parent_path() / L"visual-studio-discovery.log";
+	if (!visualStudioLocator_->StartDiscovery(discoveryLog, errorMessage)) {
+		projectLauncherStatusMessage_ = "Visual Studio discovery: " + errorMessage;
+	} else if (visualStudioLocator_->UsedKnownRootFallback()) {
+		projectLauncherStatusMessage_ = "Visual Studio discovery is using known install roots.";
+	}
+	if (!projectCreationService_->Reconcile(errorMessage) && projectLauncherStatusMessage_.empty()) {
+		projectLauncherStatusMessage_ = "Project recovery: " + errorMessage;
+	}
+	if (!projectSolutionGenerationService_->DiscoverPreviews(errorMessage) && projectLauncherStatusMessage_.empty()) {
+		projectLauncherStatusMessage_ = "Solution preview discovery: " + errorMessage;
+	} else if (!projectSolutionGenerationService_->ReconcileRecovery(errorMessage) && projectLauncherStatusMessage_.empty()) {
+		projectLauncherStatusMessage_ = "Solution generation recovery: " + errorMessage;
+	}
+	projectLauncherViewDirty_ = true;
+	RefreshProjectLauncherView();
+	projectLauncherViewDirty_ = false;
+}
+
+void Game::UpdateProjectLauncher() {
+	if (!projectLauncherInitialized_ || !projectRegistry_ || !projectCreationService_ || !projectSolutionGenerationService_ || !visualStudioLocator_) {
+		return;
+	}
+	const std::string statusBefore = projectLauncherStatusMessage_;
+	const std::string creationBefore = MakeProjectCreationSnapshotIdentity(projectCreationService_->GetSnapshot());
+	const std::string visualStudioBefore = MakeVisualStudioSnapshotIdentity(visualStudioLocator_->GetInstances());
+	std::string errorMessage;
+	if (!visualStudioLocator_->PollDiscovery(errorMessage)) {
+		projectLauncherStatusMessage_ = "Visual Studio discovery: " + errorMessage;
+	}
+	if (!projectCreationService_->Update(errorMessage)) {
+		projectLauncherStatusMessage_ = "Project creation: " + errorMessage;
+	}
+	if (pendingCreateOpenSolution_ &&
+		projectCreationService_->GetSnapshot().state == ProjectCreationServiceState::Complete &&
+		projectCreationService_->GetSnapshot().operation.has_value()) {
+		const std::filesystem::path descriptorPath =
+			projectCreationService_->GetSnapshot().operation->finalProjectRoot / L"game.project.json";
+		if (!LaunchProjectSolution(descriptorPath, pendingCreateVisualStudioInstanceId_, errorMessage)) {
+			projectLauncherStatusMessage_ = "Project created, but Solution could not be opened: " + errorMessage;
+		}
+		pendingCreateOpenSolution_ = false;
+		pendingCreateVisualStudioInstanceId_.clear();
+	}
+	if (creationBefore != MakeProjectCreationSnapshotIdentity(projectCreationService_->GetSnapshot()) ||
+		visualStudioBefore != MakeVisualStudioSnapshotIdentity(visualStudioLocator_->GetInstances())) {
+		projectLauncherViewDirty_ = true;
+	}
+	const bool sceneDirty = editorSession_ && editorSession_->GetEditDocument().IsDirty();
+	const bool prefabDirty = imguiManager_->HasUnsavedPrefabChanges();
+	const bool playBlocked = editorSession_ && !editorSession_->IsEditing();
+	if (!projectLauncherDynamicStateInitialized_ ||
+		projectLauncherSceneDirty_ != sceneDirty ||
+		projectLauncherPrefabDirty_ != prefabDirty ||
+		projectLauncherPlayBlocked_ != playBlocked) {
+		projectLauncherViewDirty_ = true;
+		projectLauncherDynamicStateInitialized_ = true;
+		projectLauncherSceneDirty_ = sceneDirty;
+		projectLauncherPrefabDirty_ = prefabDirty;
+		projectLauncherPlayBlocked_ = playBlocked;
+	}
+	if (statusBefore != projectLauncherStatusMessage_) {
+		projectLauncherViewDirty_ = true;
+	}
+	if (ProcessProjectLauncherRequest()) {
+		projectLauncherViewDirty_ = true;
+	}
+	if (projectLauncherViewDirty_) {
+		RefreshProjectLauncherView();
+		projectLauncherViewDirty_ = false;
+	}
+}
+
+void Game::RefreshProjectLauncherView() {
+	if (!imguiManager_) {
+		return;
+	}
+	ProjectLauncherView view{};
+	view.statusMessage = projectLauncherStatusMessage_;
+	if (!projectRegistry_ || !projectCreationService_ || !projectSolutionGenerationService_ || !visualStudioLocator_) {
+		imguiManager_->SetProjectLauncherView(view);
+		return;
+	}
+	view.templateSourceRoot = StringUtility::ToUtf8(projectRegistry_->GetTemplateSourceRoot());
+	view.creationInProgress =
+		projectCreationService_->GetSnapshot().state == ProjectCreationServiceState::GeneratorRunning;
+	view.switchBlockedBySceneDirty = editorSession_ && editorSession_->GetEditDocument().IsDirty();
+	view.switchBlockedByPrefabDirty = imguiManager_->HasUnsavedPrefabChanges();
+	view.switchBlockedByPlayMode = editorSession_ && !editorSession_->IsEditing();
+
+	const std::optional<VisualStudioInstance> preferredInstance =
+		visualStudioLocator_->SelectPreferred({ projectRegistry_->GetPreferredVisualStudioInstanceId(), false, {}, {} });
+	bool hasOpenableVisualStudio = false;
+	for (const VisualStudioInstance& instance : visualStudioLocator_->GetInstances()) {
+		ProjectLauncherVisualStudioView instanceView{};
+		instanceView.instanceId = instance.instanceId;
+		instanceView.displayName = instance.displayName;
+		instanceView.detail = instance.installationVersion + (instance.buildReady ? " (Build Ready)" : " (Openable only)");
+		instanceView.openable = instance.openable;
+		instanceView.selected = preferredInstance.has_value() && preferredInstance->instanceId == instance.instanceId;
+		hasOpenableVisualStudio = hasOpenableVisualStudio || instance.openable;
+		view.visualStudioInstances.push_back(std::move(instanceView));
+	}
+
+	ProjectCompatibilityProbe compatibilityProbe;
+	for (const ProjectRegistryEntry& entry : projectRegistry_->GetProjects()) {
+		ProjectLauncherProjectView projectView{};
+		projectView.descriptorPath = StringUtility::ToUtf8(entry.descriptorPath);
+		projectView.pinned = entry.pinned;
+		ProjectDescriptor descriptor{};
+		std::string errorMessage;
+		if (!descriptor.Load(entry.descriptorPath, errorMessage)) {
+			projectView.displayName = entry.descriptorPath.filename().string();
+			projectView.status = std::filesystem::exists(entry.descriptorPath) ? "Invalid Descriptor" : "Missing";
+			projectView.detail = errorMessage;
+			view.projects.push_back(std::move(projectView));
+			continue;
+		}
+		projectView.displayName = descriptor.GetDisplayName();
+		projectView.projectId = descriptor.GetProjectId();
+		projectView.projectRoot = StringUtility::ToUtf8(descriptor.GetProjectRoot());
+		ProjectSolutionPreviewSnapshot generationSnapshot{};
+		if (!projectSolutionGenerationService_->InspectProject(entry.descriptorPath, generationSnapshot, errorMessage)) {
+			projectView.generationStatus = "Generation Input Error";
+			projectView.generationDetail = errorMessage;
+		} else {
+			projectView.generationStatus = generationSnapshot.state == ProjectSolutionPreviewState::Ready ? "Generation Ready" : "Legacy Manual Solution";
+			projectView.generationDetail = generationSnapshot.detail;
+			projectView.canGenerateSolutionPreview = generationSnapshot.state == ProjectSolutionPreviewState::Ready;
+			projectView.legacyArtifactDirectory = StringUtility::ToUtf8(generationSnapshot.legacyArtifactDirectory);
+			projectView.groupedArtifactDirectory = StringUtility::ToUtf8(generationSnapshot.groupedArtifactDirectory);
+			projectView.layoutMigrationRequired = generationSnapshot.layoutMigrationRequired;
+			projectView.modifiedOwnedArtifactCount = generationSnapshot.modifiedOwnedArtifactCount;
+		}
+		bool hasPreviewCandidate = false;
+		bool selectedPreviewIsActionable = false;
+		for (const ProjectSolutionPreviewSnapshot& preview : projectSolutionGenerationService_->GetPreviews()) {
+			if (preview.projectId != projectView.projectId || preview.state != ProjectSolutionPreviewState::PreviewReady) {
+				continue;
+			}
+			std::string adoptionError;
+			const bool canAdoptSolutionPreview = projectSolutionGenerationService_->CanAdoptPreview(entry.descriptorPath, preview.operationId, adoptionError);
+			std::string migrationError;
+			const bool canAdoptGroupedSolutionLayout = projectSolutionGenerationService_->CanMigrateOutputLayout(entry.descriptorPath, preview.operationId, migrationError);
+			const bool previewIsActionable = canAdoptSolutionPreview || canAdoptGroupedSolutionLayout;
+			if (hasPreviewCandidate && (selectedPreviewIsActionable || !previewIsActionable)) {
+				continue;
+			}
+			hasPreviewCandidate = true;
+			selectedPreviewIsActionable = previewIsActionable;
+			projectView.previewOperationId = preview.operationId;
+			projectView.previewSolutionPath = StringUtility::ToUtf8(preview.solutionPath);
+			projectView.previewArtifactCount = static_cast<uint32_t>(preview.artifacts.size());
+			projectView.canOpenSolutionPreview = true;
+			projectView.canAdoptSolutionPreview = canAdoptSolutionPreview;
+			projectView.canAdoptGroupedSolutionLayout = canAdoptGroupedSolutionLayout;
+			projectView.retiredArtifactCount = generationSnapshot.retiredArtifactCount;
+			projectView.generationStatus = "Preview Ready - Not Built";
+			if (previewIsActionable) {
+				projectView.generationDetail = preview.detail;
+				if (projectView.modifiedOwnedArtifactCount != 0) {
+					projectView.generationDetail += " Current generated drift: " + std::to_string(projectView.modifiedOwnedArtifactCount) + " owned artifacts will be replaced, not merged.";
+				}
+			} else {
+				projectView.generationDetail = preview.detail + (adoptionError.empty() ? "" : " " + adoptionError) + (migrationError.empty() ? "" : " " + migrationError);
+			}
+		}
+		const ProjectCompatibilityReport report = compatibilityProbe.Probe(descriptor);
+		projectView.canOpenSolution = report.solution == ProjectCompatibilityFileState::Available && hasOpenableVisualStudio;
+		projectView.canOpenEditor = report.developmentExecutable == ProjectCompatibilityFileState::Available;
+		projectView.canSwitchEditor = projectView.canOpenEditor &&
+			!view.creationInProgress && !view.switchBlockedBySceneDirty &&
+			!view.switchBlockedByPrefabDirty && !view.switchBlockedByPlayMode;
+		if (!report.IsDescriptorCompatible()) {
+			projectView.status = "Invalid";
+			projectView.detail = report.errors.front();
+		} else if (!projectView.canOpenEditor) {
+			projectView.status = "Not Built";
+			projectView.detail = report.warnings.empty() ? "Development executable is unavailable." : report.warnings.front();
+		} else if (!hasOpenableVisualStudio) {
+			projectView.status = "IDE Missing";
+			projectView.detail = "No openable Visual Studio instance is available.";
+		} else {
+			projectView.status = "Build Ready";
+		}
+		view.projects.push_back(std::move(projectView));
+	}
+	for (const ProjectCreationOperation& operation : projectRegistry_->GetCreationOperations()) {
+		if (operation.state == ProjectCreationOperationState::Complete) {
+			continue;
+		}
+		ProjectLauncherOperationView operationView{};
+		operationView.operationId = operation.operationId;
+		operationView.projectId = operation.projectId;
+		operationView.state = ToProjectCreationOperationStateText(operation.state);
+		operationView.detail = StringUtility::ToUtf8(operation.logPath);
+		operationView.canRetryFinalize = operation.state == ProjectCreationOperationState::RegistrationIncomplete || operation.state == ProjectCreationOperationState::Failed;
+		view.operations.push_back(std::move(operationView));
+	}
+	for (const ProjectSolutionRecoverySnapshot& recovery : projectSolutionGenerationService_->GetRecoverySnapshots()) {
+		ProjectLauncherGenerationRecoveryView recoveryView{};
+		recoveryView.operationId = recovery.operationId;
+		recoveryView.projectId = recovery.projectId;
+		recoveryView.state = ToSolutionGenerationOperationStateText(recovery.state);
+		recoveryView.stagingRoot = StringUtility::ToUtf8(recovery.stagingRoot);
+		recoveryView.rollbackRoot = StringUtility::ToUtf8(recovery.rollbackRoot);
+		recoveryView.detail = recovery.detail;
+		recoveryView.fileCount = recovery.fileCount;
+		recoveryView.canRecheck = recovery.canRecheck;
+		recoveryView.canCommitStaged = recovery.canCommitStaged;
+		recoveryView.canResumeCommit = recovery.canResumeCommit;
+		recoveryView.canRestorePrevious = recovery.canRestorePrevious;
+		view.generationRecoveries.push_back(std::move(recoveryView));
+	}
+	imguiManager_->SetProjectLauncherView(view);
+}
+
+bool Game::ProcessProjectLauncherRequest() {
+	if (!imguiManager_ || !projectRegistry_ || !projectCreationService_ || !projectSolutionGenerationService_) {
+		return false;
+	}
+	ProjectLauncherRequest request{};
+	if (!imguiManager_->ConsumeProjectLauncherRequest(request)) {
+		return false;
+	}
+	std::string errorMessage;
+	bool succeeded = false;
+	switch (request.operation) {
+	case ProjectLauncherRequestOperation::Create: {
+		ProjectCreationRequest createRequest{};
+		createRequest.projectId = request.projectId;
+		createRequest.displayName = request.displayName;
+		createRequest.destinationRoot = StringUtility::ToPath(request.destinationRoot);
+		createRequest.startSceneId = request.startSceneId;
+		createRequest.templateSourceRoot = projectRegistry_->GetTemplateSourceRoot();
+		succeeded = projectCreationService_->Start(createRequest, errorMessage);
+		if (succeeded) {
+			pendingCreateOpenSolution_ = request.openSolutionAfterCreate;
+			pendingCreateVisualStudioInstanceId_ = request.visualStudioInstanceId;
+		}
+		break;
+	}
+	case ProjectLauncherRequestOperation::Import: {
+		ProjectDescriptor descriptor{};
+		const std::filesystem::path descriptorPath = StringUtility::ToPath(request.descriptorPath);
+		succeeded = descriptor.Load(descriptorPath, errorMessage);
+		if (succeeded) {
+			ProjectRegistryEntry entry{};
+			entry.descriptorPath = descriptor.GetDescriptorPath();
+			succeeded = projectRegistry_->RegisterProject(entry, errorMessage) && projectRegistry_->Save(errorMessage);
+		}
+		break;
+	}
+	case ProjectLauncherRequestOperation::Remove:
+		succeeded = projectRegistry_->RemoveProject(StringUtility::ToPath(request.descriptorPath));
+		if (succeeded) {
+			succeeded = projectRegistry_->Save(errorMessage);
+		} else {
+			errorMessage = "Project is not registered.";
+		}
+		break;
+	case ProjectLauncherRequestOperation::RetryFinalize:
+		succeeded = projectCreationService_->RetryFinalize(request.operationId, errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::SetPinned:
+		for (const ProjectRegistryEntry& entry : projectRegistry_->GetProjects()) {
+			if (StringUtility::ToUtf8(entry.descriptorPath) != request.descriptorPath) {
+				continue;
+			}
+			ProjectRegistryEntry updated = entry;
+			updated.pinned = request.pinned;
+			succeeded = projectRegistry_->RegisterProject(updated, errorMessage) && projectRegistry_->Save(errorMessage);
+			break;
+		}
+		if (!succeeded && errorMessage.empty()) {
+			errorMessage = "Project is not registered.";
+		}
+		break;
+	case ProjectLauncherRequestOperation::OpenFolder:
+		succeeded = LaunchProjectFolder(StringUtility::ToPath(request.descriptorPath), errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::OpenSolution:
+		succeeded = LaunchProjectSolution(StringUtility::ToPath(request.descriptorPath), request.visualStudioInstanceId, errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::GenerateSolutionPreview:
+	case ProjectLauncherRequestOperation::RetrySolutionPreview: {
+		ProjectSolutionPreviewSnapshot preview{};
+		succeeded = projectSolutionGenerationService_->CreatePreview(StringUtility::ToPath(request.descriptorPath), preview, errorMessage);
+		if (succeeded && preview.state != ProjectSolutionPreviewState::PreviewReady) {
+			errorMessage = preview.detail;
+			succeeded = false;
+		}
+		break;
+	}
+	case ProjectLauncherRequestOperation::OpenSolutionPreview:
+		for (const ProjectSolutionPreviewSnapshot& preview : projectSolutionGenerationService_->GetPreviews()) {
+			if (preview.operationId == request.operationId && preview.state == ProjectSolutionPreviewState::PreviewReady) {
+				succeeded = LaunchPreviewSolution(preview.solutionPath, request.visualStudioInstanceId, errorMessage);
+				break;
+			}
+		}
+		if (!succeeded && errorMessage.empty()) errorMessage = "Preview Solution is unavailable.";
+		break;
+	case ProjectLauncherRequestOperation::Refresh:
+		succeeded = true;
+		break;
+	case ProjectLauncherRequestOperation::AdoptSolutionPreview:
+		succeeded = projectSolutionGenerationService_->AdoptPreview(StringUtility::ToPath(request.descriptorPath), request.operationId, errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::AdoptGroupedSolutionLayout:
+		succeeded = projectSolutionGenerationService_->MigrateOutputLayout(StringUtility::ToPath(request.descriptorPath), request.operationId, errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::CommitStagedSolutionGeneration:
+		succeeded = projectSolutionGenerationService_->CommitStaged(request.operationId, errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::ResumeSolutionGenerationCommit:
+		succeeded = projectSolutionGenerationService_->ResumeCommit(request.operationId, errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::RecheckSolutionGenerationRecovery:
+		succeeded = projectSolutionGenerationService_->RecheckRecovery(request.operationId, errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::RestorePreviousSolutionGeneration:
+		succeeded = projectSolutionGenerationService_->RestorePrevious(request.operationId, errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::OpenEditor:
+		succeeded = LaunchProjectEditor(StringUtility::ToPath(request.descriptorPath), false, errorMessage);
+		break;
+	case ProjectLauncherRequestOperation::SwitchEditor:
+		if ((editorSession_ && (!editorSession_->IsEditing() || editorSession_->GetEditDocument().IsDirty())) || imguiManager_->HasUnsavedPrefabChanges() || projectCreationService_->GetSnapshot().state == ProjectCreationServiceState::GeneratorRunning) {
+			errorMessage = "Switch Editor is blocked by Play mode, unsaved Scene or Prefab changes, or Project creation.";
+			break;
+		}
+		succeeded = LaunchProjectEditor(StringUtility::ToPath(request.descriptorPath), true, errorMessage);
+		break;
+	default:
+		errorMessage = "Unknown Project Launcher request.";
+		break;
+	}
+	projectLauncherStatusMessage_ = succeeded ? "Project Launcher request completed." : errorMessage;
+	return true;
+}
+
+bool Game::LaunchProjectSolution(
+	const std::filesystem::path& descriptorPath,
+	const std::string& requestedInstanceId,
+	std::string& errorMessage
+) {
+	if (!visualStudioLocator_) {
+		errorMessage = "Visual Studio service is unavailable.";
+		return false;
+	}
+	ProjectDescriptor descriptor{};
+	if (!descriptor.Load(descriptorPath, errorMessage)) {
+		return false;
+	}
+	ProjectCompatibilityProbe probe;
+	const ProjectCompatibilityReport report = probe.Probe(descriptor);
+	if (report.solution != ProjectCompatibilityFileState::Available) {
+		errorMessage = report.errors.empty() ? "Solution is unavailable." : report.errors.front();
+		return false;
+	}
+	std::optional<VisualStudioInstance> instance;
+	for (const VisualStudioInstance& candidate : visualStudioLocator_->GetInstances()) {
+		if (candidate.instanceId == requestedInstanceId && candidate.openable) {
+			instance = candidate;
+			break;
+		}
+	}
+	if (!instance.has_value()) {
+		instance = visualStudioLocator_->SelectPreferred(
+			VisualStudioLocator::MakeSelectionRequest({}, false, report)
+		);
+	}
+	if (!instance.has_value()) {
+		errorMessage = "No openable Visual Studio instance was found.";
+		return false;
+	}
+	WindowsProcess process;
+	return visualStudioLocator_->LaunchSolution(
+		*instance,
+		descriptor.ResolveProjectPath(descriptor.GetPaths().solution),
+		process,
+		errorMessage
+	);
+}
+
+bool Game::LaunchPreviewSolution(
+	const std::filesystem::path& solutionPath,
+	const std::string& requestedInstanceId,
+	std::string& errorMessage
+) {
+	if (!visualStudioLocator_) {
+		errorMessage = "Visual Studio service is unavailable.";
+		return false;
+	}
+	std::error_code filesystemError;
+	if (!std::filesystem::is_regular_file(solutionPath, filesystemError) || filesystemError) {
+		errorMessage = "Preview Solution is unavailable.";
+		return false;
+	}
+	std::optional<VisualStudioInstance> instance;
+	for (const VisualStudioInstance& candidate : visualStudioLocator_->GetInstances()) {
+		if (candidate.instanceId == requestedInstanceId && candidate.openable) {
+			instance = candidate;
+			break;
+		}
+	}
+	if (!instance.has_value()) {
+		instance = visualStudioLocator_->SelectPreferred({ {}, false, "v143", "10.0.26100.0" });
+	}
+	if (!instance.has_value()) {
+		errorMessage = "No openable Visual Studio instance was found.";
+		return false;
+	}
+	WindowsProcess process;
+	return visualStudioLocator_->LaunchSolution(*instance, solutionPath, process, errorMessage);
+}
+
+bool Game::LaunchProjectFolder(
+	const std::filesystem::path& descriptorPath,
+	std::string& errorMessage
+) {
+	ProjectDescriptor descriptor{};
+	if (!descriptor.Load(descriptorPath, errorMessage)) {
+		return false;
+	}
+	wchar_t windowsDirectory[MAX_PATH]{};
+	const UINT length = GetWindowsDirectoryW(windowsDirectory, MAX_PATH);
+	if (length == 0 || length >= MAX_PATH) {
+		errorMessage = "Windows directory could not be resolved.";
+		return false;
+	}
+	WindowsProcess process;
+	WindowsProcessRequest request{};
+	request.applicationPath = std::filesystem::path(windowsDirectory) / L"explorer.exe";
+	request.arguments = { descriptor.GetProjectRoot().native() };
+	request.workingDirectory = descriptor.GetProjectRoot();
+	return process.Start(request, errorMessage);
+}
+
+bool Game::LaunchProjectEditor(
+	const std::filesystem::path& descriptorPath,
+	bool switchCurrentEditor,
+	std::string& errorMessage
+) {
+	ProjectDescriptor descriptor{};
+	if (!descriptor.Load(descriptorPath, errorMessage)) {
+		return false;
+	}
+	const std::filesystem::path executable = descriptor.ResolveProjectPath(
+		descriptor.GetPaths().developmentExecutable
+	);
+	std::error_code filesystemError;
+	if (!std::filesystem::is_regular_file(executable, filesystemError) || filesystemError) {
+		errorMessage = "Target Development executable is unavailable.";
+		return false;
+	}
+	WindowsProcess process;
+	WindowsProcessRequest request{};
+	request.applicationPath = executable;
+	request.workingDirectory = descriptor.GetProjectRoot() / L"project";
+	if (!process.Start(request, errorMessage)) {
+		return false;
+	}
+	if (switchCurrentEditor) {
+		endRequest_ = true;
+	}
+	return true;
 }
 
 bool Game::OpenRegisteredEditScene(
@@ -1946,6 +2509,17 @@ void Game::Finalize() {
 		imguiManager_->SetSceneTemplateRegistry(nullptr);
 	}
 #endif
+	delete visualStudioLocator_;
+	visualStudioLocator_ = nullptr;
+	delete projectCreationService_;
+	projectCreationService_ = nullptr;
+	delete projectSolutionGenerationService_;
+	projectSolutionGenerationService_ = nullptr;
+	delete projectRegistry_;
+	projectRegistry_ = nullptr;
+	projectLauncherInitialized_ = false;
+	pendingCreateOpenSolution_ = false;
+	pendingCreateVisualStudioInstanceId_.clear();
 	delete modelPreviewObject_;
 	modelPreviewObject_ = nullptr;
 	delete prefabPreviewRenderer_;

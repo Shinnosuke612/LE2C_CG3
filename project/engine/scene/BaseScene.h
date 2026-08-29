@@ -23,6 +23,8 @@ public:
 	// InitializeとFinalizeはScene切り替えごとに一度ずつ対で呼ばれる。
 	virtual void Initialize() = 0;
 	virtual void Finalize() = 0;
+	// Single Scene切替で旧Sceneを破棄する直前だけ呼ばれる任意hook。
+	virtual void PrepareForSceneTransition() {}
 
 	virtual void Update(float deltaTime) = 0;
 	// Pause中はSimulationを進めず、Debug Cameraなど必要な表示状態だけを更新する。

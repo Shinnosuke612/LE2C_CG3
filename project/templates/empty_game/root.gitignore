@@ -1,0 +1,24 @@
+# Visual Studio and local editor state
+.vs/
+*.user
+*.suo
+project/imgui.ini
+project/editor_settings.json
+project/editor_settings.json.bak
+project/editor_settings.json.tmp
+
+# Build and generated output
+generated/
+Dumps/
+Logs/
+output/
+outputs/
+project/externals/generated/
+
+# Scene and generated asset recovery files
+project/resources/scenes/*.json.bak
+project/resources/scenes/*.json.tmp
+project/resources/skyboxes/*.dds.bak
+
+# Local Codex files
+.codex/

@@ -15,6 +15,7 @@
 #include "../particle/ParticleCommon.h"
 #include "../particle/ParticleManager.h"
 #include "../audio/Audio.h"
+#include "../audio/MediaFoundationRuntime.h"
 #include "../debug/DebugRenderer.h"
 #include "../scene/AbstractSceneFactory.h"
 
@@ -78,8 +79,15 @@ void Framework::Initialize() {
 	imguiManager_->Initialize(winApp_, dxCommon_, srvManager_);
 #endif
 
+	// Decoderより先にMFを開始し、Audio終了後までProcess lifetimeを維持する。
+	mediaFoundationRuntime_ = new MediaFoundationRuntime();
+	if (!mediaFoundationRuntime_->Initialize()) {
+		Logger::Log(
+			"Media Foundation: " + mediaFoundationRuntime_->GetLastError() + "\n"
+		);
+	}
 	audio_ = new Audio();
-	audio_->Initialize();
+	audio_->Initialize(mediaFoundationRuntime_);
 
 	endRequest_ = false;
 	deltaTime_ = 1.0f / 60.0f;
@@ -98,6 +106,11 @@ void Framework::Update() {
 	if (winApp_->ProcessMessage()) {
 		endRequest_ = true;
 		return;
+	}
+
+	// Voice callbackは通知だけを行い、PCMとSource Voiceの破棄はMain Threadへ集約する。
+	if (audio_) {
+		audio_->Update(deltaTime_);
 	}
 
 	input_->Update();
@@ -128,6 +141,9 @@ void Framework::Finalize() {
 	if (audio_) {
 		audio_->Finalize();
 	}
+	if (mediaFoundationRuntime_) {
+		mediaFoundationRuntime_->Finalize();
+	}
 
 	TextureManager::GetInstance()->Finalize();
 	ModelManager::GetInstance()->Finalize();
@@ -143,6 +159,8 @@ void Framework::Finalize() {
 
 	delete audio_;
 	audio_ = nullptr;
+	delete mediaFoundationRuntime_;
+	mediaFoundationRuntime_ = nullptr;
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	delete imguiManager_;

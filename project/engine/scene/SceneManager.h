@@ -104,7 +104,8 @@ private:
 	BaseScene* GetActiveScene() const;
 	bool UnloadNonPersistentSceneInstances(
 		SceneInstanceId forcedUnloadInstanceId = kInvalidSceneInstanceId,
-		bool forceUnloadAll = false
+		bool forceUnloadAll = false,
+		bool prepareForSceneTransition = false
 	);
 	void ReleaseSceneParticlesIfUnused(const std::string& sceneId);
 	void UnloadAllSceneInstances();

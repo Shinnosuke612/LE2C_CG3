@@ -1,0 +1,31 @@
+{
+  "configurations": ["Debug", "Development", "Release"],
+  "externals": {
+    "assimp": "snapshot-prebuilt",
+    "directXTexProject": "externals/DirectXTex/DirectXTex_Desktop_2022_Win10.vcxproj",
+    "imguiProject": "externals/imgui/imgui.vcxproj"
+  },
+  "platform": "x64",
+  "runtime": {
+    "copyResources": true,
+    "resourceRoot": "resources"
+  },
+  "schemaVersion": 1,
+  "sourceSets": {
+    "engine": {
+      "include": ["**/*.cpp", "**/*.h"],
+      "root": "engine"
+    },
+    "entry": {
+      "files": ["main.cpp"]
+    },
+    "game": {
+      "include": ["**/*.cpp", "**/*.h"],
+      "root": "application"
+    }
+  },
+  "toolchain": {
+    "platformToolset": "v143",
+    "windowsSdk": "10.0.26100.0"
+  }
+}

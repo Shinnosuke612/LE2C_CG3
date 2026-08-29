@@ -75,9 +75,46 @@
     <ClCompile Include="engine\math\Matrix4x4.cpp" />
     <ClCompile Include="engine\base\EditorLocalization.cpp" />
     <ClCompile Include="engine\base\EditorComponentCatalog.cpp" />
+	<ClCompile Include="engine\project\ProjectDescriptor.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\ProjectRegistry.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\ProjectCompatibilityProbe.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\ProjectBuildSpecification.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\SolutionGenerationModel.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\SolutionGenerationEmitter.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\SolutionGenerationTransaction.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\ProjectSolutionGenerationService.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\WindowsProcess.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\VisualStudioLocator.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
+	<ClCompile Include="engine\project\ProjectCreationService.cpp">
+	  <Filter>Engine\Project</Filter>
+	</ClCompile>
     <ClCompile Include="engine\base\ImGuiManager.cpp" />
     <ClCompile Include="engine\base\PostProcessSettingsEditor.cpp" />
     <ClCompile Include="engine\Audio\Audio.cpp" />
+    <ClCompile Include="engine\Audio\AudioDirector.cpp" />
+    <ClCompile Include="engine\Audio\AudioDecoder.cpp" />
+    <ClCompile Include="engine\Audio\AudioStreamDecoder.cpp" />
+    <ClCompile Include="engine\Audio\MediaFoundationRuntime.cpp" />
     <ClCompile Include="engine\utility\SystemPerformanceMonitor.cpp" />
     <ClCompile Include="application\Game.cpp">
       <Filter>Application</Filter>
@@ -111,6 +148,9 @@
 		<Filter>Application\Scene\System</Filter>
 	</ClCompile>
 	<ClCompile Include="application\scene\system\SceneTextRenderSystem.cpp">
+		<Filter>Application\Scene\System</Filter>
+	</ClCompile>
+	<ClCompile Include="application\scene\system\SceneAudioSystem.cpp">
 		<Filter>Application\Scene\System</Filter>
 	</ClCompile>
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp">
@@ -305,9 +345,49 @@
     <ClInclude Include="engine\math\Vector2.h" />
     <ClInclude Include="engine\math\Vector3.h" />
     <ClInclude Include="engine\math\Vector4.h" />
+    <ClInclude Include="engine\base\EditorLocalization.h" />
+    <ClInclude Include="engine\base\EditorComponentCatalog.h" />
+	<ClInclude Include="engine\project\ProjectDescriptor.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\ProjectRegistry.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\ProjectCompatibilityProbe.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\ProjectBuildSpecification.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\SolutionGenerationModel.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\SolutionGenerationEmitter.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\SolutionGenerationTransaction.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\ProjectSolutionGenerationService.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\WindowsProcess.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\VisualStudioLocator.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
+	<ClInclude Include="engine\project\ProjectCreationService.h">
+	  <Filter>Engine\Project</Filter>
+	</ClInclude>
     <ClInclude Include="engine\base\ImGuiManager.h" />
     <ClInclude Include="engine\base\PostProcessSettingsEditor.h" />
     <ClInclude Include="engine\Audio\Audio.h" />
+    <ClInclude Include="engine\Audio\AudioDirector.h" />
+    <ClInclude Include="engine\Audio\AudioClip.h" />
+    <ClInclude Include="engine\Audio\AudioDecoder.h" />
+    <ClInclude Include="engine\Audio\AudioStreamDecoder.h" />
+    <ClInclude Include="engine\Audio\MediaFoundationRuntime.h" />
     <ClInclude Include="application\Game.h">
       <Filter>Application</Filter>
     </ClInclude>
@@ -345,8 +425,9 @@
 	<ClInclude Include="application\scene\system\SceneTextRenderSystem.h">
 		<Filter>Application\Scene\System</Filter>
 	</ClInclude>
-    <ClInclude Include="engine\base\EditorLocalization.h" />
-    <ClInclude Include="engine\base\EditorComponentCatalog.h" />
+	<ClInclude Include="application\scene\system\SceneAudioSystem.h">
+		<Filter>Application\Scene\System</Filter>
+	</ClInclude>
     <ClInclude Include="application\scene\system\SceneDebugSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
@@ -548,5 +629,8 @@
     <Filter Include="Engine\Agent">
       <UniqueIdentifier>{A8E15772-C3F8-44D5-9D23-65986C4118D9}</UniqueIdentifier>
     </Filter>
+	<Filter Include="Engine\Project">
+	  <UniqueIdentifier>{6C8F294D-80FD-41E7-B09E-1BC40A5076D5}</UniqueIdentifier>
+	</Filter>
   </ItemGroup>
 </Project>

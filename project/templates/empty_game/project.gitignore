@@ -1,0 +1,12 @@
+# Project-local generated and editor state
+*.user
+*.suo
+imgui.ini
+editor_settings.json
+editor_settings.json.bak
+editor_settings.json.tmp
+
+# Scene and generated asset recovery files
+resources/scenes/*.json.bak
+resources/scenes/*.json.tmp
+resources/skyboxes/*.dds.bak

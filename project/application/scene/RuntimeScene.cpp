@@ -225,6 +225,13 @@ void RuntimeScene::Update(float deltaTime)
 	SceneDocument* activeDocument = GetSceneDocument();
 	if (activeDocument) {
 		postProcessProfileSystem_.Sync(*activeDocument);
+		// 2Dの先読みはTransform確定を待たないため、Eventより前に完了させる。
+		audioSystem_.Sync(
+			*activeDocument,
+			playing,
+			GetSceneInstanceId(),
+			sceneManager_ && sceneManager_->GetActiveSceneInstanceId() == GetSceneInstanceId()
+		);
 	} else {
 		postProcessProfileSystem_.Reset();
 	}
@@ -315,6 +322,7 @@ void RuntimeScene::Update(float deltaTime)
 		runtimeEffectSystem_.Advance(*activeDocument, deltaTime);
 		prefabAnimationSystem_.Update(*activeDocument, gameplayDeltaTime);
 	} else {
+		audioSystem_.Clear();
 		statSystem_.Clear();
 		attackRunnerSystem_.Clear(activeDocument);
 		runtimeEffectSystem_.Clear(activeDocument);
@@ -378,6 +386,7 @@ void RuntimeScene::Update(float deltaTime)
 			);
 		}
 	} else {
+		audioSystem_.Clear();
 		runtimeObjectBindings_.clear();
 		agentSystem_.Clear();
 		attachmentSystem_.Clear(&objectSystem_);
@@ -506,7 +515,6 @@ void RuntimeScene::Update(float deltaTime)
 	} else if (camera_) {
 		camera_->Update();
 	}
-
 	// Transform確定後に環境設定とDebug形状を登録し、描画時の状態を揃える。
 	environmentSystem_.Sync(activeDocument, runtimeObjectBindings_);
 
@@ -524,7 +532,8 @@ void RuntimeScene::Update(float deltaTime)
 	if (activeDocument && playing && gameplayDeltaTime > 0.0f) {
 		// Prefab生成はEntity配列を再配置し得るため、bindingを使い終えた最後に行う。
 		const SceneEventRuntimeSignals eventSignals{
-			cameraSystem_.ConsumeCompletedCameraPathEntityId()
+			cameraSystem_.ConsumeCompletedCameraPathEntityId(),
+			audioSystem_.ConsumeFinishedEntityIds(*activeDocument)
 		};
 		const SceneEventResult eventResult = eventSystem_.Update(
 			*activeDocument,
@@ -544,7 +553,20 @@ void RuntimeScene::Update(float deltaTime)
 			player_,
 			eventResult.cameraRequests
 		);
+		audioSystem_.ApplyRequests(*activeDocument, eventResult.audioRequests);
 		postProcessProfileSystem_.ApplyEventResult(*activeDocument, eventResult);
+	}
+	if (activeDocument) {
+		audioSystem_.Sync(
+			*activeDocument,
+			playing,
+			GetSceneInstanceId(),
+			sceneManager_ && sceneManager_->GetActiveSceneInstanceId() == GetSceneInstanceId()
+		);
+		if (playing) {
+			// Event Play直後のVoiceにも、三人称Cameraを含む最終姿勢を同Frameで適用する。
+			audioSystem_.UpdateSpatial(*activeDocument, camera_);
+		}
 	}
 	postProcessProfileSystem_.Update(playing ? gameplayDeltaTime : 0.0f);
 	textRenderSystem_.ClearTextOverrides();
@@ -729,6 +751,7 @@ void RuntimeScene::Finalize()
 	hitStopSystem_.Clear();
 	enemySystem_.Clear();
 	eventSystem_.Clear();
+	audioSystem_.Clear();
 	postProcessProfileSystem_.Reset();
 	stateMachineSystem_.Clear();
 	attackRunnerSystem_.Clear();
@@ -758,4 +781,14 @@ void RuntimeScene::Finalize()
 
 	delete debugCamera_;
 	debugCamera_ = nullptr;
+}
+
+void RuntimeScene::PrepareForSceneTransition()
+{
+	SceneExecutionContext* executionContext = sceneManager_
+		? sceneManager_->GetExecutionContext()
+		: nullptr;
+	if (!executionContext || executionContext->IsPlaying()) {
+		audioSystem_.PrepareForSceneTransition();
+	}
 }

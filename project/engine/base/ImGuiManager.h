@@ -10,6 +10,7 @@
 #include "../Audio/Audio.h"
 #include "../math/Quaternion.h"
 #include "../scene/PrefabAssetRegistry.h"
+#include "EditorLocalization.h"
 
 #include <d3d12.h>
 #include "../../externals/imgui/imgui.h"
@@ -80,6 +81,112 @@ struct SceneInstanceRequest {
 	bool persistent = false;
 };
 
+enum class ProjectLauncherRequestOperation {
+	None,
+	Create,
+	Import,
+	Remove,
+	RetryFinalize,
+	SetPinned,
+	OpenFolder,
+	OpenSolution,
+	GenerateSolutionPreview,
+	RetrySolutionPreview,
+	OpenSolutionPreview,
+	Refresh,
+	AdoptSolutionPreview,
+	AdoptGroupedSolutionLayout,
+	CommitStagedSolutionGeneration,
+	ResumeSolutionGenerationCommit,
+	RecheckSolutionGenerationRecovery,
+	RestorePreviousSolutionGeneration,
+	OpenEditor,
+	SwitchEditor
+};
+
+struct ProjectLauncherRequest {
+	ProjectLauncherRequestOperation operation = ProjectLauncherRequestOperation::None;
+	std::string descriptorPath;
+	std::string operationId;
+	std::string projectId;
+	std::string displayName;
+	std::string destinationRoot;
+	std::string startSceneId;
+	std::string visualStudioInstanceId;
+	bool openSolutionAfterCreate = false;
+	bool pinned = false;
+};
+
+struct ProjectLauncherProjectView {
+	std::string descriptorPath;
+	std::string displayName;
+	std::string projectId;
+	std::string projectRoot;
+	std::string status;
+	std::string detail;
+	std::string generationStatus;
+	std::string generationDetail;
+	std::string previewOperationId;
+	std::string previewSolutionPath;
+	std::string legacyArtifactDirectory;
+	std::string groupedArtifactDirectory;
+	uint32_t previewArtifactCount = 0;
+	uint32_t retiredArtifactCount = 0;
+	uint32_t modifiedOwnedArtifactCount = 0;
+	bool pinned = false;
+	bool canGenerateSolutionPreview = false;
+	bool canOpenSolutionPreview = false;
+	bool canAdoptSolutionPreview = false;
+	bool canAdoptGroupedSolutionLayout = false;
+	bool layoutMigrationRequired = false;
+	bool canOpenSolution = false;
+	bool canOpenEditor = false;
+	bool canSwitchEditor = false;
+};
+
+struct ProjectLauncherGenerationRecoveryView {
+	std::string operationId;
+	std::string projectId;
+	std::string state;
+	std::string stagingRoot;
+	std::string rollbackRoot;
+	std::string detail;
+	uint32_t fileCount = 0;
+	bool canRecheck = false;
+	bool canCommitStaged = false;
+	bool canResumeCommit = false;
+	bool canRestorePrevious = false;
+};
+
+struct ProjectLauncherOperationView {
+	std::string operationId;
+	std::string projectId;
+	std::string state;
+	std::string detail;
+	bool canRetryFinalize = false;
+};
+
+struct ProjectLauncherVisualStudioView {
+	std::string instanceId;
+	std::string displayName;
+	std::string detail;
+	bool openable = false;
+	bool selected = false;
+};
+
+struct ProjectLauncherView {
+	std::string templateSourceRoot;
+	std::string statusMessage;
+	std::vector<ProjectLauncherProjectView> projects;
+	std::vector<ProjectLauncherOperationView> operations;
+	std::vector<ProjectLauncherGenerationRecoveryView> generationRecoveries;
+	std::vector<ProjectLauncherVisualStudioView> visualStudioInstances;
+	bool creationInProgress = false;
+	bool switchBlockedBySceneDirty = false;
+	bool switchBlockedByPrefabDirty = false;
+	bool switchBlockedByPlayMode = false;
+};
+
 class ImGuiManager{
 public:
 	static ImGuiManager* GetInstance();
@@ -128,6 +235,7 @@ public:
 	) {
 		sceneTemplateRegistry_ = sceneTemplateRegistry;
 	}
+	void SetProjectLauncherView(const ProjectLauncherView& value);
 	bool ConsumeOpenSceneRequest(
 		std::string& sceneId,
 		bool& discardUnsavedChanges
@@ -139,6 +247,8 @@ public:
 		SceneBuildConfiguration& configuration,
 		SceneStartupMode& mode
 	);
+	bool ConsumeProjectLauncherRequest(ProjectLauncherRequest& request);
+	bool HasUnsavedPrefabChanges() const;
 	void NotifySceneAssetOperationResult(
 		bool success,
 		const std::string& message
@@ -193,12 +303,75 @@ private:
 		std::string message;
 		bool error = true;
 	};
+	struct ComponentPickerItem {
+		std::string type;
+		std::string requiredByType;
+	};
+	enum class ComponentTagMatchMode {
+		All,
+		Any
+	};
+	struct ComponentPickerState {
+		const SceneDocument* document = nullptr;
+		std::string documentKey;
+		uint64_t entityId = 0;
+		char searchBuffer[256] = {};
+		int category = -1;
+		uint16_t selectedTagMask = 0;
+		ComponentTagMatchMode tagMatchMode = ComponentTagMatchMode::All;
+		bool favoritesOnly = false;
+		std::vector<ComponentPickerItem> items;
+		std::string error;
+	};
+	enum class ComponentPickerTarget {
+		Scene,
+		Prefab
+	};
+	enum class ComponentInspectorMode {
+		Detailed,
+		Simple
+	};
 
 	// ドッキング用の土台を作成
 	void CreateDockSpace();
 	void BuildDefaultLayout();
 	void DrawHierarchyWindow(const char* sceneName);
 	void DrawInspectorWindow();
+	void StopAudioPreview();
+	void DrawSceneComponentPicker();
+	void DrawPrefabComponentPicker();
+	void DrawComponentPicker(
+		ComponentPickerState& state,
+		ComponentPickerTarget target
+	);
+	void OpenComponentPicker(
+		ComponentPickerState& state,
+		ComponentPickerTarget target,
+		SceneDocument& document,
+		const std::string& documentKey,
+		uint64_t entityId
+	);
+	void ResetComponentPicker(ComponentPickerState& state);
+	void ToggleComponentPickerItem(
+		ComponentPickerState& state,
+		ComponentPickerTarget target,
+		const SceneEntity& entity,
+		const std::string& type
+	);
+	void RemoveComponentPickerItem(
+		ComponentPickerState& state,
+		const std::string& type
+	);
+	bool IsComponentPickerItemQueued(
+		const ComponentPickerState& state,
+		const std::string& type
+	) const;
+	void DrawComponentSummary(
+		const SceneEntity& entity,
+		const std::string& documentKey,
+		bool prefabAnimationFocusOnly,
+		std::string& selectedType
+	);
 	void DrawProjectWindow();
 	void DrawConsoleWindow();
 	void DrawLoadedScenesWindow();
@@ -217,6 +390,7 @@ private:
 	void DrawPrefabQuickOpenPopup();
 	void RequestPrefabQuickOpen();
 	const std::vector<std::string>& GetCachedPrefabAssetPaths();
+	const std::vector<std::string>& GetCachedAudioAssetPaths();
 	void RefreshPrefabAssetPathCache();
 	void RecordRecentPrefab(const std::string& filePath);
 	bool IsFavoritePrefab(const std::string& filePath) const;
@@ -269,6 +443,7 @@ private:
 	void FocusSceneCameraOnSelection();
 	const std::vector<std::string>& GetCachedModelAssetPaths();
 	const std::vector<std::string>& GetCachedTextureAssetPaths();
+	bool DrawAudioClipAssetField(const char* label, std::string& audioClipPath);
 	void RefreshAssetPathCache();
 	void InvalidateProjectCache();
 
@@ -294,20 +469,30 @@ private:
 	void RefreshProjectDirectoryCache();
 	// エディタ固有の外観設定を管理する。シーンデータには保存しない。
 	enum class EditorFontPreset {
-		OriginalWithCjk,
-		UnifiedCjk,
-		CascadiaMonoWithCjk
+		MsGothic,
+		YuGothicUi,
+		Meiryo,
+		BizUdGothic,
+		ImGuiDefaultWithJapanese,
+		CascadiaMonoWithJapanese
 	};
 	void DrawSettingsMenu();
 	void DrawSceneMenu();
 	void DrawSceneSwitchConfirmation();
 	void DrawSceneAssetDialogs();
 	void DrawProjectSettingsDialogs();
+	void DrawProjectLauncherWindow();
+	void QueueProjectLauncherRequest(const ProjectLauncherRequest& request);
 	void RequestOpenScene(const std::string& sceneId);
 	void QueueSceneAssetRequest(const SceneAssetRequest& request);
 	void QueueSceneInstanceRequest(const SceneInstanceRequest& request);
 	void LoadEditorSettings();
 	void SaveEditorSettings() const;
+	bool DrawPersistentInspectorHeader(
+		const std::string& key,
+		const char* label,
+		bool defaultOpen = true
+	);
 	void RequestEditorFontRebuild();
 	void ApplyPendingEditorFont();
 	void ConfigureEditorFont(ImGuiIO& io, float dpiScale);
@@ -334,14 +519,23 @@ private:
 	bool prefabGridVisible_ = true;
 	bool sceneAxisVisible_ = true;
 	bool prefabAxisVisible_ = true;
-	EditorFontPreset editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
+	EditorLanguage editorLanguage_ = EditorLanguage::Japanese;
+	EditorFontPreset editorFontPreset_ = EditorFontPreset::MsGothic;
 	float editorFontSize_ = 13.0f;
 	bool editorFontRebuildRequested_ = false;
 	bool startFullscreen_ = false;
 	// シーン/Entity/コンポーネント単位のInspector折りたたみ状態。
 	std::unordered_map<std::string, bool> componentFoldoutStates_;
+	// Transformなど、Component以外のInspector区画もEditorローカルで保持する。
+	std::unordered_map<std::string, bool> inspectorFoldoutStates_;
+	std::unordered_set<std::string> favoriteComponentTypes_;
+	ComponentInspectorMode componentInspectorMode_ =
+		ComponentInspectorMode::Detailed;
+	std::string sceneSummarySelectedComponentType_;
+	std::string prefabSummarySelectedComponentType_;
 	int selectedHierarchyItem_ = 0;
 	uint64_t selectedEntityId_ = 0;
+	ComponentPickerState sceneComponentPicker_;
 	// Hierarchyの複数選択と表示状態を保持する。selectedEntityId_はInspector/Gizmo用の基準Entity。
 	std::unordered_set<uint64_t> selectedEntityIds_;
 	uint64_t hierarchySelectionAnchorId_ = 0;
@@ -359,6 +553,7 @@ private:
 	EditorSession* editorSession_ = nullptr;
 	PrefabEditorSession* prefabEditorSession_ = nullptr;
 	uint64_t prefabSelectedEntityId_ = 0;
+	ComponentPickerState prefabComponentPicker_;
 	bool prefabClosePopupRequested_ = false;
 	bool prefabOpenPopupRequested_ = false;
 	int prefabFocusFramesRemaining_ = 0;
@@ -394,6 +589,25 @@ private:
 	SceneBuildConfiguration requestedStartupConfiguration_{};
 	SceneStartupMode requestedStartupMode_{};
 	bool startupModeRequestPending_ = false;
+	ProjectLauncherView projectLauncherView_{};
+	ProjectLauncherRequest projectLauncherRequest_{};
+	bool projectLauncherRequestPending_ = false;
+	bool showProjectLauncher_ = false;
+	bool projectLauncherCreateConfirmationOpen_ = false;
+	bool projectLauncherRestoreGenerationConfirmationOpen_ = false;
+	std::string projectLauncherRestoreGenerationOperationId_;
+	bool projectLauncherGenerationConfirmationOpen_ = false;
+	bool projectLauncherGenerationConfirmationVerified_ = false;
+	ProjectLauncherRequest projectLauncherGenerationConfirmationRequest_{};
+	std::string projectLauncherGenerationConfirmationDetail_;
+	uint32_t projectLauncherGenerationConfirmationModifiedOwnedArtifactCount_ = 0;
+	bool projectLauncherOpenSolutionAfterCreate_ = false;
+	char projectLauncherProjectIdBuffer_[64]{};
+	char projectLauncherDisplayNameBuffer_[128]{};
+	char projectLauncherDestinationRootBuffer_[512]{};
+	char projectLauncherStartSceneIdBuffer_[64]{};
+	char projectLauncherImportDescriptorBuffer_[512]{};
+	int projectLauncherVisualStudioIndex_ = -1;
 	bool projectSettingsErrorPopupRequested_ = false;
 	std::string projectSettingsErrorMessage_;
 	char sceneAssetNameBuffer_[128]{};
@@ -429,6 +643,8 @@ private:
 	bool assetPathCacheDirty_ = true;
 	std::vector<std::string> cachedModelAssetPaths_;
 	std::vector<std::string> cachedTextureAssetPaths_;
+	std::vector<std::string> cachedAudioAssetPaths_;
+	char audioAssetSearchBuffer_[256] = {};
 	bool prefabAssetPathCacheDirty_ = true;
 	std::vector<std::string> cachedPrefabAssetPaths_;
 	bool prefabAssetValidationCompleted_ = false;
@@ -441,7 +657,9 @@ private:
 	std::vector<ProjectDirectoryEntry> cachedProjectEntries_;
 	bool projectTreeCacheDirty_ = true;
 	ProjectDirectoryNode cachedProjectTreeRoot_;
-	Audio::SoundData previewSoundData_{};
+	AudioClipPtr previewAudioClip_;
+	Audio::PlaybackHandle previewAudioPlayback_;
+	std::string previewAudioError_;
 	std::string modelPreviewRenderedPath_;
 	D3D12_GPU_DESCRIPTOR_HANDLE modelPreviewTexture_{};
 	uint32_t modelPreviewWidth_ = 1;
@@ -504,7 +722,6 @@ private:
 	// ImGui 1.92以降はフォントデータをAtlasの寿命まで保持する必要がある。
 	std::vector<uint8_t> editorBaseFontData_;
 	std::vector<uint8_t> editorJapaneseFontData_;
-	std::vector<uint8_t> editorChineseFontData_;
 	ImVector<ImWchar> editorGlyphRanges_;
 
 	// Particle loading request

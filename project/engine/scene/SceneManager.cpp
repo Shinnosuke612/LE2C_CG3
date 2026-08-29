@@ -439,7 +439,8 @@ void SceneManager::ActivatePendingScene()
 		const bool persistentInstancesRemain =
 			UnloadNonPersistentSceneInstances(
 				pendingReloadSceneInstanceId_,
-				pendingForceUnloadAllSceneInstances_
+				pendingForceUnloadAllSceneInstances_,
+				true
 			);
 
 		if (!persistentInstancesRemain) {
@@ -616,7 +617,8 @@ void SceneManager::DrawOffscreenViews()
 
 bool SceneManager::UnloadNonPersistentSceneInstances(
 	SceneInstanceId forcedUnloadInstanceId,
-	bool forceUnloadAll
+	bool forceUnloadAll,
+	bool prepareForSceneTransition
 )
 {
 	std::vector<std::string> unloadedSceneIds;
@@ -631,6 +633,11 @@ bool SceneManager::UnloadNonPersistentSceneInstances(
 			continue;
 		}
 		const std::string sceneId = (*instance)->GetSceneId();
+		if (prepareForSceneTransition) {
+			if (BaseScene* scene = (*instance)->GetScene()) {
+				scene->PrepareForSceneTransition();
+			}
+		}
 		(*instance)->Finalize();
 		instance = sceneInstances_.erase(instance);
 		if (

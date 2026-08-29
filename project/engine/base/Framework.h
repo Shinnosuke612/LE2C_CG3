@@ -10,6 +10,7 @@ class Input;
 class SrvManager;
 class ImGuiManager;
 class Audio;
+class MediaFoundationRuntime;
 class ParticleCommon;
 class Object3dCommon;
 class SpriteCommon;
@@ -55,6 +56,7 @@ protected:
 	Input* input_ = nullptr;
 	SrvManager* srvManager_ = nullptr;
 	ImGuiManager* imguiManager_ = nullptr;
+	MediaFoundationRuntime* mediaFoundationRuntime_ = nullptr;
 	Audio* audio_ = nullptr;
 	ParticleCommon* particleCommon_ = nullptr;
 	AbstractSceneFactory* sceneFactory_ = nullptr;

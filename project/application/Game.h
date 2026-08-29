@@ -7,6 +7,7 @@
 #include "../engine/math/Vector3.h"
 #include "../engine/math/Vector4.h"
 #include "../engine/math/Matrix4x4.h"
+#include <filesystem>
 #include <string>
 
 class SceneRenderTarget;
@@ -22,6 +23,11 @@ class SceneTemplateRegistry;
 class PrefabPreviewRenderer;
 class Camera;
 class Object3d;
+class ProjectRegistry;
+class ProjectCreationService;
+class ProjectSolutionGenerationService;
+class VisualStudioLocator;
+struct ProjectLauncherView;
 
 class Game : public Framework {
 public:
@@ -82,6 +88,29 @@ private:
 	void ProcessSceneAssetRequests();
 	void ProcessSceneInstanceRequests();
 	void ProcessProjectSettingsRequests();
+	void InitializeProjectLauncher();
+	void UpdateProjectLauncher();
+	void RefreshProjectLauncherView();
+	bool ProcessProjectLauncherRequest();
+	bool LaunchProjectSolution(
+		const std::filesystem::path& descriptorPath,
+		const std::string& requestedInstanceId,
+		std::string& errorMessage
+	);
+	bool LaunchPreviewSolution(
+		const std::filesystem::path& solutionPath,
+		const std::string& requestedInstanceId,
+		std::string& errorMessage
+	);
+	bool LaunchProjectFolder(
+		const std::filesystem::path& descriptorPath,
+		std::string& errorMessage
+	);
+	bool LaunchProjectEditor(
+		const std::filesystem::path& descriptorPath,
+		bool switchCurrentEditor,
+		std::string& errorMessage
+	);
 	bool OpenRegisteredEditScene(
 		const std::string& sceneId,
 		bool discardUnsavedChanges,
@@ -108,6 +137,19 @@ private:
 	Camera* modelPreviewCamera_ = nullptr;
 	Object3d* modelPreviewObject_ = nullptr;
 	PrefabPreviewRenderer* prefabPreviewRenderer_ = nullptr;
+	ProjectRegistry* projectRegistry_ = nullptr;
+	ProjectCreationService* projectCreationService_ = nullptr;
+	ProjectSolutionGenerationService* projectSolutionGenerationService_ = nullptr;
+	VisualStudioLocator* visualStudioLocator_ = nullptr;
+	std::string projectLauncherStatusMessage_;
+	bool projectLauncherInitialized_ = false;
+	bool projectLauncherViewDirty_ = true;
+	bool projectLauncherDynamicStateInitialized_ = false;
+	bool projectLauncherSceneDirty_ = false;
+	bool projectLauncherPrefabDirty_ = false;
+	bool projectLauncherPlayBlocked_ = false;
+	bool pendingCreateOpenSolution_ = false;
+	std::string pendingCreateVisualStudioInstanceId_;
 	CameraSnapshot editorCameraSnapshot_{};
 	CameraSnapshot pauseMainCameraSnapshot_{};
 	bool editorWasEditingLastFrame_ = true;

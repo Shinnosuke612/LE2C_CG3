@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "templateId": "empty-game",
+  "copyDirectories": [
+    "application",
+    "engine",
+    "externals/assimp",
+    "externals/DirectXTex",
+    "externals/imgui",
+    "externals/ImGuizmo",
+    "externals/nlohmann",
+    "resources/shaders"
+  ],
+  "copyFiles": [
+    ".editorconfig",
+    "main.cpp",
+    "dxcompiler.dll",
+    "build/project.build.json",
+    "CG2_2025_04_14.sln",
+    "CG2_2025_04_14.vcxproj",
+    "CG2_2025_04_14.vcxproj.filters"
+  ],
+  "resourceFiles": [
+    "circle.png",
+    "circleEntity.png",
+    "gradationLine.png",
+    "human/white.png",
+    "noise0.png",
+    "noise1.png",
+    "rostock_laage_airport_4k.dds",
+    "uvChecker.png",
+    "particles/core_burst.json",
+    "particles/ring_burst.json",
+    "particles/gpu_particle.json",
+    "particles/newParticle.json",
+    "particles/rainParticle.json"
+  ],
+  "excludedFilePatterns": [
+    "*.user",
+    "*.suo",
+    "*.bak",
+    "*.tmp"
+  ],
+  "excludedDirectoryNames": [
+    ".vs",
+    "generated",
+    "Logs",
+    "output",
+    "outputs"
+  ]
+}

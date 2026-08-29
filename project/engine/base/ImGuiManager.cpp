@@ -1,5 +1,6 @@
 // 役割: ImGuiエディタ各ウィンドウの描画、入力、シーン編集操作を実装する。
 #include "ImGuiManager.h"
+#include "EditorComponentCatalog.h"
 #include "PostProcessSettingsEditor.h"
 
 #include <cassert>
@@ -95,6 +96,22 @@ namespace {
 
 	std::filesystem::path PathFromUtf8(const std::string& path) {
 		return StringUtility::ToPath(path);
+	}
+
+	bool IsAudioAssetExtension(const std::string& extension) {
+		return extension == ".wav" || extension == ".mp3" ||
+			extension == ".aac" || extension == ".m4a";
+	}
+
+	bool IsAudioAssetPath(const std::filesystem::path& path) {
+		std::string extension = path.extension().string();
+		std::transform(
+			extension.begin(), extension.end(), extension.begin(),
+			[](unsigned char character) {
+				return static_cast<char>(std::tolower(character));
+			}
+		);
+		return IsAudioAssetExtension(extension);
 	}
 
 	void CopyTextBuffer(
@@ -403,6 +420,329 @@ namespace {
 
 	constexpr char kEditorSettingsPath[] = "editor_settings.json";
 
+	const char* GetAudioSpatialModeDisplayName(const std::string& mode) {
+		if (mode == "ThreeD") return "ThreeD Point";
+		if (mode == "ThreeDPointDownmix") return "ThreeD Point Downmix";
+		if (mode == "ThreeDStereoArea") return "ThreeD Stereo Area";
+		return "TwoD Stereo";
+	}
+
+	bool IsThreeDAudioSpatialMode(const std::string& mode) {
+		return mode == "ThreeD" || mode == "ThreeDPointDownmix" ||
+			mode == "ThreeDStereoArea";
+	}
+
+	void DrawAudioSpatialClipCompatibilityWarning(
+		EditorLanguage language,
+		const SceneComponent& component
+	) {
+		if (!IsThreeDAudioSpatialMode(component.audioSpatialMode) ||
+			component.audioClipPath.empty() || component.audioStreamFromDisk) {
+			return;
+		}
+		const std::filesystem::path resolvedPath =
+			EditableResourcePath::ResolveResource(PathFromUtf8(component.audioClipPath));
+		std::error_code filesystemError;
+		if (!IsAudioAssetPath(resolvedPath) ||
+			!std::filesystem::is_regular_file(resolvedPath, filesystemError)) {
+			return;
+		}
+		Audio* audio = Audio::GetInstance();
+		if (!audio || !audio->CanProbeAudioFileMetadata()) {
+			return;
+		}
+		AudioFileMetadata metadata{};
+		std::string metadataError;
+		if (!audio->TryGetAudioFileMetadata(
+			component.audioClipPath.c_str(), metadata, &metadataError
+		)) {
+			ImGui::TextColored(
+				ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+				language == EditorLanguage::Japanese
+					? "Audio metadataを読み取れません: %s"
+					: "Audio metadata could not be read: %s",
+				metadataError.c_str()
+			);
+			return;
+		}
+		const uint32_t requiredChannels = component.audioSpatialMode == "ThreeD" ? 1 : 2;
+		if (metadata.channelCount == requiredChannels) {
+			return;
+		}
+
+		const ImVec4 warningColor(0.95f, 0.65f, 0.25f, 1.0f);
+		if (component.audioSpatialMode == "ThreeD" && metadata.channelCount == 2) {
+			ImGui::TextColored(
+				warningColor,
+				SelectEditorText(
+					language,
+					"このClipは%u chです。ThreeD Pointはモノラルのみです。ThreeD Point DownmixまたはThreeD Stereo Areaを選択してください。",
+					"This clip has %u channels. ThreeD Point requires mono. Use ThreeD Point Downmix or ThreeD Stereo Area."
+				),
+				metadata.channelCount
+			);
+			return;
+		}
+		if (metadata.channelCount == 1) {
+			ImGui::TextColored(
+				warningColor,
+				SelectEditorText(
+					language,
+					"このClipはモノラルです。%sはステレオを必要とします。ThreeD Pointを選択してください。",
+					"This clip is mono. %s requires stereo. Use ThreeD Point."
+				),
+				GetAudioSpatialModeDisplayName(component.audioSpatialMode)
+			);
+			return;
+		}
+		ImGui::TextColored(
+			warningColor,
+			SelectEditorText(
+				language,
+				"このClipは%u chです。%sはステレオを必要とします。",
+				"This clip has %u channels. %s requires stereo."
+			),
+			metadata.channelCount,
+			GetAudioSpatialModeDisplayName(component.audioSpatialMode)
+		);
+	}
+
+	const char* LocalizedComponentWidgetLabel(
+		EditorLanguage language,
+		const char* english
+	) {
+		if (language == EditorLanguage::English) {
+			return english;
+		}
+		static constexpr std::pair<const char*, const char*> labels[] = {
+			{ "Model", "モデル" }, { "Texture", "テクスチャ" },
+			{ "Materials", "マテリアル" }, { "Override", "上書き" },
+			{ "Override Color", "色を上書き" }, { "Color", "色" },
+			{ "Reset Preview", "Previewをリセット" }, { "Clear Model", "モデルを解除" },
+			{ "Drop Model Here", "モデルをここへドロップ" },
+			{ "Clear Texture", "テクスチャを解除" },
+			{ "Drop Texture Here", "テクスチャをここへドロップ" },
+			{ "Cull Mode", "カリング" }, { "Reflection Intensity", "反射の強さ" },
+			{ "Override Environment Reflection", "Environment反射を上書き" },
+			{ "Skybox Enabled", "Skyboxを有効化" }, { "Skybox DDS", "Skybox DDS" },
+			{ "Skybox Intensity", "Skyboxの強さ" }, { "Drop DDS Skybox Here", "DDS Skyboxをここへドロップ" },
+			{ "Size", "サイズ" },
+			{ "Anchor", "アンカー" }, { "Flip X", "X反転" }, { "Flip Y", "Y反転" },
+			{ "Text", "テキスト" }, { "Font Family", "フォント" },
+			{ "Font Size", "フォントサイズ" }, { "Render Space", "描画空間" },
+			{ "Weight", "太さ" }, { "Style", "スタイル" },
+			{ "Opacity", "不透明度" }, { "Horizontal Align", "横方向の配置" },
+			{ "Vertical Align", "縦方向の配置" }, { "Wrap", "折り返し" },
+			{ "Overflow", "はみ出し" }, { "Layout Size", "レイアウトサイズ" },
+			{ "Character Spacing", "文字間隔" }, { "Line Spacing", "行間" },
+			{ "Outline", "アウトライン" }, { "Outline Color", "アウトライン色" },
+			{ "Outline Width", "アウトライン幅" }, { "Shadow", "影" },
+			{ "Shadow Color", "影の色" }, { "Shadow Offset", "影のオフセット" },
+			{ "Light Type", "Lightの種類" }, { "Intensity", "強さ" },
+			{ "Range", "範囲" }, { "Decay", "減衰" }, { "Direction", "方向" },
+			{ "Inner Angle", "内側の角度" }, { "Outer Angle", "外側の角度" },
+			{ "Cast Shadow", "影を描画" }, { "Shadow Bias", "影のBias" },
+			{ "Normal Bias", "Normal Bias" }, { "Shadow Strength", "影の濃さ" },
+			{ "Shadow Distance", "影の距離" }, { "Orthographic Size", "正射影サイズ" },
+			{ "Shadow Near Clip", "影の近クリップ" }, { "Shadow Far Clip", "影の遠クリップ" },
+			{ "Texel Snap", "Texel Snap" }, { "Shadow Map Size", "Shadow Mapサイズ" },
+			{ "Main Camera", "Main Camera" }, { "FOV Y", "視野角 Y" },
+			{ "Near Clip", "近クリップ" }, { "Far Clip", "遠クリップ" },
+			{ "Target Camera Name", "対象Camera名" }, { "Camera Entity", "Camera Entity" },
+			{ "Resolution Preset", "解像度プリセット" }, { "Width", "幅" },
+			{ "Height", "高さ" }, { "Hide Self In View", "表示内で自身を隠す" },
+			{ "Repair Camera ID", "Camera IDを修復" },
+			{ "Switch Key", "切替キー" }, { "Wrap To First", "先頭へ戻る" },
+			{ "Camera", "Camera" }, { "Add Camera", "Cameraを追加" },
+			{ "Target Entity", "対象Entity" }, { "Allow Mouse Input", "マウス入力を許可" },
+			{ "Yaw Reference", "Yawの基準" }, { "Distance", "距離" },
+			{ "Aim Distance", "照準時の距離" }, { "Aim Mode Enabled", "照準Modeを有効化" },
+			{ "Target Offset", "対象オフセット" }, { "Aim Target Offset", "照準対象オフセット" },
+			{ "Mouse Sensitivity", "マウス感度" }, { "Min Pitch", "最小Pitch" },
+			{ "Max Pitch", "最大Pitch" }, { "Occlusion Margin", "遮蔽マージン" },
+			{ "Occlusion Enabled", "遮蔽を有効化" }, { "Occlusion Layer Mask", "遮蔽Layer Mask" },
+			{ "Target Camera Entity", "対象Camera Entity" }, { "Trigger Type", "Triggerの種類" },
+			{ "Trigger Key", "Triggerキー" }, { "Enter Duration", "開始時間" },
+			{ "Exit Duration", "終了時間" }, { "Interpolation", "補間" },
+			{ "Default Easing", "既定Easing" }, { "Return To Previous Camera", "前のCameraへ戻る" },
+			{ "Start From Current Camera", "現在のCameraから開始" },
+			{ "Auto Collect Child Points", "子Pointを自動収集" }, { "Select", "選択" },
+			{ "Add Point", "Pointを追加" }, { "Half Size", "半分のサイズ" },
+			{ "Offset", "オフセット" }, { "Surface Enabled", "Surfaceを有効化" },
+			{ "Base Color", "基本色" }, { "Highlight Color", "ハイライト色" },
+			{ "Surface Alpha", "Surfaceの透明度" }, { "Wave Scale", "波の大きさ" },
+			{ "Normal Strength", "Normalの強さ" }, { "Fresnel Power", "Fresnelの強さ" },
+			{ "Light Shafts", "光芒" }, { "Light Color", "Lightの色" },
+			{ "Light Direction", "Lightの方向" }, { "Light Intensity", "Lightの強さ" },
+			{ "Light Density", "Lightの密度" }, { "Caustics Intensity", "Causticsの強さ" },
+			{ "Caustics Scale", "Causticsの大きさ" }, { "Caustics Speed", "Causticsの速度" },
+			{ "Breakup Strength", "崩れの強さ" }, { "Warp Strength", "歪みの強さ" },
+			{ "Noise Scale", "ノイズの大きさ" }, { "Raymarch Samples", "Raymarch回数" },
+			{ "Move Speed Multiplier", "移動速度倍率" }, { "Gravity Scale", "重力倍率" },
+			{ "Area Width", "Area Width" },
+			{ "Drag", "抵抗" }, { "Max Fall Speed", "最大落下速度" }, { "Swim Up Speed", "上昇速度" }
+			, { "Collider Active", "Colliderを有効化" }, { "Is Trigger", "Triggerとして扱う" }
+			, { "Collision Layer", "Collision Layer" }, { "Collision Mask", "Collision Mask" }
+			, { "Shape", "形状" }, { "Radius", "半径" }, { "Size Multiplier", "サイズ倍率" }
+			, { "Debug Visible", "Debug表示" }, { "Draw Mode", "描画Mode" }
+			, { "Debug Segments", "Debug分割数" }, { "Debug Color", "Debug色" }
+			, { "Damage", "ダメージ" }, { "Poise Damage", "Poiseダメージ" }
+			, { "Knockback", "ノックバック" }, { "Vertical Knockback", "垂直ノックバック" }
+			, { "Hit Stop Duration", "Hit Stop時間" }, { "Damage Multiplier", "ダメージ倍率" }
+			, { "Knockback Multiplier", "ノックバック倍率" }, { "Mass", "質量" }
+			, { "Use Gravity", "重力を使用" }, { "Restitution", "反発" }
+			, { "Friction", "摩擦" }, { "Velocity", "速度" }
+			, { "Move Speed", "移動速度" }, { "Jump Velocity", "ジャンプ速度" }
+			, { "Turn Responsiveness", "旋回の反応性" }, { "Dash Multiplier", "Dash倍率" }
+			, { "Camera Relative Move", "Camera基準で移動" }, { "Allow Jump", "ジャンプを許可" }
+			, { "Reaction Tag", "Reaction Tag" }, { "Damage Stat", "Damage Stat" }
+			, { "Poise Stat", "Poise Stat" }, { "Owner Entity Id", "所有Entity ID" }
+			, { "Owner Entity Name", "所有Entity名" }, { "Ignore Same Faction", "同じFactionを無視" }
+			, { "Health Stat", "Health Stat" }, { "Stats Entity Id", "Stats Entity ID" }
+			, { "Stats Entity Name", "Stats Entity名" }, { "Target Entity Id", "対象Entity ID" }
+			, { "Target Entity Name", "対象Entity名" }, { "Detection Range", "検出範囲" }
+			, { "Lose Range", "追跡解除範囲" }, { "Attack Range", "攻撃範囲" }
+			, { "Turn Speed", "旋回速度" }, { "Attack Cooldown", "攻撃間隔" }
+			, { "Attack Windup", "攻撃開始時間" }, { "Attack Active Time", "攻撃有効時間" }
+			, { "Attack Recovery", "攻撃復帰時間" }, { "Initial Count", "初期数" }
+			, { "Max Alive", "最大生存数" }, { "Respawn Interval", "再出現間隔" }
+			, { "Spawn Radius", "出現半径" }, { "Auto Start", "自動開始" }
+			, { "Id", "ID" }, { "Display Name", "表示名" }
+			, { "Min", "最小値" }, { "Max", "最大値" }, { "Initial", "初期値" }
+			, { "Initial State", "初期State" }, { "Reset On Disable", "無効化時にリセット" }
+			, { "Name", "名前" }, { "Action Id", "Action ID" }, { "Built-in Action", "組み込みAction" }
+			, { "Parameter Name", "Parameter名" }, { "Type", "種類" }, { "Value", "値" }
+			, { "Enemy Prefab", "Enemy Prefab" }, { "Local Direction", "ローカル方向" }
+			, { "Speed", "速度" }, { "Gravity", "重力" }, { "Lifetime", "寿命" }
+			, { "Destroy On Hit", "Hit時に削除" }, { "Homing Strength", "追尾の強さ" }
+			, { "Attack Animation Clip", "攻撃Animation Clip" }
+			, { "Attack Prefab Animation Clip", "攻撃Prefab Animation Clip" }
+			, { "Attack HitBox Entity Id", "攻撃HitBox Entity ID" }
+			, { "Attack HitBox Entity Name", "攻撃HitBox Entity名" }
+			, { "Homing Target Entity Id", "追尾対象Entity ID" }
+			, { "Homing Target Entity Name", "追尾対象Entity名" }
+			, { "Faction", "Faction" }, { "Knockback Multiplier", "ノックバック倍率" }
+			, { "Reaction Trigger", "Reaction Trigger" }, { "Poise Recovery Delay", "Poise回復待機時間" }
+			, { "Minimum Poise Damage", "最小Poiseダメージ" }, { "Hit State", "Hit State" }
+			, { "Death State", "Death State" }, { "Deactivate Delay", "無効化までの時間" }
+			, { "Death Effect Path", "死亡Effectパス" }
+			, { "Behavior", "Behavior" }, { "Profile", "Profile" }, { "Movement Mode", "移動Mode" }
+			, { "Separation Radius", "分離半径" }, { "Separation Weight", "分離の強さ" }
+			, { "Neighbor Limit", "近傍数の上限" }, { "Group", "Group" }
+			, { "Min Speed", "最小速度" }, { "Max Speed", "最大速度" }
+			, { "Wander Strength", "Wanderの強さ" }, { "Random Seed", "乱数Seed" }
+			, { "Align Forward To Velocity", "進行方向へ前方を揃える" }
+			, { "Forward Axis", "前方Axis" }, { "Rotation Follow Speed", "回転追従速度" }
+			, { "Use Water Bounds", "Water Boundsを使用" }, { "Bounds Weight", "Boundsの強さ" }
+			, { "Attractor Weight", "Attractorの強さ" }, { "Schooling", "Schooling" }
+			, { "Visual Color", "表示色" }, { "Enable Lighting", "Lightingを有効化" }
+			, { "Tag", "Tag" }, { "Target Behavior", "対象Behavior" }, { "Target Profile", "対象Profile" }
+			, { "Wander Change Interval", "Wander変更間隔" }, { "Wander Direction Range", "Wander方向範囲" }
+			, { "Wander Vertical Range", "Wander垂直範囲" }, { "Randomize Seed On Play", "Play時にSeedをランダム化" }
+			, { "Flock Decision Interval", "Flock判断間隔" }, { "Flock Acceleration", "Flock加速度" }
+			, { "Flock Max Turn Rate", "Flock最大旋回速度" }, { "Return Strength", "復帰の強さ" }
+			, { "Max Distance", "最大距離" }, { "Use Team Heading", "Team Headingを使用" }
+			, { "Team Heading Direction", "Team Heading方向" }, { "Team Heading Weight", "Team Headingの強さ" }
+			, { "Team Heading Follow Speed", "Team Heading追従速度" }, { "Pitch From Vertical Velocity", "垂直速度からPitchを設定" }
+			, { "Banking Strength", "Bankingの強さ" }, { "Bounds Entity Id", "Bounds Entity ID" }
+			, { "Bounds Name", "Bounds名" }, { "Attractor Entity Id", "Attractor Entity ID" }
+			, { "Attractor Tag", "Attractor Tag" }, { "Schooling Update Interval", "Schooling更新間隔" }
+			, { "Schooling Blend", "Schoolingの混合" }, { "Alignment Radius", "整列半径" }
+			, { "Cohesion Radius", "結合半径" }, { "Alignment Weight", "整列の強さ" }
+			, { "Cohesion Weight", "結合の強さ" }, { "Strength", "強さ" }
+			, { "Override Team Agent Settings", "Team Agent設定を上書き" }
+			, { "Jitter Strength", "Jitterの強さ" }, { "Jitter Frequency", "Jitter頻度" }
+			, { "Jitter Update Interval", "Jitter更新間隔" }, { "Jitter Follow Speed", "Jitter追従速度" }
+			, { "Leash Strength", "Leashの強さ" }, { "Catchup Speed", "追いつき速度" }
+			, { "Separation Update Interval", "分離更新間隔" }, { "Separation Blend", "分離の混合" }
+			, { "Rotate X", "Xを回転" }, { "Rotate Y", "Yを回転" }, { "Rotate Z", "Zを回転" }
+			, { "Schooling Update Jitter", "Schooling更新の揺らぎ" }
+			, { "Reference Name", "参照名" }, { "Target Scene Id", "対象Scene ID" }
+			, { "Target Instance Key", "対象Instance Key" }, { "Target Scene", "対象Scene" }
+			, { "Trigger Key", "Triggerキー" }, { "Play On Start", "開始時に再生" }
+			, { "Loop", "繰り返す" }, { "Default Clip Index", "既定Clip番号" }
+			, { "Transition Duration", "切替時間" }, { "Blend Curve", "Blend Curve" }
+			, { "Clip Name", "Clip名" }, { "Duration", "時間" }
+			, { "Property", "Property" }, { "Easing", "Easing" }, { "Time", "時間" }
+			, { "Active Value", "Active値" }, { "Target Bone", "対象Bone" }
+			, { "Alignment Mode", "配置Mode" }, { "Weapon Bone", "Weapon Bone" }
+			, { "Label", "表示名" }, { "Copy Scene Baseline", "Sceneの基準値をコピー" }
+			, { "Animate Dissolve Threshold", "Dissolve Thresholdをアニメーション" }
+			, { "Automation Start", "Automation開始値" }, { "Automation End", "Automation終了値" }
+			, { "Automation Duration", "Automation時間" }
+			, { "Trigger", "Trigger" }, { "Camera Path", "Camera Path" }
+			, { "Stat Id", "Stat ID" }, { "Comparison", "比較" }, { "Compare Value", "比較値" }
+			, { "Target Position", "対象位置" }, { "Key", "キー" }
+			, { "Trigger Once", "一度だけ発火" }, { "Cooldown", "Cooldown" }
+			, { "Type", "種類" }, { "Action Target Entity Id", "Action対象Entity ID" }
+			, { "Action Target Entity Name", "Action対象Entity名" }, { "Action Stat Id", "Action Stat ID" }
+			, { "Operation", "操作" }, { "Prefab Path", "Prefabパス" }
+			, { "Parent To Target", "対象の子にする" }, { "Spawn At Target Transform", "対象TransformでSpawn" }
+			, { "State Name", "State名" }, { "Scene Id", "Scene ID" }
+			, { "Manager", "Manager" }, { "Profile", "Profile" }
+			, { "Name", "名前" }, { "Animation", "Animation" }, { "Windup", "攻撃開始時間" }
+			, { "Active Time", "有効時間" }, { "Recovery", "復帰時間" }
+			, { "Forward Distance", "前方移動距離" }, { "Side Distance", "横移動距離" }
+			, { "Facing", "向き" }, { "Facing Target", "向きの対象Entity" }
+			, { "Dedicated HitBox", "専用HitBox" }, { "Hit Policy", "Hit判定方式" }
+			, { "Direction Mode", "方向Mode" }, { "Time", "時間" }
+			, { "Particle Effect Path", "Particle Effectパス" }, { "Spawn Entity", "Spawn Entity" }
+			, { "Euler Value (Radians)", "Euler値（Radians）" }
+			, { "Inherit Bone Scale", "Bone Scaleを継承" }
+			, { "Loop Enabled", "Loopを有効化" }
+			, { "Loop Max Count (0 = Unlimited)", "Loop最大回数（0 = 無制限）" }
+			, { "Loop Safety Timeout", "Loop安全Timeout" }
+			, { "Start", "開始" }, { "End", "終了" }
+			, { "HitBox", "HitBox" }
+			, { "Override HitBox Half Size", "HitBox半サイズを上書き" }
+			, { "HitBox Half Size", "HitBox半サイズ" }
+			, { "Target Cooldown", "対象Cooldown" }
+			, { "Local Direction", "ローカル方向" }
+			, { "Ground Effect Type", "Ground Effectの種類" }
+			, { "Ground Probe Distance", "Ground Probe距離" }
+			, { "Ground Prefab Path", "Ground Prefabパス" }
+			, { "Ground Prefab Lifetime", "Ground Prefabの寿命" }
+			, { "Crack Radius", "Crack半径" }
+			, { "Primary Branch Count", "主Branch数" }
+			, { "Segments Per Branch", "BranchあたりのSegment数" }
+			, { "Branch Probability", "Branch確率" }
+			, { "Crack Width", "Crack幅" }
+			, { "Crack Lifetime", "Crackの寿命" }
+			, { "Crack Surface Offset", "CrackのSurface Offset" }
+			, { "Local Offset", "ローカルオフセット" }
+			, { "Target", "対象" }
+			, { "Duration To Next", "次のPointまでの時間" }
+			, { "Easing To Next", "次のPointへのEasing" }
+			, { "Default Clip", "既定Clip" }
+			, { "Body Type", "Bodyの種類" }
+			, { "Freeze Position", "位置を固定" }
+		};
+		for (const auto& [source, localized] : labels) {
+			if (std::strcmp(source, english) == 0) {
+				static thread_local std::string label;
+				label = localized;
+				label += "###";
+				label += english;
+				return label.c_str();
+			}
+		}
+		return english;
+	}
+
+	bool MatchesEditorComponentSearch(
+		const EditorComponentDefinition& definition,
+		const std::string& search
+	) {
+		if (search.empty()) {
+			return true;
+		}
+		std::string searchable = std::string(definition.type) + " " +
+			definition.japaneseName + " " + definition.englishName + " " +
+			definition.japaneseDescription + " " +
+			definition.englishDescription;
+		return ContainsCaseInsensitive(searchable, search);
+	}
+
 	std::string MakeComponentFoldoutKey(
 		const std::string& sceneId,
 		uint64_t entityId,
@@ -465,6 +805,26 @@ namespace {
 			iterator.increment(error);
 		}
 		std::sort(paths.begin(), paths.end());
+		return paths;
+	}
+
+	std::vector<std::string> CollectAudioAssetPaths() {
+		std::vector<std::string> paths;
+		std::error_code error;
+		std::filesystem::recursive_directory_iterator iterator(
+			GetProjectResourceRoot(),
+			std::filesystem::directory_options::skip_permission_denied,
+			error
+		);
+		const std::filesystem::recursive_directory_iterator end;
+		while (!error && iterator != end) {
+			if (iterator->is_regular_file(error) && IsAudioAssetPath(iterator->path())) {
+				paths.push_back(GetProjectResourcePath(PathToUtf8(iterator->path())));
+			}
+			iterator.increment(error);
+		}
+		std::sort(paths.begin(), paths.end());
+		paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
 		return paths;
 	}
 
@@ -713,6 +1073,7 @@ void ImGuiManager::NotifyProjectSettingsResult(
 void ImGuiManager::NotifyEditSceneOpened() {
 	selectedEntityId_ = 0;
 	selectedEntityIds_.clear();
+	ResetComponentPicker(sceneComponentPicker_);
 	hierarchySelectionAnchorId_ = 0;
 	hierarchyObservedEntityId_ = 0;
 	hierarchyRenameEntityId_ = 0;
@@ -825,35 +1186,59 @@ void ImGuiManager::Initialize(WinApp* winApp, DirectXCommon* dxCommon, SrvManage
 void ImGuiManager::ConfigureEditorFont(ImGuiIO& io, float dpiScale) {
 	const std::filesystem::path fontDirectory =
 		EditableResourcePath::Resolve("resources/fonts");
+	const std::vector<std::filesystem::path> msGothicFontCandidates = {
+		fontDirectory / "msgothic.ttc",
+		L"C:\\Windows\\Fonts\\msgothic.ttc"
+	};
+	const std::vector<std::filesystem::path> yuGothicFontCandidates = {
+		fontDirectory / "YuGothM.ttc",
+		fontDirectory / "YuGothR.ttc",
+		L"C:\\Windows\\Fonts\\YuGothM.ttc",
+		L"C:\\Windows\\Fonts\\YuGothR.ttc"
+	};
+	const std::vector<std::filesystem::path> meiryoFontCandidates = {
+		fontDirectory / "meiryo.ttc",
+		L"C:\\Windows\\Fonts\\meiryo.ttc"
+	};
+	const std::vector<std::filesystem::path> bizUdGothicFontCandidates = {
+		fontDirectory / "BIZ-UDGothicR.ttc",
+		L"C:\\Windows\\Fonts\\BIZ-UDGothicR.ttc"
+	};
+	const std::vector<std::filesystem::path> windowsJapaneseFallbackCandidates = {
+		fontDirectory / "msgothic.ttc",
+		L"C:\\Windows\\Fonts\\msgothic.ttc",
+		fontDirectory / "YuGothM.ttc",
+		fontDirectory / "YuGothR.ttc",
+		L"C:\\Windows\\Fonts\\YuGothM.ttc",
+		L"C:\\Windows\\Fonts\\YuGothR.ttc",
+		fontDirectory / "meiryo.ttc",
+		L"C:\\Windows\\Fonts\\meiryo.ttc",
+		fontDirectory / "BIZ-UDGothicR.ttc",
+		L"C:\\Windows\\Fonts\\BIZ-UDGothicR.ttc"
+	};
 	const std::vector<std::filesystem::path> cascadiaFontCandidates = {
 		fontDirectory / "CascadiaMono.ttf",
 		fontDirectory / "CascadiaCode.ttf",
 		L"C:\\Windows\\Fonts\\CascadiaMono.ttf",
 		L"C:\\Windows\\Fonts\\CascadiaCode.ttf"
 	};
-	const std::vector<std::filesystem::path> japaneseFontCandidates = {
+	const std::vector<std::filesystem::path> japaneseFallbackCandidates = {
 		fontDirectory / "NotoSansCJKjp-Regular.otf",
 		fontDirectory / "NotoSansJP-Regular.ttf",
 		fontDirectory / "NotoSansJP-VF.ttf",
 		L"C:\\Windows\\Fonts\\NotoSansJP-VF.ttf",
 		L"C:\\Windows\\Fonts\\YuGothM.ttc",
-		L"C:\\Windows\\Fonts\\meiryo.ttc"
-	};
-	const std::vector<std::filesystem::path> chineseFontCandidates = {
-		fontDirectory / "NotoSansCJKsc-Regular.otf",
-		fontDirectory / "NotoSansSC-Regular.ttf",
-		L"C:\\Windows\\Fonts\\msyh.ttc",
-		L"C:\\Windows\\Fonts\\msjh.ttc"
+		L"C:\\Windows\\Fonts\\meiryo.ttc",
+		L"C:\\Windows\\Fonts\\BIZ-UDGothicR.ttc",
+		L"C:\\Windows\\Fonts\\msgothic.ttc"
 	};
 
 	editorBaseFontData_.clear();
 	editorJapaneseFontData_.clear();
-	editorChineseFontData_.clear();
 	editorGlyphRanges_.clear();
 
 	ImFontGlyphRangesBuilder glyphBuilder;
 	glyphBuilder.AddRanges(io.Fonts->GetGlyphRangesJapanese());
-	glyphBuilder.AddRanges(io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
 	AddProjectAssetGlyphs(glyphBuilder);
 	glyphBuilder.BuildRanges(&editorGlyphRanges_);
 
@@ -863,31 +1248,46 @@ void ImGuiManager::ConfigureEditorFont(ImGuiIO& io, float dpiScale) {
 	fontConfig.OversampleV = 1;
 	fontConfig.FontDataOwnedByAtlas = false;
 
+	const std::vector<std::filesystem::path>* selectedCandidates = nullptr;
+	bool selectedFontContainsJapanese = true;
+	switch (editorFontPreset_) {
+	case EditorFontPreset::MsGothic:
+		selectedCandidates = &msGothicFontCandidates;
+		break;
+	case EditorFontPreset::YuGothicUi:
+		selectedCandidates = &yuGothicFontCandidates;
+		break;
+	case EditorFontPreset::Meiryo:
+		selectedCandidates = &meiryoFontCandidates;
+		break;
+	case EditorFontPreset::BizUdGothic:
+		selectedCandidates = &bizUdGothicFontCandidates;
+		break;
+	case EditorFontPreset::CascadiaMonoWithJapanese:
+		selectedCandidates = &cascadiaFontCandidates;
+		selectedFontContainsJapanese = false;
+		break;
+	case EditorFontPreset::ImGuiDefaultWithJapanese:
+		selectedFontContainsJapanese = false;
+		break;
+	}
+
 	ImFont* editorFont = nullptr;
-	bool baseContainsJapanese = false;
-	bool baseContainsChinese = false;
-	if (editorFontPreset_ == EditorFontPreset::UnifiedCjk) {
-		if (LoadFirstAvailableFont(japaneseFontCandidates, editorBaseFontData_)) {
-			baseContainsJapanese = true;
-			editorFont = io.Fonts->AddFontFromMemoryTTF(
-				editorBaseFontData_.data(),
-				static_cast<int>(editorBaseFontData_.size()),
-				fontConfig.SizePixels,
-				&fontConfig,
-				editorGlyphRanges_.Data
-			);
-		} else if (LoadFirstAvailableFont(chineseFontCandidates, editorBaseFontData_)) {
-			baseContainsChinese = true;
-			editorFont = io.Fonts->AddFontFromMemoryTTF(
-				editorBaseFontData_.data(),
-				static_cast<int>(editorBaseFontData_.size()),
-				fontConfig.SizePixels,
-				&fontConfig,
-				editorGlyphRanges_.Data
-			);
-		}
-	} else if (editorFontPreset_ == EditorFontPreset::CascadiaMonoWithCjk &&
-		LoadFirstAvailableFont(cascadiaFontCandidates, editorBaseFontData_)) {
+	if (selectedCandidates &&
+		LoadFirstAvailableFont(*selectedCandidates, editorBaseFontData_)) {
+		editorFont = io.Fonts->AddFontFromMemoryTTF(
+			editorBaseFontData_.data(),
+			static_cast<int>(editorBaseFontData_.size()),
+			fontConfig.SizePixels,
+			&fontConfig,
+			editorGlyphRanges_.Data
+		);
+	}
+
+	// 選択Fontが無い環境でも、日英を単一書体で表示できるWindows Fontを優先する。
+	if (!editorFont && editorFontPreset_ != EditorFontPreset::ImGuiDefaultWithJapanese &&
+		LoadFirstAvailableFont(windowsJapaneseFallbackCandidates, editorBaseFontData_)) {
+		selectedFontContainsJapanese = true;
 		editorFont = io.Fonts->AddFontFromMemoryTTF(
 			editorBaseFontData_.data(),
 			static_cast<int>(editorBaseFontData_.size()),
@@ -898,31 +1298,18 @@ void ImGuiManager::ConfigureEditorFont(ImGuiIO& io, float dpiScale) {
 	}
 
 	if (!editorFont) {
+		selectedFontContainsJapanese = false;
 		editorFont = io.Fonts->AddFontDefault(&fontConfig);
 	}
 
-	if (editorFont && !baseContainsJapanese &&
-		LoadFirstAvailableFont(japaneseFontCandidates, editorJapaneseFontData_)) {
+	if (editorFont && !selectedFontContainsJapanese &&
+		LoadFirstAvailableFont(japaneseFallbackCandidates, editorJapaneseFontData_)) {
 		ImFontConfig mergeConfig = fontConfig;
 		mergeConfig.MergeMode = true;
 		mergeConfig.DstFont = editorFont;
 		io.Fonts->AddFontFromMemoryTTF(
 			editorJapaneseFontData_.data(),
 			static_cast<int>(editorJapaneseFontData_.size()),
-			fontConfig.SizePixels,
-			&mergeConfig,
-			editorGlyphRanges_.Data
-		);
-	}
-
-	if (editorFont && !baseContainsChinese &&
-		LoadFirstAvailableFont(chineseFontCandidates, editorChineseFontData_)) {
-		ImFontConfig mergeConfig = fontConfig;
-		mergeConfig.MergeMode = true;
-		mergeConfig.DstFont = editorFont;
-		io.Fonts->AddFontFromMemoryTTF(
-			editorChineseFontData_.data(),
-			static_cast<int>(editorChineseFontData_.size()),
 			fontConfig.SizePixels,
 			&mergeConfig,
 			editorGlyphRanges_.Data
@@ -965,16 +1352,29 @@ void ImGuiManager::LoadEditorSettings() {
 
 	try {
 		const json settings = json::parse(text);
+		if (settings.contains("language") && settings["language"].is_string()) {
+			editorLanguage_ = ParseEditorLanguage(
+				settings["language"].get<std::string>()
+			);
+		}
 		const std::string preset = settings.value(
 			"fontPreset",
-			"originalWithCjk"
+			"msGothic"
 		);
-		if (preset == "unifiedCjk") {
-			editorFontPreset_ = EditorFontPreset::UnifiedCjk;
-		} else if (preset == "cascadiaMonoWithCjk") {
-			editorFontPreset_ = EditorFontPreset::CascadiaMonoWithCjk;
+		if (preset == "yuGothicUi" || preset == "unifiedCjk") {
+			editorFontPreset_ = EditorFontPreset::YuGothicUi;
+		} else if (preset == "meiryo") {
+			editorFontPreset_ = EditorFontPreset::Meiryo;
+		} else if (preset == "bizUdGothic") {
+			editorFontPreset_ = EditorFontPreset::BizUdGothic;
+		} else if (preset == "imguiDefaultWithJapanese") {
+			editorFontPreset_ = EditorFontPreset::ImGuiDefaultWithJapanese;
+		} else if (preset == "cascadiaMonoWithJapanese" ||
+			preset == "cascadiaMonoWithCjk") {
+			editorFontPreset_ = EditorFontPreset::CascadiaMonoWithJapanese;
 		} else {
-			editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
+			// 旧既定のoriginalWithCjkも、新しい日英単一書体の既定へ移行する。
+			editorFontPreset_ = EditorFontPreset::MsGothic;
 		}
 		if (settings.contains("fontSize") && settings["fontSize"].is_number()) {
 			editorFontSize_ = std::clamp(
@@ -1025,6 +1425,40 @@ void ImGuiManager::LoadEditorSettings() {
 			}
 		}
 		if (
+			settings.contains("inspectorFoldouts") &&
+			settings["inspectorFoldouts"].is_object()
+		) {
+			inspectorFoldoutStates_.clear();
+			for (const auto& [key, value] : settings["inspectorFoldouts"].items()) {
+				if (value.is_boolean()) {
+					inspectorFoldoutStates_[key] = value.get<bool>();
+				}
+			}
+		}
+		componentInspectorMode_ = ComponentInspectorMode::Detailed;
+		if (
+			settings.contains("componentInspectorMode") &&
+			settings["componentInspectorMode"].is_string() &&
+			settings["componentInspectorMode"].get<std::string>() == "simple"
+		) {
+			componentInspectorMode_ = ComponentInspectorMode::Simple;
+		}
+		if (
+			settings.contains("favoriteComponentTypes") &&
+			settings["favoriteComponentTypes"].is_array()
+		) {
+			favoriteComponentTypes_.clear();
+			for (const json& value : settings["favoriteComponentTypes"]) {
+				if (!value.is_string()) {
+					continue;
+				}
+				const std::string type = value.get<std::string>();
+				if (FindEditorComponentDefinition(type)) {
+					favoriteComponentTypes_.insert(type);
+				}
+			}
+		}
+		if (
 			settings.contains("recentPrefabs") &&
 			settings["recentPrefabs"].is_array()
 		) {
@@ -1069,16 +1503,38 @@ void ImGuiManager::LoadEditorSettings() {
 }
 
 void ImGuiManager::SaveEditorSettings() const {
-	const char* preset = "originalWithCjk";
-	if (editorFontPreset_ == EditorFontPreset::UnifiedCjk) {
-		preset = "unifiedCjk";
-	} else if (editorFontPreset_ == EditorFontPreset::CascadiaMonoWithCjk) {
-		preset = "cascadiaMonoWithCjk";
+	const char* preset = "msGothic";
+	if (editorFontPreset_ == EditorFontPreset::YuGothicUi) {
+		preset = "yuGothicUi";
+	} else if (editorFontPreset_ == EditorFontPreset::Meiryo) {
+		preset = "meiryo";
+	} else if (editorFontPreset_ == EditorFontPreset::BizUdGothic) {
+		preset = "bizUdGothic";
+	} else if (editorFontPreset_ == EditorFontPreset::ImGuiDefaultWithJapanese) {
+		preset = "imguiDefaultWithJapanese";
+	} else if (editorFontPreset_ == EditorFontPreset::CascadiaMonoWithJapanese) {
+		preset = "cascadiaMonoWithJapanese";
 	}
 
 	json componentFoldouts = json::object();
 	for (const auto& [key, open] : componentFoldoutStates_) {
 		componentFoldouts[key] = open;
+	}
+	json inspectorFoldouts = json::object();
+	for (const auto& [key, open] : inspectorFoldoutStates_) {
+		inspectorFoldouts[key] = open;
+	}
+	std::vector<std::string> favoriteComponentTypes(
+		favoriteComponentTypes_.begin(),
+		favoriteComponentTypes_.end()
+	);
+	std::sort(
+		favoriteComponentTypes.begin(),
+		favoriteComponentTypes.end()
+	);
+	json favoriteComponentTypeValues = json::array();
+	for (const std::string& type : favoriteComponentTypes) {
+		favoriteComponentTypeValues.push_back(type);
 	}
 	json recentPrefabs = json::array();
 	for (const PrefabAssetReference& reference : recentPrefabReferences_) {
@@ -1100,6 +1556,7 @@ void ImGuiManager::SaveEditorSettings() const {
 	}
 
 	const json settings = {
+		{ "language", ToEditorLanguageSettingValue(editorLanguage_) },
 		{ "fontPreset", preset },
 		{ "fontSize", editorFontSize_ },
 		{ "startFullscreen", startFullscreen_ },
@@ -1108,6 +1565,14 @@ void ImGuiManager::SaveEditorSettings() const {
 		{ "sceneAxisVisible", sceneAxisVisible_ },
 		{ "prefabAxisVisible", prefabAxisVisible_ },
 		{ "componentFoldouts", std::move(componentFoldouts) },
+		{ "inspectorFoldouts", std::move(inspectorFoldouts) },
+		{
+			"componentInspectorMode",
+			componentInspectorMode_ == ComponentInspectorMode::Simple
+				? "simple"
+				: "detailed"
+		},
+		{ "favoriteComponentTypes", std::move(favoriteComponentTypeValues) },
 		{ "recentPrefabs", std::move(recentPrefabs) },
 		{ "favoritePrefabs", std::move(favoritePrefabs) }
 	};
@@ -1115,6 +1580,27 @@ void ImGuiManager::SaveEditorSettings() const {
 		kEditorSettingsPath,
 		settings.dump(2)
 	);
+}
+
+bool ImGuiManager::DrawPersistentInspectorHeader(
+	const std::string& key,
+	const char* label,
+	bool defaultOpen
+) {
+	const auto saved = inspectorFoldoutStates_.find(key);
+	const bool wasOpen = saved == inspectorFoldoutStates_.end()
+		? defaultOpen
+		: saved->second;
+	ImGui::SetNextItemOpen(wasOpen, ImGuiCond_Always);
+	const bool open = ImGui::CollapsingHeader(
+		label,
+		ImGuiTreeNodeFlags_SpanAvailWidth
+	);
+	if (open != wasOpen) {
+		inspectorFoldoutStates_[key] = open;
+		SaveEditorSettings();
+	}
+	return open;
 }
 
 void ImGuiManager::RequestEditorFontRebuild() {
@@ -1499,11 +1985,122 @@ const std::vector<std::string>& ImGuiManager::GetCachedTextureAssetPaths() {
 	return cachedTextureAssetPaths_;
 }
 
+const std::vector<std::string>& ImGuiManager::GetCachedAudioAssetPaths() {
+	if (assetPathCacheDirty_) {
+		RefreshAssetPathCache();
+	}
+	return cachedAudioAssetPaths_;
+}
+
 const std::vector<std::string>& ImGuiManager::GetCachedPrefabAssetPaths() {
 	if (prefabAssetPathCacheDirty_) {
 		RefreshPrefabAssetPathCache();
 	}
 	return cachedPrefabAssetPaths_;
+}
+
+bool ImGuiManager::DrawAudioClipAssetField(
+	const char* label,
+	std::string& audioClipPath
+) {
+	const std::filesystem::path currentPath = PathFromUtf8(audioClipPath);
+	const std::string preview = audioClipPath.empty()
+		? "None"
+		: PathToUtf8(currentPath.filename());
+	bool changed = false;
+	if (ImGui::BeginCombo(label, preview.empty() ? audioClipPath.c_str() : preview.c_str())) {
+		if (ImGui::IsWindowAppearing()) {
+			audioAssetSearchBuffer_[0] = '\0';
+			ImGui::SetKeyboardFocusHere();
+		}
+		ImGui::SetNextItemWidth(-1.0f);
+		ImGui::InputTextWithHint(
+			"##AudioAssetSearch",
+			SelectEditorText(editorLanguage_, "音声を検索", "Search audio"),
+			audioAssetSearchBuffer_,
+			sizeof(audioAssetSearchBuffer_)
+		);
+		ImGui::Separator();
+		if (ImGui::Selectable("None", audioClipPath.empty())) {
+			audioClipPath.clear();
+			changed = true;
+		}
+		for (const std::string& candidate : GetCachedAudioAssetPaths()) {
+			if (!ContainsCaseInsensitive(candidate, audioAssetSearchBuffer_)) {
+				continue;
+			}
+			if (ImGui::Selectable(candidate.c_str(), audioClipPath == candidate)) {
+				audioClipPath = candidate;
+				changed = true;
+			}
+		}
+		ImGui::EndCombo();
+	}
+	const bool fieldHovered = ImGui::IsItemHovered();
+	if (ImGui::BeginDragDropTarget()) {
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PROJECT_AUDIO_PATH")) {
+			const char* droppedPath = static_cast<const char*>(payload->Data);
+			if (droppedPath && droppedPath[0] != '\0') {
+				const std::filesystem::path resolvedPath =
+					EditableResourcePath::ResolveResource(PathFromUtf8(droppedPath)).lexically_normal();
+				const std::filesystem::path resourceRoot =
+					GetProjectResourceRoot().lexically_normal();
+				const std::filesystem::path relativePath =
+					resolvedPath.lexically_relative(resourceRoot);
+				bool isInsideResources = !relativePath.empty() && !relativePath.is_absolute();
+				for (const std::filesystem::path& segment : relativePath) {
+					if (segment == "..") {
+						isInsideResources = false;
+						break;
+					}
+				}
+				std::error_code error;
+				if (
+					isInsideResources && IsAudioAssetPath(resolvedPath) &&
+					std::filesystem::is_regular_file(resolvedPath, error)
+				) {
+					const std::string normalizedPath = GetProjectResourcePath(droppedPath);
+					if (audioClipPath != normalizedPath) {
+						audioClipPath = normalizedPath;
+						changed = true;
+					}
+				}
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
+	ImGui::SameLine();
+	ImGui::BeginDisabled(audioClipPath.empty());
+	if (ImGui::SmallButton(SelectEditorText(
+		editorLanguage_,
+		"解除###ClearAudioClip",
+		"Clear###ClearAudioClip"
+	))) {
+		audioClipPath.clear();
+		changed = true;
+	}
+	ImGui::EndDisabled();
+	if (!audioClipPath.empty() && fieldHovered) {
+		ImGui::SetTooltip("%s", audioClipPath.c_str());
+	}
+
+	if (!audioClipPath.empty()) {
+		const std::filesystem::path resolvedPath =
+			EditableResourcePath::ResolveResource(PathFromUtf8(audioClipPath));
+		std::error_code error;
+		if (!IsAudioAssetPath(resolvedPath)) {
+			ImGui::TextColored(
+				ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+				"Unsupported audio format"
+			);
+		} else if (!std::filesystem::is_regular_file(resolvedPath, error)) {
+			ImGui::TextColored(
+				ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+				"Missing audio asset"
+			);
+		}
+	}
+	return changed;
 }
 
 void ImGuiManager::RefreshPrefabAssetPathCache() {
@@ -1588,6 +2185,7 @@ void ImGuiManager::ToggleFavoritePrefab(
 void ImGuiManager::RefreshAssetPathCache() {
 	cachedModelAssetPaths_ = CollectModelAssetPaths();
 	cachedTextureAssetPaths_ = CollectTextureAssetPaths();
+	cachedAudioAssetPaths_ = CollectAudioAssetPaths();
 	assetPathCacheDirty_ = false;
 }
 
@@ -2050,6 +2648,35 @@ bool ImGuiManager::GetPrefabPreviewRequest(PrefabPreviewRequest& request) {
 	prefabPreviewRequestedRevision_ = request.revision;
 	prefabPreviewRequestUsesCombatRig_ = useCombatRigPreview;
 	return true;
+}
+
+void ImGuiManager::SetProjectLauncherView(const ProjectLauncherView& value) {
+	projectLauncherView_ = value;
+	if (projectLauncherVisualStudioIndex_ >= static_cast<int>(projectLauncherView_.visualStudioInstances.size())) {
+		projectLauncherVisualStudioIndex_ = -1;
+	}
+	if (projectLauncherVisualStudioIndex_ < 0) {
+		for (size_t index = 0; index < projectLauncherView_.visualStudioInstances.size(); ++index) {
+			if (projectLauncherView_.visualStudioInstances[index].selected) {
+				projectLauncherVisualStudioIndex_ = static_cast<int>(index);
+				break;
+			}
+		}
+	}
+}
+
+bool ImGuiManager::ConsumeProjectLauncherRequest(ProjectLauncherRequest& request) {
+	if (!projectLauncherRequestPending_) {
+		return false;
+	}
+	request = std::move(projectLauncherRequest_);
+	projectLauncherRequest_ = {};
+	projectLauncherRequestPending_ = false;
+	return true;
+}
+
+bool ImGuiManager::HasUnsavedPrefabChanges() const {
+	return prefabEditorSession_ && prefabEditorSession_->IsDirty();
 }
 
 bool ImGuiManager::PickSceneEntity(
@@ -2519,9 +3146,7 @@ void ImGuiManager::DrawSceneGizmo(
 }
 
 void ImGuiManager::Finalize(){
-	if (previewSoundData_.pBuffer && Audio::GetInstance()) {
-		Audio::GetInstance()->SoundUnload(&previewSoundData_);
-	}
+	StopAudioPreview();
 	delete prefabEditorSession_;
 	prefabEditorSession_ = nullptr;
 	delete prefabAnimationPreviewDocument_;
@@ -2535,7 +3160,6 @@ void ImGuiManager::Finalize(){
 	ImGui::DestroyContext();
 	editorBaseFontData_.clear();
 	editorJapaneseFontData_.clear();
-	editorChineseFontData_.clear();
 	editorGlyphRanges_.clear();
 	instance = nullptr;
 }
@@ -2578,7 +3202,11 @@ void ImGuiManager::QueueSceneInstanceRequest(
 }
 
 void ImGuiManager::DrawSceneMenu() {
-	if (!ImGui::BeginMenu("Scene")) {
+	if (!ImGui::BeginMenu(SelectEditorText(
+		editorLanguage_,
+		"Scene###SceneMenu",
+		"Scene###SceneMenu"
+	))) {
 		return;
 	}
 
@@ -2592,7 +3220,16 @@ void ImGuiManager::DrawSceneMenu() {
 	const bool canManageScene = currentSceneClean && currentScene &&
 		!sceneAssetRequestPending_;
 
-	if (ImGui::MenuItem("New Scene...", nullptr, false, canManageScene)) {
+	if (ImGui::MenuItem(
+		SelectEditorText(
+			editorLanguage_,
+			"新しいScene...###NewSceneMenuItem",
+			"New Scene...###NewSceneMenuItem"
+		),
+		nullptr,
+		false,
+		canManageScene
+	)) {
 		CopyTextBuffer(
 			sceneAssetNameBuffer_,
 			sizeof(sceneAssetNameBuffer_),
@@ -2612,7 +3249,11 @@ void ImGuiManager::DrawSceneMenu() {
 		createScenePopupRequested_ = true;
 	}
 	if (ImGui::MenuItem(
-		"Duplicate Active Scene...",
+		SelectEditorText(
+			editorLanguage_,
+			"現在のSceneを複製...###DuplicateSceneMenuItem",
+			"Duplicate Active Scene...###DuplicateSceneMenuItem"
+		),
 		nullptr,
 		false,
 		canManageScene
@@ -2637,7 +3278,11 @@ void ImGuiManager::DrawSceneMenu() {
 		duplicateScenePopupRequested_ = true;
 	}
 	if (ImGui::MenuItem(
-		"Rename Active Scene...",
+		SelectEditorText(
+			editorLanguage_,
+			"現在のScene名を変更...###RenameSceneMenuItem",
+			"Rename Active Scene...###RenameSceneMenuItem"
+		),
 		nullptr,
 		false,
 		canManageScene
@@ -2656,7 +3301,14 @@ void ImGuiManager::DrawSceneMenu() {
 		renameScenePopupRequested_ = true;
 	}
 
-	if (ImGui::BeginMenu("Delete Scene", canManageScene)) {
+	if (ImGui::BeginMenu(
+		SelectEditorText(
+			editorLanguage_,
+			"Sceneを削除###DeleteSceneMenu",
+			"Delete Scene###DeleteSceneMenu"
+		),
+		canManageScene
+	)) {
 		bool hasDeleteCandidate = false;
 		for (const SceneDescriptor& scene : sceneCatalog_->GetScenes()) {
 			if (scene.id == currentScene->id ||
@@ -2671,19 +3323,39 @@ void ImGuiManager::DrawSceneMenu() {
 			}
 		}
 		if (!hasDeleteCandidate) {
-			ImGui::TextDisabled("No deletable Scene");
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"削除できるSceneはありません",
+				"No deletable Scene"
+			));
 		}
 		ImGui::EndMenu();
 	}
 	if (canOpenScene && !currentSceneClean) {
-		ImGui::TextDisabled("Save the active Scene to manage Scene assets.");
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"Scene Assetを操作するには現在のSceneを保存してください。",
+			"Save the active Scene to manage Scene assets."
+		));
 	}
 
 	ImGui::Separator();
-	ImGui::MenuItem("Loaded Scenes", nullptr, &showLoadedScenes_);
+	ImGui::MenuItem(
+		SelectEditorText(
+			editorLanguage_,
+			"読み込み済みScene###LoadedScenesMenuItem",
+			"Loaded Scenes###LoadedScenesMenuItem"
+		),
+		nullptr,
+		&showLoadedScenes_
+	);
 
 	ImGui::Separator();
-	ImGui::TextDisabled("Open Scene");
+	ImGui::TextDisabled("%s", SelectEditorText(
+		editorLanguage_,
+		"Sceneを開く",
+		"Open Scene"
+	));
 	ImGui::BeginDisabled(!canOpenScene);
 	if (sceneCatalog_ && editorSession_) {
 		for (const SceneDescriptor& scene : sceneCatalog_->GetScenes()) {
@@ -2702,12 +3374,17 @@ void ImGuiManager::DrawSceneMenu() {
 }
 
 void ImGuiManager::DrawSceneSwitchConfirmation() {
+	const char* popupLabel = SelectEditorText(
+		editorLanguage_,
+		"未保存のScene###UnsavedScenePopup",
+		"Unsaved Scene###UnsavedScenePopup"
+	);
 	if (sceneSwitchPopupRequested_) {
-		ImGui::OpenPopup("Unsaved Scene");
+		ImGui::OpenPopup(popupLabel);
 		sceneSwitchPopupRequested_ = false;
 	}
 	if (!ImGui::BeginPopupModal(
-		"Unsaved Scene",
+		popupLabel,
 		nullptr,
 		ImGuiWindowFlags_AlwaysAutoResize
 	)) {
@@ -2717,19 +3394,35 @@ void ImGuiManager::DrawSceneSwitchConfirmation() {
 	const SceneDescriptor* pendingScene = sceneCatalog_
 		? sceneCatalog_->Find(pendingSceneId_)
 		: nullptr;
-	ImGui::TextUnformatted("The current Scene has unsaved changes.");
+	ImGui::TextUnformatted(SelectEditorText(
+		editorLanguage_,
+		"現在のSceneには未保存の変更があります。",
+		"The current Scene has unsaved changes."
+	));
 	if (pendingScene) {
-		ImGui::Text("Open: %s", pendingScene->displayName.c_str());
+		ImGui::Text(
+			SelectEditorText(editorLanguage_, "開く: %s", "Open: %s"),
+			pendingScene->displayName.c_str()
+		);
 	}
 	if (sceneSaveFailed_) {
 		ImGui::TextColored(
 			ImVec4(0.95f, 0.35f, 0.25f, 1.0f),
-			"The current Scene could not be saved."
+			"%s",
+			SelectEditorText(
+				editorLanguage_,
+				"現在のSceneを保存できませんでした。",
+				"The current Scene could not be saved."
+			)
 		);
 	}
 	ImGui::Separator();
 
-	if (ImGui::Button("Save and Open")) {
+	if (ImGui::Button(SelectEditorText(
+		editorLanguage_,
+		"保存して開く###SaveAndOpenScene",
+		"Save and Open###SaveAndOpenScene"
+	))) {
 		if (editorSession_ && editorSession_->Save()) {
 			requestedSceneId_ = pendingSceneId_;
 			requestedSceneDiscardUnsavedChanges_ = false;
@@ -2741,7 +3434,11 @@ void ImGuiManager::DrawSceneSwitchConfirmation() {
 		}
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("Discard")) {
+	if (ImGui::Button(SelectEditorText(
+		editorLanguage_,
+		"変更を破棄###DiscardSceneChanges",
+		"Discard###DiscardSceneChanges"
+	))) {
 		requestedSceneId_ = pendingSceneId_;
 		requestedSceneDiscardUnsavedChanges_ = true;
 		pendingSceneId_.clear();
@@ -2749,7 +3446,11 @@ void ImGuiManager::DrawSceneSwitchConfirmation() {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("Cancel")) {
+	if (ImGui::Button(SelectEditorText(
+		editorLanguage_,
+		"キャンセル###CancelSceneSwitch",
+		"Cancel###CancelSceneSwitch"
+	))) {
 		pendingSceneId_.clear();
 		sceneSaveFailed_ = false;
 		ImGui::CloseCurrentPopup();
@@ -2759,31 +3460,40 @@ void ImGuiManager::DrawSceneSwitchConfirmation() {
 }
 
 void ImGuiManager::DrawSceneAssetDialogs() {
+	const char* createScenePopupLabel = SelectEditorText(
+		editorLanguage_,
+		"Sceneを作成###CreateScenePopup",
+		"Create Scene###CreateScenePopup"
+	);
 	if (createScenePopupRequested_) {
-		ImGui::OpenPopup("Create Scene");
+		ImGui::OpenPopup(createScenePopupLabel);
 		createScenePopupRequested_ = false;
 	}
 	if (ImGui::BeginPopupModal(
-		"Create Scene",
+		createScenePopupLabel,
 		nullptr,
 		ImGuiWindowFlags_AlwaysAutoResize
 	)) {
 		ImGui::InputText(
-			"Name",
+			SelectEditorText(editorLanguage_, "名前###CreateSceneName", "Name###CreateSceneName"),
 			sceneAssetNameBuffer_,
 			sizeof(sceneAssetNameBuffer_)
 		);
 		ImGui::InputText(
-			"Scene ID",
+			SelectEditorText(editorLanguage_, "Scene ID###CreateSceneId", "Scene ID###CreateSceneId"),
 			sceneAssetIdBuffer_,
 			sizeof(sceneAssetIdBuffer_)
 		);
 		ImGui::InputText(
-			"File Name",
+			SelectEditorText(editorLanguage_, "ファイル名###CreateSceneFile", "File Name###CreateSceneFile"),
 			sceneAssetFileBuffer_,
 			sizeof(sceneAssetFileBuffer_)
 		);
-		ImGui::TextDisabled("Saved under resources/scenes as .scene.json");
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"resources/scenes以下へ.scene.jsonとして保存します。",
+			"Saved under resources/scenes as .scene.json"
+		));
 
 		const std::vector<SceneTemplateDescriptor>* templates =
 			sceneTemplateRegistry_
@@ -2797,7 +3507,14 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 			);
 			const char* preview =
 				(*templates)[sceneTemplateIndex_].displayName.c_str();
-			if (ImGui::BeginCombo("Template", preview)) {
+			if (ImGui::BeginCombo(
+				SelectEditorText(
+					editorLanguage_,
+					"テンプレート###CreateSceneTemplate",
+					"Template###CreateSceneTemplate"
+				),
+				preview
+			)) {
 				for (int index = 0; index < static_cast<int>(templates->size()); ++index) {
 					if (ImGui::Selectable(
 						(*templates)[index].displayName.c_str(),
@@ -2809,7 +3526,11 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 				ImGui::EndCombo();
 			}
 		} else {
-			ImGui::TextDisabled("No Scene templates are available.");
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"利用できるSceneテンプレートがありません。",
+				"No Scene templates are available."
+			));
 		}
 
 		const bool canSubmit = templates && !templates->empty() &&
@@ -2817,7 +3538,11 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 			sceneAssetIdBuffer_[0] != '\0' &&
 			sceneAssetFileBuffer_[0] != '\0';
 		ImGui::BeginDisabled(!canSubmit);
-		if (ImGui::Button("Create")) {
+		if (ImGui::Button(SelectEditorText(
+			editorLanguage_,
+			"作成###CreateSceneSubmit",
+			"Create###CreateSceneSubmit"
+		))) {
 			SceneAssetRequest request{};
 			request.operation = SceneAssetOperation::Create;
 			request.sceneId = sceneAssetIdBuffer_;
@@ -2829,18 +3554,27 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 		}
 		ImGui::EndDisabled();
 		ImGui::SameLine();
-		if (ImGui::Button("Cancel")) {
+		if (ImGui::Button(SelectEditorText(
+			editorLanguage_,
+			"キャンセル###CancelCreateScene",
+			"Cancel###CancelCreateScene"
+		))) {
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::EndPopup();
 	}
 
+	const char* duplicateScenePopupLabel = SelectEditorText(
+		editorLanguage_,
+		"Sceneを複製###DuplicateScenePopup",
+		"Duplicate Scene###DuplicateScenePopup"
+	);
 	if (duplicateScenePopupRequested_) {
-		ImGui::OpenPopup("Duplicate Scene");
+		ImGui::OpenPopup(duplicateScenePopupLabel);
 		duplicateScenePopupRequested_ = false;
 	}
 	if (ImGui::BeginPopupModal(
-		"Duplicate Scene",
+		duplicateScenePopupLabel,
 		nullptr,
 		ImGuiWindowFlags_AlwaysAutoResize
 	)) {
@@ -2848,20 +3582,23 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 			? sceneCatalog_->Find(sceneAssetTargetId_)
 			: nullptr;
 		if (source) {
-			ImGui::Text("Source: %s", source->displayName.c_str());
+			ImGui::Text(
+				SelectEditorText(editorLanguage_, "複製元: %s", "Source: %s"),
+				source->displayName.c_str()
+			);
 		}
 		ImGui::InputText(
-			"Name",
+			SelectEditorText(editorLanguage_, "名前###DuplicateSceneName", "Name###DuplicateSceneName"),
 			sceneAssetNameBuffer_,
 			sizeof(sceneAssetNameBuffer_)
 		);
 		ImGui::InputText(
-			"Scene ID",
+			SelectEditorText(editorLanguage_, "Scene ID###DuplicateSceneId", "Scene ID###DuplicateSceneId"),
 			sceneAssetIdBuffer_,
 			sizeof(sceneAssetIdBuffer_)
 		);
 		ImGui::InputText(
-			"File Name",
+			SelectEditorText(editorLanguage_, "ファイル名###DuplicateSceneFile", "File Name###DuplicateSceneFile"),
 			sceneAssetFileBuffer_,
 			sizeof(sceneAssetFileBuffer_)
 		);
@@ -2869,7 +3606,11 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 			sceneAssetIdBuffer_[0] != '\0' &&
 			sceneAssetFileBuffer_[0] != '\0';
 		ImGui::BeginDisabled(!canSubmit);
-		if (ImGui::Button("Duplicate")) {
+		if (ImGui::Button(SelectEditorText(
+			editorLanguage_,
+			"複製###DuplicateSceneSubmit",
+			"Duplicate###DuplicateSceneSubmit"
+		))) {
 			SceneAssetRequest request{};
 			request.operation = SceneAssetOperation::Duplicate;
 			request.sourceSceneId = sceneAssetTargetId_;
@@ -2881,30 +3622,46 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 		}
 		ImGui::EndDisabled();
 		ImGui::SameLine();
-		if (ImGui::Button("Cancel")) {
+		if (ImGui::Button(SelectEditorText(
+			editorLanguage_,
+			"キャンセル###CancelDuplicateScene",
+			"Cancel###CancelDuplicateScene"
+		))) {
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::EndPopup();
 	}
 
+	const char* renameScenePopupLabel = SelectEditorText(
+		editorLanguage_,
+		"Scene名を変更###RenameScenePopup",
+		"Rename Scene###RenameScenePopup"
+	);
 	if (renameScenePopupRequested_) {
-		ImGui::OpenPopup("Rename Scene");
+		ImGui::OpenPopup(renameScenePopupLabel);
 		renameScenePopupRequested_ = false;
 	}
 	if (ImGui::BeginPopupModal(
-		"Rename Scene",
+		renameScenePopupLabel,
 		nullptr,
 		ImGuiWindowFlags_AlwaysAutoResize
 	)) {
-		ImGui::Text("Scene ID: %s", sceneAssetTargetId_.c_str());
-		ImGui::TextDisabled("Scene ID remains stable so references do not change.");
+		ImGui::Text(
+			SelectEditorText(editorLanguage_, "Scene ID: %s", "Scene ID: %s"),
+			sceneAssetTargetId_.c_str()
+		);
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"参照を維持するため、Scene IDは変更しません。",
+			"Scene ID remains stable so references do not change."
+		));
 		ImGui::InputText(
-			"Name",
+			SelectEditorText(editorLanguage_, "名前###RenameSceneName", "Name###RenameSceneName"),
 			sceneAssetNameBuffer_,
 			sizeof(sceneAssetNameBuffer_)
 		);
 		ImGui::InputText(
-			"File Name",
+			SelectEditorText(editorLanguage_, "ファイル名###RenameSceneFile", "File Name###RenameSceneFile"),
 			sceneAssetFileBuffer_,
 			sizeof(sceneAssetFileBuffer_)
 		);
@@ -2912,7 +3669,11 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 			sceneAssetNameBuffer_[0] != '\0' &&
 			sceneAssetFileBuffer_[0] != '\0';
 		ImGui::BeginDisabled(!canSubmit);
-		if (ImGui::Button("Rename")) {
+		if (ImGui::Button(SelectEditorText(
+			editorLanguage_,
+			"名前を変更###RenameSceneSubmit",
+			"Rename###RenameSceneSubmit"
+		))) {
 			SceneAssetRequest request{};
 			request.operation = SceneAssetOperation::Rename;
 			request.sceneId = sceneAssetTargetId_;
@@ -2923,32 +3684,59 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 		}
 		ImGui::EndDisabled();
 		ImGui::SameLine();
-		if (ImGui::Button("Cancel")) {
+		if (ImGui::Button(SelectEditorText(
+			editorLanguage_,
+			"キャンセル###CancelRenameScene",
+			"Cancel###CancelRenameScene"
+		))) {
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::EndPopup();
 	}
 
+	const char* deleteScenePopupLabel = SelectEditorText(
+		editorLanguage_,
+		"Sceneを削除###DeleteScenePopup",
+		"Delete Scene###DeleteScenePopup"
+	);
 	if (deleteScenePopupRequested_) {
-		ImGui::OpenPopup("Delete Scene");
+		ImGui::OpenPopup(deleteScenePopupLabel);
 		deleteScenePopupRequested_ = false;
 	}
 	if (ImGui::BeginPopupModal(
-		"Delete Scene",
+		deleteScenePopupLabel,
 		nullptr,
 		ImGuiWindowFlags_AlwaysAutoResize
 	)) {
 		const SceneDescriptor* target = sceneCatalog_
 			? sceneCatalog_->Find(sceneAssetTargetId_)
 			: nullptr;
-		ImGui::TextUnformatted("Delete the Scene asset and remove it from the Catalog?");
+		ImGui::TextUnformatted(SelectEditorText(
+			editorLanguage_,
+			"Scene Assetを削除し、Catalogから取り除きますか？",
+			"Delete the Scene asset and remove it from the Catalog?"
+		));
 		if (target) {
-			ImGui::Text("Scene: %s", target->displayName.c_str());
-			ImGui::Text("Path: %s", target->assetPath.c_str());
+			ImGui::Text(
+				SelectEditorText(editorLanguage_, "Scene: %s", "Scene: %s"),
+				target->displayName.c_str()
+			);
+			ImGui::Text(
+				SelectEditorText(editorLanguage_, "パス: %s", "Path: %s"),
+				target->assetPath.c_str()
+			);
 		}
-		ImGui::TextDisabled("Deletion is rejected when another Scene references it.");
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"ほかのSceneから参照されている場合は削除できません。",
+			"Deletion is rejected when another Scene references it."
+		));
 		ImGui::BeginDisabled(!target);
-		if (ImGui::Button("Delete")) {
+		if (ImGui::Button(SelectEditorText(
+			editorLanguage_,
+			"削除###DeleteSceneSubmit",
+			"Delete###DeleteSceneSubmit"
+		))) {
 			SceneAssetRequest request{};
 			request.operation = SceneAssetOperation::Delete;
 			request.sceneId = sceneAssetTargetId_;
@@ -2957,23 +3745,32 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 		}
 		ImGui::EndDisabled();
 		ImGui::SameLine();
-		if (ImGui::Button("Cancel")) {
+		if (ImGui::Button(SelectEditorText(
+			editorLanguage_,
+			"キャンセル###CancelDeleteScene",
+			"Cancel###CancelDeleteScene"
+		))) {
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::EndPopup();
 	}
 
+	const char* sceneAssetErrorPopupLabel = SelectEditorText(
+		editorLanguage_,
+		"Scene Assetエラー###SceneAssetErrorPopup",
+		"Scene Asset Error###SceneAssetErrorPopup"
+	);
 	if (sceneAssetErrorPopupRequested_) {
-		ImGui::OpenPopup("Scene Asset Error");
+		ImGui::OpenPopup(sceneAssetErrorPopupLabel);
 		sceneAssetErrorPopupRequested_ = false;
 	}
 	if (ImGui::BeginPopupModal(
-		"Scene Asset Error",
+		sceneAssetErrorPopupLabel,
 		nullptr,
 		ImGuiWindowFlags_AlwaysAutoResize
 	)) {
 		ImGui::TextWrapped("%s", sceneAssetErrorMessage_.c_str());
-		if (ImGui::Button("OK")) {
+		if (ImGui::Button("OK###CloseSceneAssetError")) {
 			sceneAssetErrorMessage_.clear();
 			ImGui::CloseCurrentPopup();
 		}
@@ -2982,11 +3779,26 @@ void ImGuiManager::DrawSceneAssetDialogs() {
 }
 
 void ImGuiManager::DrawSettingsMenu() {
-	if (!ImGui::BeginMenu("Settings")) {
+	if (!ImGui::BeginMenu(SelectEditorText(
+		editorLanguage_,
+		"設定###SettingsMenu",
+		"Settings###SettingsMenu"
+	))) {
 		return;
 	}
-	if (ImGui::BeginMenu("Project", sceneCatalog_ != nullptr)) {
-		if (ImGui::BeginMenu("Startup Scene")) {
+	if (ImGui::BeginMenu(
+		SelectEditorText(
+			editorLanguage_,
+			"Project###ProjectSettingsMenu",
+			"Project###ProjectSettingsMenu"
+		),
+		sceneCatalog_ != nullptr
+	)) {
+		if (ImGui::BeginMenu(SelectEditorText(
+			editorLanguage_,
+			"開始Scene###StartupSceneMenu",
+			"Startup Scene###StartupSceneMenu"
+		))) {
 			for (const SceneDescriptor& scene : sceneCatalog_->GetScenes()) {
 				const bool selected =
 					scene.id == sceneCatalog_->GetStartSceneId();
@@ -3002,10 +3814,18 @@ void ImGuiManager::DrawSettingsMenu() {
 				}
 			}
 			ImGui::Separator();
-			ImGui::TextDisabled("Saved in resources/scenes/scenes.json");
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"resources/scenes/scenes.jsonへ保存されます。",
+				"Saved in resources/scenes/scenes.json"
+			));
 			ImGui::EndMenu();
 		}
-		if (ImGui::BeginMenu("Startup Mode")) {
+		if (ImGui::BeginMenu(SelectEditorText(
+			editorLanguage_,
+			"起動モード###StartupModeMenu",
+			"Startup Mode###StartupModeMenu"
+		))) {
 			struct StartupModeEntry {
 				const char* label;
 				SceneBuildConfiguration configuration;
@@ -3024,7 +3844,11 @@ void ImGuiManager::DrawSettingsMenu() {
 				const bool editorAllowed =
 					entry.configuration != SceneBuildConfiguration::Release;
 				if (ImGui::MenuItem(
-					"Editor",
+					SelectEditorText(
+						editorLanguage_,
+						"Editor###StartupEditorMode",
+						"Editor###StartupEditorMode"
+					),
 					nullptr,
 					currentMode == SceneStartupMode::Editor,
 					editorAllowed && !startupModeRequestPending_
@@ -3034,7 +3858,11 @@ void ImGuiManager::DrawSettingsMenu() {
 					startupModeRequestPending_ = true;
 				}
 				if (ImGui::MenuItem(
-					"Runtime",
+					SelectEditorText(
+						editorLanguage_,
+						"Runtime###StartupRuntimeMode",
+						"Runtime###StartupRuntimeMode"
+					),
 					nullptr,
 					currentMode == SceneStartupMode::Runtime,
 					!startupModeRequestPending_
@@ -3046,7 +3874,11 @@ void ImGuiManager::DrawSettingsMenu() {
 				ImGui::EndMenu();
 			}
 			ImGui::Separator();
-			ImGui::TextDisabled("Release supports Runtime startup only.");
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"ReleaseはRuntime起動だけに対応しています。",
+				"Release supports Runtime startup only."
+			));
 			ImGui::EndMenu();
 		}
 		ImGui::EndMenu();
@@ -3054,14 +3886,22 @@ void ImGuiManager::DrawSettingsMenu() {
 
 	ImGui::Separator();
 
-	if (ImGui::BeginMenu("Windows")) {
-		ImGui::MenuItem("Hierarchy", nullptr, &showHierarchy_);
-		ImGui::MenuItem("Inspector", nullptr, &showInspector_);
-		ImGui::MenuItem("Project", nullptr, &showProject_);
-		ImGui::MenuItem("Prefab", nullptr, &showPrefab_);
+	if (ImGui::BeginMenu(SelectEditorText(
+		editorLanguage_,
+		"ウィンドウ###WindowsMenu",
+		"Windows###WindowsMenu"
+	))) {
+		ImGui::MenuItem(SelectEditorText(editorLanguage_, "Hierarchy###ShowHierarchyWindow", "Hierarchy###ShowHierarchyWindow"), nullptr, &showHierarchy_);
+		ImGui::MenuItem(SelectEditorText(editorLanguage_, "Inspector###ShowInspectorWindow", "Inspector###ShowInspectorWindow"), nullptr, &showInspector_);
+		ImGui::MenuItem(SelectEditorText(editorLanguage_, "Project###ShowProjectWindow", "Project###ShowProjectWindow"), nullptr, &showProject_);
+		ImGui::MenuItem(SelectEditorText(editorLanguage_, "Prefab###ShowPrefabWindow", "Prefab###ShowPrefabWindow"), nullptr, &showPrefab_);
 		bool prefabInspectorVisible = showPrefabInspector_;
 		if (ImGui::MenuItem(
-			"Prefab Inspector",
+			SelectEditorText(
+				editorLanguage_,
+				"Prefab Inspector###ShowPrefabInspectorWindow",
+				"Prefab Inspector###ShowPrefabInspectorWindow"
+			),
 			nullptr,
 			&prefabInspectorVisible
 		)) {
@@ -3071,56 +3911,160 @@ void ImGuiManager::DrawSettingsMenu() {
 				prefabInspectorFocusRequested_ = true;
 			}
 		}
-		if (ImGui::MenuItem("Prefab Quick Open", "Ctrl+Shift+P")) {
+		if (ImGui::MenuItem(
+			SelectEditorText(
+				editorLanguage_,
+				"Prefab Quick Open###PrefabQuickOpenMenuItem",
+				"Prefab Quick Open###PrefabQuickOpenMenuItem"
+			),
+			"Ctrl+Shift+P"
+		)) {
 			RequestPrefabQuickOpen();
 		}
-		ImGui::MenuItem("Console", nullptr, &showConsole_);
-		ImGui::MenuItem("Loaded Scenes", nullptr, &showLoadedScenes_);
+		ImGui::MenuItem(SelectEditorText(editorLanguage_, "Console###ShowConsoleWindow", "Console###ShowConsoleWindow"), nullptr, &showConsole_);
+		ImGui::MenuItem(SelectEditorText(editorLanguage_, "読み込み済みScene###ShowLoadedScenesWindow", "Loaded Scenes###ShowLoadedScenesWindow"), nullptr, &showLoadedScenes_);
 		ImGui::Separator();
-		if (ImGui::MenuItem("Reset Layout")) {
+		if (ImGui::MenuItem(SelectEditorText(
+			editorLanguage_,
+			"レイアウトをリセット###ResetEditorLayout",
+			"Reset Layout###ResetEditorLayout"
+		))) {
 			resetLayout_ = true;
 		}
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu("Application")) {
+	if (ImGui::BeginMenu(SelectEditorText(
+		editorLanguage_,
+		"アプリケーション###ApplicationMenu",
+		"Application###ApplicationMenu"
+	))) {
 		if (ImGui::MenuItem(
-			"Start in Fullscreen",
+			SelectEditorText(
+				editorLanguage_,
+				"全画面で起動###StartFullscreenMenuItem",
+				"Start in Fullscreen###StartFullscreenMenuItem"
+			),
 			nullptr,
 			startFullscreen_
 		)) {
 			startFullscreen_ = !startFullscreen_;
 			SaveEditorSettings();
 		}
-		ImGui::TextDisabled("Applied on next launch. F11 toggles now.");
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"次回起動時に適用します。現在はF11で切り替えられます。",
+			"Applied on next launch. F11 toggles now."
+		));
 		ImGui::EndMenu();
 	}
 
-	if (ImGui::BeginMenu("Appearance")) {
-		if (ImGui::BeginMenu("Font")) {
+	if (ImGui::BeginMenu(SelectEditorText(
+		editorLanguage_,
+		"外観###AppearanceMenu",
+		"Appearance###AppearanceMenu"
+	))) {
+		const std::string languageMenuLabel = std::string(SelectEditorText(
+			editorLanguage_,
+			"言語",
+			"Language"
+		)) + "###EditorLanguageMenu";
+		if (ImGui::BeginMenu(languageMenuLabel.c_str())) {
+			const std::string japaneseLabel = std::string(SelectEditorText(
+				editorLanguage_,
+				"日本語",
+				"Japanese"
+			)) + "###EditorLanguageJapanese";
 			if (ImGui::MenuItem(
-				"Original + CJK",
+				japaneseLabel.c_str(),
 				nullptr,
-				editorFontPreset_ == EditorFontPreset::OriginalWithCjk
+				editorLanguage_ == EditorLanguage::Japanese
 			)) {
-				editorFontPreset_ = EditorFontPreset::OriginalWithCjk;
+				editorLanguage_ = EditorLanguage::Japanese;
+				SaveEditorSettings();
+			}
+			const std::string englishLabel = std::string(SelectEditorText(
+				editorLanguage_,
+				"英語",
+				"English"
+			)) + "###EditorLanguageEnglish";
+			if (ImGui::MenuItem(
+				englishLabel.c_str(),
+				nullptr,
+				editorLanguage_ == EditorLanguage::English
+			)) {
+				editorLanguage_ = EditorLanguage::English;
+				SaveEditorSettings();
+			}
+			ImGui::EndMenu();
+		}
+		if (ImGui::BeginMenu(SelectEditorText(
+			editorLanguage_,
+			"フォント###FontMenu",
+			"Font###FontMenu"
+		))) {
+			if (ImGui::MenuItem(
+				SelectEditorText(
+					editorLanguage_,
+					"MS Gothic（既定・等幅）###FontMsGothic",
+					"MS Gothic (Default, Monospace)###FontMsGothic"
+				),
+				nullptr,
+				editorFontPreset_ == EditorFontPreset::MsGothic
+			)) {
+				editorFontPreset_ = EditorFontPreset::MsGothic;
 				RequestEditorFontRebuild();
 				SaveEditorSettings();
 			}
 			if (ImGui::MenuItem(
-				"Unified CJK",
+				"Yu Gothic UI###FontYuGothicUi",
 				nullptr,
-				editorFontPreset_ == EditorFontPreset::UnifiedCjk
+				editorFontPreset_ == EditorFontPreset::YuGothicUi
 			)) {
-				editorFontPreset_ = EditorFontPreset::UnifiedCjk;
+				editorFontPreset_ = EditorFontPreset::YuGothicUi;
 				RequestEditorFontRebuild();
 				SaveEditorSettings();
 			}
 			if (ImGui::MenuItem(
-				"Cascadia Mono + CJK",
+				"Meiryo###FontMeiryo",
 				nullptr,
-				editorFontPreset_ == EditorFontPreset::CascadiaMonoWithCjk
+				editorFontPreset_ == EditorFontPreset::Meiryo
 			)) {
-				editorFontPreset_ = EditorFontPreset::CascadiaMonoWithCjk;
+				editorFontPreset_ = EditorFontPreset::Meiryo;
+				RequestEditorFontRebuild();
+				SaveEditorSettings();
+			}
+			if (ImGui::MenuItem(
+				"BIZ UD Gothic###FontBizUdGothic",
+				nullptr,
+				editorFontPreset_ == EditorFontPreset::BizUdGothic
+			)) {
+				editorFontPreset_ = EditorFontPreset::BizUdGothic;
+				RequestEditorFontRebuild();
+				SaveEditorSettings();
+			}
+			if (ImGui::MenuItem(
+				SelectEditorText(
+					editorLanguage_,
+					"ImGui Default＋日本語###FontImGuiDefault",
+					"ImGui Default + Japanese###FontImGuiDefault"
+				),
+				nullptr,
+				editorFontPreset_ == EditorFontPreset::ImGuiDefaultWithJapanese
+			)) {
+				editorFontPreset_ = EditorFontPreset::ImGuiDefaultWithJapanese;
+				RequestEditorFontRebuild();
+				SaveEditorSettings();
+			}
+			if (ImGui::MenuItem(
+				SelectEditorText(
+					editorLanguage_,
+					"Cascadia Mono＋日本語###FontCascadiaMono",
+					"Cascadia Mono + Japanese###FontCascadiaMono"
+				),
+				nullptr,
+				editorFontPreset_ == EditorFontPreset::CascadiaMonoWithJapanese
+			)) {
+				editorFontPreset_ = EditorFontPreset::CascadiaMonoWithJapanese;
 				RequestEditorFontRebuild();
 				SaveEditorSettings();
 			}
@@ -3128,7 +4072,11 @@ void ImGuiManager::DrawSettingsMenu() {
 		}
 
 		if (ImGui::DragFloat(
-			"Font Size",
+			SelectEditorText(
+				editorLanguage_,
+				"フォントサイズ###EditorFontSize",
+				"Font Size###EditorFontSize"
+			),
 			&editorFontSize_,
 			0.25f,
 			10.0f,
@@ -3147,17 +4095,22 @@ void ImGuiManager::DrawSettingsMenu() {
 }
 
 void ImGuiManager::DrawProjectSettingsDialogs() {
+	const char* popupLabel = SelectEditorText(
+		editorLanguage_,
+		"Project設定エラー###ProjectSettingsErrorPopup",
+		"Project Settings Error###ProjectSettingsErrorPopup"
+	);
 	if (projectSettingsErrorPopupRequested_) {
-		ImGui::OpenPopup("Project Settings Error");
+		ImGui::OpenPopup(popupLabel);
 		projectSettingsErrorPopupRequested_ = false;
 	}
 	if (ImGui::BeginPopupModal(
-		"Project Settings Error",
+		popupLabel,
 		nullptr,
 		ImGuiWindowFlags_AlwaysAutoResize
 	)) {
 		ImGui::TextWrapped("%s", projectSettingsErrorMessage_.c_str());
-		if (ImGui::Button("OK")) {
+		if (ImGui::Button("OK###CloseProjectSettingsError")) {
 			projectSettingsErrorMessage_.clear();
 			ImGui::CloseCurrentPopup();
 		}
@@ -3189,17 +4142,43 @@ void ImGuiManager::CreateDockSpace(){
 
 	if (ImGui::BeginMenuBar()) {
 		DrawSceneMenu();
-		if (ImGui::BeginMenu("Prefab")) {
-			if (ImGui::MenuItem("Show Prefab Window")) {
+		if (ImGui::BeginMenu("Project###ProjectLauncherMenu")) {
+			if (ImGui::MenuItem("Project Manager...###ShowProjectLauncher")) {
+				showProjectLauncher_ = true;
+				QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::Refresh });
+			}
+			ImGui::EndMenu();
+		}
+		if (ImGui::BeginMenu(SelectEditorText(
+			editorLanguage_,
+			"Prefab###PrefabMenu",
+			"Prefab###PrefabMenu"
+		))) {
+			if (ImGui::MenuItem(SelectEditorText(
+				editorLanguage_,
+				"Prefab Windowを表示###ShowPrefabWindowMenuItem",
+				"Show Prefab Window###ShowPrefabWindowMenuItem"
+			))) {
 				showPrefab_ = true;
 				prefabFocusFramesRemaining_ = 2;
 			}
-			if (ImGui::MenuItem("Show Prefab Inspector")) {
+			if (ImGui::MenuItem(SelectEditorText(
+				editorLanguage_,
+				"Prefab Inspectorを表示###ShowPrefabInspectorMenuItem",
+				"Show Prefab Inspector###ShowPrefabInspectorMenuItem"
+			))) {
 				showPrefab_ = true;
 				showPrefabInspector_ = true;
 				prefabInspectorFocusRequested_ = true;
 			}
-			if (ImGui::MenuItem("Quick Open...", "Ctrl+Shift+P")) {
+			if (ImGui::MenuItem(
+				SelectEditorText(
+					editorLanguage_,
+					"Quick Open...###QuickOpenPrefabMenuItem",
+					"Quick Open...###QuickOpenPrefabMenuItem"
+				),
+				"Ctrl+Shift+P"
+			)) {
 				RequestPrefabQuickOpen();
 			}
 			ImGui::EndMenu();
@@ -3219,13 +4198,18 @@ void ImGuiManager::CreateDockSpace(){
 	if (prefabQuickOpenPopupRequested_) {
 		prefabQuickOpenSearchBuffer_[0] = '\0';
 		prefabQuickOpenFocusRequested_ = true;
-		ImGui::OpenPopup("Quick Open Prefab");
+		ImGui::OpenPopup(SelectEditorText(
+			editorLanguage_,
+			"Prefab Quick Open###PrefabQuickOpenPopup",
+			"Quick Open Prefab###PrefabQuickOpenPopup"
+		));
 		prefabQuickOpenPopupRequested_ = false;
 	}
 	DrawPrefabQuickOpenPopup();
 	DrawSceneSwitchConfirmation();
 	DrawSceneAssetDialogs();
 	DrawProjectSettingsDialogs();
+	DrawProjectLauncherWindow();
 
 	const ImGuiID dockSpaceId = ImGui::GetID("UnityEditorDockSpaceV2");
 	if (
@@ -3507,7 +4491,14 @@ void ImGuiManager::DrawLoadedScenesWindow() {
 }
 
 void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
-	ImGui::Begin("Hierarchy", &showHierarchy_);
+	ImGui::Begin(
+		SelectEditorText(
+			editorLanguage_,
+			"Hierarchy###Hierarchy",
+			"Hierarchy###Hierarchy"
+		),
+		&showHierarchy_
+	);
 	if (editorSession_) {
 		SceneDocument& document = editorSession_->GetActiveDocument();
 		for (
@@ -3539,29 +4530,56 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 			createRequested = true;
 		}
 		if (ImGui::IsItemHovered()) {
-			ImGui::SetTooltip("Create Empty Entity");
+			ImGui::SetTooltip("%s", SelectEditorText(
+				editorLanguage_,
+				"空のEntityを作成",
+				"Create Empty Entity"
+			));
 		}
 		ImGui::SameLine();
-		if (ImGui::SmallButton("+ Folder")) {
+		if (ImGui::SmallButton(SelectEditorText(
+			editorLanguage_,
+			"+ フォルダー###CreateHierarchyFolder",
+			"+ Folder###CreateHierarchyFolder"
+		))) {
 			createFolderRequested = true;
 		}
 		if (ImGui::IsItemHovered()) {
-			ImGui::SetTooltip("Create Folder");
+			ImGui::SetTooltip("%s", SelectEditorText(
+				editorLanguage_,
+				"フォルダーを作成",
+				"Create Folder"
+			));
 		}
 		ImGui::SameLine();
-		if (ImGui::SmallButton("+ Path")) {
+		if (ImGui::SmallButton(SelectEditorText(
+			editorLanguage_,
+			"+ パス###CreateHierarchyCameraPath",
+			"+ Path###CreateHierarchyCameraPath"
+		))) {
 			createCameraPathRequested = true;
 		}
 		if (ImGui::IsItemHovered()) {
-			ImGui::SetTooltip("Create CameraPath with two child points");
+			ImGui::SetTooltip("%s", SelectEditorText(
+				editorLanguage_,
+				"子ポイントを2つ持つCameraPathを作成",
+				"Create CameraPath with two child points"
+			));
 		}
 		ImGui::EndDisabled();
 		ImGui::SameLine();
-		ImGui::TextDisabled("%zu entities", document.GetEntities().size());
+		ImGui::TextDisabled(
+			SelectEditorText(editorLanguage_, "%zu Entity", "%zu entities"),
+			document.GetEntities().size()
+		);
 		ImGui::SetNextItemWidth(-1.0f);
 		ImGui::InputTextWithHint(
 			"##HierarchySearch",
-			"Search... team:Fish type:Camera is:inactive",
+			SelectEditorText(
+				editorLanguage_,
+				"検索... team:Fish type:Camera is:inactive",
+				"Search... team:Fish type:Camera is:inactive"
+			),
 			hierarchySearchBuffer_,
 			sizeof(hierarchySearchBuffer_)
 		);
@@ -3911,7 +4929,9 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				setSelectedActive(!active, entity->id);
 			}
 			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip(active ? "Hide Entity" : "Show Entity");
+				ImGui::SetTooltip("%s", active
+					? SelectEditorText(editorLanguage_, "Entityを非表示", "Hide Entity")
+					: SelectEditorText(editorLanguage_, "Entityを表示", "Show Entity"));
 			}
 			ImGui::SameLine();
 			bool locked = entity->locked;
@@ -3919,7 +4939,9 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				setSelectedLocked(!locked, entity->id);
 			}
 			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip(locked ? "Unlock Editing" : "Lock Editing");
+				ImGui::SetTooltip("%s", locked
+					? SelectEditorText(editorLanguage_, "編集ロックを解除", "Unlock Editing")
+					: SelectEditorText(editorLanguage_, "編集をロック", "Lock Editing"));
 			}
 			ImGui::EndDisabled();
 			ImGui::SameLine();
@@ -3934,13 +4956,25 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				flags |= ImGuiTreeNodeFlags_Selected;
 			}
 			const std::string folderPrefix = entity->folder
-				? "[Folder " + std::to_string(childCount) + "]  "
+				? "[" + std::string(SelectEditorText(
+					editorLanguage_,
+					"フォルダー",
+					"Folder"
+				)) + " " + std::to_string(childCount) + "]  "
 				: "";
 			const std::string label = entity->locked
-				? folderPrefix + entity->name + " [locked]"
+				? folderPrefix + entity->name + SelectEditorText(
+					editorLanguage_,
+					" [ロック中]",
+					" [locked]"
+				)
 				: entity->active
 					? folderPrefix + entity->name
-					: folderPrefix + entity->name + " (inactive)";
+					: folderPrefix + entity->name + SelectEditorText(
+						editorLanguage_,
+						" (非アクティブ)",
+						" (inactive)"
+					);
 			const SceneTeamSettings* effectiveTeam =
 				document.ResolveEntityTeam(*entity);
 			const std::string labelWithTeam = effectiveTeam
@@ -4151,28 +5185,52 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 				editable &&
 				ImGui::BeginPopupContextItem("EntityContext")
 			) {
-				if (ImGui::MenuItem("Create Child")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"子Entityを作成###CreateChildEntity",
+					"Create Child###CreateChildEntity"
+				))) {
 					createRequested = true;
 					createParentId = entity->id;
 				}
-				if (ImGui::MenuItem("Create Child Folder")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"子フォルダーを作成###CreateChildFolder",
+					"Create Child Folder###CreateChildFolder"
+				))) {
 					createFolderRequested = true;
 					createParentId = entity->id;
 				}
-				if (ImGui::MenuItem("Duplicate")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"複製###DuplicateHierarchyEntity",
+					"Duplicate###DuplicateHierarchyEntity"
+				))) {
 					duplicateId = entity->id;
 				}
 				ImGui::Separator();
-				if (ImGui::MenuItem("Move Up")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"上へ移動###MoveHierarchyEntityUp",
+					"Move Up###MoveHierarchyEntityUp"
+				))) {
 					moveId = entity->id;
 					moveDirection = -1;
 				}
-				if (ImGui::MenuItem("Move Down")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"下へ移動###MoveHierarchyEntityDown",
+					"Move Down###MoveHierarchyEntityDown"
+				))) {
 					moveId = entity->id;
 					moveDirection = 1;
 				}
 				ImGui::Separator();
-				if (ImGui::MenuItem("Delete")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"削除###DeleteHierarchyEntity",
+					"Delete###DeleteHierarchyEntity"
+				))) {
 					removeId = entity->id;
 				}
 				ImGui::EndPopup();
@@ -4193,7 +5251,9 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		};
 
 		const char* rootName = document.GetSceneName().empty()
-			? (sceneName && sceneName[0] != '\0' ? sceneName : "Scene")
+			? (sceneName && sceneName[0] != '\0'
+				? sceneName
+				: SelectEditorText(editorLanguage_, "Scene", "Scene"))
 			: document.GetSceneName().c_str();
 		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
 		const bool rootOpen = ImGui::TreeNodeEx(
@@ -4420,20 +5480,24 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 
 	const char* rootName = sceneName && sceneName[0] != '\0'
 		? sceneName
-		: "Scene";
+		: SelectEditorText(editorLanguage_, "Scene", "Scene");
+	const std::string rootLabel = std::string(rootName) +
+		"###DefaultHierarchySceneRoot";
 
 	ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-	if (ImGui::TreeNode(rootName)) {
+	if (ImGui::TreeNode(rootLabel.c_str())) {
 		const char* items[] = {
-			"Main Camera",
-			"Environment",
-			"Scene Objects",
-			"Lights",
-			"Effects"
+			SelectEditorText(editorLanguage_, "Main Camera", "Main Camera"),
+			SelectEditorText(editorLanguage_, "Environment", "Environment"),
+			SelectEditorText(editorLanguage_, "Scene Objects", "Scene Objects"),
+			SelectEditorText(editorLanguage_, "Lights", "Lights"),
+			SelectEditorText(editorLanguage_, "Effects", "Effects")
 		};
 		for (int index = 0; index < IM_ARRAYSIZE(items); ++index) {
+			const std::string itemLabel = std::string(items[index]) +
+				"###DefaultHierarchyItem" + std::to_string(index);
 			if (ImGui::Selectable(
-				items[index],
+				itemLabel.c_str(),
 				selectedHierarchyItem_ == index
 			)) {
 				selectedHierarchyItem_ = index;
@@ -4442,6 +5506,1363 @@ void ImGuiManager::DrawHierarchyWindow(const char* sceneName) {
 		ImGui::TreePop();
 	}
 	ImGui::End();
+}
+
+void ImGuiManager::ResetComponentPicker(ComponentPickerState& state) {
+	state.document = nullptr;
+	state.documentKey.clear();
+	state.entityId = 0;
+	state.searchBuffer[0] = '\0';
+	state.category = -1;
+	state.selectedTagMask = 0;
+	state.tagMatchMode = ComponentTagMatchMode::All;
+	state.favoritesOnly = false;
+	state.items.clear();
+	state.error.clear();
+}
+
+void ImGuiManager::QueueProjectLauncherRequest(const ProjectLauncherRequest& request) {
+	if (projectLauncherRequestPending_ || request.operation == ProjectLauncherRequestOperation::None) {
+		return;
+	}
+	projectLauncherRequest_ = request;
+	projectLauncherRequestPending_ = true;
+}
+
+void ImGuiManager::DrawProjectLauncherWindow() {
+	if (!showProjectLauncher_) {
+		return;
+	}
+	if (!ImGui::Begin("Project Manager", &showProjectLauncher_)) {
+		ImGui::End();
+		return;
+	}
+
+	ImGui::TextDisabled("Local registry only. Project files are changed by queued requests on the next frame.");
+	ImGui::BeginDisabled(projectLauncherRequestPending_);
+	if (ImGui::Button("Refresh###ProjectLauncherRefresh")) {
+		QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::Refresh });
+	}
+	ImGui::EndDisabled();
+	if (!projectLauncherView_.statusMessage.empty()) {
+		ImGui::TextWrapped("%s", projectLauncherView_.statusMessage.c_str());
+	}
+	ImGui::SeparatorText("New Project");
+	ImGui::InputText("Project ID###ProjectLauncherProjectId", projectLauncherProjectIdBuffer_, sizeof(projectLauncherProjectIdBuffer_));
+	ImGui::InputText("Display Name###ProjectLauncherDisplayName", projectLauncherDisplayNameBuffer_, sizeof(projectLauncherDisplayNameBuffer_));
+	ImGui::InputText("Destination Root###ProjectLauncherDestinationRoot", projectLauncherDestinationRootBuffer_, sizeof(projectLauncherDestinationRootBuffer_));
+	ImGui::InputText("Start Scene ID###ProjectLauncherStartSceneId", projectLauncherStartSceneIdBuffer_, sizeof(projectLauncherStartSceneIdBuffer_));
+	ImGui::TextDisabled("Template Source: %s", projectLauncherView_.templateSourceRoot.empty() ? "Not configured" : projectLauncherView_.templateSourceRoot.c_str());
+	if (!projectLauncherView_.visualStudioInstances.empty()) {
+		const char* selected = projectLauncherVisualStudioIndex_ >= 0
+			? projectLauncherView_.visualStudioInstances[projectLauncherVisualStudioIndex_].displayName.c_str()
+			: "No selection";
+		if (ImGui::BeginCombo("Visual Studio###ProjectLauncherVisualStudio", selected)) {
+			for (size_t index = 0; index < projectLauncherView_.visualStudioInstances.size(); ++index) {
+				const ProjectLauncherVisualStudioView& instance = projectLauncherView_.visualStudioInstances[index];
+				const bool isSelected = projectLauncherVisualStudioIndex_ == static_cast<int>(index);
+				if (ImGui::Selectable(instance.displayName.c_str(), isSelected)) {
+					projectLauncherVisualStudioIndex_ = static_cast<int>(index);
+				}
+				if (isSelected) {
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
+	}
+	const bool canCreate =
+		!projectLauncherView_.creationInProgress &&
+		projectLauncherProjectIdBuffer_[0] != '\0' &&
+		projectLauncherDisplayNameBuffer_[0] != '\0' &&
+		projectLauncherDestinationRootBuffer_[0] != '\0' &&
+		projectLauncherStartSceneIdBuffer_[0] != '\0' &&
+		!projectLauncherView_.templateSourceRoot.empty();
+	ImGui::Checkbox("Open Solution after creation###ProjectLauncherOpenSolutionAfterCreate", &projectLauncherOpenSolutionAfterCreate_);
+	ImGui::BeginDisabled(!canCreate || projectLauncherRequestPending_);
+	if (ImGui::Button("Create...###ProjectLauncherCreate")) {
+		projectLauncherCreateConfirmationOpen_ = true;
+	}
+	ImGui::EndDisabled();
+	if (projectLauncherCreateConfirmationOpen_) {
+		ImGui::OpenPopup("Create Project?###ProjectLauncherCreateConfirmation");
+		projectLauncherCreateConfirmationOpen_ = false;
+	}
+	if (ImGui::BeginPopupModal("Create Project?###ProjectLauncherCreateConfirmation", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		ImGui::Text("Output: %s", projectLauncherDestinationRootBuffer_);
+		ImGui::Text("Project ID: %s", projectLauncherProjectIdBuffer_);
+		ImGui::Text("Template Source: %s", projectLauncherView_.templateSourceRoot.c_str());
+		ImGui::TextDisabled("Git initialization and dependency restore are not part of this action.");
+		if (ImGui::Button(projectLauncherOpenSolutionAfterCreate_ ? "Create and Open Solution###ConfirmProjectLauncherCreate" : "Create only###ConfirmProjectLauncherCreate")) {
+			ProjectLauncherRequest request{};
+			request.operation = ProjectLauncherRequestOperation::Create;
+			request.projectId = projectLauncherProjectIdBuffer_;
+			request.displayName = projectLauncherDisplayNameBuffer_;
+			request.destinationRoot = projectLauncherDestinationRootBuffer_;
+			request.startSceneId = projectLauncherStartSceneIdBuffer_;
+			if (projectLauncherVisualStudioIndex_ >= 0) {
+				request.visualStudioInstanceId = projectLauncherView_.visualStudioInstances[projectLauncherVisualStudioIndex_].instanceId;
+			}
+			request.openSolutionAfterCreate = projectLauncherOpenSolutionAfterCreate_;
+			QueueProjectLauncherRequest(request);
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel###CancelProjectLauncherCreate")) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	ImGui::SeparatorText("Import Existing Project");
+	ImGui::InputText("Descriptor Path###ProjectLauncherImportDescriptor", projectLauncherImportDescriptorBuffer_, sizeof(projectLauncherImportDescriptorBuffer_));
+	ImGui::BeginDisabled(projectLauncherImportDescriptorBuffer_[0] == '\0' || projectLauncherRequestPending_);
+	if (ImGui::Button("Register Descriptor###ProjectLauncherImport")) {
+		ProjectLauncherRequest request{};
+		request.operation = ProjectLauncherRequestOperation::Import;
+		request.descriptorPath = projectLauncherImportDescriptorBuffer_;
+		QueueProjectLauncherRequest(request);
+	}
+	ImGui::EndDisabled();
+	ImGui::TextDisabled("Legacy Project descriptor creation is intentionally not automatic.");
+
+	ImGui::SeparatorText("Projects");
+	if (projectLauncherView_.projects.empty()) {
+		ImGui::TextDisabled("No registered Projects.");
+	}
+	for (const ProjectLauncherProjectView& project : projectLauncherView_.projects) {
+		ImGui::PushID(project.descriptorPath.c_str());
+		ImGui::Text("%s (%s)", project.displayName.c_str(), project.projectId.c_str());
+		ImGui::TextDisabled("%s", project.projectRoot.c_str());
+		ImGui::TextWrapped("%s%s%s", project.status.c_str(), project.detail.empty() ? "" : ": ", project.detail.c_str());
+		if (!project.generationStatus.empty()) {
+			ImGui::TextWrapped("Generation: %s%s%s", project.generationStatus.c_str(), project.generationDetail.empty() ? "" : ": ", project.generationDetail.c_str());
+		}
+		ImGui::BeginDisabled(!project.canGenerateSolutionPreview || projectLauncherRequestPending_);
+		if (ImGui::Button("Generate Preview")) {
+			QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::GenerateSolutionPreview, project.descriptorPath });
+		}
+		ImGui::EndDisabled();
+		if (!project.previewOperationId.empty()) {
+			ImGui::SameLine();
+			ImGui::TextDisabled("Preview artifacts: %u", project.previewArtifactCount);
+		}
+		if (ImGui::Button(project.pinned ? "Unpin" : "Pin")) {
+			ProjectLauncherRequest request{};
+			request.operation = ProjectLauncherRequestOperation::SetPinned;
+			request.descriptorPath = project.descriptorPath;
+			request.pinned = !project.pinned;
+			QueueProjectLauncherRequest(request);
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Open Folder")) {
+			QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::OpenFolder, project.descriptorPath });
+		}
+		ImGui::SameLine();
+		const std::string selectedInstanceId = projectLauncherVisualStudioIndex_ >= 0
+			? projectLauncherView_.visualStudioInstances[projectLauncherVisualStudioIndex_].instanceId : std::string{};
+		ImGui::BeginDisabled(!project.canOpenSolution || projectLauncherRequestPending_);
+		if (ImGui::Button("Open Solution")) {
+			QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::OpenSolution, project.descriptorPath, {}, {}, {}, {}, {}, selectedInstanceId });
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		ImGui::BeginDisabled(!project.canOpenSolutionPreview || projectLauncherRequestPending_);
+		if (ImGui::Button("Open Preview Solution")) {
+			QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::OpenSolutionPreview, project.descriptorPath, project.previewOperationId, {}, {}, {}, {}, selectedInstanceId });
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		ImGui::BeginDisabled(!project.canAdoptSolutionPreview || projectLauncherRequestPending_);
+		if (ImGui::Button("Adopt Verified Preview...")) {
+			projectLauncherGenerationConfirmationRequest_ = {};
+			projectLauncherGenerationConfirmationRequest_.operation = ProjectLauncherRequestOperation::AdoptSolutionPreview;
+			projectLauncherGenerationConfirmationRequest_.descriptorPath = project.descriptorPath;
+			projectLauncherGenerationConfirmationRequest_.operationId = project.previewOperationId;
+			projectLauncherGenerationConfirmationRequest_.projectId = project.projectId;
+			projectLauncherGenerationConfirmationDetail_ = "Artifacts: " + std::to_string(project.previewArtifactCount) + "\nCanonical root: " + project.projectRoot;
+			projectLauncherGenerationConfirmationVerified_ = false;
+			projectLauncherGenerationConfirmationOpen_ = true;
+		}
+		ImGui::EndDisabled();
+		if (project.layoutMigrationRequired) {
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!project.canAdoptGroupedSolutionLayout || projectLauncherRequestPending_);
+			if (ImGui::Button("Adopt Grouped Layout...")) {
+				projectLauncherGenerationConfirmationRequest_ = {};
+				projectLauncherGenerationConfirmationRequest_.operation = ProjectLauncherRequestOperation::AdoptGroupedSolutionLayout;
+				projectLauncherGenerationConfirmationRequest_.descriptorPath = project.descriptorPath;
+				projectLauncherGenerationConfirmationRequest_.operationId = project.previewOperationId;
+				projectLauncherGenerationConfirmationRequest_.projectId = project.projectId;
+				projectLauncherGenerationConfirmationDetail_ =
+					"New artifacts: " + std::to_string(project.previewArtifactCount) +
+					"\nRetired artifacts: " + std::to_string(project.retiredArtifactCount) +
+					"\nModified owned artifacts: " + std::to_string(project.modifiedOwnedArtifactCount) +
+					"\nDescriptor: " + project.descriptorPath +
+					"\nOld directory: " + project.legacyArtifactDirectory +
+					"\nNew directory: " + project.groupedArtifactDirectory;
+				projectLauncherGenerationConfirmationModifiedOwnedArtifactCount_ = project.modifiedOwnedArtifactCount;
+				projectLauncherGenerationConfirmationVerified_ = false;
+				projectLauncherGenerationConfirmationOpen_ = true;
+			}
+			ImGui::EndDisabled();
+		}
+		ImGui::SameLine();
+		ImGui::BeginDisabled(!project.canOpenEditor || projectLauncherRequestPending_);
+		if (ImGui::Button("Open Editor")) {
+			QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::OpenEditor, project.descriptorPath });
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		ImGui::BeginDisabled(!project.canSwitchEditor || projectLauncherRequestPending_);
+		if (ImGui::Button("Switch Editor")) {
+			QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::SwitchEditor, project.descriptorPath });
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		if (ImGui::Button("Remove from List")) {
+			QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::Remove, project.descriptorPath });
+		}
+		ImGui::Separator();
+		ImGui::PopID();
+	}
+	if (!projectLauncherView_.generationRecoveries.empty()) {
+		ImGui::SeparatorText("Solution Generation Recovery");
+		for (const ProjectLauncherGenerationRecoveryView& recovery : projectLauncherView_.generationRecoveries) {
+			ImGui::PushID(recovery.operationId.c_str());
+			ImGui::Text("%s: %s", recovery.projectId.c_str(), recovery.state.c_str());
+			ImGui::TextDisabled("Staging: %s", recovery.stagingRoot.c_str());
+			ImGui::TextDisabled("Rollback: %s", recovery.rollbackRoot.c_str());
+			ImGui::TextDisabled("Artifacts: %u", recovery.fileCount);
+			ImGui::TextWrapped("%s", recovery.detail.c_str());
+			ImGui::BeginDisabled(!recovery.canCommitStaged || projectLauncherRequestPending_);
+			if (ImGui::Button("Commit Staged...")) {
+				projectLauncherGenerationConfirmationRequest_ = {};
+				projectLauncherGenerationConfirmationRequest_.operation = ProjectLauncherRequestOperation::CommitStagedSolutionGeneration;
+				projectLauncherGenerationConfirmationRequest_.operationId = recovery.operationId;
+				projectLauncherGenerationConfirmationRequest_.projectId = recovery.projectId;
+				projectLauncherGenerationConfirmationDetail_ = "Artifacts: " + std::to_string(recovery.fileCount) + "\nStaging: " + recovery.stagingRoot;
+				projectLauncherGenerationConfirmationVerified_ = true;
+				projectLauncherGenerationConfirmationOpen_ = true;
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!recovery.canResumeCommit || projectLauncherRequestPending_);
+			if (ImGui::Button("Resume Commit...")) {
+				projectLauncherGenerationConfirmationRequest_ = {};
+				projectLauncherGenerationConfirmationRequest_.operation = ProjectLauncherRequestOperation::ResumeSolutionGenerationCommit;
+				projectLauncherGenerationConfirmationRequest_.operationId = recovery.operationId;
+				projectLauncherGenerationConfirmationRequest_.projectId = recovery.projectId;
+				projectLauncherGenerationConfirmationDetail_ = "Artifacts: " + std::to_string(recovery.fileCount) + "\nStaging: " + recovery.stagingRoot + "\nRollback: " + recovery.rollbackRoot;
+				projectLauncherGenerationConfirmationVerified_ = true;
+				projectLauncherGenerationConfirmationOpen_ = true;
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!recovery.canRecheck || projectLauncherRequestPending_);
+			if (ImGui::Button("Recheck Recovery")) {
+				QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::RecheckSolutionGenerationRecovery, {}, recovery.operationId });
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!recovery.canRestorePrevious || projectLauncherRequestPending_);
+			if (ImGui::Button("Restore Previous...")) {
+				projectLauncherRestoreGenerationOperationId_ = recovery.operationId;
+				projectLauncherGenerationConfirmationDetail_ = "Project: " + recovery.projectId + "\nArtifacts: " + std::to_string(recovery.fileCount) + "\nRollback: " + recovery.rollbackRoot;
+				projectLauncherRestoreGenerationConfirmationOpen_ = true;
+			}
+			ImGui::EndDisabled();
+			ImGui::PopID();
+		}
+	}
+	if (projectLauncherGenerationConfirmationOpen_) {
+		ImGui::OpenPopup("Confirm Solution Generation Operation###ProjectLauncherGenerationConfirmation");
+		projectLauncherGenerationConfirmationOpen_ = false;
+	}
+	if (ImGui::BeginPopupModal("Confirm Solution Generation Operation###ProjectLauncherGenerationConfirmation", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		const ProjectLauncherRequestOperation operation = projectLauncherGenerationConfirmationRequest_.operation;
+		const bool adoption = operation == ProjectLauncherRequestOperation::AdoptSolutionPreview;
+		const bool groupedLayoutAdoption = operation == ProjectLauncherRequestOperation::AdoptGroupedSolutionLayout;
+		const bool groupedLayoutDrift = groupedLayoutAdoption && projectLauncherGenerationConfirmationModifiedOwnedArtifactCount_ != 0;
+		const char* action = adoption ? "Adopt Verified Preview" : groupedLayoutAdoption ? "Adopt Grouped Layout" : operation == ProjectLauncherRequestOperation::CommitStagedSolutionGeneration ? "Commit Staged Generation" : "Resume Generation Commit";
+		ImGui::TextWrapped("%s for Project %s.", action, projectLauncherGenerationConfirmationRequest_.projectId.c_str());
+		ImGui::TextDisabled("Operation: %s", projectLauncherGenerationConfirmationRequest_.operationId.c_str());
+		ImGui::TextWrapped("%s", projectLauncherGenerationConfirmationDetail_.c_str());
+		if (groupedLayoutAdoption) {
+			ImGui::TextWrapped("This changes tracked generated files and the descriptor path. It does not change legacy CG2, Git, or Build output.");
+			if (groupedLayoutDrift) {
+				ImGui::TextWrapped("Current modified generated files are journaled as the previous set for transaction rollback. Their edits are not merged into Grouped output.");
+				ImGui::Checkbox("I verified this Preview and accept replacing modified generated files", &projectLauncherGenerationConfirmationVerified_);
+			} else {
+				ImGui::Checkbox("I verified this Preview", &projectLauncherGenerationConfirmationVerified_);
+			}
+		} else if (adoption) {
+			ImGui::TextWrapped("This changes tracked generated files only. It does not run Git.");
+			ImGui::Checkbox("I verified this Preview", &projectLauncherGenerationConfirmationVerified_);
+		} else if (operation == ProjectLauncherRequestOperation::ResumeSolutionGenerationCommit) {
+			ImGui::TextWrapped("Only hash-proven incomplete artifacts continue toward the new generation.");
+		} else {
+			ImGui::TextWrapped("This continues the explicitly staged generation operation.");
+		}
+		ImGui::BeginDisabled(!projectLauncherGenerationConfirmationVerified_ || projectLauncherRequestPending_);
+		if (ImGui::Button("Confirm###ConfirmProjectLauncherGeneration")) {
+			QueueProjectLauncherRequest(projectLauncherGenerationConfirmationRequest_);
+			projectLauncherGenerationConfirmationRequest_ = {};
+			projectLauncherGenerationConfirmationDetail_.clear();
+			projectLauncherGenerationConfirmationModifiedOwnedArtifactCount_ = 0;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel###CancelProjectLauncherGeneration")) {
+			projectLauncherGenerationConfirmationRequest_ = {};
+			projectLauncherGenerationConfirmationDetail_.clear();
+			projectLauncherGenerationConfirmationModifiedOwnedArtifactCount_ = 0;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	if (projectLauncherRestoreGenerationConfirmationOpen_) {
+		ImGui::OpenPopup("Restore Previous Generation?###ProjectLauncherRestoreGenerationConfirmation");
+		projectLauncherRestoreGenerationConfirmationOpen_ = false;
+	}
+	if (ImGui::BeginPopupModal("Restore Previous Generation?###ProjectLauncherRestoreGenerationConfirmation", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		ImGui::TextWrapped("This restores only journal-owned generated files for operation %s.", projectLauncherRestoreGenerationOperationId_.c_str());
+		ImGui::TextWrapped("%s", projectLauncherGenerationConfirmationDetail_.c_str());
+		if (ImGui::Button("Restore Previous Generation###ConfirmProjectLauncherRestoreGeneration")) {
+			QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::RestorePreviousSolutionGeneration, {}, projectLauncherRestoreGenerationOperationId_ });
+			projectLauncherRestoreGenerationOperationId_.clear();
+			projectLauncherGenerationConfirmationDetail_.clear();
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel###CancelProjectLauncherRestoreGeneration")) {
+			projectLauncherRestoreGenerationOperationId_.clear();
+			projectLauncherGenerationConfirmationDetail_.clear();
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	if (!projectLauncherView_.operations.empty()) {
+		ImGui::SeparatorText("Creation Recovery");
+		for (const ProjectLauncherOperationView& operation : projectLauncherView_.operations) {
+			ImGui::PushID(operation.operationId.c_str());
+			ImGui::Text("%s: %s", operation.projectId.c_str(), operation.state.c_str());
+			ImGui::TextWrapped("%s", operation.detail.c_str());
+			ImGui::BeginDisabled(!operation.canRetryFinalize || projectLauncherRequestPending_);
+			if (ImGui::Button("Retry Descriptor Finalize")) {
+				QueueProjectLauncherRequest({ ProjectLauncherRequestOperation::RetryFinalize, {}, operation.operationId });
+			}
+			ImGui::EndDisabled();
+			ImGui::PopID();
+		}
+	}
+	if (projectLauncherView_.switchBlockedBySceneDirty || projectLauncherView_.switchBlockedByPrefabDirty || projectLauncherView_.switchBlockedByPlayMode) {
+		ImGui::Separator();
+		ImGui::TextDisabled("Switch Editor is unavailable:");
+		if (projectLauncherView_.switchBlockedBySceneDirty) ImGui::BulletText("Scene has unsaved changes.");
+		if (projectLauncherView_.switchBlockedByPrefabDirty) ImGui::BulletText("Prefab has unsaved changes.");
+		if (projectLauncherView_.switchBlockedByPlayMode) ImGui::BulletText("Stop Play or Pause mode first.");
+	}
+	ImGui::End();
+}
+
+void ImGuiManager::StopAudioPreview() {
+	if (Audio* audio = Audio::GetInstance()) {
+		audio->SoundStop(previewAudioPlayback_);
+	} else {
+		previewAudioPlayback_ = {};
+	}
+	previewAudioClip_.reset();
+	previewAudioError_.clear();
+}
+
+void ImGuiManager::OpenComponentPicker(
+	ComponentPickerState& state,
+	ComponentPickerTarget target,
+	SceneDocument& document,
+	const std::string& documentKey,
+	uint64_t entityId
+) {
+	ResetComponentPicker(state);
+	state.document = &document;
+	state.documentKey = documentKey;
+	state.entityId = entityId;
+	const std::string popupLabel = std::string(SelectEditorText(
+		editorLanguage_,
+		"Componentを追加",
+		"Add Components"
+	)) + (target == ComponentPickerTarget::Scene
+		? "###SceneComponentPicker"
+		: "###PrefabComponentPicker");
+	ImGui::OpenPopup(popupLabel.c_str());
+}
+
+bool ImGuiManager::IsComponentPickerItemQueued(
+	const ComponentPickerState& state,
+	const std::string& type
+) const {
+	return std::any_of(
+		state.items.begin(),
+		state.items.end(),
+		[&type](const ComponentPickerItem& item) {
+			return item.type == type;
+		}
+	);
+}
+
+void ImGuiManager::DrawComponentSummary(
+	const SceneEntity& entity,
+	const std::string& documentKey,
+	bool prefabAnimationFocusOnly,
+	std::string& selectedType
+) {
+	std::vector<const SceneComponent*> visibleComponents;
+	for (const SceneComponent& component : entity.components) {
+		if (
+			prefabAnimationFocusOnly &&
+			component.type != "AttackSet" &&
+			component.type != "PrefabAnimator"
+		) {
+			continue;
+		}
+		visibleComponents.push_back(&component);
+	}
+
+	const bool selectionExists = std::any_of(
+		visibleComponents.begin(),
+		visibleComponents.end(),
+		[&selectedType](const SceneComponent* component) {
+			return component->type == selectedType;
+		}
+	);
+	if (!selectionExists) {
+		selectedType = visibleComponents.empty()
+			? std::string{}
+			: visibleComponents.front()->type;
+	}
+
+	ImGui::SeparatorText(SelectEditorText(
+		editorLanguage_,
+		"Component概要",
+		"Component Summary"
+	));
+	ImGui::PushID("ComponentSummary");
+	ImGui::TextUnformatted(SelectEditorText(
+		editorLanguage_,
+		"表示:",
+		"View:"
+	));
+	ImGui::SameLine();
+	bool settingsChanged = false;
+	if (ImGui::RadioButton(
+		SelectEditorText(
+			editorLanguage_,
+			"簡易###ComponentInspectorSimple",
+			"Simple###ComponentInspectorSimple"
+		),
+		componentInspectorMode_ == ComponentInspectorMode::Simple
+	)) {
+		componentInspectorMode_ = ComponentInspectorMode::Simple;
+		settingsChanged = true;
+	}
+	ImGui::SameLine();
+	if (ImGui::RadioButton(
+		SelectEditorText(
+			editorLanguage_,
+			"詳細###ComponentInspectorDetailed",
+			"Detailed###ComponentInspectorDetailed"
+		),
+		componentInspectorMode_ == ComponentInspectorMode::Detailed
+	)) {
+		componentInspectorMode_ = ComponentInspectorMode::Detailed;
+		settingsChanged = true;
+	}
+
+	if (visibleComponents.empty()) {
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"Componentはありません。",
+			"No components."
+		));
+	} else {
+		const float rowHeight = ImGui::GetTextLineHeightWithSpacing() * 2.0f;
+		const float listHeight = std::clamp(
+			rowHeight * static_cast<float>(visibleComponents.size()) + 8.0f,
+			48.0f,
+			180.0f
+		);
+		ImGui::BeginChild(
+			"ComponentSummaryList",
+			ImVec2(0.0f, listHeight),
+			true
+		);
+		for (size_t index = 0; index < visibleComponents.size(); ++index) {
+			const SceneComponent& component = *visibleComponents[index];
+			const EditorComponentDefinition* definition =
+				FindEditorComponentDefinition(component.type);
+			const char* displayName = definition
+				? GetEditorComponentDisplayName(*definition, editorLanguage_)
+				: component.type.c_str();
+			const char* enabledState = component.enabled
+				? SelectEditorText(editorLanguage_, "有効", "Enabled")
+				: SelectEditorText(editorLanguage_, "無効", "Disabled");
+			const std::string rowLabel = "[" + std::string(enabledState) + "] " +
+				displayName + "\n" + component.type +
+				"###ComponentSummaryRow";
+			ImGui::PushID(static_cast<int>(index));
+			if (ImGui::Selectable(
+				rowLabel.c_str(),
+				selectedType == component.type,
+				ImGuiSelectableFlags_None,
+				ImVec2(0.0f, rowHeight)
+			)) {
+				selectedType = component.type;
+				const std::string foldoutKey = MakeComponentFoldoutKey(
+					documentKey,
+					entity.id,
+					component.type
+				);
+				const auto foldout = componentFoldoutStates_.find(foldoutKey);
+				if (
+					foldout != componentFoldoutStates_.end() &&
+					!foldout->second
+				) {
+					foldout->second = true;
+					settingsChanged = true;
+				}
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndChild();
+	}
+
+	if (settingsChanged) {
+		SaveEditorSettings();
+	}
+	ImGui::PopID();
+}
+
+void ImGuiManager::RemoveComponentPickerItem(
+	ComponentPickerState& state,
+	const std::string& type
+) {
+	std::unordered_set<std::string> removeTypes{ type };
+	bool changed = true;
+	while (changed) {
+		changed = false;
+		for (const ComponentPickerItem& item : state.items) {
+			if (
+				!item.requiredByType.empty() &&
+				removeTypes.contains(item.requiredByType)
+			) {
+				changed |= removeTypes.insert(item.type).second;
+			}
+			if (
+				removeTypes.contains(item.type) &&
+				!item.requiredByType.empty()
+			) {
+				changed |= removeTypes.insert(item.requiredByType).second;
+			}
+			const EditorComponentDefinition* definition =
+				FindEditorComponentDefinition(item.type);
+			if (
+				definition && definition->requiredType[0] != '\0' &&
+				removeTypes.contains(definition->requiredType)
+			) {
+				changed |= removeTypes.insert(item.type).second;
+			}
+		}
+	}
+	state.items.erase(
+		std::remove_if(
+			state.items.begin(),
+			state.items.end(),
+			[&removeTypes](const ComponentPickerItem& item) {
+				return removeTypes.contains(item.type);
+			}
+		),
+		state.items.end()
+	);
+}
+
+void ImGuiManager::ToggleComponentPickerItem(
+	ComponentPickerState& state,
+	ComponentPickerTarget target,
+	const SceneEntity& entity,
+	const std::string& type
+) {
+	if (IsComponentPickerItemQueued(state, type)) {
+		RemoveComponentPickerItem(state, type);
+		return;
+	}
+	const EditorComponentContext context = target == ComponentPickerTarget::Scene
+		? EditorComponentContext::Scene
+		: EditorComponentContext::Prefab;
+	const EditorComponentDefinition* definition =
+		FindEditorComponentDefinition(type);
+	if (
+		!definition ||
+		!SupportsEditorComponentContext(*definition, context) ||
+		HasComponent(entity, type.c_str())
+	) {
+		return;
+	}
+	if (
+		definition->requiredType[0] != '\0' &&
+		!HasComponent(entity, definition->requiredType) &&
+		!IsComponentPickerItemQueued(state, definition->requiredType)
+	) {
+		const EditorComponentDefinition* requiredDefinition =
+			FindEditorComponentDefinition(definition->requiredType);
+		if (
+			requiredDefinition &&
+			SupportsEditorComponentContext(*requiredDefinition, context)
+		) {
+			state.items.push_back({
+				requiredDefinition->type,
+				definition->type
+			});
+		}
+	}
+	state.items.push_back({ definition->type, "" });
+	state.error.clear();
+}
+
+void ImGuiManager::DrawComponentPicker(
+	ComponentPickerState& state,
+	ComponentPickerTarget target
+) {
+	if (state.entityId == 0) {
+		return;
+	}
+	const bool sceneTarget = target == ComponentPickerTarget::Scene;
+	const EditorComponentContext context = sceneTarget
+		? EditorComponentContext::Scene
+		: EditorComponentContext::Prefab;
+	const std::string popupLabel = std::string(SelectEditorText(
+		editorLanguage_,
+		"Componentを追加",
+		"Add Components"
+	)) + (sceneTarget
+		? "###SceneComponentPicker"
+		: "###PrefabComponentPicker");
+	ImGui::SetNextWindowSize(ImVec2(820.0f, 650.0f), ImGuiCond_FirstUseEver);
+	bool keepOpen = true;
+	if (!ImGui::BeginPopupModal(
+		popupLabel.c_str(),
+		&keepOpen,
+		ImGuiWindowFlags_NoSavedSettings
+	)) {
+		if (!keepOpen || !ImGui::IsPopupOpen(popupLabel.c_str())) {
+			ResetComponentPicker(state);
+		}
+		return;
+	}
+
+	bool closePicker = false;
+	const uint64_t selectedEntityId = sceneTarget
+		? selectedEntityId_
+		: prefabSelectedEntityId_;
+	if (selectedEntityId != state.entityId) {
+		closePicker = true;
+	}
+	if (
+		sceneTarget &&
+		(!selectedProjectFile_.empty() || selectedEntityIds_.size() > 1)
+	) {
+		closePicker = true;
+	}
+	SceneDocument* document = nullptr;
+	SceneEntity* targetEntity = nullptr;
+	std::string documentKey;
+	const bool contextAvailable = sceneTarget
+		? editorSession_ && editorSession_->IsEditing()
+		: prefabEditorSession_ && prefabEditorSession_->IsOpen();
+	if (contextAvailable && !closePicker) {
+		if (sceneTarget) {
+			document = &editorSession_->GetEditDocument();
+			documentKey = editorSession_->GetEditSceneId();
+		} else {
+			document = &prefabEditorSession_->GetDocument();
+			documentKey = prefabEditorSession_->GetFilePath();
+		}
+		if (document == state.document && documentKey == state.documentKey) {
+			targetEntity = document->FindEntity(state.entityId);
+		} else {
+			closePicker = true;
+		}
+	}
+	if (!contextAvailable) {
+		if (sceneTarget) {
+			state.error = SelectEditorText(
+				editorLanguage_,
+				"Play中はComponentを追加できません。",
+				"Components cannot be added during Play mode."
+			);
+		} else {
+			closePicker = true;
+		}
+	} else if (
+		document == state.document && documentKey == state.documentKey &&
+		!targetEntity
+	) {
+		state.error = SelectEditorText(
+			editorLanguage_,
+			"対象Entityが見つかりません。",
+			"The target entity no longer exists."
+		);
+	} else if (sceneTarget && targetEntity && targetEntity->locked) {
+		state.error = SelectEditorText(
+			editorLanguage_,
+			"対象Entityはロックされています。",
+			"The target entity is locked."
+		);
+	} else if (targetEntity && targetEntity->folder) {
+		state.error = SelectEditorText(
+			editorLanguage_,
+			"FolderへComponentは追加できません。",
+			"Components cannot be added to a folder."
+		);
+	}
+	constexpr EditorComponentCategory categories[] = {
+		EditorComponentCategory::Rendering,
+		EditorComponentCategory::World,
+		EditorComponentCategory::Camera,
+		EditorComponentCategory::Physics,
+		EditorComponentCategory::Gameplay,
+		EditorComponentCategory::Animation,
+		EditorComponentCategory::EventAndFlow
+	};
+	const auto matchesFilters = [
+		this,
+		&state,
+		&categories
+	](
+		const EditorComponentDefinition& definition,
+		uint16_t selectedTagMask
+	) {
+		if (
+			state.category >= 0 &&
+			definition.category != categories[state.category]
+		) {
+			return false;
+		}
+		if (!MatchesEditorComponentSearch(
+			definition,
+			state.searchBuffer
+		)) {
+			return false;
+		}
+		if (
+			state.favoritesOnly &&
+			!favoriteComponentTypes_.contains(definition.type)
+		) {
+			return false;
+		}
+		if (selectedTagMask == 0) {
+			return true;
+		}
+		if (state.tagMatchMode == ComponentTagMatchMode::Any) {
+			return (definition.tagMask & selectedTagMask) != 0;
+		}
+		return (definition.tagMask & selectedTagMask) == selectedTagMask;
+	};
+	const auto countSelectedTags = [](uint16_t selectedTagMask) {
+		int count = 0;
+		for (EditorComponentTag tag : GetEditorComponentTags()) {
+			if ((selectedTagMask & EditorComponentTagBit(tag)) != 0) {
+				++count;
+			}
+		}
+		return count;
+	};
+	int selectedTagCount = countSelectedTags(state.selectedTagMask);
+
+	ImGui::TextUnformatted(SelectEditorText(
+		editorLanguage_,
+		"文字検索、カテゴリ、タグから選び、下の追加予定へまとめます。",
+		"Choose by text, category, or tag, then review the pending components below."
+	));
+	ImGui::SetNextItemWidth(-1.0f);
+	ImGui::InputTextWithHint(
+		"##ComponentPickerSearch",
+		SelectEditorText(
+			editorLanguage_,
+			"名前・Type ID・説明を検索...",
+			"Search names, type IDs, or descriptions..."
+		),
+		state.searchBuffer,
+		sizeof(state.searchBuffer)
+	);
+	ImGui::TextUnformatted(SelectEditorText(
+		editorLanguage_,
+		"使用中のタグ",
+		"Active tags"
+	));
+	const float tagRowRight = ImGui::GetCursorScreenPos().x +
+		ImGui::GetContentRegionAvail().x;
+	bool hasTagRowItem = false;
+	const auto placeTagRowItem = [
+		&hasTagRowItem,
+		tagRowRight
+	](float itemWidth) {
+		if (
+			hasTagRowItem &&
+			ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x +
+				itemWidth <= tagRowRight
+		) {
+			ImGui::SameLine();
+		}
+		hasTagRowItem = true;
+	};
+	uint16_t removeTagBit = 0;
+	for (EditorComponentTag tag : GetEditorComponentTags()) {
+		const uint16_t tagBit = EditorComponentTagBit(tag);
+		if ((state.selectedTagMask & tagBit) == 0) {
+			continue;
+		}
+		const std::string tagLabel = std::string(
+			GetEditorComponentTagDisplayName(tag, editorLanguage_)
+		) + "  ×##SelectedTagFilter" +
+			GetEditorComponentTagId(tag);
+		const float tagWidth = ImGui::CalcTextSize(
+			tagLabel.c_str(),
+			nullptr,
+			true
+		).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+		placeTagRowItem(tagWidth);
+		ImGui::PushStyleColor(
+			ImGuiCol_Button,
+			ImGui::GetStyleColorVec4(ImGuiCol_Header)
+		);
+		ImGui::PushStyleColor(
+			ImGuiCol_ButtonHovered,
+			ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered)
+		);
+		ImGui::PushStyleColor(
+			ImGuiCol_ButtonActive,
+			ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive)
+		);
+		if (ImGui::Button(tagLabel.c_str())) {
+			removeTagBit = tagBit;
+		}
+		ImGui::PopStyleColor(3);
+	}
+	if (removeTagBit != 0) {
+		state.selectedTagMask &= static_cast<uint16_t>(~removeTagBit);
+		selectedTagCount = countSelectedTags(state.selectedTagMask);
+	}
+	if (!hasTagRowItem) {
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"タグ条件なし",
+			"No tag filters"
+		));
+		hasTagRowItem = true;
+	}
+	const char* addTagLabel = SelectEditorText(
+		editorLanguage_,
+		"＋ タグを追加##OpenTagFilterPopup",
+		"+ Add tag##OpenTagFilterPopup"
+	);
+	const float addTagWidth = ImGui::CalcTextSize(
+		addTagLabel,
+		nullptr,
+		true
+	).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+	placeTagRowItem(addTagWidth);
+	if (ImGui::Button(addTagLabel)) {
+		ImGui::OpenPopup("ComponentTagFilterPopup");
+	}
+	if (selectedTagCount >= 2) {
+		const char* clearTagsLabel = SelectEditorText(
+			editorLanguage_,
+			"すべて解除##ClearTagFilters",
+			"Clear all##ClearTagFilters"
+		);
+		const float clearTagsWidth = ImGui::CalcTextSize(
+			clearTagsLabel,
+			nullptr,
+			true
+		).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+		placeTagRowItem(clearTagsWidth);
+		if (ImGui::Button(clearTagsLabel)) {
+			state.selectedTagMask = 0;
+		}
+	}
+	if (ImGui::BeginPopup("ComponentTagFilterPopup")) {
+		ImGui::TextUnformatted(SelectEditorText(
+			editorLanguage_,
+			"タグを追加",
+			"Add tags"
+		));
+		ImGui::Separator();
+		bool hasAvailableTag = false;
+		for (EditorComponentTag tag : GetEditorComponentTags()) {
+			const uint16_t tagBit = EditorComponentTagBit(tag);
+			if ((state.selectedTagMask & tagBit) != 0) {
+				continue;
+			}
+			bool existsInContext = false;
+			int matchingCount = 0;
+			const uint16_t hypotheticalTagMask =
+				state.selectedTagMask | tagBit;
+			for (const EditorComponentDefinition* definition :
+				GetEditorComponentDefinitions(context)) {
+				if (HasEditorComponentTag(*definition, tag)) {
+					existsInContext = true;
+				}
+				if (matchesFilters(*definition, hypotheticalTagMask)) {
+					++matchingCount;
+				}
+			}
+			if (!existsInContext) {
+				continue;
+			}
+			hasAvailableTag = true;
+			const std::string candidateLabel = std::string(
+				GetEditorComponentTagDisplayName(tag, editorLanguage_)
+			) + "  " + std::to_string(matchingCount) +
+				(editorLanguage_ == EditorLanguage::Japanese
+					? "件"
+					: " results") +
+				"##AddTagFilter" + GetEditorComponentTagId(tag);
+			if (ImGui::Selectable(
+				candidateLabel.c_str(),
+				false,
+				ImGuiSelectableFlags_NoAutoClosePopups
+			)) {
+				state.selectedTagMask |= tagBit;
+			}
+			if (
+				matchingCount == 0 &&
+				ImGui::IsItemHovered()
+			) {
+				ImGui::SetTooltip("%s", SelectEditorText(
+					editorLanguage_,
+					"追加できますが、現在の検索条件では結果が0件になります。",
+					"You can add this tag, but it produces no results with the current filters."
+				));
+			}
+		}
+		if (!hasAvailableTag) {
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"追加できるタグはありません。",
+				"There are no more tags to add."
+			));
+		}
+		ImGui::EndPopup();
+	}
+	ImGui::TextUnformatted(SelectEditorText(
+		editorLanguage_,
+		"一致条件:",
+		"Match:"
+	));
+	ImGui::SameLine();
+	if (ImGui::RadioButton(
+		SelectEditorText(
+			editorLanguage_,
+			"すべて含む (AND)##TagMatchAll",
+			"Match all (AND)##TagMatchAll"
+		),
+		state.tagMatchMode == ComponentTagMatchMode::All
+	)) {
+		state.tagMatchMode = ComponentTagMatchMode::All;
+	}
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip("%s", SelectEditorText(
+			editorLanguage_,
+			"選択したタグをすべて持つComponentを表示します。",
+			"Show components containing every selected tag."
+		));
+	}
+	ImGui::SameLine();
+	if (ImGui::RadioButton(
+		SelectEditorText(
+			editorLanguage_,
+			"いずれかを含む (OR)##TagMatchAny",
+			"Match any (OR)##TagMatchAny"
+		),
+		state.tagMatchMode == ComponentTagMatchMode::Any
+	)) {
+		state.tagMatchMode = ComponentTagMatchMode::Any;
+	}
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip("%s", SelectEditorText(
+			editorLanguage_,
+			"選択したタグを1つ以上持つComponentを表示します。",
+			"Show components containing at least one selected tag."
+		));
+	}
+	ImGui::Checkbox(
+		SelectEditorText(
+			editorLanguage_,
+			"お気に入りのみ##FavoriteComponentsOnly",
+			"Favorites only##FavoriteComponentsOnly"
+		),
+		&state.favoritesOnly
+	);
+	ImGui::Separator();
+
+	const float bodyHeight = (std::max)(
+		250.0f,
+		ImGui::GetContentRegionAvail().y - 190.0f
+	);
+	ImGui::BeginChild("ComponentPickerCategories", ImVec2(155.0f, bodyHeight), true);
+	if (ImGui::Selectable(
+		SelectEditorText(editorLanguage_, "すべて##CategoryAll", "All##CategoryAll"),
+		state.category < 0
+	)) {
+		state.category = -1;
+	}
+	for (int index = 0; index < static_cast<int>(std::size(categories)); ++index) {
+		const std::string label = std::string(
+			GetEditorComponentCategoryDisplayName(
+				categories[index],
+				editorLanguage_
+			)
+		) + "##Category" + std::to_string(index);
+		if (ImGui::Selectable(
+			label.c_str(),
+			state.category == index
+		)) {
+			state.category = index;
+		}
+	}
+	ImGui::EndChild();
+	ImGui::SameLine();
+
+	ImGui::BeginChild("ComponentPickerCards", ImVec2(0.0f, bodyHeight), true);
+	int visibleCount = 0;
+	for (const EditorComponentDefinition* definition :
+		GetEditorComponentDefinitions(context)) {
+		if (!matchesFilters(*definition, state.selectedTagMask)) {
+			continue;
+		}
+		++visibleCount;
+		const bool installed = targetEntity &&
+			HasComponent(*targetEntity, definition->type);
+		const bool queued = IsComponentPickerItemQueued(
+			state,
+			definition->type
+		);
+		ImGui::PushID(definition->type);
+		ImGui::BeginDisabled(installed || !targetEntity);
+		const bool selected = ImGui::Selectable(
+			"##ComponentCard",
+			queued,
+			ImGuiSelectableFlags_AllowOverlap,
+			ImVec2(0.0f, 122.0f)
+		);
+		ImGui::EndDisabled();
+		const ImVec2 cardMin = ImGui::GetItemRectMin();
+		const ImVec2 cardMax = ImGui::GetItemRectMax();
+		const ImVec2 cardEndCursor = ImGui::GetCursorScreenPos();
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		const ImU32 textColor = ImGui::GetColorU32(
+			installed ? ImGuiCol_TextDisabled : ImGuiCol_Text
+		);
+		const ImU32 detailColor = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		drawList->AddRect(
+			cardMin,
+			cardMax,
+			ImGui::GetColorU32(ImGuiCol_Border),
+			4.0f
+		);
+		drawList->AddText(
+			ImVec2(cardMin.x + 10.0f, cardMin.y + 7.0f),
+			textColor,
+			GetEditorComponentDisplayName(*definition, editorLanguage_)
+		);
+		const char* status = installed
+			? SelectEditorText(editorLanguage_, "追加済み", "Added")
+			: queued
+				? SelectEditorText(editorLanguage_, "追加予定", "Pending")
+				: "";
+		if (status[0] != '\0') {
+			const ImVec2 statusSize = ImGui::CalcTextSize(status);
+			drawList->AddText(
+				ImVec2(cardMax.x - statusSize.x - 40.0f, cardMin.y + 7.0f),
+				queued ? ImGui::GetColorU32(ImGuiCol_CheckMark) : detailColor,
+				status
+			);
+		}
+		drawList->AddText(
+			ImVec2(cardMin.x + 10.0f, cardMin.y + 27.0f),
+			detailColor,
+			definition->type
+		);
+		drawList->AddText(
+			ImGui::GetFont(),
+			ImGui::GetFontSize(),
+			ImVec2(cardMin.x + 10.0f, cardMin.y + 48.0f),
+			textColor,
+			GetEditorComponentDescription(*definition, editorLanguage_),
+			nullptr,
+			(std::max)(cardMax.x - cardMin.x - 20.0f, 1.0f)
+		);
+		std::string tagText;
+		int displayedTagCount = 0;
+		for (EditorComponentTag tag : GetEditorComponentTags()) {
+			if (!HasEditorComponentTag(*definition, tag) || displayedTagCount >= 3) {
+				continue;
+			}
+			if (!tagText.empty()) {
+				tagText += "  ";
+			}
+			tagText += "[";
+			tagText += GetEditorComponentTagDisplayName(tag, editorLanguage_);
+			tagText += "]";
+			++displayedTagCount;
+		}
+		drawList->AddText(
+			ImVec2(cardMin.x + 10.0f, cardMin.y + 91.0f),
+			ImGui::GetColorU32(ImGuiCol_CheckMark),
+			tagText.c_str()
+		);
+		if (definition->requiredType[0] != '\0') {
+			const std::string requiredText = std::string(SelectEditorText(
+				editorLanguage_,
+				"必要: ",
+				"Requires: "
+			)) + definition->requiredType;
+			drawList->AddText(
+				ImVec2(cardMin.x + 10.0f, cardMin.y + 106.0f),
+				detailColor,
+				requiredText.c_str()
+			);
+		}
+		if (!installed && targetEntity && ImGui::BeginDragDropSource()) {
+			ImGui::SetDragDropPayload(
+				"EDITOR_COMPONENT_TYPE",
+				definition->type,
+				std::strlen(definition->type) + 1
+			);
+			ImGui::TextUnformatted(
+				GetEditorComponentDisplayName(*definition, editorLanguage_)
+			);
+			ImGui::EndDragDropSource();
+		}
+		const bool favorite = favoriteComponentTypes_.contains(definition->type);
+		ImGui::SetCursorScreenPos(ImVec2(cardMax.x - 31.0f, cardMin.y + 4.0f));
+		if (favorite) {
+			ImGui::PushStyleColor(
+				ImGuiCol_Text,
+				ImGui::GetStyleColorVec4(ImGuiCol_CheckMark)
+			);
+		}
+		const bool favoriteClicked = ImGui::SmallButton(
+			favorite
+				? "★##ComponentFavorite"
+				: "☆##ComponentFavorite"
+		);
+		if (favorite) {
+			ImGui::PopStyleColor();
+		}
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("%s", SelectEditorText(
+				editorLanguage_,
+				favorite
+					? "お気に入りから解除"
+					: "お気に入りに追加",
+				favorite
+					? "Remove from favorites"
+					: "Add to favorites"
+			));
+		}
+		if (favoriteClicked) {
+			if (favorite) {
+				favoriteComponentTypes_.erase(definition->type);
+			} else {
+				favoriteComponentTypes_.insert(definition->type);
+			}
+			SaveEditorSettings();
+		}
+		ImGui::SetCursorScreenPos(cardEndCursor);
+		if (
+			selected && !favoriteClicked && targetEntity &&
+			!(queued && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+		) {
+			ToggleComponentPickerItem(
+				state,
+				target,
+				*targetEntity,
+				definition->type
+			);
+		}
+		ImGui::PopID();
+		ImGui::Spacing();
+	}
+	if (visibleCount == 0) {
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"一致するComponentはありません。",
+			"No matching components."
+		));
+	}
+	ImGui::EndChild();
+
+	ImGui::SeparatorText(SelectEditorText(
+		editorLanguage_,
+		"追加予定",
+		"Pending Components"
+	));
+	std::string removeType;
+	ImGui::BeginChild("ComponentPickerTray", ImVec2(0.0f, 66.0f), true);
+	if (state.items.empty()) {
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"カードをクリックするか、ここへドラッグしてください。",
+			"Click a card or drag it here."
+		));
+	}
+	for (const ComponentPickerItem& item : state.items) {
+		const EditorComponentDefinition* definition =
+			FindEditorComponentDefinition(item.type);
+		if (!definition) {
+			continue;
+		}
+		ImGui::PushID(item.type.c_str());
+		const std::string itemLabel = std::string(
+			GetEditorComponentDisplayName(*definition, editorLanguage_)
+		) + "  x";
+		if (ImGui::SmallButton(itemLabel.c_str())) {
+			removeType = item.type;
+		}
+		if (!item.requiredByType.empty() && ImGui::IsItemHovered()) {
+			ImGui::SetTooltip(
+				"%s: %s",
+				SelectEditorText(editorLanguage_, "必要元", "Required by"),
+				item.requiredByType.c_str()
+			);
+		}
+		ImGui::SameLine();
+		ImGui::PopID();
+	}
+	ImGui::NewLine();
+	ImGui::EndChild();
+	const ImVec2 trayMin = ImGui::GetItemRectMin();
+	const ImVec2 trayMax = ImGui::GetItemRectMax();
+	if (
+		targetEntity &&
+		ImGui::BeginDragDropTargetCustom(
+			ImRect(trayMin, trayMax),
+			ImGui::GetID("ComponentPickerTrayDropTarget")
+		)
+	) {
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+			"EDITOR_COMPONENT_TYPE"
+		)) {
+			const char* type = static_cast<const char*>(payload->Data);
+			if (type && type[0] != '\0' &&
+				!IsComponentPickerItemQueued(state, type)) {
+				ToggleComponentPickerItem(state, target, *targetEntity, type);
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
+	if (!removeType.empty()) {
+		RemoveComponentPickerItem(state, removeType);
+	}
+
+	if (!state.error.empty()) {
+		ImGui::TextColored(
+			ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
+			"%s",
+			state.error.c_str()
+		);
+	}
+	if (ImGui::Button(SelectEditorText(
+		editorLanguage_,
+		"キャンセル##CancelComponentPicker",
+		"Cancel##CancelComponentPicker"
+	))) {
+		closePicker = true;
+	}
+	ImGui::SameLine();
+	const std::string confirmLabel = editorLanguage_ == EditorLanguage::Japanese
+		? std::to_string(state.items.size()) +
+			"件をまとめて追加##ConfirmComponents"
+		: "Add " + std::to_string(state.items.size()) +
+			" Components##ConfirmComponents";
+	const bool canConfirm = targetEntity &&
+		(!sceneTarget || !targetEntity->locked) &&
+		!targetEntity->folder && contextAvailable && !state.items.empty();
+	ImGui::BeginDisabled(!canConfirm);
+	if (ImGui::Button(confirmLabel.c_str())) {
+		std::vector<std::string> orderedTypes;
+		std::unordered_set<std::string> orderedTypeSet;
+		for (const EditorComponentDefinition* definition :
+			GetEditorComponentDefinitions(context)) {
+			if (!IsComponentPickerItemQueued(state, definition->type)) {
+				continue;
+			}
+			if (
+				definition->requiredType[0] != '\0' &&
+				!HasComponent(*targetEntity, definition->requiredType) &&
+				orderedTypeSet.insert(definition->requiredType).second
+			) {
+				orderedTypes.push_back(definition->requiredType);
+			}
+			if (orderedTypeSet.insert(definition->type).second) {
+				orderedTypes.push_back(definition->type);
+			}
+		}
+		int addedCount = 0;
+		for (const std::string& type : orderedTypes) {
+			const EditorComponentDefinition* definition =
+				FindEditorComponentDefinition(type);
+			if (
+				!definition ||
+				!SupportsEditorComponentContext(*definition, context) ||
+				HasComponent(*targetEntity, type.c_str())
+			) {
+				continue;
+			}
+			if (document->AddComponent(targetEntity->id, type)) {
+				++addedCount;
+			}
+		}
+		if (addedCount > 0) {
+			if (sceneTarget) {
+				editorSession_->RequestSceneReload();
+			}
+			closePicker = true;
+		} else {
+			state.error = SelectEditorText(
+				editorLanguage_,
+				"追加できるComponentがありません。",
+				"There are no components that can be added."
+			);
+		}
+	}
+	ImGui::EndDisabled();
+
+	if (closePicker || !keepOpen) {
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+	if (closePicker || !keepOpen) {
+		ResetComponentPicker(state);
+	}
+}
+
+void ImGuiManager::DrawSceneComponentPicker() {
+	DrawComponentPicker(
+		sceneComponentPicker_,
+		ComponentPickerTarget::Scene
+	);
+}
+
+void ImGuiManager::DrawPrefabComponentPicker() {
+	DrawComponentPicker(
+		prefabComponentPicker_,
+		ComponentPickerTarget::Prefab
+	);
 }
 
 void ImGuiManager::DrawInspectorWindow() {
@@ -4458,10 +6879,15 @@ void ImGuiManager::DrawInspectorWindow() {
 	}
 	// コンテンツ量の境界でスクロールバーが出入りすると、幅依存のPreviewが再配置を繰り返す。
 	ImGui::Begin(
-		"Inspector",
+		SelectEditorText(
+			editorLanguage_,
+			"Inspector###Inspector",
+			"Inspector###Inspector"
+		),
 		&showInspector_,
 		ImGuiWindowFlags_AlwaysVerticalScrollbar
 	);
+	DrawSceneComponentPicker();
 
 	if (!selectedProjectFile_.empty()) {
 		if (ImGui::Button("Back to Hierarchy Selection")) {
@@ -4672,22 +7098,75 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::TextDisabled("Stop Play Mode to edit the scene");
 			}
 		}
-		else if (ext == ".wav") {
-			// Audio asset inspector
-			ImGui::Text("Audio format: WAVE");
-			if (previewSoundData_.pBuffer == nullptr) {
+		else if (IsAudioAssetExtension(ext)) {
+			Audio* audio = Audio::GetInstance();
+			if (!previewAudioClip_) {
 				if (ImGui::Button("Load & Play Sound")) {
-					if (Audio::GetInstance()) {
-						previewSoundData_ = Audio::GetInstance()->SoundLoadWave(selectedProjectFile_.c_str());
-						Audio::GetInstance()->SoundPlayWave(previewSoundData_);
+					if (audio) {
+						previewAudioClip_ = audio->LoadAudioFile(
+							selectedProjectFile_.c_str(),
+							&previewAudioError_
+						);
+						if (previewAudioClip_) {
+							previewAudioPlayback_ = audio->PlayAudioClip(
+								previewAudioClip_
+							);
+							if (!previewAudioPlayback_.IsValid()) {
+								previewAudioError_ =
+									"Failed to create an XAudio2 Source Voice.";
+							}
+						}
+					} else {
+						previewAudioError_ = "Audio subsystem is unavailable.";
 					}
 				}
+				if (!previewAudioError_.empty()) {
+					ImGui::TextColored(
+						ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+						"%s",
+						previewAudioError_.c_str()
+					);
+				}
 			} else {
-				ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "Playing / Loaded");
-				if (ImGui::Button("Stop & Unload Sound")) {
-					if (Audio::GetInstance()) {
-						Audio::GetInstance()->SoundUnload(&previewSoundData_);
+				ImGui::Text("Container: %s", previewAudioClip_->container.c_str());
+				ImGui::Text("Decoded format: PCM");
+				ImGui::Text("Load mode: Decompress On Load");
+				ImGui::Text("Duration: %.2f s", previewAudioClip_->durationSeconds);
+				ImGui::Text("Channels: %u", previewAudioClip_->channelCount);
+				ImGui::Text("Sample rate: %u Hz", previewAudioClip_->sampleRate);
+				ImGui::Text(
+					"Bits per sample: %u",
+					static_cast<unsigned int>(previewAudioClip_->bitsPerSample)
+				);
+				const bool playing = audio &&
+					audio->IsPlaying(previewAudioPlayback_);
+				ImGui::TextColored(
+					ImVec4(0.3f, 0.8f, 0.3f, 1.0f),
+					playing ? "Playing" : "Loaded"
+				);
+				if (playing) {
+					if (ImGui::Button("Stop Sound") && audio) {
+						audio->SoundStop(previewAudioPlayback_);
 					}
+				} else if (ImGui::Button("Play Sound") && audio) {
+					previewAudioPlayback_ = audio->PlayAudioClip(
+						previewAudioClip_
+					);
+					if (!previewAudioPlayback_.IsValid()) {
+						previewAudioError_ =
+							"Failed to create an XAudio2 Source Voice.";
+					}
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Unload Sound")) {
+					StopAudioPreview();
+				}
+				if (!previewAudioError_.empty()) {
+					ImGui::TextColored(
+						ImVec4(0.95f, 0.35f, 0.3f, 1.0f),
+						"%s",
+						previewAudioError_.c_str()
+					);
 				}
 			}
 		} 
@@ -4799,12 +7278,23 @@ void ImGuiManager::DrawInspectorWindow() {
 			}
 		}
 		if (selectedEntities.size() <= 1) {
-			ImGui::TextDisabled("Selection changed");
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"選択が変わりました。",
+				"Selection changed"
+			));
 			ImGui::End();
 			return;
 		}
 
-		ImGui::Text("%zu Entities Selected", selectedEntities.size());
+		ImGui::Text(
+			SelectEditorText(
+				editorLanguage_,
+				"%zu 個のEntityを選択中",
+				"%zu Entities Selected"
+			),
+			selectedEntities.size()
+		);
 		ImGui::Separator();
 		bool allActive = std::all_of(
 			selectedEntities.begin(),
@@ -4829,7 +7319,11 @@ void ImGuiManager::DrawInspectorWindow() {
 		if (activeMixed) {
 			ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
 		}
-		if (ImGui::Checkbox("Active", &allActive)) {
+		if (ImGui::Checkbox(SelectEditorText(
+			editorLanguage_,
+			"有効###MultiEntityActive",
+			"Active###MultiEntityActive"
+		), &allActive)) {
 			for (SceneEntity* entity : selectedEntities) {
 				entity->active = allActive;
 			}
@@ -4841,7 +7335,11 @@ void ImGuiManager::DrawInspectorWindow() {
 		if (lockedMixed) {
 			ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
 		}
-		if (ImGui::Checkbox("Locked", &allLocked)) {
+		if (ImGui::Checkbox(SelectEditorText(
+			editorLanguage_,
+			"ロック###MultiEntityLocked",
+			"Locked###MultiEntityLocked"
+		), &allLocked)) {
 			for (SceneEntity* entity : selectedEntities) {
 				entity->locked = allLocked;
 			}
@@ -4850,14 +7348,24 @@ void ImGuiManager::DrawInspectorWindow() {
 		if (lockedMixed) {
 			ImGui::PopItemFlag();
 		}
-		ImGui::TextDisabled("Transform and components are edited on the active Entity.");
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"TransformとComponentはアクティブなEntityで編集します。",
+			"Transform and components are edited on the active Entity."
+		));
 	}
 	else if (editorSession_ && selectedEntityId_ != 0) {
 		SceneDocument& document = editorSession_->GetActiveDocument();
 		SceneEntity* entity = document.FindEntity(selectedEntityId_);
 		if (!entity) {
-			selectedEntityId_ = 0;
-			ImGui::TextDisabled("Entity no longer exists");
+			if (sceneComponentPicker_.entityId != selectedEntityId_) {
+				selectedEntityId_ = 0;
+			}
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"Entityは存在しません。",
+				"Entity no longer exists"
+			));
 			ImGui::End();
 			return;
 		}
@@ -4866,20 +7374,36 @@ void ImGuiManager::DrawInspectorWindow() {
 		char nameBuffer[128]{};
 		strncpy_s(nameBuffer, entity->name.c_str(), _TRUNCATE);
 		ImGui::BeginDisabled(entityLocked);
-		if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+		if (ImGui::InputText(SelectEditorText(
+			editorLanguage_,
+			"名前###SceneEntityName",
+			"Name###SceneEntityName"
+		), nameBuffer, sizeof(nameBuffer))) {
 			entity->name = nameBuffer;
 			document.MarkDirty();
 		}
 		ImGui::EndDisabled();
-		if (ImGui::Checkbox("Active", &entity->active)) {
+		if (ImGui::Checkbox(SelectEditorText(
+			editorLanguage_,
+			"有効###SceneEntityActive",
+			"Active###SceneEntityActive"
+		), &entity->active)) {
 			document.MarkDirty();
 		}
-		if (ImGui::Checkbox("Locked", &entity->locked)) {
+		if (ImGui::Checkbox(SelectEditorText(
+			editorLanguage_,
+			"ロック###SceneEntityLocked",
+			"Locked###SceneEntityLocked"
+		), &entity->locked)) {
 			document.MarkDirty();
 		}
 		ImGui::BeginDisabled(entityLocked || !entity->components.empty());
 		bool folder = entity->folder;
-		if (ImGui::Checkbox("Folder", &folder)) {
+		if (ImGui::Checkbox(SelectEditorText(
+			editorLanguage_,
+			"Folder###SceneEntityFolder",
+			"Folder###SceneEntityFolder"
+		), &folder)) {
 			entity->folder = folder;
 			if (entity->folder) {
 				entity->modelPath.clear();
@@ -5289,7 +7813,13 @@ void ImGuiManager::DrawInspectorWindow() {
 		const bool teamInheritedFromFolder =
 			!inheritedFolderTeamName.empty();
 
-		ImGui::SeparatorText("Team");
+		const std::string sceneInspectorKey = "scene/" +
+			editorSession_->GetActiveSceneId() + "/" +
+			std::to_string(entity->id) + "/";
+		if (DrawPersistentInspectorHeader(
+			sceneInspectorKey + "Team",
+			"Team###SceneTeamSection"
+		)) {
 		const std::string currentTeamLabel = entity->teamName.empty()
 			? (
 				teamInheritedFromFolder
@@ -5909,9 +8439,13 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::TreePop();
 			}
 		}
+		}
 
 		if (entity->folder) {
-			ImGui::SeparatorText("Folder");
+			if (DrawPersistentInspectorHeader(
+				sceneInspectorKey + "Folder",
+				"Folder###SceneFolderSection"
+			)) {
 			ImGui::TextDisabled("Folders organize children in the hierarchy.");
 			ImGui::BeginDisabled(entityLocked || entity->teamName.empty());
 			bool folderTeamEnabled = entity->folderTeamEnabled;
@@ -5927,23 +8461,27 @@ void ImGuiManager::DrawInspectorWindow() {
 			if (editorSession_->IsPlaying() || editorSession_->IsPaused()) {
 				ImGui::TextDisabled("Play mode changes are temporary");
 			}
+			}
 			ImGui::End();
 			return;
 		}
 
-		ImGui::SeparatorText("Transform");
+		if (DrawPersistentInspectorHeader(
+			sceneInspectorKey + "Transform",
+			"Transform###SceneTransformSection"
+		)) {
 		bool transformChanged = false;
 		ImGui::BeginDisabled(entityLocked);
 		if (HasComponent(*entity, "SpriteRenderer")) {
 			transformChanged |= ImGui::DragFloat2(
-				"Position",
+				SelectEditorText(editorLanguage_, "位置###SceneTransformPosition", "Position###SceneTransformPosition"),
 				&entity->transform.translate.x,
 				0.5f
 			);
 			Vector3 spriteEuler =
 				MakeEulerFromQuaternion(entity->transform.rotate);
 			if (ImGui::DragFloat(
-				"Rotation",
+				SelectEditorText(editorLanguage_, "回転###SceneTransformRotation", "Rotation###SceneTransformRotation"),
 				&spriteEuler.z,
 				0.01f
 			)) {
@@ -5953,7 +8491,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				transformChanged = true;
 			}
 			transformChanged |= ImGui::DragFloat2(
-				"Scale",
+				SelectEditorText(editorLanguage_, "スケール###SceneTransformScale", "Scale###SceneTransformScale"),
 				&entity->transform.scale.x,
 				0.01f,
 				0.001f,
@@ -5963,7 +8501,7 @@ void ImGuiManager::DrawInspectorWindow() {
 			ImGui::TextDisabled("TextRenderer placement is edited in its active Render Space profile.");
 		} else {
 			transformChanged |= ImGui::DragFloat3(
-				"Position",
+				SelectEditorText(editorLanguage_, "位置###SceneTransformPosition", "Position###SceneTransformPosition"),
 				&entity->transform.translate.x,
 				0.05f
 			);
@@ -5980,7 +8518,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				inspectorRotationSource_ = entity->transform.rotate;
 			}
 			if (ImGui::DragFloat3(
-				"Rotation",
+				SelectEditorText(editorLanguage_, "回転###SceneTransformRotation", "Rotation###SceneTransformRotation"),
 				&inspectorRotationEuler_.x,
 				0.01f
 			)) {
@@ -5990,7 +8528,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				transformChanged = true;
 			}
 			transformChanged |= ImGui::DragFloat3(
-				"Scale",
+				SelectEditorText(editorLanguage_, "スケール###SceneTransformScale", "Scale###SceneTransformScale"),
 				&entity->transform.scale.x,
 				0.01f,
 				0.001f,
@@ -6001,9 +8539,33 @@ void ImGuiManager::DrawInspectorWindow() {
 		if (transformChanged) {
 			document.MarkDirty();
 		}
+		}
 
+		if (DrawPersistentInspectorHeader(
+			sceneInspectorKey + "ComponentOverview",
+			SelectEditorText(
+				editorLanguage_,
+				"Component概要###SceneComponentOverviewSection",
+				"Component Overview###SceneComponentOverviewSection"
+			)
+		)) {
+			DrawComponentSummary(
+				*entity,
+				editorSession_->GetActiveSceneId(),
+				false,
+				sceneSummarySelectedComponentType_
+			);
+		}
+		const bool simpleComponentInspector =
+			componentInspectorMode_ == ComponentInspectorMode::Simple;
 		std::string removeComponentType;
 		for (SceneComponent& component : entity->components) {
+			if (
+				simpleComponentInspector &&
+				component.type != sceneSummarySelectedComponentType_
+			) {
+				continue;
+			}
 			ImGui::PushID(component.type.c_str());
 			const char* componentLabel = component.type == "OBBCollider"
 				? "Collider"
@@ -6033,12 +8595,20 @@ void ImGuiManager::DrawInspectorWindow() {
 				continue;
 			}
 			ImGui::BeginDisabled(entityLocked || !editorSession_->IsEditing());
-			if (ImGui::Checkbox("Enabled", &component.enabled)) {
+			if (ImGui::Checkbox(SelectEditorText(
+				editorLanguage_,
+				"有効###SceneComponentEnabled",
+				"Enabled###SceneComponentEnabled"
+			), &component.enabled)) {
 				document.MarkDirty();
 				editorSession_->RequestSceneReload();
 			}
 			ImGui::SameLine();
-			if (ImGui::SmallButton("Remove")) {
+			if (ImGui::SmallButton(SelectEditorText(
+				editorLanguage_,
+				"削除###SceneComponentRemove",
+				"Remove###SceneComponentRemove"
+			))) {
 				removeComponentType = component.type;
 			}
 			ImGui::EndDisabled();
@@ -6109,20 +8679,20 @@ void ImGuiManager::DrawInspectorWindow() {
 						}
 						ImGui::EndDragDropTarget();
 					}
-					if (ImGui::SmallButton("Reset Preview")) {
+					if (ImGui::SmallButton(LocalizedComponentWidgetLabel(editorLanguage_, "Reset Preview"))) {
 						modelPreviewYaw_ = 0.65f;
 						modelPreviewPitch_ = 0.25f;
 						modelPreviewZoom_ = 1.0f;
 					}
 					ImGui::SameLine();
 					ImGui::BeginDisabled(modelEditingDisabled);
-					if (ImGui::SmallButton("Clear Model")) {
+					if (ImGui::SmallButton(LocalizedComponentWidgetLabel(editorLanguage_, "Clear Model"))) {
 						assignModel({});
 					}
 					ImGui::EndDisabled();
 				} else {
 					ImGui::BeginDisabled(modelEditingDisabled);
-					ImGui::Button("Drop Model Here", ImVec2(-1.0f, 48.0f));
+					ImGui::Button(LocalizedComponentWidgetLabel(editorLanguage_, "Drop Model Here"), ImVec2(-1.0f, 48.0f));
 					ImGui::EndDisabled();
 					if (!modelEditingDisabled && ImGui::BeginDragDropTarget()) {
 						if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
@@ -6143,7 +8713,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					? "None"
 					: component.modelPath.c_str();
 				ImGui::BeginDisabled(modelEditingDisabled);
-				if (ImGui::BeginCombo("Model", currentModel)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Model"), currentModel)) {
 					if (ImGui::Selectable("None", component.modelPath.empty())) {
 						assignModel({});
 					}
@@ -6176,7 +8746,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					if (model) {
 						const std::vector<Model::MaterialSlot>& materialSlots =
 							model->GetMaterialSlots();
-						ImGui::SeparatorText("Materials");
+						ImGui::SeparatorText(SelectEditorText(editorLanguage_, "マテリアル", "Materials"));
 						ImGui::TextDisabled(
 							"%zu meshes / %zu materials",
 							model->GetSubMeshes().size(),
@@ -6201,7 +8771,7 @@ void ImGuiManager::DrawInspectorWindow() {
 								);
 								bool overrideEnabled = overrideIt !=
 									component.meshMaterialOverrides.end() && overrideIt->enabled;
-								if (ImGui::Checkbox("Override", &overrideEnabled)) {
+								if (ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Override"), &overrideEnabled)) {
 									if (overrideIt == component.meshMaterialOverrides.end()) {
 										component.meshMaterialOverrides.push_back({
 											materialSlot.name,
@@ -6224,23 +8794,23 @@ void ImGuiManager::DrawInspectorWindow() {
 								bool materialChanged = false;
 								if (override) {
 									materialChanged |= ImGui::Checkbox(
-										"Override Color",
+										LocalizedComponentWidgetLabel(editorLanguage_, "Override Color"),
 										&override->colorOverrideEnabled
 									);
 									ImGui::BeginDisabled(!override->colorOverrideEnabled);
 									materialChanged |= ImGui::ColorEdit4(
-										"Color", &override->color.x
+										LocalizedComponentWidgetLabel(editorLanguage_, "Color"), &override->color.x
 									);
 									ImGui::EndDisabled();
 									const char* texturePath = override->texturePath.empty()
 										? "Using model texture"
 										: override->texturePath.c_str();
 									ImGui::TextWrapped("Texture: %s", texturePath);
-									if (ImGui::SmallButton("Clear Texture")) {
+									if (ImGui::SmallButton(LocalizedComponentWidgetLabel(editorLanguage_, "Clear Texture"))) {
 										override->texturePath.clear();
 										materialChanged = true;
 									}
-									ImGui::Button("Drop Texture Here", ImVec2(-1.0f, 28.0f));
+									ImGui::Button(LocalizedComponentWidgetLabel(editorLanguage_, "Drop Texture Here"), ImVec2(-1.0f, 28.0f));
 									if (ImGui::BeginDragDropTarget()) {
 										if (const ImGuiPayload* payload =
 											ImGui::AcceptDragDropPayload("PROJECT_TEXTURE_PATH")) {
@@ -6268,7 +8838,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const char* currentCullMode = component.meshCullMode.empty()
 					? "Back"
 					: component.meshCullMode.c_str();
-				if (ImGui::BeginCombo("Cull Mode", currentCullMode)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Cull Mode"), currentCullMode)) {
 					const char* cullModes[] = { "Back", "Front", "None" };
 					for (const char* cullMode : cullModes) {
 						if (ImGui::Selectable(
@@ -6288,14 +8858,14 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::TextDisabled("Using Environment Reflection");
 				}
 				reflectionChanged |= ImGui::Checkbox(
-					"Override Environment Reflection",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Override Environment Reflection"),
 					&component.meshEnvironmentReflectionOverride
 				);
 				ImGui::BeginDisabled(
 					!component.meshEnvironmentReflectionOverride
 				);
 				reflectionChanged |= ImGui::DragFloat(
-					"Reflection Intensity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Reflection Intensity"),
 					&component.meshEnvironmentReflectionIntensity,
 					0.01f,
 					0.0f,
@@ -6318,7 +8888,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool environmentChanged = false;
 				environmentChanged |= ImGui::Checkbox(
-					"Skybox Enabled",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Skybox Enabled"),
 					&component.environmentSkyboxEnabled
 				);
 
@@ -6336,7 +8906,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.environmentSkyboxPath.empty()
 					? "None"
 					: component.environmentSkyboxPath.c_str();
-				if (ImGui::BeginCombo("Skybox DDS", currentSkybox)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Skybox DDS"), currentSkybox)) {
 					if (ImGui::Selectable(
 						"None",
 						component.environmentSkyboxPath.empty()
@@ -6365,7 +8935,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					}
 					ImGui::EndCombo();
 				}
-				ImGui::Button("Drop DDS Skybox Here", ImVec2(-1.0f, 38.0f));
+				ImGui::Button(LocalizedComponentWidgetLabel(editorLanguage_, "Drop DDS Skybox Here"), ImVec2(-1.0f, 38.0f));
 				if (ImGui::BeginDragDropTarget()) {
 					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
 						"PROJECT_TEXTURE_PATH"
@@ -6390,14 +8960,14 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndDragDropTarget();
 				}
 				environmentChanged |= ImGui::DragFloat(
-					"Skybox Intensity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Skybox Intensity"),
 					&component.environmentSkyboxIntensity,
 					0.01f,
 					0.0f,
 					10.0f
 				);
 				environmentChanged |= ImGui::DragFloat(
-					"Reflection Intensity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Reflection Intensity"),
 					&component.environmentReflectionIntensity,
 					0.01f,
 					0.0f,
@@ -6424,7 +8994,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					? "None"
 					: component.texturePath.c_str();
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
-				if (ImGui::BeginCombo("Texture", currentTexture)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Texture"), currentTexture)) {
 					for (const std::string& texturePath : GetCachedTextureAssetPaths()) {
 						if (ImGui::Selectable(
 							texturePath.c_str(),
@@ -6456,26 +9026,26 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				bool spriteChanged = false;
 				spriteChanged |= ImGui::DragFloat2(
-					"Size",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Size"),
 					&component.spriteSize.x,
 					1.0f,
 					1.0f,
 					8192.0f
 				);
 				spriteChanged |= ImGui::DragFloat2(
-					"Anchor",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Anchor"),
 					&component.spriteAnchor.x,
 					0.01f,
 					0.0f,
 					1.0f
 				);
 				spriteChanged |= ImGui::ColorEdit4(
-					"Color",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Color"),
 					&component.spriteColor.x
 				);
-				spriteChanged |= ImGui::Checkbox("Flip X", &component.spriteFlipX);
+				spriteChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Flip X"), &component.spriteFlipX);
 				ImGui::SameLine();
-				spriteChanged |= ImGui::Checkbox("Flip Y", &component.spriteFlipY);
+				spriteChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Flip Y"), &component.spriteFlipY);
 				if (spriteChanged) {
 					entity->spriteSize = component.spriteSize;
 					entity->spriteAnchor = component.spriteAnchor;
@@ -6488,40 +9058,40 @@ void ImGuiManager::DrawInspectorWindow() {
 			} else if (component.type == "TextRenderer") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool textChanged = false;
-				textChanged |= InputTextMultilineString("Text", component.textValue);
-				textChanged |= InputTextString("Font Family", component.textFontFamily);
+				textChanged |= InputTextMultilineString(LocalizedComponentWidgetLabel(editorLanguage_, "Text"), component.textValue);
+				textChanged |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Font Family"), component.textFontFamily);
 				textChanged |= ImGui::DragFloat(
-					"Font Size", &component.textFontSize, 1.0f, 1.0f, 512.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Font Size"), &component.textFontSize, 1.0f, 1.0f, 512.0f
 				);
 				const char* renderSpaces[] = { "ScreenOverlay", "Scene2D" };
 				int renderSpaceIndex = component.textRenderSpace == "Scene2D" ? 1 : 0;
 				if (ImGui::Combo(
-					"Render Space", &renderSpaceIndex, renderSpaces, IM_ARRAYSIZE(renderSpaces)
+					LocalizedComponentWidgetLabel(editorLanguage_, "Render Space"), &renderSpaceIndex, renderSpaces, IM_ARRAYSIZE(renderSpaces)
 				)) {
 					component.textRenderSpace = renderSpaces[renderSpaceIndex];
 					textChanged = true;
 				}
 				const char* weights[] = { "Regular", "Bold" };
 				int weightIndex = component.textFontWeight == "Bold" ? 1 : 0;
-				if (ImGui::Combo("Weight", &weightIndex, weights, IM_ARRAYSIZE(weights))) {
+				if (ImGui::Combo(LocalizedComponentWidgetLabel(editorLanguage_, "Weight"), &weightIndex, weights, IM_ARRAYSIZE(weights))) {
 					component.textFontWeight = weights[weightIndex];
 					textChanged = true;
 				}
 				const char* styles[] = { "Normal", "Italic" };
 				int styleIndex = component.textFontStyle == "Italic" ? 1 : 0;
-				if (ImGui::Combo("Style", &styleIndex, styles, IM_ARRAYSIZE(styles))) {
+				if (ImGui::Combo(LocalizedComponentWidgetLabel(editorLanguage_, "Style"), &styleIndex, styles, IM_ARRAYSIZE(styles))) {
 					component.textFontStyle = styles[styleIndex];
 					textChanged = true;
 				}
-				textChanged |= ImGui::ColorEdit4("Color", &component.textColor.x);
+				textChanged |= ImGui::ColorEdit4(LocalizedComponentWidgetLabel(editorLanguage_, "Color"), &component.textColor.x);
 				textChanged |= ImGui::DragFloat(
-					"Opacity", &component.textOpacity, 0.01f, 0.0f, 1.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Opacity"), &component.textOpacity, 0.01f, 0.0f, 1.0f
 				);
 				const char* horizontalAlignments[] = { "Left", "Center", "Right" };
 				int horizontalIndex = component.textHorizontalAlignment == "Center"
 					? 1 : component.textHorizontalAlignment == "Right" ? 2 : 0;
 				if (ImGui::Combo(
-					"Horizontal Align", &horizontalIndex, horizontalAlignments,
+					LocalizedComponentWidgetLabel(editorLanguage_, "Horizontal Align"), &horizontalIndex, horizontalAlignments,
 					IM_ARRAYSIZE(horizontalAlignments)
 				)) {
 					component.textHorizontalAlignment = horizontalAlignments[horizontalIndex];
@@ -6531,7 +9101,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				int verticalIndex = component.textVerticalAlignment == "Center"
 					? 1 : component.textVerticalAlignment == "Bottom" ? 2 : 0;
 				if (ImGui::Combo(
-					"Vertical Align", &verticalIndex, verticalAlignments,
+					LocalizedComponentWidgetLabel(editorLanguage_, "Vertical Align"), &verticalIndex, verticalAlignments,
 					IM_ARRAYSIZE(verticalAlignments)
 				)) {
 					component.textVerticalAlignment = verticalAlignments[verticalIndex];
@@ -6539,7 +9109,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				const char* wrapModes[] = { "NoWrap", "Word" };
 				int wrapIndex = component.textWrapMode == "Word" ? 1 : 0;
-				if (ImGui::Combo("Wrap", &wrapIndex, wrapModes, IM_ARRAYSIZE(wrapModes))) {
+				if (ImGui::Combo(LocalizedComponentWidgetLabel(editorLanguage_, "Wrap"), &wrapIndex, wrapModes, IM_ARRAYSIZE(wrapModes))) {
 					component.textWrapMode = wrapModes[wrapIndex];
 					textChanged = true;
 				}
@@ -6547,32 +9117,32 @@ void ImGuiManager::DrawInspectorWindow() {
 				int overflowIndex = component.textOverflowMode == "Clip"
 					? 1 : component.textOverflowMode == "Ellipsis" ? 2 : 0;
 				if (ImGui::Combo(
-					"Overflow", &overflowIndex, overflowModes, IM_ARRAYSIZE(overflowModes)
+					LocalizedComponentWidgetLabel(editorLanguage_, "Overflow"), &overflowIndex, overflowModes, IM_ARRAYSIZE(overflowModes)
 				)) {
 					component.textOverflowMode = overflowModes[overflowIndex];
 					textChanged = true;
 				}
 				textChanged |= ImGui::DragFloat2(
-					"Layout Size", &component.textLayoutSize.x, 1.0f, 0.0f, 4096.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Layout Size"), &component.textLayoutSize.x, 1.0f, 0.0f, 4096.0f
 				);
 				textChanged |= ImGui::DragFloat(
-					"Character Spacing", &component.textCharacterSpacing, 0.1f, -32.0f, 128.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Character Spacing"), &component.textCharacterSpacing, 0.1f, -32.0f, 128.0f
 				);
 				textChanged |= ImGui::DragFloat(
-					"Line Spacing", &component.textLineSpacing, 0.01f, 0.1f, 8.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Line Spacing"), &component.textLineSpacing, 0.01f, 0.1f, 8.0f
 				);
-				textChanged |= ImGui::Checkbox("Outline", &component.textOutlineEnabled);
+				textChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Outline"), &component.textOutlineEnabled);
 				if (component.textOutlineEnabled) {
-					textChanged |= ImGui::ColorEdit4("Outline Color", &component.textOutlineColor.x);
+					textChanged |= ImGui::ColorEdit4(LocalizedComponentWidgetLabel(editorLanguage_, "Outline Color"), &component.textOutlineColor.x);
 					textChanged |= ImGui::DragFloat(
-						"Outline Width", &component.textOutlineWidth, 0.1f, 0.0f, 32.0f
+						LocalizedComponentWidgetLabel(editorLanguage_, "Outline Width"), &component.textOutlineWidth, 0.1f, 0.0f, 32.0f
 					);
 				}
-				textChanged |= ImGui::Checkbox("Shadow", &component.textShadowEnabled);
+				textChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Shadow"), &component.textShadowEnabled);
 				if (component.textShadowEnabled) {
-					textChanged |= ImGui::ColorEdit4("Shadow Color", &component.textShadowColor.x);
+					textChanged |= ImGui::ColorEdit4(LocalizedComponentWidgetLabel(editorLanguage_, "Shadow Color"), &component.textShadowColor.x);
 					textChanged |= ImGui::DragFloat2(
-						"Shadow Offset", &component.textShadowOffset.x, 0.1f, -128.0f, 128.0f
+						LocalizedComponentWidgetLabel(editorLanguage_, "Shadow Offset"), &component.textShadowOffset.x, 0.1f, -128.0f, 128.0f
 					);
 				}
 				if (!component.textHasPlacementProfiles) {
@@ -6593,20 +9163,21 @@ void ImGuiManager::DrawInspectorWindow() {
 				Text2DPlacement& placement = component.textRenderSpace == "Scene2D"
 					? component.textScene2DPlacement : component.textOverlayPlacement;
 				ImGui::SeparatorText(component.textRenderSpace == "Scene2D"
-					? "Placement: Scene 2D" : "Placement: Screen Overlay");
+					? SelectEditorText(editorLanguage_, "配置: Scene 2D", "Placement: Scene 2D")
+					: SelectEditorText(editorLanguage_, "配置: Screen Overlay", "Placement: Screen Overlay"));
 				if (component.textRenderSpace == "ScreenOverlay") {
 					textChanged |= ImGui::DragFloat2(
-						"Viewport Anchor", &placement.viewportAnchor.x, 0.01f, 0.0f, 1.0f
+						SelectEditorText(editorLanguage_, "Viewport Anchor###TextViewportAnchor", "Viewport Anchor###TextViewportAnchor"), &placement.viewportAnchor.x, 0.01f, 0.0f, 1.0f
 					);
 				}
-				textChanged |= ImGui::DragFloat2("Position", &placement.position.x, 0.5f);
-				textChanged |= ImGui::DragFloat("Rotation", &placement.rotation, 0.01f);
+				textChanged |= ImGui::DragFloat2(SelectEditorText(editorLanguage_, "位置###TextPlacementPosition", "Position###TextPlacementPosition"), &placement.position.x, 0.5f);
+				textChanged |= ImGui::DragFloat(SelectEditorText(editorLanguage_, "回転###TextPlacementRotation", "Rotation###TextPlacementRotation"), &placement.rotation, 0.01f);
 				textChanged |= ImGui::DragFloat2(
-					"Scale", &placement.scale.x, 0.01f, 0.001f, 1000.0f
+					SelectEditorText(editorLanguage_, "スケール###TextPlacementScale", "Scale###TextPlacementScale"), &placement.scale.x, 0.01f, 0.001f, 1000.0f
 				);
-				textChanged |= ImGui::DragFloat2("Pivot", &placement.pivot.x, 0.01f, 0.0f, 1.0f);
-				textChanged |= ImGui::DragInt("Sorting Order", &placement.sortingOrder);
-				textChanged |= ImGui::Checkbox("Clip", &placement.clipEnabled);
+				textChanged |= ImGui::DragFloat2(SelectEditorText(editorLanguage_, "Pivot###TextPlacementPivot", "Pivot###TextPlacementPivot"), &placement.pivot.x, 0.01f, 0.0f, 1.0f);
+				textChanged |= ImGui::DragInt(SelectEditorText(editorLanguage_, "描画順###TextSortingOrder", "Sorting Order###TextSortingOrder"), &placement.sortingOrder);
+				textChanged |= ImGui::Checkbox(SelectEditorText(editorLanguage_, "クリップ###TextPlacementClip", "Clip###TextPlacementClip"), &placement.clipEnabled);
 				if (textChanged) {
 					component.textFontSize = std::clamp(component.textFontSize, 1.0f, 512.0f);
 					component.textOpacity = std::clamp(component.textOpacity, 0.0f, 1.0f);
@@ -6629,7 +9200,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					? 0
 					: component.lightType == "Spot" ? 2 : 1;
 				if (ImGui::Combo(
-					"Light Type",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Light Type"),
 					&lightTypeIndex,
 					lightTypes,
 					IM_ARRAYSIZE(lightTypes)
@@ -6641,12 +9212,12 @@ void ImGuiManager::DrawInspectorWindow() {
 					lightChanged = true;
 				}
 				lightChanged |= ImGui::ColorEdit4(
-					"Color",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Color"),
 					&component.lightColor.x,
 					ImGuiColorEditFlags_Float
 				);
 				lightChanged |= ImGui::DragFloat(
-					"Intensity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Intensity"),
 					&component.lightIntensity,
 					0.05f,
 					0.0f,
@@ -6655,14 +9226,14 @@ void ImGuiManager::DrawInspectorWindow() {
 
 				if (component.lightType == "Point" || component.lightType == "Spot") {
 					lightChanged |= ImGui::DragFloat(
-						"Range",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Range"),
 						&component.lightRange,
 						0.1f,
 						0.1f,
 						1000.0f
 					);
 					lightChanged |= ImGui::DragFloat(
-						"Decay",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Decay"),
 						&component.lightDecay,
 						0.05f,
 						0.0f,
@@ -6671,7 +9242,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				if (component.lightType == "Spot") {
 					lightChanged |= ImGui::DragFloat(
-						"Inner Angle",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Inner Angle"),
 						&component.lightSpotInnerAngle,
 						0.25f,
 						0.0f,
@@ -6679,7 +9250,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						"%.1f deg"
 					);
 					lightChanged |= ImGui::DragFloat(
-						"Outer Angle",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Outer Angle"),
 						&component.lightSpotOuterAngle,
 						0.25f,
 						1.0f,
@@ -6707,7 +9278,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						localRotation.m[2][2]
 					};
 					if (ImGui::DragFloat3(
-						"Direction",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Direction"),
 						&localDirection.x,
 						0.01f,
 						-1.0f,
@@ -6736,14 +9307,14 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 
 				if (component.lightType != "Point") {
-					ImGui::SeparatorText("Shadow");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "影", "Shadow"));
 					lightChanged |= ImGui::Checkbox(
-						"Cast Shadow",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Cast Shadow"),
 						&component.lightCastsShadow
 					);
 					if (component.lightCastsShadow) {
 						lightChanged |= ImGui::DragFloat(
-							"Shadow Bias",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Shadow Bias"),
 							&component.lightShadowBias,
 							0.0001f,
 							0.0f,
@@ -6751,7 +9322,7 @@ void ImGuiManager::DrawInspectorWindow() {
 							"%.5f"
 						);
 						lightChanged |= ImGui::DragFloat(
-							"Normal Bias",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Normal Bias"),
 							&component.lightShadowNormalBias,
 							0.001f,
 							0.0f,
@@ -6759,7 +9330,7 @@ void ImGuiManager::DrawInspectorWindow() {
 							"%.4f"
 						);
 						lightChanged |= ImGui::DragFloat(
-							"Shadow Strength",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Shadow Strength"),
 							&component.lightShadowStrength,
 							0.01f,
 							0.0f,
@@ -6767,35 +9338,35 @@ void ImGuiManager::DrawInspectorWindow() {
 						);
 						if (component.lightType == "Directional") {
 							lightChanged |= ImGui::DragFloat(
-								"Shadow Distance",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Shadow Distance"),
 								&component.lightShadowDistance,
 								0.5f,
 								1.0f,
 								1000.0f
 							);
 							lightChanged |= ImGui::DragFloat(
-								"Orthographic Size",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Orthographic Size"),
 								&component.lightShadowOrthographicSize,
 								0.5f,
 								1.0f,
 								1000.0f
 							);
 							lightChanged |= ImGui::DragFloat(
-								"Shadow Near Clip",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Shadow Near Clip"),
 								&component.lightShadowNearClip,
 								0.01f,
 								0.001f,
 								1000.0f
 							);
 							lightChanged |= ImGui::DragFloat(
-								"Shadow Far Clip",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Shadow Far Clip"),
 								&component.lightShadowFarClip,
 								0.5f,
 								1.0f,
 								5000.0f
 							);
 							lightChanged |= ImGui::Checkbox(
-								"Texel Snap",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Texel Snap"),
 								&component.lightShadowTexelSnap
 							);
 						}
@@ -6810,7 +9381,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					? 0
 					: lightingSettings.shadowMapSize <= 2048 ? 1 : 2;
 				if (ImGui::Combo(
-					"Shadow Map Size",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Shadow Map Size"),
 					&shadowMapIndex,
 					shadowMapLabels,
 					IM_ARRAYSIZE(shadowMapLabels)
@@ -6861,7 +9432,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool cameraChanged = false;
 				bool isMainCamera = component.cameraIsMain;
-				if (ImGui::Checkbox("Main Camera", &isMainCamera)) {
+				if (ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Main Camera"), &isMainCamera)) {
 					if (isMainCamera) {
 						for (SceneEntity& candidate : document.GetEntities()) {
 							if (SceneComponent* cameraComponent =
@@ -6877,19 +9448,19 @@ void ImGuiManager::DrawInspectorWindow() {
 				constexpr float radiansToDegrees = 57.2957795f;
 				constexpr float degreesToRadians = 0.0174532925f;
 				float fovDegrees = component.cameraFovY * radiansToDegrees;
-				if (ImGui::DragFloat("FOV Y", &fovDegrees, 0.5f, 1.0f, 179.0f)) {
+				if (ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "FOV Y"), &fovDegrees, 0.5f, 1.0f, 179.0f)) {
 					component.cameraFovY = fovDegrees * degreesToRadians;
 					cameraChanged = true;
 				}
 				cameraChanged |= ImGui::DragFloat(
-					"Near Clip",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Near Clip"),
 					&component.cameraNearClip,
 					0.01f,
 					0.001f,
 					100.0f
 				);
 				cameraChanged |= ImGui::DragFloat(
-					"Far Clip",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Far Clip"),
 					&component.cameraFarClip,
 					1.0f,
 					1.0f,
@@ -6948,7 +9519,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					_TRUNCATE
 				);
 				if (ImGui::InputText(
-					"Target Camera Name",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Target Camera Name"),
 					cameraNameBuffer,
 					sizeof(cameraNameBuffer)
 				)) {
@@ -6964,7 +9535,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						? std::string("Select Camera...")
 						: component.monitorCameraName
 					);
-				if (ImGui::BeginCombo("Camera Entity", currentCameraLabel.c_str())) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Camera Entity"), currentCameraLabel.c_str())) {
 					for (const SceneEntity& candidate : document.GetEntities()) {
 						const SceneComponent* cameraComponent =
 							FindEnabledComponent(candidate, "Camera");
@@ -7027,7 +9598,7 @@ void ImGuiManager::DrawInspectorWindow() {
 							ImVec4(0.95f, 0.65f, 0.25f, 1.0f),
 							"Stored camera ID and name differ; name is used"
 						);
-						if (ImGui::Button("Repair Camera ID")) {
+						if (ImGui::Button(LocalizedComponentWidgetLabel(editorLanguage_, "Repair Camera ID"))) {
 							component.monitorCameraEntityId = namedCamera->id;
 							monitorChanged = true;
 						}
@@ -7039,7 +9610,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						ImGui::TextDisabled(
 							"Camera name resolves, but ID is not bound"
 						);
-						if (ImGui::Button("Repair Camera ID")) {
+						if (ImGui::Button(LocalizedComponentWidgetLabel(editorLanguage_, "Repair Camera ID"))) {
 							component.monitorCameraEntityId = namedCamera->id;
 							monitorChanged = true;
 						}
@@ -7069,7 +9640,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const char* currentPreset = component.monitorResolutionPreset.empty()
 					? "Custom"
 					: component.monitorResolutionPreset.c_str();
-				if (ImGui::BeginCombo("Resolution Preset", currentPreset)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Resolution Preset"), currentPreset)) {
 					for (const MonitorResolutionPreset& preset : monitorPresets) {
 						const bool selected =
 							component.monitorResolutionPreset == preset.label ||
@@ -7090,20 +9661,20 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				int monitorWidth = static_cast<int>(component.monitorWidth);
 				int monitorHeight = static_cast<int>(component.monitorHeight);
-				if (ImGui::DragInt("Width", &monitorWidth, 16.0f, 64, 2048)) {
+				if (ImGui::DragInt(LocalizedComponentWidgetLabel(editorLanguage_, "Width"), &monitorWidth, 16.0f, 64, 2048)) {
 					component.monitorWidth =
 						static_cast<uint32_t>(std::clamp(monitorWidth, 64, 2048));
 					component.monitorResolutionPreset = "Custom";
 					monitorChanged = true;
 				}
-				if (ImGui::DragInt("Height", &monitorHeight, 16.0f, 64, 2048)) {
+				if (ImGui::DragInt(LocalizedComponentWidgetLabel(editorLanguage_, "Height"), &monitorHeight, 16.0f, 64, 2048)) {
 					component.monitorHeight =
 						static_cast<uint32_t>(std::clamp(monitorHeight, 64, 2048));
 					component.monitorResolutionPreset = "Custom";
 					monitorChanged = true;
 				}
 				monitorChanged |= ImGui::Checkbox(
-					"Hide Self In View",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Hide Self In View"),
 					&component.monitorHideSelf
 				);
 				if (monitorChanged) {
@@ -7119,7 +9690,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const char* currentKey = component.cameraSwitchTriggerKey.empty()
 					? "F5"
 					: component.cameraSwitchTriggerKey.c_str();
-				if (ImGui::BeginCombo("Switch Key", currentKey)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Switch Key"), currentKey)) {
 					for (const char* key : {
 						"F1", "F2", "F3", "F4", "F5", "F6",
 						"F7", "F8", "F9", "F10", "F11", "F12"
@@ -7137,7 +9708,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndCombo();
 				}
 				switcherChanged |= ImGui::Checkbox(
-					"Wrap To First",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Wrap To First"),
 					&component.cameraSwitchWrap
 				);
 				int removeCameraIndex = -1;
@@ -7165,7 +9736,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					const std::string cameraLabel = selectedCamera
 						? selectedCamera->name
 						: "Select Camera...";
-					if (ImGui::BeginCombo("Camera", cameraLabel.c_str())) {
+					if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Camera"), cameraLabel.c_str())) {
 						for (const SceneEntity& candidate : document.GetEntities()) {
 							if (!FindEnabledComponent(candidate, "Camera")) {
 								continue;
@@ -7188,7 +9759,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						ImGui::EndCombo();
 					}
 					ImGui::BeginDisabled(cameraIndex == 0);
-					if (ImGui::SmallButton("Up")) {
+					if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "上へ###CameraSwitcherUp", "Up###CameraSwitcherUp"))) {
 						moveCameraIndex = static_cast<int>(cameraIndex);
 						moveCameraDirection = -1;
 					}
@@ -7197,13 +9768,13 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::BeginDisabled(
 						cameraIndex + 1 >= component.cameraSwitchEntries.size()
 					);
-					if (ImGui::SmallButton("Down")) {
+					if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "下へ###CameraSwitcherDown", "Down###CameraSwitcherDown"))) {
 						moveCameraIndex = static_cast<int>(cameraIndex);
 						moveCameraDirection = 1;
 					}
 					ImGui::EndDisabled();
 					ImGui::SameLine();
-					if (ImGui::SmallButton("Remove")) {
+					if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "削除###CameraSwitcherRemove", "Remove###CameraSwitcherRemove"))) {
 						removeCameraIndex = static_cast<int>(cameraIndex);
 					}
 					ImGui::PopID();
@@ -7244,7 +9815,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					}
 				}
 				ImGui::BeginDisabled(nextCameraEntry.cameraEntityId == 0);
-				if (ImGui::Button("Add Camera")) {
+				if (ImGui::Button(LocalizedComponentWidgetLabel(editorLanguage_, "Add Camera"))) {
 					component.cameraSwitchEntries.push_back(
 						std::move(nextCameraEntry)
 					);
@@ -7274,7 +9845,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const std::string targetLabel = targetEntity
 					? targetEntity->name
 					: "Auto / Legacy Target";
-				if (ImGui::BeginCombo("Target Entity", targetLabel.c_str())) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Target Entity"), targetLabel.c_str())) {
 					if (ImGui::Selectable(
 						"Auto / Legacy Target",
 						component.thirdPersonTargetEntityId == 0 &&
@@ -7302,14 +9873,14 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 				}
 				thirdPersonChanged |= ImGui::Checkbox(
-					"Allow Mouse Input",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Allow Mouse Input"),
 					&component.thirdPersonAllowMouseInput
 				);
 				const char* yawReference =
 					component.thirdPersonYawReference == "Target"
 					? "Target"
 					: "World";
-				if (ImGui::BeginCombo("Yaw Reference", yawReference)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Yaw Reference"), yawReference)) {
 					for (const char* reference : { "World", "Target" }) {
 						if (ImGui::Selectable(
 							reference,
@@ -7325,35 +9896,35 @@ void ImGuiManager::DrawInspectorWindow() {
 					"World: fixed orbit direction / Target: inherit target yaw"
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Distance",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Distance"),
 					&component.thirdPersonDistance,
 					0.05f,
 					0.01f,
 					30.0f
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Aim Distance",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Aim Distance"),
 					&component.thirdPersonAimDistance,
 					0.05f,
 					0.01f,
 					30.0f
 				);
 				thirdPersonChanged |= ImGui::Checkbox(
-					"Aim Mode Enabled",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Aim Mode Enabled"),
 					&component.thirdPersonAimModeEnabled
 				);
 				thirdPersonChanged |= ImGui::DragFloat3(
-					"Target Offset",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Target Offset"),
 					&component.thirdPersonTargetOffset.x,
 					0.01f
 				);
 				thirdPersonChanged |= ImGui::DragFloat3(
-					"Aim Target Offset",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Aim Target Offset"),
 					&component.thirdPersonAimTargetOffset.x,
 					0.01f
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Mouse Sensitivity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Mouse Sensitivity"),
 					&component.thirdPersonMouseSensitivity,
 					0.0001f,
 					0.0f,
@@ -7361,32 +9932,32 @@ void ImGuiManager::DrawInspectorWindow() {
 					"%.4f"
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Min Pitch",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Min Pitch"),
 					&component.thirdPersonMinPitch,
 					0.01f,
 					-1.56f,
 					1.56f
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Max Pitch",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Max Pitch"),
 					&component.thirdPersonMaxPitch,
 					0.01f,
 					-1.56f,
 					1.56f
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Occlusion Margin",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Occlusion Margin"),
 					&component.thirdPersonOcclusionMargin,
 					0.01f,
 					0.0f,
 					5.0f
 				);
 				thirdPersonChanged |= ImGui::Checkbox(
-					"Occlusion Enabled",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Occlusion Enabled"),
 					&component.thirdPersonOcclusionEnabled
 				);
 				thirdPersonChanged |= ImGui::InputScalar(
-					"Occlusion Layer Mask",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Occlusion Layer Mask"),
 					ImGuiDataType_U32,
 					&component.thirdPersonOcclusionMask
 				);
@@ -7394,7 +9965,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					"Only non-trigger colliders on matching layers block the camera."
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Occlusion Pull-In Smooth Time",
+					SelectEditorText(editorLanguage_, "遮蔽時の追従時間###OcclusionPullIn", "Occlusion Pull-In Smooth Time###OcclusionPullIn"),
 					&component.thirdPersonOcclusionPullInSmoothTime,
 					0.01f,
 					0.0f,
@@ -7402,7 +9973,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					"%.2f s"
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Occlusion Recovery Smooth Time",
+					SelectEditorText(editorLanguage_, "遮蔽解除時の復帰時間###OcclusionRecovery", "Occlusion Recovery Smooth Time###OcclusionRecovery"),
 					&component.thirdPersonOcclusionRecoverySmoothTime,
 					0.01f,
 					0.0f,
@@ -7410,7 +9981,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					"%.2f s"
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Position Smooth Time",
+					SelectEditorText(editorLanguage_, "位置の追従時間###ThirdPersonPositionSmooth", "Position Smooth Time###ThirdPersonPositionSmooth"),
 					&component.thirdPersonPositionSmoothTime,
 					0.01f,
 					0.0f,
@@ -7418,7 +9989,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					"%.2f s"
 				);
 				thirdPersonChanged |= ImGui::DragFloat(
-					"Rotation Smooth Time",
+					SelectEditorText(editorLanguage_, "回転の追従時間###ThirdPersonRotationSmooth", "Rotation Smooth Time###ThirdPersonRotationSmooth"),
 					&component.thirdPersonRotationSmoothTime,
 					0.01f,
 					0.0f,
@@ -7426,11 +9997,11 @@ void ImGuiManager::DrawInspectorWindow() {
 					"%.2f s"
 				);
 				thirdPersonChanged |= ImGui::Checkbox(
-					"Invert Horizontal",
+					SelectEditorText(editorLanguage_, "横方向を反転###ThirdPersonInvertHorizontal", "Invert Horizontal###ThirdPersonInvertHorizontal"),
 					&component.thirdPersonInvertYaw
 				);
 				thirdPersonChanged |= ImGui::Checkbox(
-					"Invert Vertical",
+					SelectEditorText(editorLanguage_, "縦方向を反転###ThirdPersonInvertVertical", "Invert Vertical###ThirdPersonInvertVertical"),
 					&component.thirdPersonInvertPitch
 				);
 				if (component.thirdPersonDistance < 0.01f) {
@@ -7483,7 +10054,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.cameraPathTargetCameraName.empty()
 					? "Main Camera / Current"
 					: component.cameraPathTargetCameraName.c_str();
-				if (ImGui::BeginCombo("Target Camera Entity", currentTargetCamera)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Target Camera Entity"), currentTargetCamera)) {
 					if (ImGui::Selectable(
 						"Main Camera / Current",
 						component.cameraPathTargetCameraName.empty()
@@ -7508,7 +10079,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const char* currentTrigger = component.cameraPathTriggerType.empty()
 					? "Key"
 					: component.cameraPathTriggerType.c_str();
-				if (ImGui::BeginCombo("Trigger Type", currentTrigger)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Trigger Type"), currentTrigger)) {
 					const char* triggerTypes[] = { "Manual", "Key" };
 					for (const char* triggerType : triggerTypes) {
 						if (ImGui::Selectable(
@@ -7528,7 +10099,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					_TRUNCATE
 				);
 				if (ImGui::InputText(
-					"Trigger Key",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Trigger Key"),
 					triggerKeyBuffer,
 					sizeof(triggerKeyBuffer)
 				)) {
@@ -7536,14 +10107,14 @@ void ImGuiManager::DrawInspectorWindow() {
 					pathChanged = true;
 				}
 				pathChanged |= ImGui::DragFloat(
-					"Enter Duration",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Enter Duration"),
 					&component.cameraPathEnterDuration,
 					0.01f,
 					0.0f,
 					60.0f
 				);
 				pathChanged |= ImGui::DragFloat(
-					"Exit Duration",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Exit Duration"),
 					&component.cameraPathExitDuration,
 					0.01f,
 					0.0f,
@@ -7553,7 +10124,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.cameraPathInterpolation.empty()
 					? "Linear"
 					: component.cameraPathInterpolation.c_str();
-				if (ImGui::BeginCombo("Interpolation", currentInterpolation)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Interpolation"), currentInterpolation)) {
 					const char* interpolations[] = { "Linear", "CatmullRom" };
 					for (const char* interpolation : interpolations) {
 						if (ImGui::Selectable(
@@ -7570,7 +10141,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.cameraPathDefaultEasing.empty()
 					? "SmoothStep"
 					: component.cameraPathDefaultEasing.c_str();
-				if (ImGui::BeginCombo("Default Easing", currentEasing)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Default Easing"), currentEasing)) {
 					const char* easings[] = {
 						"Linear",
 						"EaseIn",
@@ -7590,15 +10161,15 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndCombo();
 				}
 				pathChanged |= ImGui::Checkbox(
-					"Return To Previous Camera",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Return To Previous Camera"),
 					&component.cameraPathReturnToPreviousCamera
 				);
 				pathChanged |= ImGui::Checkbox(
-					"Start From Current Camera",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Start From Current Camera"),
 					&component.cameraPathStartFromCurrentCamera
 				);
 				pathChanged |= ImGui::Checkbox(
-					"Auto Collect Child Points",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Auto Collect Child Points"),
 					&component.cameraPathAutoCollectChildPoints
 				);
 				if (component.cameraPathEnterDuration < 0.0f) {
@@ -7613,7 +10184,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 
-				ImGui::SeparatorText("Child Points");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "子Point", "Child Points"));
 				uint32_t pointCount = 0;
 				for (const SceneEntity& candidate : document.GetEntities()) {
 					if (candidate.parentId != entity->id) {
@@ -7625,13 +10196,13 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::PushID(static_cast<int>(candidate.id));
 					ImGui::Text("%02u: %s", pointCount, candidate.name.c_str());
 					ImGui::SameLine();
-					if (ImGui::SmallButton("Select")) {
+					if (ImGui::SmallButton(LocalizedComponentWidgetLabel(editorLanguage_, "Select"))) {
 						selectedEntityId_ = candidate.id;
 					}
 					ImGui::PopID();
 					++pointCount;
 				}
-				if (ImGui::SmallButton("Add Point")) {
+				if (ImGui::SmallButton(LocalizedComponentWidgetLabel(editorLanguage_, "Add Point"))) {
 					char pointName[32]{};
 					sprintf_s(pointName, "Point_%02u", pointCount);
 					SceneEntity& point = document.CreateEntity(pointName, entity->id);
@@ -7652,7 +10223,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool pointChanged = false;
 				pointChanged |= ImGui::DragFloat(
-					"Duration To Next",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Duration To Next"),
 					&component.cameraPathPointDurationToNext,
 					0.01f,
 					0.0f,
@@ -7662,7 +10233,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.cameraPathPointEasingToNext.empty()
 					? "SmoothStep"
 					: component.cameraPathPointEasingToNext.c_str();
-				if (ImGui::BeginCombo("Easing To Next", currentEasing)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Easing To Next"), currentEasing)) {
 					const char* easings[] = {
 						"Linear",
 						"EaseIn",
@@ -7699,7 +10270,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.entityReferenceName
 				);
 				if (ImGui::InputText(
-					"Reference Name",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Reference Name"),
 					referenceNameBuffer,
 					sizeof(referenceNameBuffer)
 				)) {
@@ -7713,7 +10284,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.entityReferenceTarget.sceneId
 				);
 				if (ImGui::InputText(
-					"Target Scene Id",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Target Scene Id"),
 					targetSceneIdBuffer,
 					sizeof(targetSceneIdBuffer)
 				)) {
@@ -7721,7 +10292,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					referenceChanged = true;
 				}
 				if (component.entityReferenceTarget.sceneId.empty()) {
-					ImGui::TextDisabled("Empty Scene Id targets this Scene Instance.");
+					ImGui::TextDisabled(SelectEditorText(editorLanguage_, "Scene IDが空の場合は、このScene Instanceを対象にします。", "Empty Scene Id targets this Scene Instance."));
 				}
 				char instanceKeyBuffer[128]{};
 				CopyTextBuffer(
@@ -7730,7 +10301,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.entityReferenceTarget.instanceKey
 				);
 				if (ImGui::InputText(
-					"Target Instance Key",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Target Instance Key"),
 					instanceKeyBuffer,
 					sizeof(instanceKeyBuffer)
 				)) {
@@ -7738,7 +10309,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					referenceChanged = true;
 				}
 				referenceChanged |= ImGui::InputScalar(
-					"Target Entity Id",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Target Entity Id"),
 					ImGuiDataType_U64,
 					&component.entityReferenceTarget.entityId
 				);
@@ -7757,7 +10328,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const char* targetLabel = targetScene
 					? targetScene->displayName.c_str()
 					: "Select...";
-				if (ImGui::BeginCombo("Target Scene", targetLabel)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Target Scene"), targetLabel)) {
 					if (sceneCatalog_) {
 						for (const SceneDescriptor& scene :
 							sceneCatalog_->GetScenes()) {
@@ -7787,7 +10358,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.sceneTransitionTriggerKey.empty()
 						? "ENTER"
 						: component.sceneTransitionTriggerKey.c_str();
-				if (ImGui::BeginCombo("Trigger Key", triggerKey)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Trigger Key"), triggerKey)) {
 					for (const char* key : triggerKeys) {
 						if (ImGui::Selectable(
 							key,
@@ -7808,29 +10379,29 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool animatorChanged = false;
 				animatorChanged |= ImGui::Checkbox(
-					"Play On Start",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Play On Start"),
 					&component.animatorPlayOnStart
 				);
 				animatorChanged |= ImGui::Checkbox(
-					"Loop",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Loop"),
 					&component.animatorLoop
 				);
 				animatorChanged |= ImGui::DragFloat(
-					"Speed",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Speed"),
 					&component.animatorSpeed,
 					0.01f,
 					-8.0f,
 					8.0f
 				);
 				animatorChanged |= ImGui::DragInt(
-					"Default Clip Index",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Default Clip Index"),
 					&component.animatorDefaultClip,
 					1.0f,
 					0,
 					1024
 				);
 				animatorChanged |= ImGui::DragFloat(
-					"Transition Duration",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Transition Duration"),
 					&component.animatorTransitionDuration,
 					0.01f,
 					0.0f,
@@ -7840,7 +10411,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.animatorBlendCurve == "Linear"
 					? "Linear"
 					: "SmoothStep";
-				if (ImGui::BeginCombo("Blend Curve", blendCurve)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Blend Curve"), blendCurve)) {
 					for (const char* candidate : { "Linear", "SmoothStep" }) {
 						if (ImGui::Selectable(
 							candidate,
@@ -7864,31 +10435,89 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "AudioSource") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool audioChanged = DrawAudioClipAssetField(LocalizedComponentWidgetLabel(editorLanguage_, "Clip Path"), component.audioClipPath);
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Spatial Mode"), GetAudioSpatialModeDisplayName(component.audioSpatialMode))) {
+					for (const auto& [value, label] : { std::pair{ "TwoD", "TwoD Stereo" }, std::pair{ "ThreeD", "ThreeD Point" }, std::pair{ "ThreeDPointDownmix", "ThreeD Point Downmix" }, std::pair{ "ThreeDStereoArea", "ThreeD Stereo Area" } }) {
+						if (ImGui::Selectable(label, component.audioSpatialMode == value)) { component.audioSpatialMode = value; audioChanged = true; }
+					}
+					ImGui::EndCombo();
+				}
+				if (IsThreeDAudioSpatialMode(component.audioSpatialMode)) {
+					audioChanged |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Minimum Distance"), &component.audioMinimumDistance, 0.05f, 0.0f, 10000.0f);
+					audioChanged |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Maximum Distance"), &component.audioMaximumDistance, 0.1f, 0.01f, 10000.0f);
+					if (component.audioSpatialMode == "ThreeD") {
+						ImGui::TextDisabled("ThreeD Point requires a mono clip.");
+					} else if (component.audioSpatialMode == "ThreeDPointDownmix") {
+						ImGui::TextDisabled("Stereo clips are downmixed to mono. Phase-opposed channels can cancel.");
+						ImGui::TextDisabled("Decompress On Load avoids first-play decode and conversion work.");
+					} else if (component.audioSpatialMode == "ThreeDStereoArea") {
+						audioChanged |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Area Width"), &component.audioStereoAreaWidth, 0.01f, 0.01f, 10000.0f);
+						ImGui::TextDisabled("Stereo clip required. Width is the L/R spacing in Scene units.");
+					}
+					DrawAudioSpatialClipCompatibilityWarning(editorLanguage_, component);
+				}
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Bus"), component.audioBus.c_str())) {
+					for (const char* bus : { "BGM", "SFX", "UI", "Ambience" }) if (ImGui::Selectable(bus, component.audioBus == bus)) { component.audioBus = bus; audioChanged = true; }
+					ImGui::EndCombo();
+				}
+				audioChanged |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Volume"), &component.audioVolume, 0.01f, 0.0f, 4.0f);
+				audioChanged |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Pitch"), &component.audioPitch, 0.01f, 0.01f, 8.0f);
+				audioChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Loop"), &component.audioLoop);
+				audioChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Play On Start"), &component.audioPlayOnStart);
+				audioChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Stop On Disable"), &component.audioStopOnDisable);
+				audioChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Stream From Disk"), &component.audioStreamFromDisk);
+				ImGui::BeginDisabled(component.audioStreamFromDisk);
+				audioChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Decompress On Load"), &component.audioDecompressOnLoad);
+				ImGui::EndDisabled();
+				const bool persistentBgmCompatible = component.audioStreamFromDisk && component.audioBus == "BGM" && component.audioSpatialMode == "TwoD";
+				ImGui::BeginDisabled(!persistentBgmCompatible);
+				audioChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Persist Across Scenes"), &component.audioPersistAcrossScenes);
+				ImGui::EndDisabled();
+				if (component.audioBus == "BGM" && component.audioSpatialMode == "TwoD") {
+					audioChanged |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "BGM Fade Seconds"), &component.audioBgmFadeSeconds, 0.05f, 0.0f, 30.0f);
+				}
+				if (component.audioStreamFromDisk && (component.audioBus != "BGM" || component.audioSpatialMode != "TwoD")) {
+					ImGui::TextDisabled("Stream From Disk requires TwoD and BGM Bus.");
+				}
+				if (audioChanged) document.MarkDirty();
+				ImGui::EndDisabled();
+			} else if (component.type == "AudioListener") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool listenerChanged = false;
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Mode"), component.audioListenerMode.c_str())) {
+					for (const char* mode : { "ActiveCamera", "Entity", "Hybrid" }) if (ImGui::Selectable(mode, component.audioListenerMode == mode)) { component.audioListenerMode = mode; listenerChanged = true; }
+					ImGui::EndCombo();
+				}
+				ImGui::TextDisabled("Only one enabled listener is allowed per Scene.");
+				if (listenerChanged) document.MarkDirty();
+				ImGui::EndDisabled();
 			} else if (component.type == "OBBCollider") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool colliderChanged = false;
 				colliderChanged |= ImGui::Checkbox(
-					"Collider Active",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Collider Active"),
 					&component.colliderActive
 				);
 				colliderChanged |= ImGui::Checkbox(
-					"Is Trigger",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Is Trigger"),
 					&component.colliderIsTrigger
 				);
 				colliderChanged |= ImGui::InputScalar(
-					"Collision Layer",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Collision Layer"),
 					ImGuiDataType_U32,
 					&component.colliderLayer
 				);
 				colliderChanged |= ImGui::InputScalar(
-					"Collision Mask",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Collision Mask"),
 					ImGuiDataType_U32,
 					&component.colliderMask
 				);
 				const char* shape = component.colliderShape == "Sphere"
 					? "Sphere"
 					: "Box";
-				if (ImGui::BeginCombo("Shape", shape)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Shape"), shape)) {
 					for (const char* candidate : { "Box", "Sphere" }) {
 						if (ImGui::Selectable(
 							candidate,
@@ -7901,13 +10530,13 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndCombo();
 				}
 				colliderChanged |= ImGui::DragFloat3(
-					"Offset",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Offset"),
 					&component.colliderOffset.x,
 					0.01f
 				);
 				if (component.colliderShape == "Sphere") {
 					colliderChanged |= ImGui::DragFloat(
-						"Radius",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Radius"),
 						&component.colliderSphereRadius,
 						0.01f,
 						0.001f,
@@ -7915,7 +10544,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 				} else {
 					colliderChanged |= ImGui::DragFloat3(
-						"Size Multiplier",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Size Multiplier"),
 						&component.colliderSizeMultiplier.x,
 						0.01f,
 						0.001f,
@@ -7923,7 +10552,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 				}
 				colliderChanged |= ImGui::Checkbox(
-					"Debug Visible",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Debug Visible"),
 					&component.colliderDebugVisible
 				);
 				if (ImGui::BeginCombo(
@@ -7945,14 +10574,14 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				if (component.colliderShape == "Sphere") {
 					colliderChanged |= ImGui::SliderInt(
-						"Debug Segments",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Debug Segments"),
 						&component.colliderDebugSegments,
 						4,
 						64
 					);
 				}
 				colliderChanged |= ImGui::ColorEdit4(
-					"Debug Color",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Debug Color"),
 					&component.colliderDebugColor.x,
 					ImGuiColorEditFlags_Float
 				);
@@ -7997,16 +10626,16 @@ void ImGuiManager::DrawInspectorWindow() {
 						"%s",
 						statLabel.empty() ? "Stat" : statLabel.c_str()
 					)) {
-						statsChanged |= InputTextString("Id", stat.id);
-						statsChanged |= InputTextString("Display Name", stat.displayName);
+						statsChanged |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Id"), stat.id);
+						statsChanged |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Display Name"), stat.displayName);
 						statsChanged |= ImGui::DragFloat(
-							"Min", &stat.minValue, 0.1f
+							LocalizedComponentWidgetLabel(editorLanguage_, "Min"), &stat.minValue, 0.1f
 						);
 						statsChanged |= ImGui::DragFloat(
-							"Max", &stat.maxValue, 0.1f
+							LocalizedComponentWidgetLabel(editorLanguage_, "Max"), &stat.maxValue, 0.1f
 						);
 						statsChanged |= ImGui::DragFloat(
-							"Initial", &stat.initialValue, 0.1f
+							LocalizedComponentWidgetLabel(editorLanguage_, "Initial"), &stat.initialValue, 0.1f
 						);
 						if (stat.maxValue < stat.minValue) {
 							stat.maxValue = stat.minValue;
@@ -8021,7 +10650,7 @@ void ImGuiManager::DrawInspectorWindow() {
 							stat.initialValue = clampedInitial;
 							statsChanged = true;
 						}
-						if (ImGui::SmallButton("Remove Stat")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Statを削除###RemoveStat", "Remove Stat###RemoveStat"))) {
 							removeStatIndex = static_cast<int>(statIndex);
 						}
 						ImGui::TreePop();
@@ -8034,7 +10663,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 					statsChanged = true;
 				}
-				if (ImGui::Button("Add Stat")) {
+				if (ImGui::Button(SelectEditorText(editorLanguage_, "Statを追加###AddStat", "Add Stat###AddStat"))) {
 					SceneStatDefinition stat{};
 					stat.id = "stat" + std::to_string(component.stats.size() + 1);
 					stat.displayName = stat.id;
@@ -8051,7 +10680,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const char* initialPreview = component.stateMachineInitialState.empty()
 					? "Select State..."
 					: component.stateMachineInitialState.c_str();
-				if (ImGui::BeginCombo("Initial State", initialPreview)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Initial State"), initialPreview)) {
 					for (const SceneStateDefinition& state :
 						component.stateMachineStates) {
 						if (ImGui::Selectable(
@@ -8065,7 +10694,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndCombo();
 				}
 				stateMachineChanged |= ImGui::Checkbox(
-					"Reset On Disable", &component.stateMachineResetOnDisable
+					LocalizedComponentWidgetLabel(editorLanguage_, "Reset On Disable"), &component.stateMachineResetOnDisable
 				);
 				ImGui::TextDisabled(
 					"Actions are C++ classes registered by Action Id."
@@ -8083,11 +10712,11 @@ void ImGuiManager::DrawInspectorWindow() {
 						"%s",
 						state.name.empty() ? "State" : state.name.c_str()
 					)) {
-						stateMachineChanged |= InputTextString("Name", state.name);
+						stateMachineChanged |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Name"), state.name);
 						stateMachineChanged |= InputTextString(
-							"Action Id", state.actionId
+							LocalizedComponentWidgetLabel(editorLanguage_, "Action Id"), state.actionId
 						);
-						if (ImGui::BeginCombo("Built-in Action", state.actionId.c_str())) {
+						if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Built-in Action"), state.actionId.c_str())) {
 							for (const char* actionId : {
 								"Builtin.Idle", "Builtin.Move", "Builtin.MeleeAttack",
 								"Builtin.MeleeComboAttack"
@@ -8113,9 +10742,9 @@ void ImGuiManager::DrawInspectorWindow() {
 								parameter.name.empty() ? "Parameter" : parameter.name.c_str()
 							);
 							stateMachineChanged |= InputTextString(
-								"Parameter Name", parameter.name
+								LocalizedComponentWidgetLabel(editorLanguage_, "Parameter Name"), parameter.name
 							);
-							if (ImGui::BeginCombo("Type", parameter.type.c_str())) {
+							if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Type"), parameter.type.c_str())) {
 								for (const char* type : {
 									"Float", "Int", "Bool", "String", "Input", "Entity"
 								}) {
@@ -8130,25 +10759,25 @@ void ImGuiManager::DrawInspectorWindow() {
 							}
 							if (parameter.type == "Float") {
 								stateMachineChanged |= ImGui::DragFloat(
-									"Value", &parameter.floatValue, 0.01f
+									LocalizedComponentWidgetLabel(editorLanguage_, "Value"), &parameter.floatValue, 0.01f
 								);
 							} else if (parameter.type == "Int") {
 								stateMachineChanged |= ImGui::DragInt(
-									"Value", &parameter.intValue
+									LocalizedComponentWidgetLabel(editorLanguage_, "Value"), &parameter.intValue
 								);
 							} else if (parameter.type == "Bool") {
 								stateMachineChanged |= ImGui::Checkbox(
-									"Value", &parameter.boolValue
+									LocalizedComponentWidgetLabel(editorLanguage_, "Value"), &parameter.boolValue
 								);
 							} else if (parameter.type == "String") {
 								stateMachineChanged |= InputTextString(
-									"Value", parameter.stringValue
+									LocalizedComponentWidgetLabel(editorLanguage_, "Value"), parameter.stringValue
 								);
 							} else if (parameter.type == "Input") {
 								const char* inputPreview = parameter.stringValue.empty()
 									? "Select Input..."
 									: parameter.stringValue.c_str();
-								if (ImGui::BeginCombo("Value", inputPreview)) {
+							if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Value"), inputPreview)) {
 									for (const char* inputName : {
 										"Mouse Left", "Mouse Right", "Mouse Middle",
 										"Space", "Enter", "Escape", "Tab",
@@ -8183,7 +10812,7 @@ void ImGuiManager::DrawInspectorWindow() {
 								const char* entityPreview = selectedParameterEntity
 									? selectedParameterEntity->name.c_str()
 									: "Select Entity...";
-								if (ImGui::BeginCombo("Value", entityPreview)) {
+							if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Value"), entityPreview)) {
 									for (const SceneEntity& candidate : document.GetEntities()) {
 										if (ImGui::Selectable(
 											candidate.name.c_str(),
@@ -8198,7 +10827,7 @@ void ImGuiManager::DrawInspectorWindow() {
 									ImGui::EndCombo();
 								}
 							}
-							if (ImGui::SmallButton("Remove Parameter")) {
+							if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Parameterを削除###RemoveStateParameter", "Remove Parameter###RemoveStateParameter"))) {
 								removeParameterIndex = static_cast<int>(parameterIndex);
 							}
 							ImGui::PopID();
@@ -8209,12 +10838,12 @@ void ImGuiManager::DrawInspectorWindow() {
 							);
 							stateMachineChanged = true;
 						}
-						if (ImGui::SmallButton("Add Parameter")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Parameterを追加###AddStateParameter", "Add Parameter###AddStateParameter"))) {
 							state.parameters.push_back(SceneStateParameter{});
 							stateMachineChanged = true;
 						}
 						ImGui::SameLine();
-						if (ImGui::SmallButton("Remove State")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Stateを削除###RemoveState", "Remove State###RemoveState"))) {
 							removeStateIndex = static_cast<int>(stateIndex);
 						}
 						ImGui::TreePop();
@@ -8227,7 +10856,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 					stateMachineChanged = true;
 				}
-				if (ImGui::Button("Add State")) {
+				if (ImGui::Button(SelectEditorText(editorLanguage_, "Stateを追加###AddState", "Add State###AddState"))) {
 					SceneStateDefinition state{};
 					state.name = "State" + std::to_string(
 						component.stateMachineStates.size() + 1
@@ -8301,11 +10930,11 @@ void ImGuiManager::DrawInspectorWindow() {
 						bindingIndex + 1,
 						binding.triggerType.c_str()
 					)) {
-						if (ImGui::BeginCombo("Trigger", binding.triggerType.c_str())) {
+						if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Trigger"), binding.triggerType.c_str())) {
 							for (const char* trigger : {
 								"OnStart", "OnInterval", "OnStatReachedMin", "OnStatCompare",
 								"OnPositionReached", "OnKeyPressed",
-								"OnCameraPathCompleted"
+								"OnCameraPathCompleted", "OnAudioFinished"
 							}) {
 								if (ImGui::Selectable(
 									trigger,
@@ -8332,31 +10961,39 @@ void ImGuiManager::DrawInspectorWindow() {
 							binding.triggerType == "OnPositionReached";
 						if (binding.triggerType == "OnCameraPathCompleted") {
 							drawComponentTargetCombo(
-								"Camera Path",
+								LocalizedComponentWidgetLabel(editorLanguage_, "Camera Path"),
 								binding.targetEntityId,
 								binding.targetEntityName,
 								"CameraPath",
-								"Missing CameraPath"
+								SelectEditorText(editorLanguage_, "CameraPathがありません", "Missing CameraPath")
+							);
+						} else if (binding.triggerType == "OnAudioFinished") {
+							drawComponentTargetCombo(
+								LocalizedComponentWidgetLabel(editorLanguage_, "Audio Source"),
+								binding.targetEntityId,
+								binding.targetEntityName,
+								"AudioSource",
+								SelectEditorText(editorLanguage_, "AudioSourceがありません", "Missing AudioSource")
 							);
 						} else if (triggerNeedsTarget) {
 							eventsChanged |= ImGui::InputScalar(
-								"Target Entity Id",
+								LocalizedComponentWidgetLabel(editorLanguage_, "Target Entity Id"),
 								ImGuiDataType_U64,
 								&binding.targetEntityId
 							);
 							eventsChanged |= InputTextString(
-								"Target Entity Name", binding.targetEntityName
+								LocalizedComponentWidgetLabel(editorLanguage_, "Target Entity Name"), binding.targetEntityName
 							);
 						}
 						if (
 							binding.triggerType == "OnStatReachedMin" ||
 							binding.triggerType == "OnStatCompare"
 						) {
-							eventsChanged |= InputTextString("Stat Id", binding.statId);
+							eventsChanged |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Stat Id"), binding.statId);
 						}
 						if (binding.triggerType == "OnStatCompare") {
 							if (ImGui::BeginCombo(
-								"Comparison", binding.statComparison.c_str()
+								LocalizedComponentWidgetLabel(editorLanguage_, "Comparison"), binding.statComparison.c_str()
 							)) {
 								for (const char* comparison : {
 									"LessOrEqual", "Less", "Equal",
@@ -8373,20 +11010,20 @@ void ImGuiManager::DrawInspectorWindow() {
 								ImGui::EndCombo();
 							}
 							eventsChanged |= ImGui::DragFloat(
-								"Compare Value", &binding.statValue, 0.1f
+								LocalizedComponentWidgetLabel(editorLanguage_, "Compare Value"), &binding.statValue, 0.1f
 							);
 						}
 						if (binding.triggerType == "OnPositionReached") {
 							eventsChanged |= ImGui::DragFloat3(
-								"Target Position", &binding.targetPosition.x, 0.05f
+								LocalizedComponentWidgetLabel(editorLanguage_, "Target Position"), &binding.targetPosition.x, 0.05f
 							);
 							eventsChanged |= ImGui::DragFloat(
-								"Radius", &binding.radius, 0.05f, 0.0f, 10000.0f
+								LocalizedComponentWidgetLabel(editorLanguage_, "Radius"), &binding.radius, 0.05f, 0.0f, 10000.0f
 							);
 						}
 						if (binding.triggerType == "OnKeyPressed") {
 							if (ImGui::BeginCombo(
-								"Key",
+								LocalizedComponentWidgetLabel(editorLanguage_, "Key"),
 								binding.triggerKey.empty()
 									? "Select..."
 									: binding.triggerKey.c_str()
@@ -8405,15 +11042,15 @@ void ImGuiManager::DrawInspectorWindow() {
 							}
 						}
 						eventsChanged |= ImGui::Checkbox(
-							"Trigger Once", &binding.triggerOnce
+							LocalizedComponentWidgetLabel(editorLanguage_, "Trigger Once"), &binding.triggerOnce
 						);
 						eventsChanged |= ImGui::DragFloat(
-							"Cooldown", &binding.cooldown, 0.01f, 0.0f, 10000.0f
+							LocalizedComponentWidgetLabel(editorLanguage_, "Cooldown"), &binding.cooldown, 0.01f, 0.0f, 10000.0f
 						);
 						binding.radius = (std::max)(binding.radius, 0.0f);
 						binding.cooldown = (std::max)(binding.cooldown, 0.0f);
 
-						ImGui::SeparatorText("Actions");
+						ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Action", "Actions"));
 						int removeActionIndex = -1;
 						for (size_t actionIndex = 0;
 							actionIndex < binding.actions.size();
@@ -8427,14 +11064,15 @@ void ImGuiManager::DrawInspectorWindow() {
 								actionIndex + 1,
 								action.type.c_str()
 							)) {
-								if (ImGui::BeginCombo("Type", action.type.c_str())) {
+								if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Type"), action.type.c_str())) {
 									for (const char* actionType : {
 										"ModifyStat", "SetEntityActive",
 										"InstantiatePrefab", "ChangeState",
 										"SceneTransition", "SetPostProcessProfile",
 										"NextPostProcessProfile",
 										"ResetPostProcessProfile", "PlayCameraPath",
-										"StopCameraPath", "SelectCamera"
+										"StopCameraPath", "SelectCamera", "PlayAudio",
+										"StopAudio", "PauseAudio", "ResumeAudio"
 									}) {
 										if (ImGui::Selectable(
 											actionType,
@@ -8456,21 +11094,21 @@ void ImGuiManager::DrawInspectorWindow() {
 								action.type != "SelectCamera"
 								) {
 									eventsChanged |= ImGui::InputScalar(
-										"Action Target Entity Id",
+										LocalizedComponentWidgetLabel(editorLanguage_, "Action Target Entity Id"),
 										ImGuiDataType_U64,
 										&action.targetEntityId
 									);
 									eventsChanged |= InputTextString(
-										"Action Target Entity Name",
+										LocalizedComponentWidgetLabel(editorLanguage_, "Action Target Entity Name"),
 										action.targetEntityName
 									);
 								}
 								if (action.type == "ModifyStat") {
 									eventsChanged |= InputTextString(
-										"Action Stat Id", action.statId
+										LocalizedComponentWidgetLabel(editorLanguage_, "Action Stat Id"), action.statId
 									);
 									if (ImGui::BeginCombo(
-										"Operation", action.statOperation.c_str()
+										LocalizedComponentWidgetLabel(editorLanguage_, "Operation"), action.statOperation.c_str()
 									)) {
 										for (const char* operation : {
 											"Add", "Subtract", "Set", "Multiply",
@@ -8487,49 +11125,58 @@ void ImGuiManager::DrawInspectorWindow() {
 										ImGui::EndCombo();
 									}
 									eventsChanged |= ImGui::DragFloat(
-										"Value", &action.value, 0.1f
+										LocalizedComponentWidgetLabel(editorLanguage_, "Value"), &action.value, 0.1f
 									);
 								} else if (action.type == "SetEntityActive") {
 									eventsChanged |= ImGui::Checkbox(
-										"Active", &action.active
+										SelectEditorText(editorLanguage_, "有効###EventActionActive", "Active###EventActionActive"), &action.active
 									);
 								} else if (action.type == "InstantiatePrefab") {
 									eventsChanged |= InputTextString(
-										"Prefab Path", action.prefabPath
+										LocalizedComponentWidgetLabel(editorLanguage_, "Prefab Path"), action.prefabPath
 									);
 									eventsChanged |= ImGui::Checkbox(
-										"Parent To Target", &action.prefabParentToTarget
+										LocalizedComponentWidgetLabel(editorLanguage_, "Parent To Target"), &action.prefabParentToTarget
 									);
 									eventsChanged |= ImGui::Checkbox(
-										"Spawn At Target Transform",
+										LocalizedComponentWidgetLabel(editorLanguage_, "Spawn At Target Transform"),
 										&action.prefabUseTargetTransform
 									);
 								} else if (action.type == "ChangeState") {
 									eventsChanged |= InputTextString(
-										"State Name", action.stateName
+										LocalizedComponentWidgetLabel(editorLanguage_, "State Name"), action.stateName
+									);
+								} else if (
+									action.type == "PlayAudio" || action.type == "StopAudio" ||
+									action.type == "PauseAudio" || action.type == "ResumeAudio"
+								) {
+									drawComponentTargetCombo(
+										LocalizedComponentWidgetLabel(editorLanguage_, "Audio Source"),
+										action.targetEntityId, action.targetEntityName, "AudioSource",
+										SelectEditorText(editorLanguage_, "AudioSourceがありません", "Missing AudioSource")
 									);
 								} else if (action.type == "SceneTransition") {
 									eventsChanged |= InputTextString(
-										"Scene Id", action.sceneId
+										LocalizedComponentWidgetLabel(editorLanguage_, "Scene Id"), action.sceneId
 									);
 								} else if (
 									action.type == "PlayCameraPath" ||
 									action.type == "StopCameraPath"
 								) {
 									drawComponentTargetCombo(
-										"Camera Path",
+										LocalizedComponentWidgetLabel(editorLanguage_, "Camera Path"),
 										action.targetEntityId,
 										action.targetEntityName,
 										"CameraPath",
-										"Missing CameraPath"
+										SelectEditorText(editorLanguage_, "CameraPathがありません", "Missing CameraPath")
 									);
 								} else if (action.type == "SelectCamera") {
 									drawComponentTargetCombo(
-										"Camera",
+										LocalizedComponentWidgetLabel(editorLanguage_, "Camera"),
 										action.targetEntityId,
 										action.targetEntityName,
 										"Camera",
-										"Missing Camera"
+										SelectEditorText(editorLanguage_, "Cameraがありません", "Missing Camera")
 									);
 								} else if (
 									action.type == "SetPostProcessProfile" ||
@@ -8556,9 +11203,9 @@ void ImGuiManager::DrawInspectorWindow() {
 										: nullptr;
 									const std::string managerPreview = managerComponent
 										? BuildEntityHierarchyLabel(document, *selectedManager)
-										: "Missing Manager";
+										: SelectEditorText(editorLanguage_, "Managerがありません", "Missing Manager");
 									if (ImGui::BeginCombo(
-										"Manager", managerPreview.c_str()
+										LocalizedComponentWidgetLabel(editorLanguage_, "Manager"), managerPreview.c_str()
 									)) {
 										for (const SceneEntity& candidate : document.GetEntities()) {
 											if (!FindComponent(
@@ -8581,7 +11228,7 @@ void ImGuiManager::DrawInspectorWindow() {
 										ImGui::EndCombo();
 									}
 									if (!managerComponent) {
-										ImGui::TextDisabled("Select a PostProcessProfileManager.");
+										ImGui::TextDisabled(SelectEditorText(editorLanguage_, "PostProcessProfileManagerを選択してください。", "Select a PostProcessProfileManager."));
 									} else if (action.type == "SetPostProcessProfile") {
 										const ScenePostProcessProfile* selectedProfile = nullptr;
 										for (const ScenePostProcessProfile& profile :
@@ -8595,8 +11242,8 @@ void ImGuiManager::DrawInspectorWindow() {
 											? (selectedProfile->label.empty()
 												? selectedProfile->id.c_str()
 												: selectedProfile->label.c_str())
-											: "Missing Profile";
-										if (ImGui::BeginCombo("Profile", profilePreview)) {
+											: SelectEditorText(editorLanguage_, "Profileがありません", "Missing Profile");
+									if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Profile"), profilePreview)) {
 											for (const ScenePostProcessProfile& profile :
 												managerComponent->postProcessProfiles) {
 												const char* label = profile.label.empty()
@@ -8614,7 +11261,7 @@ void ImGuiManager::DrawInspectorWindow() {
 										}
 									}
 								}
-								if (ImGui::SmallButton("Remove Action")) {
+								if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Actionを削除###RemoveEventAction", "Remove Action###RemoveEventAction"))) {
 									removeActionIndex = static_cast<int>(actionIndex);
 								}
 								ImGui::TreePop();
@@ -8627,11 +11274,11 @@ void ImGuiManager::DrawInspectorWindow() {
 							);
 							eventsChanged = true;
 						}
-						if (ImGui::SmallButton("Add Action")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Actionを追加###AddEventAction", "Add Action###AddEventAction"))) {
 							binding.actions.push_back(SceneEventAction{});
 							eventsChanged = true;
 						}
-						if (ImGui::SmallButton("Remove Event")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Eventを削除###RemoveEvent", "Remove Event###RemoveEvent"))) {
 							removeBindingIndex = static_cast<int>(bindingIndex);
 						}
 						ImGui::TreePop();
@@ -8644,7 +11291,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 					eventsChanged = true;
 				}
-				if (ImGui::Button("Add Event")) {
+				if (ImGui::Button(SelectEditorText(editorLanguage_, "Eventを追加###AddEvent", "Add Event###AddEvent"))) {
 					component.eventBindings.push_back(SceneEventBinding{});
 					eventsChanged = true;
 				}
@@ -8669,8 +11316,8 @@ void ImGuiManager::DrawInspectorWindow() {
 						"Profile", ImGuiTreeNodeFlags_DefaultOpen,
 						"Profile %zu: %s", profileIndex + 1, profile.label.c_str()
 					)) {
-						ImGui::TextDisabled("Id: %s", profile.id.c_str());
-						profilesChanged |= InputTextString("Label", profile.label);
+						ImGui::TextDisabled(SelectEditorText(editorLanguage_, "ID: %s", "Id: %s"), profile.id.c_str());
+						profilesChanged |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Label"), profile.label);
 						const bool duplicateProfileId = !profile.id.empty() &&
 							std::any_of(
 								component.postProcessProfiles.begin(),
@@ -8685,7 +11332,7 @@ void ImGuiManager::DrawInspectorWindow() {
 								"Profile Id must be unique within this Manager."
 							);
 						}
-						if (ImGui::SmallButton("Copy Scene Baseline")) {
+						if (ImGui::SmallButton(LocalizedComponentWidgetLabel(editorLanguage_, "Copy Scene Baseline"))) {
 							profile.settings = document.GetPostProcessSettings();
 							profilesChanged = true;
 						}
@@ -8693,7 +11340,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						bool dissolveAutomationEnabled =
 							!profile.automations.empty();
 						if (ImGui::Checkbox(
-							"Animate Dissolve Threshold",
+							LocalizedComponentWidgetLabel(editorLanguage_, "Animate Dissolve Threshold"),
 							&dissolveAutomationEnabled
 						)) {
 							if (dissolveAutomationEnabled) {
@@ -8709,19 +11356,19 @@ void ImGuiManager::DrawInspectorWindow() {
 							ScenePostProcessAutomation& automation =
 								profile.automations.front();
 							profilesChanged |= ImGui::SliderFloat(
-								"Automation Start",
+								LocalizedComponentWidgetLabel(editorLanguage_, "Automation Start"),
 								&automation.startValue,
 								0.0f,
 								1.0f
 							);
 							profilesChanged |= ImGui::SliderFloat(
-								"Automation End",
+								LocalizedComponentWidgetLabel(editorLanguage_, "Automation End"),
 								&automation.endValue,
 								0.0f,
 								1.0f
 							);
 							profilesChanged |= ImGui::DragFloat(
-								"Automation Duration",
+								LocalizedComponentWidgetLabel(editorLanguage_, "Automation Duration"),
 								&automation.duration,
 								0.05f,
 								0.05f,
@@ -8737,14 +11384,14 @@ void ImGuiManager::DrawInspectorWindow() {
 							);
 						}
 						if (profile.id.empty()) {
-							ImGui::TextDisabled("Profile Id is required for Event actions.");
+							ImGui::TextDisabled(SelectEditorText(editorLanguage_, "Event ActionにはProfile IDが必要です。", "Profile Id is required for Event actions."));
 						}
-						if (ImGui::SmallButton("Remove Profile")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Profileを削除###RemovePostProcessProfile", "Remove Profile###RemovePostProcessProfile"))) {
 							removeProfileIndex = static_cast<int>(profileIndex);
 						}
 						ImGui::SameLine();
 						ImGui::BeginDisabled(profileIndex == 0);
-						if (ImGui::SmallButton("Move Up")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "上へ###MovePostProcessProfileUp", "Move Up###MovePostProcessProfileUp"))) {
 							moveProfileIndex = static_cast<int>(profileIndex);
 							moveProfileDirection = -1;
 						}
@@ -8753,7 +11400,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						ImGui::BeginDisabled(
 							profileIndex + 1 == component.postProcessProfiles.size()
 						);
-						if (ImGui::SmallButton("Move Down")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "下へ###MovePostProcessProfileDown", "Move Down###MovePostProcessProfileDown"))) {
 							moveProfileIndex = static_cast<int>(profileIndex);
 							moveProfileDirection = 1;
 						}
@@ -8777,7 +11424,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 					profilesChanged = true;
 				}
-				if (ImGui::Button("Add Profile")) {
+				if (ImGui::Button(SelectEditorText(editorLanguage_, "Profileを追加###AddPostProcessProfile", "Add Profile###AddPostProcessProfile"))) {
 					ScenePostProcessProfile profile{};
 					for (size_t candidateIndex = 1;; ++candidateIndex) {
 						profile.id = "Profile" + std::to_string(candidateIndex);
@@ -8817,13 +11464,13 @@ void ImGuiManager::DrawInspectorWindow() {
 						clipIndex + 1,
 						clip.name.c_str()
 					)) {
-						animationChanged |= InputTextString("Clip Name", clip.name);
+						animationChanged |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Clip Name"), clip.name);
 						animationChanged |= ImGui::DragFloat(
-							"Duration", &clip.duration, 0.01f, 0.001f, 10000.0f
+							LocalizedComponentWidgetLabel(editorLanguage_, "Duration"), &clip.duration, 0.01f, 0.001f, 10000.0f
 						);
-						animationChanged |= ImGui::Checkbox("Loop", &clip.loop);
+						animationChanged |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Loop"), &clip.loop);
 						animationChanged |= ImGui::Checkbox(
-							"Play On Start", &clip.playOnStart
+							LocalizedComponentWidgetLabel(editorLanguage_, "Play On Start"), &clip.playOnStart
 						);
 						clip.duration = (std::max)(clip.duration, 0.001f);
 						int removeTrackIndex = -1;
@@ -8840,14 +11487,14 @@ void ImGuiManager::DrawInspectorWindow() {
 								track.property.c_str()
 							)) {
 								animationChanged |= ImGui::InputScalar(
-									"Target Entity Id",
+									LocalizedComponentWidgetLabel(editorLanguage_, "Target Entity Id"),
 									ImGuiDataType_U64,
 									&track.targetEntityId
 								);
 								animationChanged |= InputTextString(
-									"Target Entity Name", track.targetEntityName
+									LocalizedComponentWidgetLabel(editorLanguage_, "Target Entity Name"), track.targetEntityName
 								);
-								if (ImGui::BeginCombo("Property", track.property.c_str())) {
+								if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Property"), track.property.c_str())) {
 									for (const char* property : {
 										"LocalPosition", "LocalRotation", "LocalScale", "Active"
 									}) {
@@ -8863,7 +11510,7 @@ void ImGuiManager::DrawInspectorWindow() {
 								}
 								if (track.property != "Active") {
 									if (ImGui::BeginCombo(
-										"Easing",
+										LocalizedComponentWidgetLabel(editorLanguage_, "Easing"),
 										track.easing.empty()
 											? "SmoothStep"
 											: track.easing.c_str()
@@ -8891,9 +11538,9 @@ void ImGuiManager::DrawInspectorWindow() {
 									SceneAnimationKeyframe& keyframe =
 										track.keyframes[keyframeIndex];
 									ImGui::PushID(static_cast<int>(keyframeIndex));
-									ImGui::SeparatorText("Keyframe");
+									ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Keyframe", "Keyframe"));
 									if (ImGui::DragFloat(
-										"Time", &keyframe.time, 0.01f, 0.0f, clip.duration
+										LocalizedComponentWidgetLabel(editorLanguage_, "Time"), &keyframe.time, 0.01f, 0.0f, clip.duration
 									)) {
 										keyframe.time = std::clamp(
 											keyframe.time,
@@ -8905,20 +11552,20 @@ void ImGuiManager::DrawInspectorWindow() {
 									}
 									if (track.property == "Active") {
 										bool activeValue = keyframe.value.x >= 0.5f;
-										if (ImGui::Checkbox("Active Value", &activeValue)) {
+										if (ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Active Value"), &activeValue)) {
 											keyframe.value.x = activeValue ? 1.0f : 0.0f;
 											animationChanged = true;
 										}
 									} else {
 										animationChanged |= ImGui::DragFloat3(
 											track.property == "LocalRotation"
-												? "Euler Value (Radians)"
-												: "Value",
+												? LocalizedComponentWidgetLabel(editorLanguage_, "Euler Value (Radians)")
+												: LocalizedComponentWidgetLabel(editorLanguage_, "Value"),
 											&keyframe.value.x,
 											0.01f
 										);
 									}
-									if (ImGui::SmallButton("Remove Keyframe")) {
+									if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Keyframeを削除###RemoveKeyframe", "Remove Keyframe###RemoveKeyframe"))) {
 										removeKeyframeIndex = static_cast<int>(keyframeIndex);
 									}
 									ImGui::PopID();
@@ -8939,7 +11586,7 @@ void ImGuiManager::DrawInspectorWindow() {
 										}
 									);
 								}
-								if (ImGui::SmallButton("Add Keyframe")) {
+								if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Keyframeを追加###AddKeyframe", "Add Keyframe###AddKeyframe"))) {
 									SceneAnimationKeyframe keyframe{};
 									keyframe.time = track.keyframes.empty()
 										? 0.0f
@@ -8953,7 +11600,7 @@ void ImGuiManager::DrawInspectorWindow() {
 									track.keyframes.push_back(keyframe);
 									animationChanged = true;
 								}
-								if (ImGui::SmallButton("Remove Track")) {
+								if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Trackを削除###RemoveTrack", "Remove Track###RemoveTrack"))) {
 									removeTrackIndex = static_cast<int>(trackIndex);
 								}
 								ImGui::TreePop();
@@ -8964,7 +11611,7 @@ void ImGuiManager::DrawInspectorWindow() {
 							clip.tracks.erase(clip.tracks.begin() + removeTrackIndex);
 							animationChanged = true;
 						}
-						if (ImGui::SmallButton("Add Track")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Trackを追加###AddTrack", "Add Track###AddTrack"))) {
 							SceneAnimationTrack track{};
 							track.keyframes = {
 								{ 0.0f, {} },
@@ -8973,7 +11620,7 @@ void ImGuiManager::DrawInspectorWindow() {
 							clip.tracks.push_back(std::move(track));
 							animationChanged = true;
 						}
-						if (ImGui::SmallButton("Remove Clip")) {
+						if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Clipを削除###RemoveClip", "Remove Clip###RemoveClip"))) {
 							removeClipIndex = static_cast<int>(clipIndex);
 						}
 						ImGui::TreePop();
@@ -8986,7 +11633,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 					animationChanged = true;
 				}
-				if (ImGui::Button("Add Clip")) {
+				if (ImGui::Button(SelectEditorText(editorLanguage_, "Clipを追加###AddClip", "Add Clip###AddClip"))) {
 					component.prefabAnimationClips.push_back(
 						ScenePrefabAnimationClip{}
 					);
@@ -8998,7 +11645,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::EndDisabled();
 			} else if (component.type == "Faction") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
-				if (InputTextString("Faction", component.factionName)) {
+				if (InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Faction"), component.factionName)) {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
@@ -9006,49 +11653,49 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool hitBoxChanged = false;
 				hitBoxChanged |= ImGui::DragFloat(
-					"Damage", &component.hitBoxDamage, 0.1f, 0.0f, 100000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Damage"), &component.hitBoxDamage, 0.1f, 0.0f, 100000.0f
 				);
 				hitBoxChanged |= ImGui::DragFloat(
-					"Poise Damage",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Poise Damage"),
 					&component.hitBoxPoiseDamage,
 					0.1f,
 					0.0f,
 					100000.0f
 				);
 				hitBoxChanged |= ImGui::DragFloat(
-					"Knockback",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Knockback"),
 					&component.hitBoxKnockback,
 					0.1f, 0.0f, 100000.0f
 				);
 				hitBoxChanged |= ImGui::DragFloat(
-					"Vertical Knockback",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Vertical Knockback"),
 					&component.hitBoxVerticalKnockback,
 					0.1f, 0.0f, 100000.0f
 				);
 				hitBoxChanged |= ImGui::DragFloat(
-					"Hit Stop Duration",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Hit Stop Duration"),
 					&component.hitBoxHitStopDuration,
 					0.001f, 0.0f, 1.0f
 				);
 				hitBoxChanged |= InputTextString(
-					"Reaction Tag", component.hitBoxReactionTag
+					LocalizedComponentWidgetLabel(editorLanguage_, "Reaction Tag"), component.hitBoxReactionTag
 				);
 				hitBoxChanged |= InputTextString(
-					"Damage Stat", component.hitBoxDamageStatId
+					LocalizedComponentWidgetLabel(editorLanguage_, "Damage Stat"), component.hitBoxDamageStatId
 				);
 				hitBoxChanged |= InputTextString(
-					"Poise Stat", component.hitBoxPoiseStatId
+					LocalizedComponentWidgetLabel(editorLanguage_, "Poise Stat"), component.hitBoxPoiseStatId
 				);
 				hitBoxChanged |= ImGui::InputScalar(
-					"Owner Entity Id",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Owner Entity Id"),
 					ImGuiDataType_U64,
 					&component.hitBoxOwnerEntityId
 				);
 				hitBoxChanged |= InputTextString(
-					"Owner Entity Name", component.hitBoxOwnerEntityName
+					LocalizedComponentWidgetLabel(editorLanguage_, "Owner Entity Name"), component.hitBoxOwnerEntityName
 				);
 				hitBoxChanged |= ImGui::Checkbox(
-					"Ignore Same Faction", &component.hitBoxIgnoreSameFaction
+					LocalizedComponentWidgetLabel(editorLanguage_, "Ignore Same Faction"), &component.hitBoxIgnoreSameFaction
 				);
 				component.hitBoxDamage = (std::max)(component.hitBoxDamage, 0.0f);
 				component.hitBoxPoiseDamage = (std::max)(
@@ -9058,28 +11705,28 @@ void ImGuiManager::DrawInspectorWindow() {
 				if (hitBoxChanged) {
 					document.MarkDirty();
 				}
-				ImGui::TextDisabled("Requires a Trigger Collider on this Entity.");
+				ImGui::TextDisabled(SelectEditorText(editorLanguage_, "このEntityにはTrigger Colliderが必要です。", "Requires a Trigger Collider on this Entity."));
 				ImGui::EndDisabled();
 			} else if (component.type == "HurtBox") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool hurtBoxChanged = false;
 				hurtBoxChanged |= ImGui::DragFloat(
-					"Damage Multiplier",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Damage Multiplier"),
 					&component.hurtBoxDamageMultiplier,
 					0.01f,
 					0.0f,
 					100.0f
 				);
 				hurtBoxChanged |= InputTextString(
-					"Health Stat", component.hurtBoxHealthStatId
+					LocalizedComponentWidgetLabel(editorLanguage_, "Health Stat"), component.hurtBoxHealthStatId
 				);
 				hurtBoxChanged |= ImGui::InputScalar(
-					"Stats Entity Id",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Stats Entity Id"),
 					ImGuiDataType_U64,
 					&component.hurtBoxStatsEntityId
 				);
 				hurtBoxChanged |= InputTextString(
-					"Stats Entity Name", component.hurtBoxStatsEntityName
+					LocalizedComponentWidgetLabel(editorLanguage_, "Stats Entity Name"), component.hurtBoxStatsEntityName
 				);
 				component.hurtBoxDamageMultiplier = (std::max)(
 					component.hurtBoxDamageMultiplier,
@@ -9088,20 +11735,20 @@ void ImGuiManager::DrawInspectorWindow() {
 				if (hurtBoxChanged) {
 					document.MarkDirty();
 				}
-				ImGui::TextDisabled("Requires a Trigger Collider on this Entity.");
+				ImGui::TextDisabled(SelectEditorText(editorLanguage_, "このEntityにはTrigger Colliderが必要です。", "Requires a Trigger Collider on this Entity."));
 				ImGui::EndDisabled();
 			} else if (component.type == "HitReaction") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool reactionChanged = false;
 				reactionChanged |= ImGui::DragFloat(
-					"Knockback Multiplier",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Knockback Multiplier"),
 					&component.hitReactionKnockbackMultiplier,
 					0.01f, 0.0f, 100.0f
 				);
 				const char* reactionModePreview =
 					component.hitReactionTriggerMode == "PoiseBreak"
 					? "Poise Break" : "Minimum Damage";
-				if (ImGui::BeginCombo("Reaction Trigger", reactionModePreview)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Reaction Trigger"), reactionModePreview)) {
 					if (ImGui::Selectable(
 						"Minimum Damage",
 						component.hitReactionTriggerMode == "MinimumDamage"
@@ -9120,10 +11767,10 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				if (component.hitReactionTriggerMode == "PoiseBreak") {
 					reactionChanged |= InputTextString(
-						"Poise Stat", component.hitReactionPoiseStatId
+						LocalizedComponentWidgetLabel(editorLanguage_, "Poise Stat"), component.hitReactionPoiseStatId
 					);
 					reactionChanged |= ImGui::DragFloat(
-						"Poise Recovery Delay",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Poise Recovery Delay"),
 						&component.hitReactionPoiseRecoveryDelay,
 						0.05f, 0.0f, 60.0f
 					);
@@ -9143,15 +11790,15 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool deathChanged = false;
 				deathChanged |= InputTextString(
-					"Death State", component.deathPresentationStateName
+					LocalizedComponentWidgetLabel(editorLanguage_, "Death State"), component.deathPresentationStateName
 				);
 				deathChanged |= ImGui::DragFloat(
-					"Deactivate Delay",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Deactivate Delay"),
 					&component.deathPresentationDeactivateDelay,
 					0.05f, 0.0f, 60.0f
 				);
 				deathChanged |= InputTextString(
-					"Death Effect Path", component.deathPresentationEffectPath
+					LocalizedComponentWidgetLabel(editorLanguage_, "Death Effect Path"), component.deathPresentationEffectPath
 				);
 				if (deathChanged) { document.MarkDirty(); }
 				ImGui::EndDisabled();
@@ -9179,7 +11826,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const std::string targetLabel = targetEntity
 					? targetEntity->name
 					: "Parent / Auto";
-				if (ImGui::BeginCombo("Target Entity", targetLabel.c_str())) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Target Entity"), targetLabel.c_str())) {
 					const bool autoSelected =
 						component.boneAttachmentTargetEntityId == 0 &&
 						component.boneAttachmentTargetEntityName.empty();
@@ -9213,11 +11860,11 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				if (targetEntity) {
 					ImGui::TextDisabled(
-						"Bound Entity ID: %llu",
+						SelectEditorText(editorLanguage_, "接続先Entity ID: %llu", "Bound Entity ID: %llu"),
 						static_cast<unsigned long long>(targetEntity->id)
 					);
 				} else if (!parentEntity) {
-					ImGui::TextDisabled("Select a target Entity or set a parent.");
+					ImGui::TextDisabled(SelectEditorText(editorLanguage_, "対象Entityを選択するか、親を設定してください。", "Select a target Entity or set a parent."));
 				}
 
 				const std::vector<std::string> targetJointNames =
@@ -9226,21 +11873,21 @@ void ImGuiManager::DrawInspectorWindow() {
 					: std::vector<std::string>{};
 				ImGui::BeginDisabled(targetJointNames.empty());
 				attachmentChanged |= DrawJointNameCombo(
-					"Target Bone",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Target Bone"),
 					targetJointNames,
 					component.boneAttachmentJointName
 				);
 				ImGui::EndDisabled();
 				if (targetJointNames.empty()) {
 					ImGui::TextDisabled(
-						"The target Entity needs a MeshRenderer model with bones."
+						SelectEditorText(editorLanguage_, "対象EntityにはBoneを持つMeshRendererモデルが必要です。", "The target Entity needs a MeshRenderer model with bones.")
 					);
 				}
 
 				const bool matchesSourceBone =
 					component.boneAttachmentAlignmentMode == "MatchSourceBone";
 				if (ImGui::BeginCombo(
-					"Alignment Mode",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Alignment Mode"),
 					matchesSourceBone ? "Match Weapon Bone" : "Manual Offset"
 				)) {
 					if (ImGui::Selectable(
@@ -9262,27 +11909,27 @@ void ImGuiManager::DrawInspectorWindow() {
 						CollectEntityJointNames(*entity);
 					ImGui::BeginDisabled(sourceJointNames.empty());
 					attachmentChanged |= DrawJointNameCombo(
-						"Weapon Bone",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Weapon Bone"),
 						sourceJointNames,
 						component.boneAttachmentSourceJointName
 					);
 					ImGui::EndDisabled();
 					if (sourceJointNames.empty()) {
 						ImGui::TextDisabled(
-							"This Entity needs a MeshRenderer model with bones."
+							SelectEditorText(editorLanguage_, "このEntityにはBoneを持つMeshRendererモデルが必要です。", "This Entity needs a MeshRenderer model with bones.")
 						);
 					} else {
 						ImGui::TextDisabled(
-							"This Entity Transform is ignored so both bones match exactly."
+							SelectEditorText(editorLanguage_, "両方のBoneを正確に一致させるため、このEntityのTransformは使用しません。", "This Entity Transform is ignored so both bones match exactly.")
 						);
 					}
 				} else {
 					ImGui::TextDisabled(
-						"Use this Entity's Transform section above as the attachment offset."
+						SelectEditorText(editorLanguage_, "このEntityの上部TransformをAttachmentのオフセットとして使用します。", "Use this Entity's Transform section above as the attachment offset.")
 					);
 				}
 				attachmentChanged |= ImGui::Checkbox(
-					"Inherit Bone Scale", &component.boneAttachmentInheritScale
+					LocalizedComponentWidgetLabel(editorLanguage_, "Inherit Bone Scale"), &component.boneAttachmentInheritScale
 				);
 				if (attachmentChanged) {
 					document.MarkDirty();
@@ -9297,52 +11944,52 @@ void ImGuiManager::DrawInspectorWindow() {
 					&component.enemyTargetEntityId
 				);
 				enemyChanged |= InputTextString(
-					"Target Entity Name", component.enemyTargetEntityName
+					LocalizedComponentWidgetLabel(editorLanguage_, "Target Entity Name"), component.enemyTargetEntityName
 				);
 				enemyChanged |= InputTextString(
-					"Health Stat", component.enemyHealthStatId
+					LocalizedComponentWidgetLabel(editorLanguage_, "Health Stat"), component.enemyHealthStatId
 				);
 				enemyChanged |= ImGui::DragFloat(
-					"Detection Range", &component.enemyDetectionRange, 0.1f, 0.0f, 10000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Detection Range"), &component.enemyDetectionRange, 0.1f, 0.0f, 10000.0f
 				);
 				enemyChanged |= ImGui::DragFloat(
-					"Lose Range", &component.enemyLoseRange, 0.1f, 0.0f, 10000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Lose Range"), &component.enemyLoseRange, 0.1f, 0.0f, 10000.0f
 				);
 				enemyChanged |= ImGui::DragFloat(
-					"Attack Range", &component.enemyAttackRange, 0.1f, 0.0f, 10000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attack Range"), &component.enemyAttackRange, 0.1f, 0.0f, 10000.0f
 				);
 				enemyChanged |= ImGui::DragFloat(
-					"Move Speed", &component.enemyMoveSpeed, 0.05f, 0.0f, 1000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Move Speed"), &component.enemyMoveSpeed, 0.05f, 0.0f, 1000.0f
 				);
 				enemyChanged |= ImGui::DragFloat(
-					"Turn Speed", &component.enemyTurnSpeed, 0.05f, 0.0f, 1000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Turn Speed"), &component.enemyTurnSpeed, 0.05f, 0.0f, 1000.0f
 				);
 				enemyChanged |= ImGui::DragFloat(
-					"Attack Cooldown", &component.enemyAttackCooldown, 0.01f, 0.0f, 1000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attack Cooldown"), &component.enemyAttackCooldown, 0.01f, 0.0f, 1000.0f
 				);
 				enemyChanged |= ImGui::DragFloat(
-					"Attack Windup", &component.enemyAttackWindup, 0.01f, 0.0f, 1000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attack Windup"), &component.enemyAttackWindup, 0.01f, 0.0f, 1000.0f
 				);
 				enemyChanged |= ImGui::DragFloat(
-					"Attack Active Time", &component.enemyAttackActiveTime, 0.01f, 0.0f, 1000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attack Active Time"), &component.enemyAttackActiveTime, 0.01f, 0.0f, 1000.0f
 				);
 				enemyChanged |= ImGui::DragFloat(
-					"Attack Recovery", &component.enemyAttackRecovery, 0.01f, 0.0f, 1000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attack Recovery"), &component.enemyAttackRecovery, 0.01f, 0.0f, 1000.0f
 				);
 				enemyChanged |= ImGui::DragInt(
-					"Attack Animation Clip", &component.enemyAttackAnimationClip, 1.0f, 0, 1024
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attack Animation Clip"), &component.enemyAttackAnimationClip, 1.0f, 0, 1024
 				);
 				enemyChanged |= InputTextString(
-					"Attack Prefab Animation Clip",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attack Prefab Animation Clip"),
 					component.enemyAttackPrefabAnimationClip
 				);
 				enemyChanged |= ImGui::InputScalar(
-					"Attack HitBox Entity Id",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attack HitBox Entity Id"),
 					ImGuiDataType_U64,
 					&component.enemyAttackHitBoxEntityId
 				);
 				enemyChanged |= InputTextString(
-					"Attack HitBox Entity Name",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attack HitBox Entity Name"),
 					component.enemyAttackHitBoxEntityName
 				);
 				component.enemyLoseRange = (std::max)(
@@ -9357,26 +12004,26 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool spawnerChanged = false;
 				spawnerChanged |= InputTextString(
-					"Enemy Prefab", component.enemySpawnerPrefabPath
+					LocalizedComponentWidgetLabel(editorLanguage_, "Enemy Prefab"), component.enemySpawnerPrefabPath
 				);
 				spawnerChanged |= ImGui::DragInt(
-					"Initial Count", &component.enemySpawnerInitialCount,
+					LocalizedComponentWidgetLabel(editorLanguage_, "Initial Count"), &component.enemySpawnerInitialCount,
 					1.0f, 0, 10000
 				);
 				spawnerChanged |= ImGui::DragInt(
-					"Max Alive", &component.enemySpawnerMaxAlive,
+					LocalizedComponentWidgetLabel(editorLanguage_, "Max Alive"), &component.enemySpawnerMaxAlive,
 					1.0f, 0, 10000
 				);
 				spawnerChanged |= ImGui::DragFloat(
-					"Respawn Interval", &component.enemySpawnerInterval,
+					LocalizedComponentWidgetLabel(editorLanguage_, "Respawn Interval"), &component.enemySpawnerInterval,
 					0.05f, 0.0f, 3600.0f
 				);
 				spawnerChanged |= ImGui::DragFloat(
-					"Spawn Radius", &component.enemySpawnerRadius,
+					LocalizedComponentWidgetLabel(editorLanguage_, "Spawn Radius"), &component.enemySpawnerRadius,
 					0.1f, 0.0f, 10000.0f
 				);
 				spawnerChanged |= ImGui::Checkbox(
-					"Auto Start", &component.enemySpawnerAutoStart
+					LocalizedComponentWidgetLabel(editorLanguage_, "Auto Start"), &component.enemySpawnerAutoStart
 				);
 				component.enemySpawnerInitialCount = (std::max)(
 					component.enemySpawnerInitialCount, 0
@@ -9402,31 +12049,31 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool projectileChanged = false;
 				projectileChanged |= ImGui::DragFloat3(
-					"Local Direction", &component.projectileDirection.x, 0.01f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Local Direction"), &component.projectileDirection.x, 0.01f
 				);
 				projectileChanged |= ImGui::DragFloat(
-					"Speed", &component.projectileSpeed, 0.1f, 0.0f, 10000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Speed"), &component.projectileSpeed, 0.1f, 0.0f, 10000.0f
 				);
 				projectileChanged |= ImGui::DragFloat(
-					"Gravity", &component.projectileGravity, 0.1f, -1000.0f, 1000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Gravity"), &component.projectileGravity, 0.1f, -1000.0f, 1000.0f
 				);
 				projectileChanged |= ImGui::DragFloat(
-					"Lifetime", &component.projectileLifetime, 0.05f, 0.0f, 10000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Lifetime"), &component.projectileLifetime, 0.05f, 0.0f, 10000.0f
 				);
 				projectileChanged |= ImGui::Checkbox(
-					"Destroy On Hit", &component.projectileDestroyOnHit
+					LocalizedComponentWidgetLabel(editorLanguage_, "Destroy On Hit"), &component.projectileDestroyOnHit
 				);
 				projectileChanged |= ImGui::InputScalar(
-					"Homing Target Entity Id",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Homing Target Entity Id"),
 					ImGuiDataType_U64,
 					&component.projectileHomingTargetEntityId
 				);
 				projectileChanged |= InputTextString(
-					"Homing Target Entity Name",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Homing Target Entity Name"),
 					component.projectileHomingTargetEntityName
 				);
 				projectileChanged |= ImGui::DragFloat(
-					"Homing Strength",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Homing Strength"),
 					&component.projectileHomingStrength,
 					0.1f,
 					0.0f,
@@ -9442,7 +12089,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				const char* currentBodyType = component.physicsBodyType.empty()
 					? "Static"
 					: component.physicsBodyType.c_str();
-				if (ImGui::BeginCombo("Body Type", currentBodyType)) {
+				if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Body Type"), currentBodyType)) {
 					const char* bodyTypes[] = { "Static", "Dynamic", "Kinematic" };
 					for (const char* bodyType : bodyTypes) {
 						if (ImGui::Selectable(
@@ -9458,55 +12105,55 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndCombo();
 				}
 				physicsChanged |= ImGui::DragFloat(
-					"Mass",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Mass"),
 					&component.physicsMass,
 					0.05f,
 					0.001f,
 					10000.0f
 				);
 				physicsChanged |= ImGui::Checkbox(
-					"Use Gravity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Use Gravity"),
 					&component.physicsUseGravity
 				);
 				physicsChanged |= ImGui::DragFloat(
-					"Gravity Scale",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Gravity Scale"),
 					&component.physicsGravityScale,
 					0.05f,
 					-10.0f,
 					10.0f
 				);
 				physicsChanged |= ImGui::DragFloat(
-					"Drag",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Drag"),
 					&component.physicsDrag,
 					0.02f,
 					0.0f,
 					100.0f
 				);
 				physicsChanged |= ImGui::SliderFloat(
-					"Restitution",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Restitution"),
 					&component.physicsRestitution,
 					0.0f,
 					1.0f
 				);
 				physicsChanged |= ImGui::SliderFloat(
-					"Friction",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Friction"),
 					&component.physicsFriction,
 					0.0f,
 					1.0f
 				);
 				physicsChanged |= ImGui::DragFloat(
-					"Max Fall Speed",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Max Fall Speed"),
 					&component.physicsMaxFallSpeed,
 					0.1f,
 					0.0f,
 					1000.0f
 				);
 				physicsChanged |= ImGui::DragFloat3(
-					"Velocity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Velocity"),
 					&component.physicsVelocity.x,
 					0.05f
 				);
-				ImGui::TextDisabled("Freeze Position");
+				ImGui::TextDisabled(LocalizedComponentWidgetLabel(editorLanguage_, "Freeze Position"));
 				physicsChanged |= ImGui::Checkbox(
 					"X##FreezePosition",
 					&component.physicsFreezePositionX
@@ -9547,38 +12194,38 @@ void ImGuiManager::DrawInspectorWindow() {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool playerChanged = false;
 				playerChanged |= ImGui::DragFloat(
-					"Move Speed",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Move Speed"),
 					&component.playerMoveSpeed,
 					0.1f,
 					0.0f,
 					100.0f
 				);
 				playerChanged |= ImGui::DragFloat(
-					"Jump Velocity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Jump Velocity"),
 					&component.playerJumpVelocity,
 					0.1f,
 					0.0f,
 					200.0f
 				);
 				playerChanged |= ImGui::SliderFloat(
-					"Turn Responsiveness",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Turn Responsiveness"),
 					&component.playerTurnResponsiveness,
 					0.0f,
 					1.0f
 				);
 				playerChanged |= ImGui::DragFloat(
-					"Dash Multiplier",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Dash Multiplier"),
 					&component.playerDashMultiplier,
 					0.05f,
 					1.0f,
 					5.0f
 				);
 				playerChanged |= ImGui::Checkbox(
-					"Camera Relative Move",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Camera Relative Move"),
 					&component.playerCameraRelativeMove
 				);
 				playerChanged |= ImGui::Checkbox(
-					"Allow Jump",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Allow Jump"),
 					&component.playerAllowJump
 				);
 				if (component.playerMoveSpeed < 0.0f) {
@@ -9612,7 +12259,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					_TRUNCATE
 				);
 				if (ImGui::InputText(
-					"Behavior",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Behavior"),
 					behaviorBuffer,
 					sizeof(behaviorBuffer)
 				)) {
@@ -9626,7 +12273,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					_TRUNCATE
 				);
 				if (ImGui::InputText(
-					"Profile",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Profile"),
 					profileBuffer,
 					sizeof(profileBuffer)
 				)) {
@@ -9641,7 +12288,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					belongsToAgentTeam && agentTeam->agentBehaviorOverride;
 				if (hasTeamAgentSettings) {
 					agentChanged |= ImGui::Checkbox(
-						"Override Team Agent Settings",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Override Team Agent Settings"),
 						&component.agentTeamSettingsOverride
 					);
 				}
@@ -9650,14 +12297,18 @@ void ImGuiManager::DrawInspectorWindow() {
 					!component.agentTeamSettingsOverride;
 				if (useTeamAgentSettings) {
 					ImGui::Text(
-						"Using Team Agent Settings: %s",
+						SelectEditorText(
+							editorLanguage_,
+							"Team Agent設定を使用中: %s",
+							"Using Team Agent Settings: %s"
+						),
 						agentTeam->name.c_str()
 					);
 				}
 				const bool isGroundAgent =
 					component.agentMovementMode == "GroundXZ";
 				if (ImGui::BeginCombo(
-					"Movement Mode",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Movement Mode"),
 					isGroundAgent ? "Ground XZ" : "Free 3D"
 				)) {
 					if (ImGui::Selectable("Free 3D", !isGroundAgent)) {
@@ -9671,30 +12322,34 @@ void ImGuiManager::DrawInspectorWindow() {
 					ImGui::EndCombo();
 				}
 				if (isGroundAgent) {
-					ImGui::TextDisabled(
+					ImGui::TextDisabled("%s", SelectEditorText(
+						editorLanguage_,
+						"EnemyBehavior後のPhysicsBody速度へXZ方向の分離を加えます。",
 						"Adds XZ separation to PhysicsBody velocity after EnemyBehavior."
-					);
-					ImGui::TextDisabled(
+					));
+					ImGui::TextDisabled("%s", SelectEditorText(
+						editorLanguage_,
+						"Transform、回転、垂直速度は他Systemが管理します。",
 						"Transform, rotation, and vertical velocity remain owned by other systems."
-					);
+					));
 					ImGui::BeginDisabled(useTeamAgentSettings);
-					ImGui::SeparatorText("Ground Separation");
+					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "地上分離", "Ground Separation"));
 					agentChanged |= ImGui::DragFloat(
-						"Separation Radius",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Separation Radius"),
 						&component.agentSeparationRadius,
 						0.05f,
 						0.0f,
 						100.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Separation Weight",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Separation Weight"),
 						&component.agentSeparationWeight,
 						0.05f,
 						0.0f,
 						100.0f
 					);
 					agentChanged |= ImGui::InputInt(
-						"Neighbor Limit",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Neighbor Limit"),
 						&component.agentNeighborLimit
 					);
 					ImGui::EndDisabled();
@@ -9712,7 +12367,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						_TRUNCATE
 					);
 					if (ImGui::InputText(
-						"Group",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Group"),
 						groupBuffer,
 						sizeof(groupBuffer)
 					)) {
@@ -9721,30 +12376,30 @@ void ImGuiManager::DrawInspectorWindow() {
 					}
 				}
 
-				ImGui::SeparatorText("Motion");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "移動", "Motion"));
 				agentChanged |= ImGui::DragFloat(
-					"Min Speed",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Min Speed"),
 					&component.agentMinSpeed,
 					0.05f,
 					0.0f,
 					100.0f
 				);
 				agentChanged |= ImGui::DragFloat(
-					"Max Speed",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Max Speed"),
 					&component.agentMaxSpeed,
 					0.05f,
 					0.0f,
 					100.0f
 				);
 				agentChanged |= ImGui::DragFloat(
-					"Turn Speed",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Turn Speed"),
 					&component.agentTurnSpeed,
 					0.05f,
 					0.0f,
 					20.0f
 				);
 				agentChanged |= ImGui::DragFloat(
-					"Wander Strength",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Wander Strength"),
 					&component.agentWanderStrength,
 					0.05f,
 					0.0f,
@@ -9752,150 +12407,150 @@ void ImGuiManager::DrawInspectorWindow() {
 				);
 				if (component.agentWanderStrength > 0.0f) {
 					agentChanged |= ImGui::DragFloat(
-						"Wander Change Interval",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Wander Change Interval"),
 						&component.agentWanderChangeInterval,
 						0.05f,
 						0.0f,
 						60.0f
 					);
 					agentChanged |= ImGui::SliderFloat(
-						"Wander Direction Range",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Wander Direction Range"),
 						&component.agentWanderDirectionRange,
 						0.0f,
 						3.141592f
 					);
 					agentChanged |= ImGui::SliderFloat(
-						"Wander Vertical Range",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Wander Vertical Range"),
 						&component.agentWanderVerticalRange,
 						0.0f,
 						1.0f
 					);
 					agentChanged |= ImGui::Checkbox(
-						"Randomize Seed On Play",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Randomize Seed On Play"),
 						&component.agentRandomizeSeedOnPlay
 					);
 					if (!component.agentRandomizeSeedOnPlay) {
 						agentChanged |= ImGui::InputInt(
-							"Random Seed",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Random Seed"),
 							&component.agentRandomSeed
 						);
 					}
 				}
 				if (belongsToAgentTeam) {
 					agentChanged |= ImGui::DragFloat(
-						"Flock Decision Interval",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Flock Decision Interval"),
 						&component.agentFlockDecisionInterval,
 						0.01f,
 						0.0f,
 						5.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Flock Acceleration",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Flock Acceleration"),
 						&component.agentFlockAcceleration,
 						0.05f,
 						0.0f,
 						100.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Flock Max Turn Rate",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Flock Max Turn Rate"),
 						&component.agentFlockTurnRate,
 						0.01f,
 						0.0f,
 						6.283185f
 					);
-					ImGui::SeparatorText("Member Follow");
+					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "メンバー追従", "Member Follow"));
 					agentChanged |= ImGui::DragFloat(
-						"Return Strength",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Return Strength"),
 						&component.agentMemberCenterFollow,
 						0.05f,
 						0.0f,
 						20.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Jitter Strength",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Jitter Strength"),
 						&component.agentMemberJitterStrength,
 						0.01f,
 						0.0f,
 						10.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Jitter Frequency",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Jitter Frequency"),
 						&component.agentMemberJitterFrequency,
 						0.01f,
 						0.0f,
 						10.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Jitter Update Interval",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Jitter Update Interval"),
 						&component.agentMemberJitterUpdateInterval,
 						0.01f,
 						0.0f,
 						10.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Jitter Follow Speed",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Jitter Follow Speed"),
 						&component.agentMemberJitterFollowSpeed,
 						0.01f,
 						0.0f,
 						20.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Max Distance",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Max Distance"),
 						&component.agentMemberLeashDistance,
 						0.05f,
 						0.0f,
 						100.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Leash Strength",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Leash Strength"),
 						&component.agentMemberLeashStrength,
 						0.05f,
 						0.0f,
 						20.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Catchup Speed",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Catchup Speed"),
 						&component.agentMemberCatchupSpeed,
 						0.05f,
 						0.0f,
 						100.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Separation Update Interval",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Separation Update Interval"),
 						&component.agentMemberSeparationUpdateInterval,
 						0.01f,
 						0.0f,
 						5.0f
 					);
 					agentChanged |= ImGui::SliderFloat(
-						"Separation Blend",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Separation Blend"),
 						&component.agentMemberSeparationBlend,
 						0.0f,
 						1.0f
 					);
 
-					ImGui::SeparatorText("Team Heading");
+					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Team Heading", "Team Heading"));
 					agentChanged |= ImGui::Checkbox(
-						"Use Team Heading",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Use Team Heading"),
 						&component.agentUseTeamHeading
 					);
 					if (component.agentUseTeamHeading) {
 						agentChanged |= ImGui::DragFloat3(
-							"Team Heading Direction",
+							LocalizedComponentWidgetLabel(editorLanguage_, "Team Heading Direction"),
 							&component.agentTeamHeadingDirection.x,
 							0.01f,
 							-1.0f,
 							1.0f
 						);
 						agentChanged |= ImGui::DragFloat(
-							"Team Heading Weight",
+							LocalizedComponentWidgetLabel(editorLanguage_, "Team Heading Weight"),
 							&component.agentTeamHeadingWeight,
 							0.05f,
 							0.0f,
 							20.0f
 						);
 						agentChanged |= ImGui::DragFloat(
-							"Team Heading Follow Speed",
+							LocalizedComponentWidgetLabel(editorLanguage_, "Team Heading Follow Speed"),
 							&component.agentTeamHeadingFollowSpeed,
 							0.05f,
 							0.0f,
@@ -9904,9 +12559,9 @@ void ImGuiManager::DrawInspectorWindow() {
 					}
 				}
 
-				ImGui::SeparatorText("Rotation");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "回転", "Rotation"));
 				agentChanged |= ImGui::Checkbox(
-					"Align Forward To Velocity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Align Forward To Velocity"),
 					&component.agentAlignForwardToVelocity
 				);
 				if (component.agentAlignForwardToVelocity) {
@@ -9919,7 +12574,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						"-Y"
 					};
 					if (ImGui::BeginCombo(
-						"Forward Axis",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Forward Axis"),
 						component.agentForwardAxis.c_str()
 					)) {
 						for (const char* axis : agentForwardAxes) {
@@ -9934,35 +12589,35 @@ void ImGuiManager::DrawInspectorWindow() {
 						ImGui::EndCombo();
 					}
 					agentChanged |= ImGui::Checkbox(
-						"Rotate X",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Rotate X"),
 						&component.agentRotateAxisX
 					);
 					ImGui::SameLine();
 					agentChanged |= ImGui::Checkbox(
-						"Rotate Y",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Rotate Y"),
 						&component.agentRotateAxisY
 					);
 					ImGui::SameLine();
 					agentChanged |= ImGui::Checkbox(
-						"Rotate Z",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Rotate Z"),
 						&component.agentRotateAxisZ
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Rotation Follow Speed",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Rotation Follow Speed"),
 						&component.agentRotationFollowSpeed,
 						0.05f,
 						0.0f,
 						60.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Pitch From Vertical Velocity",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Pitch From Vertical Velocity"),
 						&component.agentPitchFromVerticalVelocity,
 						0.05f,
 						0.0f,
 						4.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Banking Strength",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Banking Strength"),
 						&component.agentBankingStrength,
 						0.05f,
 						0.0f,
@@ -9971,13 +12626,13 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 				ImGui::EndDisabled();
 
-				ImGui::SeparatorText("Bounds");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Bounds", "Bounds"));
 				agentChanged |= ImGui::Checkbox(
-					"Use Water Bounds",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Use Water Bounds"),
 					&component.agentUseWaterBounds
 				);
 				agentChanged |= ImGui::InputScalar(
-					"Bounds Entity Id",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Bounds Entity Id"),
 					ImGuiDataType_U64,
 					&component.agentBoundsEntityId
 				);
@@ -9988,7 +12643,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					_TRUNCATE
 				);
 				if (ImGui::InputText(
-					"Bounds Name",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Bounds Name"),
 					boundsNameBuffer,
 					sizeof(boundsNameBuffer)
 				)) {
@@ -9996,16 +12651,16 @@ void ImGuiManager::DrawInspectorWindow() {
 					agentChanged = true;
 				}
 				agentChanged |= ImGui::DragFloat(
-					"Bounds Weight",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Bounds Weight"),
 					&component.agentBoundsWeight,
 					0.05f,
 					0.0f,
 					50.0f
 				);
 
-				ImGui::SeparatorText("Attractor");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Attractor", "Attractor"));
 				agentChanged |= ImGui::DragFloat(
-					"Attractor Weight",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Attractor Weight"),
 					&component.agentAttractorWeight,
 					0.05f,
 					0.0f,
@@ -10013,7 +12668,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				);
 				if (component.agentAttractorWeight > 0.0f) {
 					agentChanged |= ImGui::InputScalar(
-						"Attractor Entity Id",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Attractor Entity Id"),
 						ImGuiDataType_U64,
 						&component.agentAttractorEntityId
 					);
@@ -10024,7 +12679,7 @@ void ImGuiManager::DrawInspectorWindow() {
 						_TRUNCATE
 					);
 					if (ImGui::InputText(
-						"Attractor Tag",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Attractor Tag"),
 						attractorTagBuffer,
 						sizeof(attractorTagBuffer)
 					)) {
@@ -10034,73 +12689,73 @@ void ImGuiManager::DrawInspectorWindow() {
 				}
 
 				ImGui::BeginDisabled(useTeamAgentSettings);
-				ImGui::SeparatorText("Schooling");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Schooling", "Schooling"));
 				agentChanged |= ImGui::Checkbox(
-					"Schooling",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Schooling"),
 					&component.agentSchooling
 				);
 				if (component.agentSchooling) {
 					agentChanged |= ImGui::DragFloat(
-						"Schooling Update Interval",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Schooling Update Interval"),
 						&component.agentSchoolingUpdateInterval,
 						0.01f,
 						0.0f,
 						5.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Schooling Update Jitter",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Schooling Update Jitter"),
 						&component.agentSchoolingUpdateJitter,
 						0.01f,
 						0.0f,
 						1.0f
 					);
 					agentChanged |= ImGui::InputInt(
-						"Neighbor Limit",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Neighbor Limit"),
 						&component.agentNeighborLimit
 					);
 					agentChanged |= ImGui::SliderFloat(
-						"Schooling Blend",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Schooling Blend"),
 						&component.agentSchoolingBlend,
 						0.0f,
 						1.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Separation Radius",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Separation Radius"),
 						&component.agentSeparationRadius,
 						0.05f,
 						0.0f,
 						100.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Alignment Radius",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Alignment Radius"),
 						&component.agentAlignmentRadius,
 						0.05f,
 						0.0f,
 						100.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Cohesion Radius",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Cohesion Radius"),
 						&component.agentCohesionRadius,
 						0.05f,
 						0.0f,
 						100.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Separation Weight",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Separation Weight"),
 						&component.agentSeparationWeight,
 						0.05f,
 						0.0f,
 						50.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Alignment Weight",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Alignment Weight"),
 						&component.agentAlignmentWeight,
 						0.05f,
 						0.0f,
 						50.0f
 					);
 					agentChanged |= ImGui::DragFloat(
-						"Cohesion Weight",
+						LocalizedComponentWidgetLabel(editorLanguage_, "Cohesion Weight"),
 						&component.agentCohesionWeight,
 						0.05f,
 						0.0f,
@@ -10108,14 +12763,14 @@ void ImGuiManager::DrawInspectorWindow() {
 					);
 				}
 
-				ImGui::SeparatorText("Visual");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "表示", "Visual"));
 				agentChanged |= ImGui::ColorEdit4(
-					"Visual Color",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Visual Color"),
 					&component.agentVisualColor.x,
 					ImGuiColorEditFlags_Float
 				);
 				agentChanged |= ImGui::Checkbox(
-					"Enable Lighting",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Enable Lighting"),
 					&component.agentEnableLighting
 				);
 				ImGui::EndDisabled();
@@ -10236,7 +12891,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					component.attractorTag.c_str(),
 					_TRUNCATE
 				);
-				if (ImGui::InputText("Tag", tagBuffer, sizeof(tagBuffer))) {
+				if (ImGui::InputText(LocalizedComponentWidgetLabel(editorLanguage_, "Tag"), tagBuffer, sizeof(tagBuffer))) {
 					component.attractorTag = tagBuffer;
 					attractorChanged = true;
 				}
@@ -10247,7 +12902,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					_TRUNCATE
 				);
 				if (ImGui::InputText(
-					"Target Behavior",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Target Behavior"),
 					targetBehaviorBuffer,
 					sizeof(targetBehaviorBuffer)
 				)) {
@@ -10262,7 +12917,7 @@ void ImGuiManager::DrawInspectorWindow() {
 					_TRUNCATE
 				);
 				if (ImGui::InputText(
-					"Target Profile",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Target Profile"),
 					targetProfileBuffer,
 					sizeof(targetProfileBuffer)
 				)) {
@@ -10271,21 +12926,21 @@ void ImGuiManager::DrawInspectorWindow() {
 					attractorChanged = true;
 				}
 				attractorChanged |= ImGui::DragFloat(
-					"Radius",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Radius"),
 					&component.attractorRadius,
 					0.1f,
 					0.0f,
 					500.0f
 				);
 				attractorChanged |= ImGui::DragFloat(
-					"Strength",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Strength"),
 					&component.attractorStrength,
 					0.05f,
 					0.0f,
 					50.0f
 				);
 				attractorChanged |= ImGui::ColorEdit4(
-					"Visual Color",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Visual Color"),
 					&component.attractorVisualColor.x,
 					ImGuiColorEditFlags_Float
 				);
@@ -10304,70 +12959,70 @@ void ImGuiManager::DrawInspectorWindow() {
 			} else if (component.type == "WaterVolume") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool waterChanged = false;
-				ImGui::SeparatorText("Volume");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Volume", "Volume"));
 				waterChanged |= ImGui::DragFloat3(
-					"Half Size",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Half Size"),
 					&component.waterHalfSize.x,
 					0.1f,
 					0.1f,
 					500.0f
 				);
 				waterChanged |= ImGui::DragFloat3(
-					"Offset",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Offset"),
 					&component.waterOffset.x,
 					0.1f
 				);
-				ImGui::SeparatorText("Surface");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Surface", "Surface"));
 				waterChanged |= ImGui::Checkbox(
-					"Surface Enabled",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Surface Enabled"),
 					&component.waterSurfaceEnabled
 				);
 				waterChanged |= ImGui::ColorEdit4(
-					"Base Color",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Base Color"),
 					&component.waterSurfaceBaseColor.x,
 					ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
 				);
 				waterChanged |= ImGui::ColorEdit4(
-					"Highlight Color",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Highlight Color"),
 					&component.waterSurfaceHighlightColor.x,
 					ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Surface Alpha",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Surface Alpha"),
 					&component.waterSurfaceAlpha,
 					0.0f,
 					1.0f
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Wave Scale",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Wave Scale"),
 					&component.waterSurfaceWaveScale,
 					0.0f,
 					3.0f
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Normal Strength",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Normal Strength"),
 					&component.waterSurfaceNormalStrength,
 					0.0f,
 					2.0f
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Fresnel Power",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Fresnel Power"),
 					&component.waterSurfaceFresnelPower,
 					0.2f,
 					8.0f
 				);
-				ImGui::SeparatorText("Water Light");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Water Light", "Water Light"));
 				waterChanged |= ImGui::Checkbox(
-					"Light Shafts",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Light Shafts"),
 					&component.waterLightShaftEnabled
 				);
 				waterChanged |= ImGui::ColorEdit4(
-					"Light Color",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Light Color"),
 					&component.waterLightColor.x,
 					ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
 				);
 				if (ImGui::DragFloat3(
-					"Light Direction",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Light Direction"),
 					&component.waterLightDirection.x,
 					0.01f,
 					-1.0f,
@@ -10376,90 +13031,90 @@ void ImGuiManager::DrawInspectorWindow() {
 					waterChanged = true;
 				}
 				waterChanged |= ImGui::SliderFloat(
-					"Light Intensity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Light Intensity"),
 					&component.waterLightIntensity,
 					0.0f,
 					3.0f
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Light Density",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Light Density"),
 					&component.waterLightDensity,
 					0.0f,
 					0.25f,
 					"%.4f"
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Caustics Intensity",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Caustics Intensity"),
 					&component.waterLightCausticsIntensity,
 					0.0f,
 					2.0f
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Caustics Scale",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Caustics Scale"),
 					&component.waterLightCausticsScale,
 					0.02f,
 					8.0f
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Caustics Speed",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Caustics Speed"),
 					&component.waterLightCausticsSpeed,
 					0.0f,
 					5.0f
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Breakup Strength",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Breakup Strength"),
 					&component.waterLightBreakupStrength,
 					0.0f,
 					3.0f
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Warp Strength",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Warp Strength"),
 					&component.waterLightWarpStrength,
 					0.0f,
 					3.0f
 				);
 				waterChanged |= ImGui::SliderFloat(
-					"Noise Scale",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Noise Scale"),
 					&component.waterLightNoiseScale,
 					0.1f,
 					4.0f
 				);
 				waterChanged |= ImGui::SliderInt(
-					"Raymarch Samples",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Raymarch Samples"),
 					&component.waterLightSampleCount,
 					4,
 					32
 				);
-				ImGui::SeparatorText("Player Behavior");
+				ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Player Behavior", "Player Behavior"));
 				waterChanged |= ImGui::SliderFloat(
-					"Move Speed Multiplier",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Move Speed Multiplier"),
 					&component.waterMoveSpeedMultiplier,
 					0.0f,
 					1.0f
 				);
 				waterChanged |= ImGui::DragFloat(
-					"Gravity Scale",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Gravity Scale"),
 					&component.waterGravityScale,
 					0.02f,
 					-5.0f,
 					5.0f
 				);
 				waterChanged |= ImGui::DragFloat(
-					"Drag",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Drag"),
 					&component.waterDrag,
 					0.05f,
 					0.0f,
 					100.0f
 				);
 				waterChanged |= ImGui::DragFloat(
-					"Max Fall Speed",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Max Fall Speed"),
 					&component.waterMaxFallSpeed,
 					0.1f,
 					0.0f,
 					100.0f
 				);
 				waterChanged |= ImGui::DragFloat(
-					"Swim Up Speed",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Swim Up Speed"),
 					&component.waterSwimUpSpeed,
 					0.1f,
 					0.0f,
@@ -10538,63 +13193,50 @@ void ImGuiManager::DrawInspectorWindow() {
 			editorSession_->RequestSceneReload();
 		}
 
-		ImGui::SeparatorText("Add Component");
-		ImGui::BeginDisabled(entityLocked || !editorSession_->IsEditing());
-		if (ImGui::BeginCombo("Component", "Select...")) {
-			const char* availableComponents[] = {
-				"MeshRenderer",
-				"Environment",
-				"SpriteRenderer",
-				"TextRenderer",
-				"Camera",
-				"Light",
-				"MonitorRenderer",
-				"CameraSwitcher",
-				"ThirdPersonCamera",
-				"EntityReference",
-				"SceneTransition",
-				"CameraPath",
-				"CameraPathPoint",
-				"PhysicsBody",
-				"PlayerBehavior",
-				"AgentBehavior",
-				"AgentAttractor",
-				"WaterVolume",
-				"Animator",
-				"OBBCollider",
-				"StatSet",
-				"StateMachine",
-				"EventTrigger",
-				"PostProcessProfileManager",
-				"PrefabAnimator",
-				"Faction",
-				"HitBox",
-				"HurtBox",
-				"HitReaction",
-				"DeathPresentation",
-				"BoneAttachment",
-				"EnemyBehavior",
-				"EnemySpawner",
-				"Projectile"
-			};
-			for (const char* componentType : availableComponents) {
-				if (HasComponent(*entity, componentType)) {
-					continue;
-				}
-				if (ImGui::Selectable(componentType)) {
-					if (
-						std::strcmp(componentType, "ThirdPersonCamera") == 0 &&
-						!HasComponent(*entity, "Camera")
-					) {
-						document.AddComponent(entity->id, "Camera");
-					}
-					document.AddComponent(entity->id, componentType);
-					editorSession_->RequestSceneReload();
-				}
-			}
-			ImGui::EndCombo();
+		ImGui::SeparatorText(SelectEditorText(
+			editorLanguage_,
+			"Componentを追加",
+			"Add Component"
+		));
+		const bool canOpenComponentPicker = !entityLocked && !entity->folder &&
+			editorSession_->IsEditing();
+		ImGui::BeginDisabled(!canOpenComponentPicker);
+		if (ImGui::Button(
+			SelectEditorText(
+				editorLanguage_,
+				"Componentを追加...##OpenSceneComponentPicker",
+				"Add Components...##OpenSceneComponentPicker"
+			),
+			ImVec2(-1.0f, 0.0f)
+		)) {
+			OpenComponentPicker(
+				sceneComponentPicker_,
+				ComponentPickerTarget::Scene,
+				document,
+				editorSession_->GetEditSceneId(),
+				entity->id
+			);
 		}
 		ImGui::EndDisabled();
+		if (!canOpenComponentPicker) {
+			ImGui::TextDisabled("%s", entityLocked
+				? SelectEditorText(
+					editorLanguage_,
+					"ロックを解除すると追加できます。",
+					"Unlock the entity to add components."
+				)
+				: entity->folder
+					? SelectEditorText(
+						editorLanguage_,
+						"FolderへComponentは追加できません。",
+						"Components cannot be added to a folder."
+					)
+					: SelectEditorText(
+						editorLanguage_,
+						"Playを停止すると追加できます。",
+						"Stop Play mode to add components."
+					));
+		}
 
 		if (editorSession_->IsPlaying() || editorSession_->IsPaused()) {
 			ImGui::TextDisabled("Play mode changes are temporary");
@@ -10622,8 +13264,19 @@ void ImGuiManager::RequestPrefabQuickOpen() {
 }
 
 void ImGuiManager::DrawProjectPrefabAccessPanel() {
-	ImGui::SeparatorText("Prefabs");
-	if (ImGui::Button("Quick Open...", ImVec2(-1.0f, 0.0f))) {
+	ImGui::SeparatorText(SelectEditorText(
+		editorLanguage_,
+		"Prefabs###ProjectPrefabs",
+		"Prefabs###ProjectPrefabs"
+	));
+	if (ImGui::Button(
+		SelectEditorText(
+			editorLanguage_,
+			"Quick Open...###ProjectQuickOpenPrefab",
+			"Quick Open...###ProjectQuickOpenPrefab"
+		),
+		ImVec2(-1.0f, 0.0f)
+	)) {
 		RequestPrefabQuickOpen();
 	}
 
@@ -10641,7 +13294,11 @@ void ImGuiManager::DrawProjectPrefabAccessPanel() {
 			return;
 		}
 		if (references.empty()) {
-			ImGui::TextDisabled("None");
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"なし",
+				"None"
+			));
 		}
 		for (const PrefabAssetReference& reference : references) {
 			const std::string resolvedProjectPath =
@@ -10660,8 +13317,12 @@ void ImGuiManager::DrawProjectPrefabAccessPanel() {
 				!resolvedProjectPath.empty() &&
 				std::filesystem::exists(path, existsError);
 			const std::string itemLabel = exists
-				? fileName
-				: fileName + " [Missing]";
+				? fileName + "###ProjectPrefabAccessItem"
+				: fileName + SelectEditorText(
+					editorLanguage_,
+					" [見つかりません]###ProjectPrefabAccessItem",
+					" [Missing]###ProjectPrefabAccessItem"
+				);
 			const std::string itemId = reference.assetId.empty()
 				? reference.fallbackPath
 				: reference.assetId + "|" + reference.fallbackPath;
@@ -10681,7 +13342,16 @@ void ImGuiManager::DrawProjectPrefabAccessPanel() {
 				ImGui::SetTooltip("%s", displayProjectPath.c_str());
 			}
 			if (ImGui::BeginPopupContextItem("PrefabAccessContext")) {
-				if (ImGui::MenuItem("Open Prefab", nullptr, false, exists)) {
+				if (ImGui::MenuItem(
+					SelectEditorText(
+						editorLanguage_,
+						"Prefabを開く###OpenProjectPrefab",
+						"Open Prefab###OpenProjectPrefab"
+					),
+					nullptr,
+					false,
+					exists
+				)) {
 					openRequestedPath = prefabPath;
 				}
 				const bool favorite = ContainsPrefabAssetReference(
@@ -10689,14 +13359,28 @@ void ImGuiManager::DrawProjectPrefabAccessPanel() {
 					reference
 				);
 				if (ImGui::MenuItem(
-					favorite ? "Remove from Favorites" : "Add to Favorites"
+					favorite
+						? SelectEditorText(
+							editorLanguage_,
+							"お気に入りから削除###ToggleProjectPrefabFavorite",
+							"Remove from Favorites###ToggleProjectPrefabFavorite"
+						)
+						: SelectEditorText(
+							editorLanguage_,
+							"お気に入りに追加###ToggleProjectPrefabFavorite",
+							"Add to Favorites###ToggleProjectPrefabFavorite"
+						)
 				)) {
 					toggleFavoriteReference = reference;
 					toggleFavoriteRequested = true;
 				}
 				if (
 					recentList &&
-					ImGui::MenuItem("Remove from Recent")
+					ImGui::MenuItem(SelectEditorText(
+						editorLanguage_,
+						"最近使用した項目から削除###RemoveRecentPrefab",
+						"Remove from Recent###RemoveRecentPrefab"
+					))
 				) {
 					removeRecentReference = reference;
 					removeRecentRequested = true;
@@ -10717,8 +13401,24 @@ void ImGuiManager::DrawProjectPrefabAccessPanel() {
 				PathFromUtf8(PrefabAssetRegistry::ResolvePath(right)).filename();
 		}
 	);
-	drawPrefabList("Favorites", favorites, false);
-	drawPrefabList("Recent", recentPrefabReferences_, true);
+	drawPrefabList(
+		SelectEditorText(
+			editorLanguage_,
+			"お気に入り###ProjectPrefabFavorites",
+			"Favorites###ProjectPrefabFavorites"
+		),
+		favorites,
+		false
+	);
+	drawPrefabList(
+		SelectEditorText(
+			editorLanguage_,
+			"最近使用した項目###ProjectPrefabRecent",
+			"Recent###ProjectPrefabRecent"
+		),
+		recentPrefabReferences_,
+		true
+	);
 
 	if (toggleFavoriteRequested) {
 		ToggleFavoritePrefab(toggleFavoriteReference);
@@ -10745,7 +13445,11 @@ void ImGuiManager::DrawProjectPrefabAccessPanel() {
 }
 
 void ImGuiManager::DrawPrefabQuickOpenPopup() {
-	if (!ImGui::BeginPopup("Quick Open Prefab")) {
+	if (!ImGui::BeginPopup(SelectEditorText(
+		editorLanguage_,
+		"Prefab Quick Open###PrefabQuickOpenPopup",
+		"Quick Open Prefab###PrefabQuickOpenPopup"
+	))) {
 		return;
 	}
 	ImGui::SetNextItemWidth(520.0f);
@@ -10755,7 +13459,11 @@ void ImGuiManager::DrawPrefabQuickOpenPopup() {
 	}
 	const bool searchSubmitted = ImGui::InputTextWithHint(
 		"##PrefabQuickSearch",
-		"Search Prefabs...",
+		SelectEditorText(
+			editorLanguage_,
+			"Prefabを検索...",
+			"Search Prefabs..."
+		),
 		prefabQuickOpenSearchBuffer_,
 		sizeof(prefabQuickOpenSearchBuffer_),
 		ImGuiInputTextFlags_EnterReturnsTrue
@@ -10791,8 +13499,13 @@ void ImGuiManager::DrawPrefabQuickOpenPopup() {
 				PathFromUtf8(prefabPath).filename()
 			);
 			const std::string label =
-				(IsFavoritePrefab(prefabPath) ? "[Favorite] " : "") +
-				fileName + "##" + prefabPath;
+				(IsFavoritePrefab(prefabPath)
+					? SelectEditorText(
+						editorLanguage_,
+						"[お気に入り] ",
+						"[Favorite] "
+					)
+					: "") + fileName + "###" + prefabPath;
 			if (ImGui::Selectable(label.c_str())) {
 				openRequestedPath = prefabPath;
 			}
@@ -10800,15 +13513,33 @@ void ImGuiManager::DrawPrefabQuickOpenPopup() {
 				ImGui::SetTooltip("%s", relativePath.c_str());
 			}
 			if (ImGui::BeginPopupContextItem("QuickPrefabContext")) {
-				if (ImGui::MenuItem("Open Prefab")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"Prefabを開く###QuickOpenPrefab",
+					"Open Prefab###QuickOpenPrefab"
+				))) {
 					openRequestedPath = prefabPath;
 				}
-				if (ImGui::MenuItem("Select Asset")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"Assetを選択###SelectQuickOpenPrefabAsset",
+					"Select Asset###SelectQuickOpenPrefabAsset"
+				))) {
 					selectRequestedPath = prefabPath;
 				}
 				const bool favorite = IsFavoritePrefab(prefabPath);
 				if (ImGui::MenuItem(
-					favorite ? "Remove from Favorites" : "Add to Favorites"
+					favorite
+						? SelectEditorText(
+							editorLanguage_,
+							"お気に入りから削除###ToggleQuickOpenPrefabFavorite",
+							"Remove from Favorites###ToggleQuickOpenPrefabFavorite"
+						)
+						: SelectEditorText(
+							editorLanguage_,
+							"お気に入りに追加###ToggleQuickOpenPrefabFavorite",
+							"Add to Favorites###ToggleQuickOpenPrefabFavorite"
+						)
 				)) {
 					ToggleFavoritePrefab(prefabPath);
 				}
@@ -10816,7 +13547,11 @@ void ImGuiManager::DrawPrefabQuickOpenPopup() {
 			}
 		}
 		if (visibleResultCount == 0) {
-			ImGui::TextDisabled("No matching Prefabs.");
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"一致するPrefabがありません。",
+				"No matching Prefabs."
+			));
 		}
 	}
 	ImGui::EndChild();
@@ -10839,7 +13574,14 @@ void ImGuiManager::DrawProjectWindow() {
 		ImGui::SetNextWindowFocus();
 		projectFocusRequested_ = false;
 	}
-	if (!ImGui::Begin("Project", &showProject_)) {
+	if (!ImGui::Begin(
+		SelectEditorText(
+			editorLanguage_,
+			"Project###Project",
+			"Project###Project"
+		),
+		&showProject_
+	)) {
 		ImGui::End();
 		return;
 	}
@@ -10869,7 +13611,11 @@ void ImGuiManager::DrawProjectWindow() {
 		setColWidth = true;
 	}
 
-	ImGui::TextUnformatted("Folders");
+	ImGui::TextUnformatted(SelectEditorText(
+		editorLanguage_,
+		"フォルダー",
+		"Folders"
+	));
 	ImGui::Separator();
 	
 	// Draw recursive tree starting from "resources"
@@ -10887,14 +13633,21 @@ void ImGuiManager::DrawProjectWindow() {
 			PathFromUtf8(selectedProjectFolder_)
 		)
 	);
-	ImGui::Text("Contents of: %s", displayFolder.c_str());
+	ImGui::Text(
+		SelectEditorText(editorLanguage_, "表示中: %s", "Contents of: %s"),
+		displayFolder.c_str()
+	);
 	ImGui::SameLine();
-	ImGui::TextDisabled("View:");
+	ImGui::TextDisabled("%s", SelectEditorText(editorLanguage_, "表示:", "View:"));
 	ImGui::SameLine();
 	if (projectGridView_) {
 		ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
 	}
-	if (ImGui::SmallButton("Grid")) {
+	if (ImGui::SmallButton(SelectEditorText(
+		editorLanguage_,
+		"グリッド###ProjectGridView",
+		"Grid###ProjectGridView"
+	))) {
 		projectGridView_ = true;
 	}
 	if (projectGridView_) {
@@ -10904,21 +13657,36 @@ void ImGuiManager::DrawProjectWindow() {
 	if (!projectGridView_) {
 		ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
 	}
-	if (ImGui::SmallButton("List")) {
+	if (ImGui::SmallButton(SelectEditorText(
+		editorLanguage_,
+		"リスト###ProjectListView",
+		"List###ProjectListView"
+	))) {
 		projectGridView_ = false;
 	}
 	if (!projectGridView_) {
 		ImGui::PopStyleColor();
 	}
 	ImGui::SameLine();
-	if (ImGui::SmallButton("Refresh")) {
+	if (ImGui::SmallButton(SelectEditorText(
+		editorLanguage_,
+		"更新###RefreshProjectAssets",
+		"Refresh###RefreshProjectAssets"
+	))) {
 		InvalidateProjectCache();
 		projectPreviewLoadAttempted_.clear();
 		TextureManager::GetInstance()->ClearFailedTextureCache();
 		ModelManager::GetInstance()->ClearFailedModelCache();
 	}
 	ImGui::SameLine();
-	ImGui::Checkbox("Prefabs Only", &projectPrefabFilterEnabled_);
+	ImGui::Checkbox(
+		SelectEditorText(
+			editorLanguage_,
+			"Prefabのみ###ProjectPrefabsOnly",
+			"Prefabs Only###ProjectPrefabsOnly"
+		),
+		&projectPrefabFilterEnabled_
+	);
 	if (projectGridView_) {
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(100.0f);
@@ -10949,7 +13717,11 @@ void ImGuiManager::DrawProjectWindow() {
 				projectDirectoryCacheDirty_ = true;
 			}
 			ImGui::SameLine();
-			ImGui::TextDisabled("Back to parent folder");
+			ImGui::TextDisabled("%s", SelectEditorText(
+				editorLanguage_,
+				"親フォルダーへ戻る",
+				"Back to parent folder"
+			));
 			ImGui::Separator();
 		}
 
@@ -10978,6 +13750,7 @@ void ImGuiManager::DrawProjectWindow() {
 			const std::string& extension = entry.extension;
 			const bool isTexture = entry.isTexture;
 			const bool isModel = entry.isModel;
+			const bool isAudio = !isDirectory && IsAudioAssetExtension(extension);
 			const bool isScene = entry.isScene;
 			const bool isPrefab =
 				!isDirectory && IsPrefabAssetPath(PathFromUtf8(filePath));
@@ -11042,7 +13815,7 @@ void ImGuiManager::DrawProjectWindow() {
 			};
 			auto drawDragSource = [&]() {
 				if (
-					!(isModel || isTexture || isPrefab) ||
+					!(isModel || isTexture || isAudio || isPrefab) ||
 					!ImGui::BeginDragDropSource()
 				) {
 					return;
@@ -11056,7 +13829,9 @@ void ImGuiManager::DrawProjectWindow() {
 					? "PROJECT_MODEL_PATH"
 					: isTexture
 						? "PROJECT_TEXTURE_PATH"
-						: "PROJECT_PREFAB_PATH";
+						: isAudio
+							? "PROJECT_AUDIO_PATH"
+							: "PROJECT_PREFAB_PATH";
 				ImGui::SetDragDropPayload(
 					payloadType,
 					dragPath.c_str(),
@@ -11077,15 +13852,33 @@ void ImGuiManager::DrawProjectWindow() {
 				)) {
 					return;
 				}
-				if (ImGui::MenuItem("Open Prefab")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"Prefabを開く###OpenPrefabAsset",
+					"Open Prefab###OpenPrefabAsset"
+				))) {
 					openPrefabContextRequested = true;
 				}
-				if (ImGui::MenuItem("Select Asset")) {
+				if (ImGui::MenuItem(SelectEditorText(
+					editorLanguage_,
+					"Assetを選択###SelectPrefabAsset",
+					"Select Asset###SelectPrefabAsset"
+				))) {
 					SelectPrefabAssetInProject(filePath);
 				}
 				const bool favorite = IsFavoritePrefab(filePath);
 				if (ImGui::MenuItem(
-					favorite ? "Remove from Favorites" : "Add to Favorites"
+					favorite
+						? SelectEditorText(
+							editorLanguage_,
+							"お気に入りから削除###TogglePrefabAssetFavorite",
+							"Remove from Favorites###TogglePrefabAssetFavorite"
+						)
+						: SelectEditorText(
+							editorLanguage_,
+							"お気に入りに追加###TogglePrefabAssetFavorite",
+							"Add to Favorites###TogglePrefabAssetFavorite"
+						)
 				)) {
 					ToggleFavoritePrefab(filePath);
 				}
@@ -11139,13 +13932,15 @@ void ImGuiManager::DrawProjectWindow() {
 					}
 					drawDragSource();
 				} else {
-					const char* typeLabel = isDirectory ? "DIR" :
-						isScene ? "SCENE" :
+					const char* typeLabel = isDirectory
+						? SelectEditorText(editorLanguage_, "フォルダー###AssetType", "DIR###AssetType") :
+						isScene ? SelectEditorText(editorLanguage_, "Scene###AssetType", "SCENE###AssetType") :
 						isModel ? "3D" :
 						isTexture ? "DDS" :
-						extension == ".wav" ? "AUDIO" :
+						IsAudioAssetExtension(extension) ? SelectEditorText(editorLanguage_, "音声###AssetType", "AUDIO###AssetType") :
 						extension == ".json" ? "JSON" :
-						(extension == ".hlsl" || extension == ".hlsli") ? "SHADER" : "FILE";
+						(extension == ".hlsl" || extension == ".hlsli") ? "SHADER" :
+						SelectEditorText(editorLanguage_, "ファイル###AssetType", "FILE###AssetType");
 					clicked = ImGui::Button(
 						typeLabel,
 						ImVec2(projectThumbnailSize_, projectThumbnailSize_)
@@ -11165,14 +13960,16 @@ void ImGuiManager::DrawProjectWindow() {
 				ImGui::TextUnformatted(fileName.c_str());
 				ImGui::PopTextWrapPos();
 			} else {
-				const char* prefix = isDirectory ? "[Folder]" :
-					isScene ? "[Scene]" :
+				const char* prefix = isDirectory ? SelectEditorText(editorLanguage_, "[フォルダー]", "[Folder]") :
+					isScene ? SelectEditorText(editorLanguage_, "[Scene]", "[Scene]") :
 					isTexture ? "[Tex]" :
-					isModel ? "[Model]" :
-					extension == ".wav" ? "[Audio]" :
+					isModel ? SelectEditorText(editorLanguage_, "[モデル]", "[Model]") :
+					IsAudioAssetExtension(extension) ? SelectEditorText(editorLanguage_, "[音声]", "[Audio]") :
 					extension == ".json" ? "[JSON]" :
-					(extension == ".hlsl" || extension == ".hlsli") ? "[Shader]" : "[File]";
-				const std::string label = std::string(prefix) + "  " + fileName;
+					(extension == ".hlsl" || extension == ".hlsli") ? "[Shader]" :
+					SelectEditorText(editorLanguage_, "[ファイル]", "[File]");
+				const std::string label = std::string(prefix) + "  " + fileName +
+					"###ProjectAssetRow";
 				clicked = ImGui::Selectable(
 					label.c_str(),
 					isDirectory ? selectedProjectFolder_ == filePath : isSelected
@@ -11200,15 +13997,11 @@ void ImGuiManager::DrawProjectWindow() {
 					selectedProjectFile_.clear();
 					selectedEntityId_ = 0;
 					projectDirectoryCacheDirty_ = true;
-					if (previewSoundData_.pBuffer && Audio::GetInstance()) {
-						Audio::GetInstance()->SoundUnload(&previewSoundData_);
-					}
+					StopAudioPreview();
 				} else {
 					selectedProjectFile_ = filePath;
 					selectedEntityId_ = 0;
-					if (previewSoundData_.pBuffer && Audio::GetInstance()) {
-						Audio::GetInstance()->SoundUnload(&previewSoundData_);
-					}
+					StopAudioPreview();
 					if (openSceneRequested && sceneCatalog_) {
 						const SceneDescriptor* scene =
 							sceneCatalog_->FindByFilePath(filePath);
@@ -11329,6 +14122,7 @@ bool ImGuiManager::OpenPrefab(
 		return false;
 	}
 
+	ResetComponentPicker(prefabComponentPicker_);
 	showPrefab_ = true;
 	prefabFocusFramesRemaining_ = 2;
 	const SceneDocument& prefab = prefabEditorSession_->GetDocument();
@@ -11379,21 +14173,37 @@ void ImGuiManager::DrawPrefabOpenConfirmation() {
 	if (!prefabEditorSession_) {
 		return;
 	}
+	const char* popupLabel = SelectEditorText(
+		editorLanguage_,
+		"別のPrefabを開きますか？###OpenAnotherPrefabPopup",
+		"Open Another Prefab?###OpenAnotherPrefabPopup"
+	);
 	if (prefabOpenPopupRequested_) {
-		ImGui::OpenPopup("Open Another Prefab?");
+		ImGui::OpenPopup(popupLabel);
 		prefabOpenPopupRequested_ = false;
 	}
 	if (!ImGui::BeginPopupModal(
-		"Open Another Prefab?",
+		popupLabel,
 		nullptr,
 		ImGuiWindowFlags_AlwaysAutoResize
 	)) {
 		return;
 	}
 
-	ImGui::TextUnformatted("The current Prefab has unsaved changes.");
-	ImGui::TextWrapped("Open: %s", pendingPrefabOpenPath_.c_str());
-	if (ImGui::Button("Save and Open")) {
+	ImGui::TextUnformatted(SelectEditorText(
+		editorLanguage_,
+		"現在のPrefabには未保存の変更があります。",
+		"The current Prefab has unsaved changes."
+	));
+	ImGui::TextWrapped(
+		SelectEditorText(editorLanguage_, "開く: %s", "Open: %s"),
+		pendingPrefabOpenPath_.c_str()
+	);
+	if (ImGui::Button(SelectEditorText(
+		editorLanguage_,
+		"保存して開く###SaveAndOpenPrefab",
+		"Save and Open###SaveAndOpenPrefab"
+	))) {
 		if (prefabEditorSession_->Save()) {
 			OpenPrefab(
 				pendingPrefabOpenPath_,
@@ -11405,7 +14215,11 @@ void ImGuiManager::DrawPrefabOpenConfirmation() {
 		}
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("Discard and Open")) {
+	if (ImGui::Button(SelectEditorText(
+		editorLanguage_,
+		"変更を破棄して開く###DiscardAndOpenPrefab",
+		"Discard and Open###DiscardAndOpenPrefab"
+	))) {
 		prefabEditorSession_->Close(true);
 		OpenPrefab(
 			pendingPrefabOpenPath_,
@@ -11416,7 +14230,11 @@ void ImGuiManager::DrawPrefabOpenConfirmation() {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("Cancel")) {
+	if (ImGui::Button(SelectEditorText(
+		editorLanguage_,
+		"キャンセル###CancelOpenPrefab",
+		"Cancel###CancelOpenPrefab"
+	))) {
 		pendingPrefabOpenPath_.clear();
 		pendingPrefabHistoryIndex_ = -1;
 		ImGui::CloseCurrentPopup();
@@ -11778,11 +14596,13 @@ void ImGuiManager::DrawPrefabDiagnostics() {
 		? "Diagnostics: OK###PrefabDiagnostics"
 		: "Diagnostics: " + std::to_string(errorCount) + " error(s), " +
 			std::to_string(warningCount) + " warning(s)###PrefabDiagnostics";
-	const ImGuiTreeNodeFlags headerFlags =
-		errorCount > 0 || !prefabAssetValidationCompleted_
-		? ImGuiTreeNodeFlags_DefaultOpen
-		: ImGuiTreeNodeFlags_None;
-	if (!ImGui::CollapsingHeader(headerLabel.c_str(), headerFlags)) {
+	const bool diagnosticsDefaultOpen =
+		errorCount > 0 || !prefabAssetValidationCompleted_;
+	if (!DrawPersistentInspectorHeader(
+		"prefab/" + filePath + "/Diagnostics",
+		headerLabel.c_str(),
+		diagnosticsDefaultOpen
+	)) {
 		return;
 	}
 
@@ -12422,9 +15242,14 @@ void ImGuiManager::DrawPrefabInspectorWindow() {
 	}
 	bool windowOpen = true;
 	const bool inspectorContentsVisible = ImGui::Begin(
-		"Prefab Inspector",
+		SelectEditorText(
+			editorLanguage_,
+			"Prefab Inspector###PrefabInspector",
+			"Prefab Inspector###PrefabInspector"
+		),
 		&windowOpen
 	);
+	DrawPrefabComponentPicker();
 	prefabKeyboardFocusThisFrame_ |= ImGui::IsWindowFocused(
 		ImGuiFocusedFlags_RootAndChildWindows
 	);
@@ -12435,7 +15260,11 @@ void ImGuiManager::DrawPrefabInspectorWindow() {
 	}
 
 	if (!prefabEditorSession_ || !prefabEditorSession_->IsOpen()) {
-		ImGui::TextDisabled("Open a Prefab to inspect its Entities.");
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"Entityを確認するPrefabを開いてください。",
+			"Open a Prefab to inspect its Entities."
+		));
 	} else {
 		const std::string prefabFileName = PathToUtf8(
 			PathFromUtf8(prefabEditorSession_->GetFilePath()).filename()
@@ -14091,7 +16920,13 @@ void ImGuiManager::DrawPrefabTransformPoseInspector(SceneEntity& entity) {
 		prefabAnimationPreviewActive_ = true;
 	};
 
-	ImGui::SeparatorText("Transform Poses");
+	if (!DrawPersistentInspectorHeader(
+		"prefab/" + prefabEditorSession_->GetFilePath() + "/" +
+			std::to_string(entity.id) + "/TransformPoses",
+		"Transform Poses###PrefabTransformPosesSection"
+	)) {
+		return;
+	}
 	ImGui::TextDisabled("Model Forward: -Z");
 	ImGui::SameLine();
 	ImGui::TextDisabled("%s / %s", owner->name.c_str(), clip.name.c_str());
@@ -15007,7 +17842,11 @@ void ImGuiManager::DrawPrefabInspector() {
 	SceneDocument& document = prefabEditorSession_->GetDocument();
 	SceneEntity* entity = document.FindEntity(prefabSelectedEntityId_);
 	if (!entity) {
-		ImGui::TextDisabled("Select a Prefab Entity.");
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"PrefabのEntityを選択してください。",
+			"Select a Prefab Entity."
+		));
 		return;
 	}
 	const SceneEntity* clipFocusOwner = document.FindEntity(
@@ -15442,23 +18281,63 @@ void ImGuiManager::DrawPrefabInspector() {
 	}
 
 	bool entityChanged = false;
-	entityChanged |= InputTextString("Name", entity->name);
-	entityChanged |= ImGui::Checkbox("Active", &entity->active);
-	ImGui::SeparatorText("Transform");
+	entityChanged |= InputTextString(SelectEditorText(
+		editorLanguage_,
+		"名前###PrefabEntityName",
+		"Name###PrefabEntityName"
+	), entity->name);
+	entityChanged |= ImGui::Checkbox(SelectEditorText(
+		editorLanguage_,
+		"有効###PrefabEntityActive",
+		"Active###PrefabEntityActive"
+	), &entity->active);
+	const std::string prefabInspectorKey = "prefab/" +
+		prefabEditorSession_->GetFilePath() + "/" +
+		std::to_string(entity->id) + "/";
+	if (DrawPersistentInspectorHeader(
+		prefabInspectorKey + "Transform",
+		"Transform###PrefabTransformSection"
+	)) {
 	entityChanged |= ImGui::DragFloat3(
-		"Position", &entity->transform.translate.x, 0.01f
+		SelectEditorText(editorLanguage_, "位置###PrefabTransformPosition", "Position###PrefabTransformPosition"),
+		&entity->transform.translate.x,
+		0.01f
 	);
 	Vector3 rotationEuler = MakeEulerFromQuaternion(entity->transform.rotate);
-	if (ImGui::DragFloat3("Rotation", &rotationEuler.x, 0.01f)) {
+	if (ImGui::DragFloat3(
+		SelectEditorText(editorLanguage_, "回転###PrefabTransformRotation", "Rotation###PrefabTransformRotation"),
+		&rotationEuler.x,
+		0.01f
+	)) {
 		entity->transform.rotate = MakeQuaternionFromEuler(rotationEuler);
 		entityChanged = true;
 	}
 	entityChanged |= ImGui::DragFloat3(
-		"Scale", &entity->transform.scale.x, 0.01f
+		SelectEditorText(editorLanguage_, "スケール###PrefabTransformScale", "Scale###PrefabTransformScale"),
+		&entity->transform.scale.x,
+		0.01f
 	);
+	}
 	if (entityChanged) {
 		document.MarkDirty();
 	}
+	if (DrawPersistentInspectorHeader(
+		prefabInspectorKey + "ComponentOverview",
+		SelectEditorText(
+			editorLanguage_,
+			"Component概要###PrefabComponentOverviewSection",
+			"Component Overview###PrefabComponentOverviewSection"
+		)
+	)) {
+		DrawComponentSummary(
+			*entity,
+			prefabEditorSession_->GetFilePath(),
+			clipFocusActive,
+			prefabSummarySelectedComponentType_
+		);
+	}
+	const bool simpleComponentInspector =
+		componentInspectorMode_ == ComponentInspectorMode::Simple;
 	DrawPrefabTransformPoseInspector(*entity);
 
 	if (const SceneComponent* meshRenderer =
@@ -15468,7 +18347,10 @@ void ImGuiManager::DrawPrefabInspector() {
 			modelPreviewRenderedPath_ == meshRenderer->modelPath &&
 			modelPreviewTexture_.ptr != 0
 		) {
-			ImGui::SeparatorText("Preview");
+			if (DrawPersistentInspectorHeader(
+				prefabInspectorKey + "Preview",
+				"Preview###PrefabModelPreviewSection"
+			)) {
 			const float availableWidth = ImGui::GetContentRegionAvail().x;
 			const float previewSize = std::clamp(availableWidth, 180.0f, 420.0f);
 			ImGui::Image(
@@ -15493,6 +18375,7 @@ void ImGuiManager::DrawPrefabInspector() {
 					);
 				}
 			}
+			}
 		}
 	}
 
@@ -15508,21 +18391,45 @@ void ImGuiManager::DrawPrefabInspector() {
 		) {
 			continue;
 		}
+		if (
+			simpleComponentInspector &&
+			component.type != prefabSummarySelectedComponentType_
+		) {
+			continue;
+		}
 		ImGui::PushID(static_cast<int>(componentIndex));
+		const std::string foldoutKey = MakeComponentFoldoutKey(
+			prefabEditorSession_->GetFilePath(),
+			entity->id,
+			component.type
+		);
+		const auto savedFoldout = componentFoldoutStates_.find(foldoutKey);
+		const bool wasComponentOpen = savedFoldout == componentFoldoutStates_.end()
+			? true
+			: savedFoldout->second;
+		ImGui::SetNextItemOpen(wasComponentOpen, ImGuiCond_Always);
 		const bool open = ImGui::CollapsingHeader(
 			component.type.c_str(),
-			ImGuiTreeNodeFlags_DefaultOpen
+			ImGuiTreeNodeFlags_SpanAvailWidth
 		);
+		if (open != wasComponentOpen) {
+			componentFoldoutStates_[foldoutKey] = open;
+			SaveEditorSettings();
+		}
 		if (!open) {
 			ImGui::PopID();
 			continue;
 		}
-		bool changed = ImGui::Checkbox("Enabled", &component.enabled);
+		bool changed = ImGui::Checkbox(SelectEditorText(
+			editorLanguage_,
+			"有効###PrefabComponentEnabled",
+			"Enabled###PrefabComponentEnabled"
+		), &component.enabled);
 		if (component.type == "MeshRenderer") {
 			const char* currentModel = component.modelPath.empty()
 				? "None"
 				: component.modelPath.c_str();
-			if (ImGui::BeginCombo("Model", currentModel)) {
+			if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Model"), currentModel)) {
 				for (const std::string& modelPath : GetCachedModelAssetPaths()) {
 					if (ImGui::Selectable(
 						modelPath.c_str(), component.modelPath == modelPath
@@ -15536,15 +18443,66 @@ void ImGuiManager::DrawPrefabInspector() {
 			}
 		} else if (component.type == "Animator") {
 			changed |= ImGui::Checkbox(
-				"Play On Start", &component.animatorPlayOnStart
+				LocalizedComponentWidgetLabel(editorLanguage_, "Play On Start"), &component.animatorPlayOnStart
 			);
-			changed |= ImGui::Checkbox("Loop", &component.animatorLoop);
+			changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Loop"), &component.animatorLoop);
 			changed |= ImGui::DragFloat(
-				"Speed", &component.animatorSpeed, 0.01f, 0.0f, 100.0f
+				LocalizedComponentWidgetLabel(editorLanguage_, "Speed"), &component.animatorSpeed, 0.01f, 0.0f, 100.0f
 			);
 			changed |= ImGui::DragInt(
-				"Default Clip", &component.animatorDefaultClip, 1.0f, 0, 1024
+				LocalizedComponentWidgetLabel(editorLanguage_, "Default Clip"), &component.animatorDefaultClip, 1.0f, 0, 1024
 			);
+		} else if (component.type == "AudioSource") {
+			changed |= DrawAudioClipAssetField(LocalizedComponentWidgetLabel(editorLanguage_, "Clip Path"), component.audioClipPath);
+			if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Spatial Mode"), GetAudioSpatialModeDisplayName(component.audioSpatialMode))) {
+				for (const auto& [value, label] : { std::pair{ "TwoD", "TwoD Stereo" }, std::pair{ "ThreeD", "ThreeD Point" }, std::pair{ "ThreeDPointDownmix", "ThreeD Point Downmix" }, std::pair{ "ThreeDStereoArea", "ThreeD Stereo Area" } }) {
+					if (ImGui::Selectable(label, component.audioSpatialMode == value)) { component.audioSpatialMode = value; changed = true; }
+				}
+				ImGui::EndCombo();
+			}
+			if (IsThreeDAudioSpatialMode(component.audioSpatialMode)) {
+				changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Minimum Distance"), &component.audioMinimumDistance, 0.05f, 0.0f, 10000.0f);
+				changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Maximum Distance"), &component.audioMaximumDistance, 0.1f, 0.01f, 10000.0f);
+				if (component.audioSpatialMode == "ThreeD") {
+					ImGui::TextDisabled("ThreeD Point requires a mono clip.");
+				} else if (component.audioSpatialMode == "ThreeDPointDownmix") {
+					ImGui::TextDisabled("Stereo clips are downmixed to mono. Phase-opposed channels can cancel.");
+					ImGui::TextDisabled("Decompress On Load avoids first-play decode and conversion work.");
+				} else if (component.audioSpatialMode == "ThreeDStereoArea") {
+					changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Area Width"), &component.audioStereoAreaWidth, 0.01f, 0.01f, 10000.0f);
+					ImGui::TextDisabled("Stereo clip required. Width is the L/R spacing in Scene units.");
+				}
+				DrawAudioSpatialClipCompatibilityWarning(editorLanguage_, component);
+			}
+			if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Bus"), component.audioBus.c_str())) {
+				for (const char* bus : { "BGM", "SFX", "UI", "Ambience" }) if (ImGui::Selectable(bus, component.audioBus == bus)) { component.audioBus = bus; changed = true; }
+				ImGui::EndCombo();
+			}
+			changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Volume"), &component.audioVolume, 0.01f, 0.0f, 4.0f);
+			changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Pitch"), &component.audioPitch, 0.01f, 0.01f, 8.0f);
+			changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Loop"), &component.audioLoop);
+			changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Play On Start"), &component.audioPlayOnStart);
+			changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Stop On Disable"), &component.audioStopOnDisable);
+			changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Stream From Disk"), &component.audioStreamFromDisk);
+			ImGui::BeginDisabled(component.audioStreamFromDisk);
+			changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Decompress On Load"), &component.audioDecompressOnLoad);
+			ImGui::EndDisabled();
+			const bool persistentBgmCompatible = component.audioStreamFromDisk && component.audioBus == "BGM" && component.audioSpatialMode == "TwoD";
+			ImGui::BeginDisabled(!persistentBgmCompatible);
+			changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Persist Across Scenes"), &component.audioPersistAcrossScenes);
+			ImGui::EndDisabled();
+			if (component.audioBus == "BGM" && component.audioSpatialMode == "TwoD") {
+				changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "BGM Fade Seconds"), &component.audioBgmFadeSeconds, 0.05f, 0.0f, 30.0f);
+			}
+			if (component.audioStreamFromDisk && (component.audioBus != "BGM" || component.audioSpatialMode != "TwoD")) {
+				ImGui::TextDisabled("Stream From Disk requires TwoD and BGM Bus.");
+			}
+		} else if (component.type == "AudioListener") {
+			if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Mode"), component.audioListenerMode.c_str())) {
+				for (const char* mode : { "ActiveCamera", "Entity", "Hybrid" }) if (ImGui::Selectable(mode, component.audioListenerMode == mode)) { component.audioListenerMode = mode; changed = true; }
+				ImGui::EndCombo();
+			}
+			ImGui::TextDisabled("Only one enabled listener is allowed per Scene.");
 		} else if (component.type == "StatSet") {
 			int removeStatIndex = -1;
 			for (size_t statIndex = 0; statIndex < component.stats.size(); ++statIndex) {
@@ -15559,12 +18517,12 @@ void ImGuiManager::DrawPrefabInspector() {
 					"%s",
 					statLabel.empty() ? "Stat" : statLabel.c_str()
 				)) {
-					changed |= InputTextString("Id", stat.id);
-					changed |= InputTextString("Display Name", stat.displayName);
-					changed |= ImGui::DragFloat("Min", &stat.minValue, 0.1f);
-					changed |= ImGui::DragFloat("Max", &stat.maxValue, 0.1f);
+					changed |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Id"), stat.id);
+					changed |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Display Name"), stat.displayName);
+					changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Min"), &stat.minValue, 0.1f);
+					changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Max"), &stat.maxValue, 0.1f);
 					changed |= ImGui::DragFloat(
-						"Initial", &stat.initialValue, 0.1f
+						LocalizedComponentWidgetLabel(editorLanguage_, "Initial"), &stat.initialValue, 0.1f
 					);
 					if (stat.maxValue < stat.minValue) {
 						stat.maxValue = stat.minValue;
@@ -15579,7 +18537,7 @@ void ImGuiManager::DrawPrefabInspector() {
 						stat.initialValue = clampedInitial;
 						changed = true;
 					}
-					if (ImGui::SmallButton("Remove Stat")) {
+					if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Statを削除###RemoveStat", "Remove Stat###RemoveStat"))) {
 						removeStatIndex = static_cast<int>(statIndex);
 					}
 					ImGui::TreePop();
@@ -15590,7 +18548,7 @@ void ImGuiManager::DrawPrefabInspector() {
 				component.stats.erase(component.stats.begin() + removeStatIndex);
 				changed = true;
 			}
-			if (ImGui::Button("Add Stat")) {
+			if (ImGui::Button(SelectEditorText(editorLanguage_, "Statを追加###AddStat", "Add Stat###AddStat"))) {
 				SceneStatDefinition stat{};
 				stat.id = "stat" + std::to_string(component.stats.size() + 1);
 				stat.displayName = stat.id;
@@ -15598,7 +18556,7 @@ void ImGuiManager::DrawPrefabInspector() {
 				changed = true;
 			}
 		} else if (component.type == "OBBCollider") {
-			if (ImGui::BeginCombo("Shape", component.colliderShape.c_str())) {
+			if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Shape"), component.colliderShape.c_str())) {
 				for (const char* shape : { "Box", "Sphere" }) {
 					if (ImGui::Selectable(
 						shape, component.colliderShape == shape
@@ -15610,70 +18568,70 @@ void ImGuiManager::DrawPrefabInspector() {
 				ImGui::EndCombo();
 			}
 			changed |= ImGui::DragFloat3(
-				"Offset", &component.colliderOffset.x, 0.01f
+				LocalizedComponentWidgetLabel(editorLanguage_, "Offset"), &component.colliderOffset.x, 0.01f
 			);
 			if (component.colliderShape == "Sphere") {
 				changed |= ImGui::DragFloat(
-					"Radius", &component.colliderSphereRadius, 0.01f, 0.001f, 10000.0f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Radius"), &component.colliderSphereRadius, 0.01f, 0.001f, 10000.0f
 				);
 			} else {
 				changed |= ImGui::DragFloat3(
-					"Half Size", &component.colliderSizeMultiplier.x, 0.01f
+					LocalizedComponentWidgetLabel(editorLanguage_, "Half Size"), &component.colliderSizeMultiplier.x, 0.01f
 				);
 			}
-			changed |= ImGui::Checkbox("Is Trigger", &component.colliderIsTrigger);
-			changed |= ImGui::Checkbox("Collider Active", &component.colliderActive);
+			changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Is Trigger"), &component.colliderIsTrigger);
+			changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Collider Active"), &component.colliderActive);
 			changed |= ImGui::Checkbox(
-				"Debug Visible", &component.colliderDebugVisible
+				LocalizedComponentWidgetLabel(editorLanguage_, "Debug Visible"), &component.colliderDebugVisible
 			);
 		} else if (component.type == "HitBox") {
 			changed |= ImGui::DragFloat(
-				"Damage", &component.hitBoxDamage, 0.1f, 0.0f, 100000.0f
+				LocalizedComponentWidgetLabel(editorLanguage_, "Damage"), &component.hitBoxDamage, 0.1f, 0.0f, 100000.0f
 			);
 			changed |= ImGui::DragFloat(
-				"Poise Damage", &component.hitBoxPoiseDamage, 0.1f, 0.0f, 100000.0f
+				LocalizedComponentWidgetLabel(editorLanguage_, "Poise Damage"), &component.hitBoxPoiseDamage, 0.1f, 0.0f, 100000.0f
 			);
 			changed |= ImGui::DragFloat(
-				"Knockback", &component.hitBoxKnockback, 0.1f, 0.0f, 100000.0f
+				LocalizedComponentWidgetLabel(editorLanguage_, "Knockback"), &component.hitBoxKnockback, 0.1f, 0.0f, 100000.0f
 			);
 			changed |= ImGui::DragFloat(
-				"Vertical Knockback", &component.hitBoxVerticalKnockback,
+				LocalizedComponentWidgetLabel(editorLanguage_, "Vertical Knockback"), &component.hitBoxVerticalKnockback,
 				0.1f, 0.0f, 100000.0f
 			);
 			changed |= ImGui::DragFloat(
-				"Hit Stop Duration", &component.hitBoxHitStopDuration, 0.001f, 0.0f, 1.0f
+				LocalizedComponentWidgetLabel(editorLanguage_, "Hit Stop Duration"), &component.hitBoxHitStopDuration, 0.001f, 0.0f, 1.0f
 			);
 			changed |= InputTextString(
-				"Reaction Tag", component.hitBoxReactionTag
+				LocalizedComponentWidgetLabel(editorLanguage_, "Reaction Tag"), component.hitBoxReactionTag
 			);
 			changed |= InputTextString(
-				"Damage Stat", component.hitBoxDamageStatId
+				LocalizedComponentWidgetLabel(editorLanguage_, "Damage Stat"), component.hitBoxDamageStatId
 			);
 			changed |= InputTextString(
-				"Poise Stat", component.hitBoxPoiseStatId
+				LocalizedComponentWidgetLabel(editorLanguage_, "Poise Stat"), component.hitBoxPoiseStatId
 			);
 			changed |= ImGui::InputScalar(
-				"Owner Entity Id",
+				LocalizedComponentWidgetLabel(editorLanguage_, "Owner Entity Id"),
 				ImGuiDataType_U64,
 				&component.hitBoxOwnerEntityId
 			);
 			changed |= InputTextString(
-				"Owner Entity Name", component.hitBoxOwnerEntityName
+				LocalizedComponentWidgetLabel(editorLanguage_, "Owner Entity Name"), component.hitBoxOwnerEntityName
 			);
 			changed |= ImGui::Checkbox(
-				"Ignore Same Faction", &component.hitBoxIgnoreSameFaction
+				LocalizedComponentWidgetLabel(editorLanguage_, "Ignore Same Faction"), &component.hitBoxIgnoreSameFaction
 			);
-			ImGui::TextDisabled("Use with an active Trigger Collider.");
+			ImGui::TextDisabled(SelectEditorText(editorLanguage_, "有効なTrigger Colliderと組み合わせて使用します。", "Use with an active Trigger Collider."));
 		} else if (component.type == "HurtBox") {
 			changed |= ImGui::DragFloat(
-				"Damage Multiplier",
+				LocalizedComponentWidgetLabel(editorLanguage_, "Damage Multiplier"),
 				&component.hurtBoxDamageMultiplier,
 				0.01f,
 				0.0f,
 				1000.0f
 			);
 			changed |= InputTextString(
-				"Stats Entity Name", component.hurtBoxStatsEntityName
+				LocalizedComponentWidgetLabel(editorLanguage_, "Stats Entity Name"), component.hurtBoxStatsEntityName
 			);
 		} else if (component.type == "AgentBehavior") {
 			const bool isGroundAgent =
@@ -15725,7 +18683,7 @@ void ImGuiManager::DrawPrefabInspector() {
 			const char* reactionModePreview =
 				component.hitReactionTriggerMode == "PoiseBreak"
 				? "Poise Break" : "Minimum Damage";
-			if (ImGui::BeginCombo("Reaction Trigger", reactionModePreview)) {
+			if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Reaction Trigger"), reactionModePreview)) {
 				if (ImGui::Selectable(
 					"Minimum Damage",
 					component.hitReactionTriggerMode == "MinimumDamage"
@@ -15826,7 +18784,7 @@ void ImGuiManager::DrawPrefabInspector() {
 			const char* targetLabel = targetEntity
 				? targetEntity->name.c_str()
 				: "Parent / Auto";
-			if (ImGui::BeginCombo("Target Entity", targetLabel)) {
+			if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Target Entity"), targetLabel)) {
 				if (ImGui::Selectable(
 					"Parent / Auto",
 					component.boneAttachmentTargetEntityId == 0 &&
@@ -15861,13 +18819,13 @@ void ImGuiManager::DrawPrefabInspector() {
 				: std::vector<std::string>{};
 			ImGui::BeginDisabled(jointNames.empty());
 			changed |= DrawJointNameCombo(
-				"Target Bone", jointNames, component.boneAttachmentJointName
+				LocalizedComponentWidgetLabel(editorLanguage_, "Target Bone"), jointNames, component.boneAttachmentJointName
 			);
 			ImGui::EndDisabled();
 			const bool matchesSourceBone =
 				component.boneAttachmentAlignmentMode == "MatchSourceBone";
 			if (ImGui::BeginCombo(
-				"Alignment Mode",
+				LocalizedComponentWidgetLabel(editorLanguage_, "Alignment Mode"),
 				matchesSourceBone ? "Match Weapon Bone" : "Manual Offset"
 			)) {
 				if (ImGui::Selectable("Manual Offset", !matchesSourceBone)) {
@@ -15885,21 +18843,21 @@ void ImGuiManager::DrawPrefabInspector() {
 					CollectEntityJointNames(*entity);
 				ImGui::BeginDisabled(sourceJointNames.empty());
 				changed |= DrawJointNameCombo(
-					"Weapon Bone",
+					LocalizedComponentWidgetLabel(editorLanguage_, "Weapon Bone"),
 					sourceJointNames,
 					component.boneAttachmentSourceJointName
 				);
 				ImGui::EndDisabled();
 				ImGui::TextDisabled(
-					"The weapon bone is aligned exactly with the target bone."
+					SelectEditorText(editorLanguage_, "Weapon Boneを対象Boneと正確に一致させます。", "The weapon bone is aligned exactly with the target bone.")
 				);
 			} else {
 				ImGui::TextDisabled(
-					"The Entity Transform is used as the attachment offset."
+					SelectEditorText(editorLanguage_, "EntityのTransformをAttachmentのオフセットとして使用します。", "The Entity Transform is used as the attachment offset.")
 				);
 			}
 			changed |= ImGui::Checkbox(
-				"Inherit Bone Scale", &component.boneAttachmentInheritScale
+				LocalizedComponentWidgetLabel(editorLanguage_, "Inherit Bone Scale"), &component.boneAttachmentInheritScale
 			);
 		} else if (component.type == "AttackSet") {
 			if (clipFocusName) {
@@ -15911,7 +18869,7 @@ void ImGuiManager::DrawPrefabInspector() {
 					}
 				);
 				if (!hasFocusedAttack) {
-					ImGui::TextDisabled("No Attack Definition for this Clip.");
+				ImGui::TextDisabled(SelectEditorText(editorLanguage_, "このClipにはAttack Definitionがありません。", "No Attack Definition for this Clip."));
 				}
 			}
 			auto hasHitBox = [](const SceneEntity& candidate) {
@@ -16062,9 +19020,9 @@ void ImGuiManager::DrawPrefabInspector() {
 				}
 				ImGui::PushID(static_cast<int>(attackIndex));
 				if (ImGui::TreeNodeEx("Attack", ImGuiTreeNodeFlags_DefaultOpen, "%s", attack.name.c_str())) {
-					ImGui::SeparatorText("Identity");
-					changed |= InputTextString("Name", attack.name);
-					changed |= InputTextString("Animation", attack.animation);
+					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "基本情報", "Identity"));
+					changed |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Name"), attack.name);
+					changed |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Animation"), attack.animation);
 					const SceneComponent* animator = FindEnabledComponent(
 						*entity,
 						"PrefabAnimator"
@@ -16082,10 +19040,10 @@ void ImGuiManager::DrawPrefabInspector() {
 							animationClip = &*foundClip;
 						}
 					}
-					ImGui::SeparatorText("Timing");
-					changed |= ImGui::DragFloat("Windup", &attack.windup, 0.01f, 0.0f, 60.0f);
-					changed |= ImGui::DragFloat("Active Time", &attack.activeTime, 0.01f, 0.0f, 60.0f);
-					changed |= ImGui::DragFloat("Recovery", &attack.recovery, 0.01f, 0.0f, 60.0f);
+					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "タイミング", "Timing"));
+					changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Windup"), &attack.windup, 0.01f, 0.0f, 60.0f);
+					changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Active Time"), &attack.activeTime, 0.01f, 0.0f, 60.0f);
+					changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Recovery"), &attack.recovery, 0.01f, 0.0f, 60.0f);
 					const float attackDuration = attack.windup +
 						attack.activeTime + attack.recovery;
 					if (animationClip) {
@@ -16110,14 +19068,14 @@ void ImGuiManager::DrawPrefabInspector() {
 							attack.animation.c_str()
 						);
 					}
-					ImGui::SeparatorText("Motion");
-					changed |= ImGui::DragFloat("Forward Distance", &attack.forwardDistance, 0.01f, -100.0f, 100.0f);
-					changed |= ImGui::DragFloat("Side Distance", &attack.sideDistance, 0.01f, -100.0f, 100.0f);
+					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "移動", "Motion"));
+					changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Forward Distance"), &attack.forwardDistance, 0.01f, -100.0f, 100.0f);
+					changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Side Distance"), &attack.sideDistance, 0.01f, -100.0f, 100.0f);
 					const char* facingPreview = "Fixed At Start";
 					if (attack.facingMode == "InputDirection") facingPreview = "Input Direction";
 					if (attack.facingMode == "TargetDirection") facingPreview = "Target Direction";
 					if (attack.facingMode == "RotateByAngle") facingPreview = "Rotate By Angle";
-					if (ImGui::BeginCombo("Facing", facingPreview)) {
+					if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Facing"), facingPreview)) {
 						for (const char* mode : {
 							"FixedAtStart", "InputDirection", "TargetDirection", "RotateByAngle"
 						}) {
@@ -16144,7 +19102,7 @@ void ImGuiManager::DrawPrefabInspector() {
 							target = document.FindEntityByName(attack.facingTargetEntityName);
 						}
 						const char* targetPreview = target ? target->name.c_str() : "None (keep start facing)";
-						if (ImGui::BeginCombo("Facing Target", targetPreview)) {
+					if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Facing Target"), targetPreview)) {
 							if (ImGui::Selectable("None (keep start facing)", !target)) {
 								attack.facingTargetEntityId = 0;
 								attack.facingTargetEntityName.clear();
@@ -16164,30 +19122,30 @@ void ImGuiManager::DrawPrefabInspector() {
 						}
 					} else if (attack.facingMode == "RotateByAngle") {
 						changed |= ImGui::DragFloat(
-							"Rotate Angle (radians)", &attack.facingRotateAngle,
+							SelectEditorText(editorLanguage_, "回転角度（Radians）###RotateAngle", "Rotate Angle (radians)###RotateAngle"), &attack.facingRotateAngle,
 							0.01f, -25.1328f, 25.1328f
 						);
 					}
-					ImGui::SeparatorText("Loop");
-					changed |= ImGui::Checkbox("Loop Enabled", &attack.loopEnabled);
+					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Loop", "Loop"));
+					changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Loop Enabled"), &attack.loopEnabled);
 					ImGui::BeginDisabled(!attack.loopEnabled);
 					changed |= ImGui::DragInt(
-						"Loop Max Count (0 = Unlimited)", &attack.loopMaxCount,
+						LocalizedComponentWidgetLabel(editorLanguage_, "Loop Max Count (0 = Unlimited)"), &attack.loopMaxCount,
 						1.0f, 0, 1000
 					);
 					changed |= ImGui::DragFloat(
-						"Loop Safety Timeout", &attack.loopSafetyTimeout,
+						LocalizedComponentWidgetLabel(editorLanguage_, "Loop Safety Timeout"), &attack.loopSafetyTimeout,
 						0.05f, 0.0f, 120.0f
 					);
 					ImGui::EndDisabled();
-					ImGui::SeparatorText("Hit Windows");
+					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Hit Window", "Hit Windows"));
 					int removeWindow = -1;
 					for (size_t windowIndex = 0; windowIndex < attack.hitWindows.size(); ++windowIndex) {
 						SceneAttackHitWindow& window = attack.hitWindows[windowIndex];
 						ImGui::PushID(static_cast<int>(windowIndex));
 						if (ImGui::TreeNodeEx("Hit Window", ImGuiTreeNodeFlags_DefaultOpen, "Hit Window %zu", windowIndex + 1)) {
-							changed |= ImGui::DragFloat("Start", &window.startTime, 0.01f, 0.0f, 60.0f);
-							changed |= ImGui::DragFloat("End", &window.endTime, 0.01f, window.startTime, 60.0f);
+							changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Start"), &window.startTime, 0.01f, 0.0f, 60.0f);
+							changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "End"), &window.endTime, 0.01f, window.startTime, 60.0f);
 							const SceneEntity* selectedHitBox =
 								window.hitBoxEntityId != 0
 									? document.FindEntity(window.hitBoxEntityId)
@@ -16196,11 +19154,11 @@ void ImGuiManager::DrawPrefabInspector() {
 								selectedHitBox = document.FindEntityByName(window.hitBoxEntityName);
 							}
 							if (window.payloadSource == "HitBox") {
-								ImGui::TextDisabled("Payload Source: Dedicated HitBox");
+								ImGui::TextDisabled(SelectEditorText(editorLanguage_, "Payload Source: 専用HitBox", "Payload Source: Dedicated HitBox"));
 								const char* hitBoxPreview = selectedHitBox && hasHitBox(*selectedHitBox)
 									? selectedHitBox->name.c_str()
 									: "Missing Dedicated HitBox";
-								if (ImGui::BeginCombo("Dedicated HitBox", hitBoxPreview)) {
+						if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Dedicated HitBox"), hitBoxPreview)) {
 									for (const SceneEntity& candidate : document.GetEntities()) {
 										if (!hasHitBox(candidate)) { continue; }
 										const bool selected = candidate.id == window.hitBoxEntityId;
@@ -16225,19 +19183,19 @@ void ImGuiManager::DrawPrefabInspector() {
 											hitBox->hitBoxVerticalKnockback
 										);
 									}
-									if (ImGui::SmallButton("Select Dedicated HitBox")) {
+									if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "専用HitBoxを選択###SelectDedicatedHitBox", "Select Dedicated HitBox###SelectDedicatedHitBox"))) {
 										prefabSelectedEntityId_ = selectedHitBox->id;
 									}
 								}
 							} else {
-								ImGui::TextDisabled("Payload Source: Window Legacy (migrate before new authoring)");
+								ImGui::TextDisabled(SelectEditorText(editorLanguage_, "Payload Source: Window Legacy（新規編集前に移行してください）", "Payload Source: Window Legacy (migrate before new authoring)"));
 							std::string hitBoxPreview = "StateMachine HitBox (Fallback)";
 							if (selectedHitBox && hasHitBox(*selectedHitBox)) {
 								hitBoxPreview = selectedHitBox->name;
 							} else if (window.hitBoxEntityId != 0 || !window.hitBoxEntityName.empty()) {
 								hitBoxPreview = "Missing HitBox";
 							}
-							if (ImGui::BeginCombo("HitBox", hitBoxPreview.c_str())) {
+							if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "HitBox"), hitBoxPreview.c_str())) {
 								const bool usesFallback = window.hitBoxEntityId == 0 &&
 									window.hitBoxEntityName.empty();
 								if (ImGui::Selectable("StateMachine HitBox (Fallback)", usesFallback)) {
@@ -16268,12 +19226,12 @@ void ImGuiManager::DrawPrefabInspector() {
 								);
 							}
 							changed |= ImGui::Checkbox(
-								"Override HitBox Half Size", &window.overrideHitBoxHalfSize
+								LocalizedComponentWidgetLabel(editorLanguage_, "Override HitBox Half Size"), &window.overrideHitBoxHalfSize
 							);
 							ImGui::BeginDisabled(!canOverrideHalfSize);
 							if (window.overrideHitBoxHalfSize) {
 								changed |= ImGui::DragFloat3(
-									"HitBox Half Size", &window.hitBoxHalfSize.x,
+									LocalizedComponentWidgetLabel(editorLanguage_, "HitBox Half Size"), &window.hitBoxHalfSize.x,
 									0.01f, 0.001f, 10000.0f
 								);
 								window.hitBoxHalfSize.x = (std::max)(window.hitBoxHalfSize.x, 0.001f);
@@ -16281,19 +19239,19 @@ void ImGuiManager::DrawPrefabInspector() {
 								window.hitBoxHalfSize.z = (std::max)(window.hitBoxHalfSize.z, 0.001f);
 							}
 							ImGui::EndDisabled();
-							ImGui::SeparatorText("Damage & Reaction");
-							changed |= ImGui::DragFloat("Damage", &window.damage, 0.1f, 0.0f, 100000.0f);
-							changed |= ImGui::DragFloat("Poise Damage", &window.poiseDamage, 0.1f, 0.0f, 100000.0f);
-							changed |= ImGui::DragFloat("Knockback", &window.knockback, 0.1f, 0.0f, 100000.0f);
+							ImGui::SeparatorText(SelectEditorText(editorLanguage_, "ダメージとReaction", "Damage & Reaction"));
+							changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Damage"), &window.damage, 0.1f, 0.0f, 100000.0f);
+							changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Poise Damage"), &window.poiseDamage, 0.1f, 0.0f, 100000.0f);
+							changed |= ImGui::DragFloat(LocalizedComponentWidgetLabel(editorLanguage_, "Knockback"), &window.knockback, 0.1f, 0.0f, 100000.0f);
 							changed |= ImGui::DragFloat(
-								"Vertical Knockback", &window.verticalKnockback,
+								LocalizedComponentWidgetLabel(editorLanguage_, "Vertical Knockback"), &window.verticalKnockback,
 								0.1f, 0.0f, 100000.0f
 							);
 							changed |= ImGui::DragFloat(
-								"Hit Stop Duration", &window.hitStopDuration,
+								LocalizedComponentWidgetLabel(editorLanguage_, "Hit Stop Duration"), &window.hitStopDuration,
 								0.001f, 0.0f, 1.0f
 							);
-							changed |= InputTextString("Reaction Tag", window.reactionTag);
+							changed |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Reaction Tag"), window.reactionTag);
 							struct HitPolicyOption {
 								const char* value;
 								const char* label;
@@ -16310,7 +19268,7 @@ void ImGuiManager::DrawPrefabInspector() {
 									break;
 								}
 							}
-							if (ImGui::BeginCombo("Hit Policy", policyPreview)) {
+							if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Hit Policy"), policyPreview)) {
 								for (const HitPolicyOption& option : hitPolicies) {
 									const bool selected = window.hitPolicy == option.value;
 									if (ImGui::Selectable(option.label, selected)) {
@@ -16322,7 +19280,7 @@ void ImGuiManager::DrawPrefabInspector() {
 							}
 							if (window.hitPolicy == "TargetCooldown") {
 								changed |= ImGui::DragFloat(
-									"Target Cooldown", &window.targetCooldown,
+									LocalizedComponentWidgetLabel(editorLanguage_, "Target Cooldown"), &window.targetCooldown,
 									0.01f, 0.0f, 60.0f
 								);
 							}
@@ -16343,7 +19301,7 @@ void ImGuiManager::DrawPrefabInspector() {
 									break;
 								}
 							}
-							if (ImGui::BeginCombo("Direction Mode", directionPreview)) {
+							if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Direction Mode"), directionPreview)) {
 								for (const DirectionModeOption& option : directionModes) {
 									const bool selected = window.knockbackDirectionMode == option.value;
 									if (ImGui::Selectable(option.label, selected)) {
@@ -16356,9 +19314,9 @@ void ImGuiManager::DrawPrefabInspector() {
 							const bool usesLocalDirection =
 								window.knockbackDirectionMode != "RadialFromAttacker";
 							ImGui::BeginDisabled(!usesLocalDirection);
-							changed |= ImGui::DragFloat3("Local Direction", &window.knockbackLocalDirection.x, 0.01f);
+							changed |= ImGui::DragFloat3(LocalizedComponentWidgetLabel(editorLanguage_, "Local Direction"), &window.knockbackLocalDirection.x, 0.01f);
 							ImGui::EndDisabled();
-							if (selectedHitBox && ImGui::SmallButton("Create Dedicated HitBox From Window")) {
+							if (selectedHitBox && ImGui::SmallButton(SelectEditorText(editorLanguage_, "Windowから専用HitBoxを作成###CreateDedicatedHitBox", "Create Dedicated HitBox From Window###CreateDedicatedHitBox"))) {
 								const uint64_t dedicatedId = createDedicatedHitBox(
 									attack, windowIndex, true
 								);
@@ -16368,13 +19326,13 @@ void ImGuiManager::DrawPrefabInspector() {
 								}
 							}
 							}
-							if (ImGui::SmallButton("Remove Hit Window")) removeWindow = static_cast<int>(windowIndex);
+							if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Hit Windowを削除###RemoveHitWindow", "Remove Hit Window###RemoveHitWindow"))) removeWindow = static_cast<int>(windowIndex);
 							ImGui::TreePop();
 						}
 						ImGui::PopID();
 					}
 					if (removeWindow >= 0) { attack.hitWindows.erase(attack.hitWindows.begin() + removeWindow); changed = true; }
-					if (ImGui::SmallButton("Add Hit Window")) {
+					if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Hit Windowを追加###AddHitWindow", "Add Hit Window###AddHitWindow"))) {
 						attack.hitWindows.push_back(SceneAttackHitWindow{});
 						const size_t newWindowIndex = attack.hitWindows.size() - 1;
 						const uint64_t dedicatedId = createDedicatedHitBox(
@@ -16387,7 +19345,7 @@ void ImGuiManager::DrawPrefabInspector() {
 							changed = true;
 						}
 					}
-					ImGui::SeparatorText("Effect Events");
+					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Effect Event", "Effect Events"));
 					int removeEffect = -1;
 					for (size_t effectIndex = 0;
 						effectIndex < attack.effectEvents.size(); ++effectIndex) {
@@ -16398,10 +19356,10 @@ void ImGuiManager::DrawPrefabInspector() {
 							"Effect Event %zu", effectIndex + 1
 						)) {
 							changed |= ImGui::DragFloat(
-								"Time", &effect.time, 0.01f, 0.0f, 60.0f
+							LocalizedComponentWidgetLabel(editorLanguage_, "Time"), &effect.time, 0.01f, 0.0f, 60.0f
 							);
 							changed |= InputTextString(
-								"Particle Effect Path", effect.particleEffectPath
+							LocalizedComponentWidgetLabel(editorLanguage_, "Particle Effect Path"), effect.particleEffectPath
 							);
 							const SceneEntity* selectedSpawn = effect.spawnEntityId != 0
 								? document.FindEntity(effect.spawnEntityId)
@@ -16412,7 +19370,7 @@ void ImGuiManager::DrawPrefabInspector() {
 							const char* spawnPreview = selectedSpawn
 								? selectedSpawn->name.c_str()
 								: "AttackSet (Fallback)";
-							if (ImGui::BeginCombo("Spawn Entity", spawnPreview)) {
+						if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Spawn Entity"), spawnPreview)) {
 								if (ImGui::Selectable(
 									"AttackSet (Fallback)", effect.spawnEntityId == 0 &&
 									effect.spawnEntityName.empty()
@@ -16434,7 +19392,7 @@ void ImGuiManager::DrawPrefabInspector() {
 								ImGui::EndCombo();
 							}
 							changed |= ImGui::DragFloat3(
-								"Local Offset", &effect.localOffset.x, 0.01f
+							LocalizedComponentWidgetLabel(editorLanguage_, "Local Offset"), &effect.localOffset.x, 0.01f
 							);
 							const char* groundEffectTypes[] = {
 								"None", "Prefab", "ProceduralCrack"
@@ -16443,7 +19401,7 @@ void ImGuiManager::DrawPrefabInspector() {
 								? 1
 								: effect.groundEffectType == "ProceduralCrack" ? 2 : 0;
 							if (ImGui::Combo(
-								"Ground Effect Type",
+							LocalizedComponentWidgetLabel(editorLanguage_, "Ground Effect Type"),
 								&groundEffectTypeIndex,
 								groundEffectTypes,
 								IM_ARRAYSIZE(groundEffectTypes)
@@ -16454,16 +19412,16 @@ void ImGuiManager::DrawPrefabInspector() {
 							}
 							if (groundEffectTypeIndex != 0) {
 								changed |= ImGui::DragFloat(
-									"Ground Probe Distance", &effect.groundProbeDistance,
+									LocalizedComponentWidgetLabel(editorLanguage_, "Ground Probe Distance"), &effect.groundProbeDistance,
 									0.05f, 0.0f, 100.0f
 								);
 							}
 							if (groundEffectTypeIndex == 1) {
 								changed |= InputTextString(
-									"Ground Prefab Path", effect.groundPrefabPath
+									LocalizedComponentWidgetLabel(editorLanguage_, "Ground Prefab Path"), effect.groundPrefabPath
 								);
 								changed |= ImGui::DragFloat(
-									"Ground Prefab Lifetime", &effect.groundPrefabLifetime,
+									LocalizedComponentWidgetLabel(editorLanguage_, "Ground Prefab Lifetime"), &effect.groundPrefabLifetime,
 									0.05f, 0.0f, 60.0f
 								);
 							} else if (groundEffectTypeIndex == 2) {
@@ -16474,41 +19432,41 @@ void ImGuiManager::DrawPrefabInspector() {
 									effect.groundCrackSegmentsPerBranch
 								);
 								changed |= ImGui::DragFloat(
-									"Crack Radius", &effect.groundCrackRadius,
+									LocalizedComponentWidgetLabel(editorLanguage_, "Crack Radius"), &effect.groundCrackRadius,
 									0.05f, 0.0f, 100.0f
 								);
 								if (ImGui::DragInt(
-									"Primary Branch Count", &primaryBranchCount, 1.0f, 1, 24
+									LocalizedComponentWidgetLabel(editorLanguage_, "Primary Branch Count"), &primaryBranchCount, 1.0f, 1, 24
 								)) {
 									effect.groundCrackPrimaryBranchCount =
 										static_cast<uint32_t>(primaryBranchCount);
 									changed = true;
 								}
 								if (ImGui::DragInt(
-									"Segments Per Branch", &segmentsPerBranch, 1.0f, 1, 12
+									LocalizedComponentWidgetLabel(editorLanguage_, "Segments Per Branch"), &segmentsPerBranch, 1.0f, 1, 12
 								)) {
 									effect.groundCrackSegmentsPerBranch =
 										static_cast<uint32_t>(segmentsPerBranch);
 									changed = true;
 								}
 								changed |= ImGui::DragFloat(
-									"Branch Probability", &effect.groundCrackBranchProbability,
+									LocalizedComponentWidgetLabel(editorLanguage_, "Branch Probability"), &effect.groundCrackBranchProbability,
 									0.01f, 0.0f, 1.0f
 								);
 								changed |= ImGui::DragFloat(
-									"Crack Width", &effect.groundCrackWidth,
+									LocalizedComponentWidgetLabel(editorLanguage_, "Crack Width"), &effect.groundCrackWidth,
 									0.005f, 0.0f, 10.0f
 								);
 								changed |= ImGui::DragFloat(
-									"Crack Lifetime", &effect.groundCrackLifetime,
+									LocalizedComponentWidgetLabel(editorLanguage_, "Crack Lifetime"), &effect.groundCrackLifetime,
 									0.05f, 0.0f, 60.0f
 								);
 								changed |= ImGui::DragFloat(
-									"Crack Surface Offset", &effect.groundCrackSurfaceOffset,
+									LocalizedComponentWidgetLabel(editorLanguage_, "Crack Surface Offset"), &effect.groundCrackSurfaceOffset,
 									0.001f, 0.0f, 1.0f
 								);
 							}
-							if (ImGui::SmallButton("Remove Effect Event")) {
+							if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Effect Eventを削除###RemoveEffectEvent", "Remove Effect Event###RemoveEffectEvent"))) {
 								removeEffect = static_cast<int>(effectIndex);
 							}
 							ImGui::TreePop();
@@ -16521,17 +19479,17 @@ void ImGuiManager::DrawPrefabInspector() {
 						);
 						changed = true;
 					}
-					if (ImGui::SmallButton("Add Effect Event")) {
+					if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Effect Eventを追加###AddEffectEvent", "Add Effect Event###AddEffectEvent"))) {
 						attack.effectEvents.push_back(SceneAttackEffectEvent{});
 						changed = true;
 					}
-					if (ImGui::SmallButton("Remove Attack")) removeAttack = static_cast<int>(attackIndex);
+					if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Attackを削除###RemoveAttack", "Remove Attack###RemoveAttack"))) removeAttack = static_cast<int>(attackIndex);
 					ImGui::TreePop();
 				}
 				ImGui::PopID();
 			}
 			if (removeAttack >= 0) { component.attackDefinitions.erase(component.attackDefinitions.begin() + removeAttack); changed = true; }
-			if (!clipFocusName && ImGui::Button("Add Attack")) {
+			if (!clipFocusName && ImGui::Button(SelectEditorText(editorLanguage_, "Attackを追加###AddAttack", "Add Attack###AddAttack"))) {
 				component.attackDefinitions.push_back(SceneAttackDefinition{});
 				changed = true;
 			}
@@ -16552,12 +19510,12 @@ void ImGuiManager::DrawPrefabInspector() {
 				if (ImGui::TreeNodeEx(
 					"Clip", ImGuiTreeNodeFlags_DefaultOpen, "%s", clip.name.c_str()
 				)) {
-					changed |= InputTextString("Clip Name", clip.name);
+					changed |= InputTextString(LocalizedComponentWidgetLabel(editorLanguage_, "Clip Name"), clip.name);
 					changed |= ImGui::DragFloat(
-						"Duration", &clip.duration, 0.01f, 0.001f, 3600.0f
+						LocalizedComponentWidgetLabel(editorLanguage_, "Duration"), &clip.duration, 0.01f, 0.001f, 3600.0f
 					);
-					changed |= ImGui::Checkbox("Loop", &clip.loop);
-					changed |= ImGui::Checkbox("Play On Start", &clip.playOnStart);
+					changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Loop"), &clip.loop);
+					changed |= ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Play On Start"), &clip.playOnStart);
 					int removeTrackIndex = -1;
 					for (size_t trackIndex = 0;
 						trackIndex < clip.tracks.size();
@@ -16571,7 +19529,7 @@ void ImGuiManager::DrawPrefabInspector() {
 								? document.FindEntity(track.targetEntityId)
 								: entity;
 							if (ImGui::BeginCombo(
-								"Target",
+								LocalizedComponentWidgetLabel(editorLanguage_, "Target"),
 								trackTarget ? trackTarget->name.c_str() : "Self"
 							)) {
 								if (ImGui::Selectable("Self", track.targetEntityId == 0)) {
@@ -16591,7 +19549,7 @@ void ImGuiManager::DrawPrefabInspector() {
 								}
 								ImGui::EndCombo();
 							}
-							if (ImGui::BeginCombo("Property", track.property.c_str())) {
+							if (ImGui::BeginCombo(LocalizedComponentWidgetLabel(editorLanguage_, "Property"), track.property.c_str())) {
 								for (const char* property : {
 									"LocalPosition", "LocalRotation", "LocalScale", "Active"
 								}) {
@@ -16605,7 +19563,7 @@ void ImGuiManager::DrawPrefabInspector() {
 								ImGui::EndCombo();
 							}
 							if (track.property != "Active" && ImGui::BeginCombo(
-								"Easing",
+								LocalizedComponentWidgetLabel(editorLanguage_, "Easing"),
 								track.easing.empty() ? "SmoothStep" : track.easing.c_str()
 							)) {
 								for (const char* easing : {
@@ -16627,7 +19585,7 @@ void ImGuiManager::DrawPrefabInspector() {
 								SceneAnimationKeyframe& key = track.keyframes[keyIndex];
 								ImGui::PushID(static_cast<int>(keyIndex));
 								if (ImGui::DragFloat(
-									"Time", &key.time, 0.01f, 0.0f, clip.duration
+									LocalizedComponentWidgetLabel(editorLanguage_, "Time"), &key.time, 0.01f, 0.0f, clip.duration
 								)) {
 									key.time = std::clamp(key.time, 0.0f, clip.duration);
 									keyframeTimeChanged = true;
@@ -16635,15 +19593,15 @@ void ImGuiManager::DrawPrefabInspector() {
 								}
 								if (track.property == "Active") {
 									bool activeValue = key.value.x >= 0.5f;
-									if (ImGui::Checkbox("Active Value", &activeValue)) {
+									if (ImGui::Checkbox(LocalizedComponentWidgetLabel(editorLanguage_, "Active Value"), &activeValue)) {
 										key.value.x = activeValue ? 1.0f : 0.0f;
 										changed = true;
 									}
 								} else {
 									changed |= ImGui::DragFloat3(
 										track.property == "LocalRotation"
-											? "Euler Value (Radians)"
-											: "Value",
+											? LocalizedComponentWidgetLabel(editorLanguage_, "Euler Value (Radians)")
+											: LocalizedComponentWidgetLabel(editorLanguage_, "Value"),
 										&key.value.x,
 										0.01f
 									);
@@ -16670,7 +19628,7 @@ void ImGuiManager::DrawPrefabInspector() {
 									}
 								);
 							}
-							if (ImGui::SmallButton("Add Keyframe")) {
+							if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Keyframeを追加###AddKeyframe", "Add Keyframe###AddKeyframe"))) {
 								SceneAnimationKeyframe keyframe = track.keyframes.empty()
 									? SceneAnimationKeyframe{}
 									: track.keyframes.back();
@@ -16683,7 +19641,7 @@ void ImGuiManager::DrawPrefabInspector() {
 								changed = true;
 							}
 							ImGui::SameLine();
-							if (ImGui::SmallButton("Remove Track")) {
+							if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Trackを削除###RemoveTrack", "Remove Track###RemoveTrack"))) {
 								removeTrackIndex = static_cast<int>(trackIndex);
 							}
 							ImGui::TreePop();
@@ -16694,12 +19652,12 @@ void ImGuiManager::DrawPrefabInspector() {
 						clip.tracks.erase(clip.tracks.begin() + removeTrackIndex);
 						changed = true;
 					}
-					if (ImGui::SmallButton("Add Track")) {
+					if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Trackを追加###AddTrack", "Add Track###AddTrack"))) {
 						clip.tracks.push_back(SceneAnimationTrack{});
 						changed = true;
 					}
 					ImGui::SameLine();
-					if (ImGui::SmallButton("Remove Clip")) {
+					if (ImGui::SmallButton(SelectEditorText(editorLanguage_, "Clipを削除###RemoveClip", "Remove Clip###RemoveClip"))) {
 						removeClipIndex = static_cast<int>(clipIndex);
 					}
 					ImGui::TreePop();
@@ -16712,7 +19670,7 @@ void ImGuiManager::DrawPrefabInspector() {
 				);
 				changed = true;
 			}
-			if (ImGui::Button("Add Clip")) {
+			if (ImGui::Button(SelectEditorText(editorLanguage_, "Clipを追加###AddClip", "Add Clip###AddClip"))) {
 				component.prefabAnimationClips.push_back(ScenePrefabAnimationClip{});
 				changed = true;
 			}
@@ -16721,7 +19679,11 @@ void ImGuiManager::DrawPrefabInspector() {
 		if (changed) {
 			document.MarkDirty();
 		}
-		if (ImGui::SmallButton("Remove Component")) {
+		if (ImGui::SmallButton(SelectEditorText(
+			editorLanguage_,
+			"Componentを削除###PrefabComponentRemove",
+			"Remove Component###PrefabComponentRemove"
+		))) {
 			removeComponentIndex = static_cast<int>(componentIndex);
 		}
 		ImGui::Separator();
@@ -16732,30 +19694,35 @@ void ImGuiManager::DrawPrefabInspector() {
 		document.RemoveComponent(entity->id, type);
 	}
 
-	ImGui::SeparatorText("Add Component");
-	static int componentTypeIndex = 0;
-	static constexpr const char* componentTypes[] = {
-		"MeshRenderer", "Animator", "OBBCollider", "HitBox", "HurtBox",
-		"BoneAttachment", "PrefabAnimator", "AttackSet", "Faction", "StateMachine"
-	};
-	componentTypeIndex = std::clamp(
-		componentTypeIndex,
-		0,
-		static_cast<int>(IM_ARRAYSIZE(componentTypes) - 1)
-	);
-	if (ImGui::BeginCombo("##PrefabComponentType", componentTypes[componentTypeIndex])) {
-		for (int index = 0; index < IM_ARRAYSIZE(componentTypes); ++index) {
-			if (ImGui::Selectable(
-				componentTypes[index], componentTypeIndex == index
-			)) {
-				componentTypeIndex = index;
-			}
-		}
-		ImGui::EndCombo();
+	ImGui::SeparatorText(SelectEditorText(
+		editorLanguage_,
+		"Componentを追加",
+		"Add Component"
+	));
+	ImGui::BeginDisabled(entity->folder);
+	if (ImGui::Button(
+		SelectEditorText(
+			editorLanguage_,
+			"Componentを追加...##OpenPrefabComponentPicker",
+			"Add Components...##OpenPrefabComponentPicker"
+		),
+		ImVec2(-1.0f, 0.0f)
+	)) {
+		OpenComponentPicker(
+			prefabComponentPicker_,
+			ComponentPickerTarget::Prefab,
+			document,
+			prefabEditorSession_->GetFilePath(),
+			entity->id
+		);
 	}
-	ImGui::SameLine();
-	if (ImGui::Button("Add")) {
-		document.AddComponent(entity->id, componentTypes[componentTypeIndex]);
+	ImGui::EndDisabled();
+	if (entity->folder) {
+		ImGui::TextDisabled("%s", SelectEditorText(
+			editorLanguage_,
+			"FolderへComponentは追加できません。",
+			"Components cannot be added to a folder."
+		));
 	}
 }
 

@@ -36,14 +36,28 @@ struct SceneCameraRequest {
 	std::string entityName;
 };
 
+enum class SceneAudioRequestType {
+	Play,
+	Stop,
+	Pause,
+	Resume
+};
+
+struct SceneAudioRequest {
+	SceneAudioRequestType type = SceneAudioRequestType::Play;
+	uint64_t entityId = 0;
+};
+
 struct SceneEventRuntimeSignals {
 	uint64_t completedCameraPathEntityId = 0;
+	std::vector<uint64_t> finishedAudioEntityIds;
 };
 
 struct SceneEventResult {
 	std::string sceneTransitionId;
 	ScenePostProcessRequest postProcessRequest;
 	std::vector<SceneCameraRequest> cameraRequests;
+	std::vector<SceneAudioRequest> audioRequests;
 };
 
 class SceneEventSystem {
