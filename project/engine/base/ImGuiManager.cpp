@@ -10868,6 +10868,144 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "TextMotion") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool textMotionChanged = false;
+				int removeClipIndex = -1;
+				for (size_t clipIndex = 0;
+					clipIndex < component.textMotionClips.size();
+					++clipIndex) {
+					SceneTextMotionClip& clip = component.textMotionClips[clipIndex];
+					ImGui::PushID(static_cast<int>(clipIndex));
+					if (ImGui::TreeNodeEx(
+						"TextMotionClip",
+						ImGuiTreeNodeFlags_DefaultOpen,
+						"Clip %zu: %s",
+						clipIndex + 1,
+						clip.id.empty() ? "<empty>" : clip.id.c_str()
+					)) {
+						textMotionChanged |= InputTextString(
+							LocalizedComponentWidgetLabel(editorLanguage_, "Clip Id"),
+							clip.id
+						);
+						textMotionChanged |= ImGui::Checkbox(
+							LocalizedComponentWidgetLabel(editorLanguage_, "Hold Final Pose"),
+							&clip.holdFinalPose
+						);
+						int removeKeyframeIndex = -1;
+						for (size_t keyframeIndex = 0;
+							keyframeIndex < clip.keyframes.size();
+							++keyframeIndex) {
+							SceneTextMotionKeyframe& keyframe = clip.keyframes[keyframeIndex];
+							ImGui::PushID(static_cast<int>(keyframeIndex));
+							if (ImGui::TreeNodeEx(
+								"TextMotionKeyframe",
+								ImGuiTreeNodeFlags_DefaultOpen,
+								"Keyframe %zu", keyframeIndex + 1
+							)) {
+								textMotionChanged |= ImGui::DragFloat(
+									LocalizedComponentWidgetLabel(editorLanguage_, "Time Seconds"),
+									&keyframe.timeSeconds,
+									0.01f
+								);
+								textMotionChanged |= ImGui::DragFloat2(
+									LocalizedComponentWidgetLabel(editorLanguage_, "Position Offset"),
+									&keyframe.positionOffset.x,
+									0.5f
+								);
+								textMotionChanged |= ImGui::DragFloat(
+									LocalizedComponentWidgetLabel(editorLanguage_, "Rotation Offset"),
+									&keyframe.rotationOffset,
+									0.5f
+								);
+								textMotionChanged |= ImGui::DragFloat2(
+									LocalizedComponentWidgetLabel(editorLanguage_, "Scale Multiplier"),
+									&keyframe.scaleMultiplier.x,
+									0.01f
+								);
+								textMotionChanged |= ImGui::DragFloat(
+									LocalizedComponentWidgetLabel(editorLanguage_, "Opacity Multiplier"),
+									&keyframe.opacityMultiplier,
+									0.01f
+								);
+								if (ImGui::BeginCombo(
+									LocalizedComponentWidgetLabel(editorLanguage_, "Easing To Next"),
+									keyframe.easingToNext.c_str()
+								)) {
+									for (const char* easing : {
+										"Linear", "EaseIn", "EaseOut", "EaseInOut", "SmoothStep"
+									}) {
+										if (ImGui::Selectable(
+											easing,
+											keyframe.easingToNext == easing
+										)) {
+											keyframe.easingToNext = easing;
+											textMotionChanged = true;
+										}
+									}
+									ImGui::EndCombo();
+								}
+								if (ImGui::SmallButton(SelectEditorText(
+									editorLanguage_, "Keyframeを削除###RemoveTextMotionKeyframe",
+									"Remove Keyframe###RemoveTextMotionKeyframe"
+								))) {
+									removeKeyframeIndex = static_cast<int>(keyframeIndex);
+								}
+								ImGui::TreePop();
+							}
+							ImGui::PopID();
+						}
+						if (removeKeyframeIndex >= 0) {
+							clip.keyframes.erase(
+								clip.keyframes.begin() + removeKeyframeIndex
+							);
+							textMotionChanged = true;
+						}
+						if (ImGui::SmallButton(SelectEditorText(
+							editorLanguage_, "Keyframeを追加###AddTextMotionKeyframe",
+							"Add Keyframe###AddTextMotionKeyframe"
+						))) {
+							SceneTextMotionKeyframe keyframe{};
+							keyframe.timeSeconds = clip.keyframes.empty()
+								? 0.0f : clip.keyframes.back().timeSeconds + 0.25f;
+							clip.keyframes.push_back(std::move(keyframe));
+							textMotionChanged = true;
+						}
+						if (ImGui::SmallButton(SelectEditorText(
+							editorLanguage_, "Clipを削除###RemoveTextMotionClip",
+							"Remove Clip###RemoveTextMotionClip"
+						))) {
+							removeClipIndex = static_cast<int>(clipIndex);
+						}
+						ImGui::TreePop();
+					}
+					ImGui::PopID();
+				}
+				if (removeClipIndex >= 0) {
+					component.textMotionClips.erase(
+						component.textMotionClips.begin() + removeClipIndex
+					);
+					textMotionChanged = true;
+				}
+				if (ImGui::Button(SelectEditorText(
+					editorLanguage_, "Clipを追加###AddTextMotionClip",
+					"Add Clip###AddTextMotionClip"
+				))) {
+					SceneTextMotionClip clip{};
+					clip.id = "Clip" + std::to_string(
+						component.textMotionClips.size() + 1
+					);
+					clip.keyframes = {
+						SceneTextMotionKeyframe{},
+						SceneTextMotionKeyframe{ 0.25f }
+					};
+					component.textMotionClips.push_back(std::move(clip));
+					textMotionChanged = true;
+				}
+				if (textMotionChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			} else if (component.type == "EventTrigger") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool eventsChanged = false;
@@ -10917,6 +11055,58 @@ void ImGuiManager::DrawInspectorWindow() {
 						ImGui::TextDisabled("%s", missingLabel);
 					}
 				};
+				auto drawTextMotionTargetAndClip = [
+					this,
+					&document,
+					&drawComponentTargetCombo,
+					&eventsChanged
+				](
+					const char* targetLabel,
+					const char* clipLabel,
+					uint64_t& targetId,
+					std::string& targetName,
+					std::string& clipId,
+					bool allowAnyClip
+				) {
+					drawComponentTargetCombo(
+						targetLabel,
+						targetId,
+						targetName,
+						"TextMotion",
+						SelectEditorText(editorLanguage_, "TextMotionがありません", "Missing TextMotion")
+					);
+					const SceneEntity* selected = targetId != 0
+						? document.FindEntity(targetId) : nullptr;
+					if (!selected && !targetName.empty()) {
+						selected = document.FindEntityByName(targetName);
+					}
+					const SceneComponent* motion = selected
+						? FindComponent(*selected, "TextMotion") : nullptr;
+					if (!motion || !motion->enabled) {
+						return;
+					}
+					const char* preview = clipId.empty() && allowAnyClip
+						? SelectEditorText(editorLanguage_, "すべてのClip", "Any Clip")
+						: (clipId.empty()
+							? SelectEditorText(editorLanguage_, "Clipを選択", "Select Clip")
+							: clipId.c_str());
+					if (ImGui::BeginCombo(clipLabel, preview)) {
+						if (allowAnyClip && ImGui::Selectable(
+							SelectEditorText(editorLanguage_, "すべてのClip", "Any Clip"),
+							clipId.empty()
+						)) {
+							clipId.clear();
+							eventsChanged = true;
+						}
+						for (const SceneTextMotionClip& clip : motion->textMotionClips) {
+							if (ImGui::Selectable(clip.id.c_str(), clip.id == clipId)) {
+								clipId = clip.id;
+								eventsChanged = true;
+							}
+						}
+						ImGui::EndCombo();
+					}
+				};
 				int removeBindingIndex = -1;
 				for (size_t bindingIndex = 0;
 					bindingIndex < component.eventBindings.size();
@@ -10934,7 +11124,8 @@ void ImGuiManager::DrawInspectorWindow() {
 							for (const char* trigger : {
 								"OnStart", "OnInterval", "OnStatReachedMin", "OnStatCompare",
 								"OnPositionReached", "OnKeyPressed",
-								"OnCameraPathCompleted", "OnAudioFinished"
+								"OnCameraPathCompleted", "OnAudioFinished",
+								"OnTextMotionCompleted"
 							}) {
 								if (ImGui::Selectable(
 									trigger,
@@ -10974,6 +11165,15 @@ void ImGuiManager::DrawInspectorWindow() {
 								binding.targetEntityName,
 								"AudioSource",
 								SelectEditorText(editorLanguage_, "AudioSourceがありません", "Missing AudioSource")
+							);
+						} else if (binding.triggerType == "OnTextMotionCompleted") {
+							drawTextMotionTargetAndClip(
+								LocalizedComponentWidgetLabel(editorLanguage_, "Text Motion"),
+								LocalizedComponentWidgetLabel(editorLanguage_, "Clip"),
+								binding.targetEntityId,
+								binding.targetEntityName,
+								binding.textMotionClipId,
+								true
 							);
 						} else if (triggerNeedsTarget) {
 							eventsChanged |= ImGui::InputScalar(
@@ -11072,7 +11272,8 @@ void ImGuiManager::DrawInspectorWindow() {
 										"NextPostProcessProfile",
 										"ResetPostProcessProfile", "PlayCameraPath",
 										"StopCameraPath", "SelectCamera", "PlayAudio",
-										"StopAudio", "PauseAudio", "ResumeAudio"
+									"StopAudio", "PauseAudio", "ResumeAudio",
+									"PlayTextMotion", "StopTextMotion", "ResetTextMotion"
 									}) {
 										if (ImGui::Selectable(
 											actionType,
@@ -11091,7 +11292,10 @@ void ImGuiManager::DrawInspectorWindow() {
 								action.type != "ResetPostProcessProfile" &&
 								action.type != "PlayCameraPath" &&
 								action.type != "StopCameraPath" &&
-								action.type != "SelectCamera"
+								action.type != "SelectCamera" &&
+								action.type != "PlayTextMotion" &&
+								action.type != "StopTextMotion" &&
+								action.type != "ResetTextMotion"
 								) {
 									eventsChanged |= ImGui::InputScalar(
 										LocalizedComponentWidgetLabel(editorLanguage_, "Action Target Entity Id"),
@@ -11154,6 +11358,19 @@ void ImGuiManager::DrawInspectorWindow() {
 										LocalizedComponentWidgetLabel(editorLanguage_, "Audio Source"),
 										action.targetEntityId, action.targetEntityName, "AudioSource",
 										SelectEditorText(editorLanguage_, "AudioSourceがありません", "Missing AudioSource")
+									);
+								} else if (
+									action.type == "PlayTextMotion" ||
+									action.type == "StopTextMotion" ||
+									action.type == "ResetTextMotion"
+								) {
+									drawTextMotionTargetAndClip(
+										LocalizedComponentWidgetLabel(editorLanguage_, "Text Motion"),
+										LocalizedComponentWidgetLabel(editorLanguage_, "Clip"),
+										action.targetEntityId,
+										action.targetEntityName,
+										action.textMotionClipId,
+										action.type != "PlayTextMotion"
 									);
 								} else if (action.type == "SceneTransition") {
 									eventsChanged |= InputTextString(

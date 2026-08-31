@@ -68,7 +68,8 @@ void Player::SetCollider(Collider* collider) {
 }
 
 void Player::Update(
-	const Camera* camera
+	const Camera* camera,
+	bool acceptGameplayInput
 ) {
 	if (!object_) {
 		return;
@@ -77,18 +78,18 @@ void Player::Update(
 		SyncRotationStateFromObject();
 	}
 	Vector3 inputMove{};
-	Input* input = Input::GetInstance();
+	Input* input = acceptGameplayInput ? Input::GetInstance() : nullptr;
 
-	if (input->PushKey(DIK_W)) {
+	if (input && input->PushKey(DIK_W)) {
 		inputMove.z += 1.0f;
 	}
-	if (input->PushKey(DIK_S)) {
+	if (input && input->PushKey(DIK_S)) {
 		inputMove.z -= 1.0f;
 	}
-	if (input->PushKey(DIK_A)) {
+	if (input && input->PushKey(DIK_A)) {
 		inputMove.x -= 1.0f;
 	}
-	if (input->PushKey(DIK_D)) {
+	if (input && input->PushKey(DIK_D)) {
 		inputMove.x += 1.0f;
 	}
 
@@ -98,7 +99,7 @@ void Player::Update(
 
 	Vector3 cameraForward = { 0.0f, 0.0f, 1.0f };
 	Vector3 cameraRight = { 1.0f, 0.0f, 0.0f };
-	if (cameraRelativeMove_ && camera) {
+	if (acceptGameplayInput && cameraRelativeMove_ && camera) {
 		const Matrix4x4& cameraWorld = camera->GetWorldMatrix();
 		cameraRight = {
 			cameraWorld.m[0][0],
@@ -134,7 +135,7 @@ void Player::Update(
 	}
 
 	const bool dash =
-		input->PushKey(DIK_LSHIFT) || input->PushKey(DIK_RSHIFT);
+		input && (input->PushKey(DIK_LSHIFT) || input->PushKey(DIK_RSHIFT));
 	const float speedMultiplier = dash ? dashMultiplier_ : 1.0f;
 
 	if (Math::Length(inputMove) > 0.000001f) {
@@ -154,7 +155,7 @@ void Player::Update(
 		}
 	}
 
-	if (cameraRelativeMove_ && camera) {
+	if (acceptGameplayInput && cameraRelativeMove_ && camera) {
 		Vector3 facing = cameraForward;
 		if (!inWater_) {
 			facing = FlattenAndNormalize(facing);
@@ -192,9 +193,9 @@ void Player::Update(
 		}
 	}
 
-	if (inWater_) {
-		const bool swimUp = input->PushKey(DIK_SPACE);
-		const bool swimDown = input->PushKey(DIK_LCONTROL);
+	if (acceptGameplayInput && inWater_) {
+		const bool swimUp = input && input->PushKey(DIK_SPACE);
+		const bool swimDown = input && input->PushKey(DIK_LCONTROL);
 		if (swimUp) {
 			desiredVelocity.y = waterSwimUpSpeed_ * speedMultiplier;
 			physicsBody_.isGrounded = false;
@@ -208,7 +209,7 @@ void Player::Update(
 				waterSwimUpSpeed_ * 0.35f * speedMultiplier
 			);
 		}
-	} else if (allowJump_ && physicsBody_.isGrounded && input->TriggerKey(DIK_SPACE)) {
+	} else if (input && allowJump_ && physicsBody_.isGrounded && input->TriggerKey(DIK_SPACE)) {
 		desiredVelocity.y = jumpVelocity_;
 		physicsBody_.isGrounded = false;
 	}

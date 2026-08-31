@@ -11,6 +11,12 @@
       "name": "GAMEPLAY",
       "path": "resources/scenes/gameplay.scene.json",
       "runtimeProfile": "RUNTIME"
+    },
+    {
+      "id": "gameplay_legacy",
+      "name": "GAMEPLAY LEGACY",
+      "path": "resources/scenes/gameplay_legacy.scene.json",
+      "runtimeProfile": "RUNTIME"
     }
   ],
   "startScene": "title",

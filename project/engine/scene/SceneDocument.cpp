@@ -1111,7 +1111,8 @@ namespace {
 				{ "stateName", action.stateName },
 				{ "postProcessManagerEntityId", action.postProcessManagerEntityId },
 				{ "postProcessManagerEntityName", action.postProcessManagerEntityName },
-				{ "postProcessProfileId", action.postProcessProfileId }
+				{ "postProcessProfileId", action.postProcessProfileId },
+				{ "textMotionClipId", action.textMotionClipId }
 			});
 		}
 		return result;
@@ -1132,6 +1133,7 @@ namespace {
 				{ "radius", binding.radius },
 				{ "triggerOnce", binding.triggerOnce },
 				{ "cooldown", binding.cooldown },
+				{ "textMotionClipId", binding.textMotionClipId },
 				{ "actions", EventActionsToJson(binding.actions) }
 			});
 		}
@@ -1429,6 +1431,57 @@ namespace {
 				result["overlayPlacement"] = placementToJson(component.textOverlayPlacement);
 				result["scene2DPlacement"] = placementToJson(component.textScene2DPlacement);
 			}
+		} else if (component.type == "TextMotion") {
+			json clips = json::array();
+			for (const SceneTextMotionClip& clip : component.textMotionClips) {
+				json keyframes = json::array();
+				for (const SceneTextMotionKeyframe& keyframe : clip.keyframes) {
+					keyframes.push_back({
+						{ "timeSeconds", keyframe.timeSeconds },
+						{ "positionOffset", VectorToJson(keyframe.positionOffset) },
+						{ "rotationOffset", keyframe.rotationOffset },
+						{ "scaleMultiplier", VectorToJson(keyframe.scaleMultiplier) },
+						{ "opacityMultiplier", keyframe.opacityMultiplier },
+						{ "easingToNext", keyframe.easingToNext }
+					});
+				}
+				clips.push_back({
+					{ "id", clip.id },
+					{ "holdFinalPose", clip.holdFinalPose },
+					{ "keyframes", std::move(keyframes) }
+				});
+			}
+			result["clips"] = std::move(clips);
+		} else if (component.type == "GameFlowDirector") {
+			result["autoStart"] = component.gameFlowAutoStart;
+			result["countdownStart"] = component.gameFlowCountdownStart;
+			result["countdownStepSeconds"] = component.gameFlowCountdownStepSeconds;
+			result["startCueText"] = component.gameFlowStartCueText;
+			result["startCueSeconds"] = component.gameFlowStartCueSeconds;
+			result["interPhaseDelaySeconds"] = component.gameFlowInterPhaseDelaySeconds;
+			result["resultRevealDelaySeconds"] = component.gameFlowResultRevealDelaySeconds;
+			result["timerDisplayStepSeconds"] = component.gameFlowTimerDisplayStepSeconds;
+			result["timerPrefix"] = component.gameFlowTimerPrefix;
+			result["resultPrefix"] = component.gameFlowResultPrefix;
+			result["countdownTextEntityId"] = component.gameFlowCountdownTextEntityId;
+			result["countdownMotionClipId"] = component.gameFlowCountdownMotionClipId;
+			result["phaseTextEntityId"] = component.gameFlowPhaseTextEntityId;
+			result["phaseMotionClipId"] = component.gameFlowPhaseMotionClipId;
+			result["timerTextEntityId"] = component.gameFlowTimerTextEntityId;
+			result["remainingTextEntityId"] = component.gameFlowRemainingTextEntityId;
+			result["remainingPrefix"] = component.gameFlowRemainingPrefix;
+			result["resultRootEntityId"] = component.gameFlowResultRootEntityId;
+			result["resultTimeTextEntityId"] = component.gameFlowResultTimeTextEntityId;
+			result["resultMotionClipId"] = component.gameFlowResultMotionClipId;
+			json phases = json::array();
+			for (const SceneGameFlowPhase& phase : component.gameFlowPhases) {
+				json waves = json::array();
+				for (const SceneGameFlowWave& wave : phase.waves) {
+					waves.push_back({ { "spawnerEntityId", wave.spawnerEntityId }, { "count", wave.count } });
+				}
+				phases.push_back({ { "id", phase.id }, { "label", phase.label }, { "waves", std::move(waves) } });
+			}
+			result["phases"] = std::move(phases);
 		} else if (component.type == "Camera") {
 			result["isMain"] = component.cameraIsMain;
 			result["fovY"] = component.cameraFovY;
@@ -1899,6 +1952,9 @@ namespace {
 		action.postProcessProfileId = value.value(
 			"postProcessProfileId", action.postProcessProfileId
 		);
+		action.textMotionClipId = value.value(
+			"textMotionClipId", action.textMotionClipId
+		);
 		return action;
 	}
 
@@ -1942,6 +1998,9 @@ namespace {
 			binding.cooldown = (std::max)(
 				value.value("cooldown", binding.cooldown),
 				0.0f
+			);
+			binding.textMotionClipId = value.value(
+				"textMotionClipId", binding.textMotionClipId
 			);
 			if (const auto actions = value.find("actions");
 				actions != value.end() && actions->is_array()) {
@@ -2589,6 +2648,95 @@ namespace {
 					component.textHasPlacementProfiles =
 						readPlacement("overlayPlacement", component.textOverlayPlacement) |
 						readPlacement("scene2DPlacement", component.textScene2DPlacement);
+				}
+				if (component.type == "TextMotion") {
+					component.textMotionClips.clear();
+					const auto clips = value.find("clips");
+					if (clips != value.end() && clips->is_array()) {
+						for (const auto& sourceClip : *clips) {
+							if (!sourceClip.is_object()) {
+								continue;
+							}
+							SceneTextMotionClip clip{};
+							clip.id = sourceClip.value("id", std::string{});
+							clip.holdFinalPose = sourceClip.value(
+								"holdFinalPose", false
+							);
+							const auto keyframes = sourceClip.find("keyframes");
+							if (keyframes != sourceClip.end() && keyframes->is_array()) {
+								for (const auto& sourceKeyframe : *keyframes) {
+									if (!sourceKeyframe.is_object()) {
+										continue;
+									}
+									SceneTextMotionKeyframe keyframe{};
+									keyframe.timeSeconds = sourceKeyframe.value(
+										"timeSeconds", keyframe.timeSeconds
+									);
+									if (sourceKeyframe.contains("positionOffset")) {
+										keyframe.positionOffset = JsonToVector(
+											sourceKeyframe.at("positionOffset"),
+											keyframe.positionOffset
+										);
+									}
+									keyframe.rotationOffset = sourceKeyframe.value(
+										"rotationOffset", keyframe.rotationOffset
+									);
+									if (sourceKeyframe.contains("scaleMultiplier")) {
+										keyframe.scaleMultiplier = JsonToVector(
+											sourceKeyframe.at("scaleMultiplier"),
+											keyframe.scaleMultiplier
+										);
+									}
+									keyframe.opacityMultiplier = sourceKeyframe.value(
+										"opacityMultiplier", keyframe.opacityMultiplier
+									);
+									keyframe.easingToNext = sourceKeyframe.value(
+										"easingToNext", keyframe.easingToNext
+									);
+									clip.keyframes.push_back(std::move(keyframe));
+								}
+							}
+							component.textMotionClips.push_back(std::move(clip));
+						}
+					}
+				}
+				if (component.type == "GameFlowDirector") {
+					component.gameFlowAutoStart = value.value("autoStart", component.gameFlowAutoStart);
+					component.gameFlowCountdownStart = value.value("countdownStart", component.gameFlowCountdownStart);
+					component.gameFlowCountdownStepSeconds = value.value("countdownStepSeconds", component.gameFlowCountdownStepSeconds);
+					component.gameFlowStartCueText = value.value("startCueText", component.gameFlowStartCueText);
+					component.gameFlowStartCueSeconds = value.value("startCueSeconds", component.gameFlowStartCueSeconds);
+					component.gameFlowInterPhaseDelaySeconds = value.value("interPhaseDelaySeconds", component.gameFlowInterPhaseDelaySeconds);
+					component.gameFlowResultRevealDelaySeconds = value.value("resultRevealDelaySeconds", component.gameFlowResultRevealDelaySeconds);
+					component.gameFlowTimerDisplayStepSeconds = value.value("timerDisplayStepSeconds", component.gameFlowTimerDisplayStepSeconds);
+					component.gameFlowTimerPrefix = value.value("timerPrefix", component.gameFlowTimerPrefix);
+					component.gameFlowResultPrefix = value.value("resultPrefix", component.gameFlowResultPrefix);
+					component.gameFlowCountdownTextEntityId = value.value("countdownTextEntityId", uint64_t{});
+					component.gameFlowCountdownMotionClipId = value.value("countdownMotionClipId", std::string{});
+					component.gameFlowPhaseTextEntityId = value.value("phaseTextEntityId", uint64_t{});
+					component.gameFlowPhaseMotionClipId = value.value("phaseMotionClipId", std::string{});
+					component.gameFlowTimerTextEntityId = value.value("timerTextEntityId", uint64_t{});
+					component.gameFlowRemainingTextEntityId = value.value("remainingTextEntityId", uint64_t{});
+					component.gameFlowRemainingPrefix = value.value("remainingPrefix", component.gameFlowRemainingPrefix);
+					component.gameFlowResultRootEntityId = value.value("resultRootEntityId", uint64_t{});
+					component.gameFlowResultTimeTextEntityId = value.value("resultTimeTextEntityId", uint64_t{});
+					component.gameFlowResultMotionClipId = value.value("resultMotionClipId", std::string{});
+					component.gameFlowPhases.clear();
+					if (const auto phases = value.find("phases"); phases != value.end() && phases->is_array()) {
+						for (const json& sourcePhase : *phases) {
+							if (!sourcePhase.is_object()) continue;
+							SceneGameFlowPhase phase{};
+							phase.id = sourcePhase.value("id", std::string{});
+							phase.label = sourcePhase.value("label", std::string{});
+							if (const auto waves = sourcePhase.find("waves"); waves != sourcePhase.end() && waves->is_array()) {
+								for (const json& sourceWave : *waves) {
+									if (!sourceWave.is_object()) continue;
+									phase.waves.push_back({ sourceWave.value("spawnerEntityId", uint64_t{}), sourceWave.value("count", 1) });
+								}
+							}
+							component.gameFlowPhases.push_back(std::move(phase));
+						}
+					}
 				}
 				component.cameraIsMain = value.value("isMain", false);
 				component.cameraFovY = value.value("fovY", component.cameraFovY);
@@ -8128,6 +8276,10 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.textPivot = { 0.0f, 0.0f };
 		component.textSortingOrder = 0;
 		component.textClipEnabled = false;
+	} else if (type == "TextMotion") {
+		component.textMotionClips.clear();
+	} else if (type == "GameFlowDirector") {
+		component.gameFlowPhases.clear();
 	} else if (type == "AudioSource") {
 		component.audioClipPath.clear();
 		component.audioSpatialMode = "TwoD";

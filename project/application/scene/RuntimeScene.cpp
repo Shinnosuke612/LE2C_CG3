@@ -249,6 +249,31 @@ void RuntimeScene::Update(float deltaTime)
 			return;
 		}
 	}
+	SceneGameFlowResult gameFlowResult{};
+	if (activeDocument && playing) {
+		gameFlowResult = gameFlowSystem_.Update(
+			*activeDocument,
+			enemySpawnerSystem_,
+			deltaTime
+		);
+		for (const SceneGameFlowEntityRequest& request : gameFlowResult.entityRequests) {
+			if (SceneEntity* entity = activeDocument->FindEntity(request.entityId)) {
+				entity->active = request.active;
+			}
+		}
+		for (const SceneGameFlowWaveRequest& request : gameFlowResult.waveRequests) {
+			enemySpawnerSystem_.BeginFiniteWave(
+				request.spawnerEntityId,
+				request.generation,
+				request.count
+			);
+		}
+		for (const SceneGameFlowMotionRequest& request : gameFlowResult.motionRequests) {
+			textMotionSystem_.Play(*activeDocument, request.entityId, request.clipId);
+		}
+	} else {
+		gameFlowSystem_.Clear();
+	}
 	const std::string runtimeSceneId = GetSceneAssetId().empty()
 		? "runtime"
 		: GetSceneAssetId();
@@ -296,7 +321,9 @@ void RuntimeScene::Update(float deltaTime)
 		projectileSystem_.FlushRemovals(*activeDocument);
 		// 保存値を実行時状態へ展開し、Transform AnimationをObject同期前に反映する。
 		statSystem_.Update(*activeDocument);
-		enemySpawnerSystem_.Update(*activeDocument, gameplayDeltaTime);
+		if (gameFlowResult.gameplayAllowed) {
+			enemySpawnerSystem_.Update(*activeDocument, gameplayDeltaTime);
+		}
 		spawnerResetEntityIds = enemySpawnerSystem_.ConsumeResetEntityIds();
 		for (uint64_t entityId : spawnerResetEntityIds) {
 			attackRunnerSystem_.ResetEntity(*activeDocument, entityId);
@@ -305,22 +332,24 @@ void RuntimeScene::Update(float deltaTime)
 			enemySystem_.ResetEntity(entityId);
 			hitReactionSystem_.ResetEntity(entityId);
 		}
-		hitReactionSystem_.AdvanceRecoveries(statSystem_, gameplayDeltaTime);
-		attackRunnerSystem_.Advance(
-			*activeDocument,
-			prefabAnimationSystem_,
-			gameplayDeltaTime
-		);
-		runtimeEffectSystem_.Spawn(
-			*activeDocument,
-			physicsSystem_,
-			attackRunnerSystem_.ConsumeEffectRequests()
-		);
-		effectRenderSystem_.SpawnGroundCracks(
-			runtimeEffectSystem_.ConsumeGroundCrackRequests()
-		);
-		runtimeEffectSystem_.Advance(*activeDocument, deltaTime);
-		prefabAnimationSystem_.Update(*activeDocument, gameplayDeltaTime);
+		if (gameFlowResult.gameplayAllowed) {
+			hitReactionSystem_.AdvanceRecoveries(statSystem_, gameplayDeltaTime);
+			attackRunnerSystem_.Advance(
+				*activeDocument,
+				prefabAnimationSystem_,
+				gameplayDeltaTime
+			);
+			runtimeEffectSystem_.Spawn(
+				*activeDocument,
+				physicsSystem_,
+				attackRunnerSystem_.ConsumeEffectRequests()
+			);
+			effectRenderSystem_.SpawnGroundCracks(
+				runtimeEffectSystem_.ConsumeGroundCrackRequests()
+			);
+			runtimeEffectSystem_.Advance(*activeDocument, deltaTime);
+			prefabAnimationSystem_.Update(*activeDocument, gameplayDeltaTime);
+		}
 	} else {
 		audioSystem_.Clear();
 		statSystem_.Clear();
@@ -328,6 +357,8 @@ void RuntimeScene::Update(float deltaTime)
 		runtimeEffectSystem_.Clear(activeDocument);
 		prefabAnimationSystem_.Clear();
 		eventSystem_.Clear();
+		textMotionSystem_.Clear();
+		gameFlowSystem_.Clear();
 		postProcessProfileSystem_.Reset(activeDocument);
 		stateMachineSystem_.Clear();
 		combatSystem_.Clear();
@@ -362,7 +393,7 @@ void RuntimeScene::Update(float deltaTime)
 			runtimeObjectBindings_,
 			spawnerResetEntityIds
 		);
-		if (playing && gameplayDeltaTime > 0.0f) {
+		if (playing && gameFlowResult.gameplayAllowed && gameplayDeltaTime > 0.0f) {
 			enemySystem_.Update(
 				*activeDocument,
 				runtimeObjectBindings_,
@@ -395,6 +426,7 @@ void RuntimeScene::Update(float deltaTime)
 		hitStopSystem_.Clear();
 		enemySystem_.Clear();
 		eventSystem_.Clear();
+		gameFlowSystem_.Clear();
 		postProcessProfileSystem_.Reset();
 		stateMachineSystem_.Clear();
 		attackRunnerSystem_.Clear();
@@ -418,15 +450,15 @@ void RuntimeScene::Update(float deltaTime)
 		);
 	}
 	Vector3 playerAttackInputDirection{};
-	if (player_ && playing && gameplayDeltaTime > 0.0f) {
-		player_->Update(camera_);
+	if (player_ && playing) {
+		player_->Update(camera_, gameFlowResult.gameplayAllowed);
 		const Vector3& playerVelocity = player_->GetPhysicsBody().velocity;
 		playerAttackInputDirection = { playerVelocity.x, 0.0f, playerVelocity.z };
 		if (Math::Length(playerAttackInputDirection) > 0.0001f) {
 			playerAttackInputDirection = Math::Normalize(playerAttackInputDirection);
 		}
 	}
-	if (activeDocument && playing && gameplayDeltaTime > 0.0f) {
+	if (activeDocument && playing && gameFlowResult.gameplayAllowed && gameplayDeltaTime > 0.0f) {
 		// State行動は入力取得後、Physics確定前に速度・攻撃判定を更新する。
 		stateMachineSystem_.Update(
 			*activeDocument,
@@ -470,7 +502,7 @@ void RuntimeScene::Update(float deltaTime)
 			);
 		}
 	}
-	if (activeDocument && playing && gameplayDeltaTime > 0.0f) {
+	if (activeDocument && playing && gameFlowResult.gameplayAllowed && gameplayDeltaTime > 0.0f) {
 		// Bone追従はAnimation/Physics後、当たり判定とEventは最終Transform後に評価する。
 		attachmentSystem_.Update(
 			*activeDocument,
@@ -517,6 +549,12 @@ void RuntimeScene::Update(float deltaTime)
 	}
 	// Transform確定後に環境設定とDebug形状を登録し、描画時の状態を揃える。
 	environmentSystem_.Sync(activeDocument, runtimeObjectBindings_);
+	if (activeDocument && playing) {
+		// Eventは同FrameのTextMotion completionを次Packageで受け取れる位置に置く。
+		textMotionSystem_.Update(*activeDocument, deltaTime);
+	} else {
+		textMotionSystem_.Clear();
+	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
 	debugSystem_.AddDebugDraw(
@@ -533,7 +571,8 @@ void RuntimeScene::Update(float deltaTime)
 		// Prefab生成はEntity配列を再配置し得るため、bindingを使い終えた最後に行う。
 		const SceneEventRuntimeSignals eventSignals{
 			cameraSystem_.ConsumeCompletedCameraPathEntityId(),
-			audioSystem_.ConsumeFinishedEntityIds(*activeDocument)
+			audioSystem_.ConsumeFinishedEntityIds(*activeDocument),
+			textMotionSystem_.ConsumeCompletions()
 		};
 		const SceneEventResult eventResult = eventSystem_.Update(
 			*activeDocument,
@@ -546,6 +585,15 @@ void RuntimeScene::Update(float deltaTime)
 			postProcessProfileSystem_.Reset(activeDocument);
 			sceneManager_->ChangeScene(eventResult.sceneTransitionId);
 			return;
+		}
+		for (const SceneTextMotionRequest& request : eventResult.textMotionRequests) {
+			if (request.type == SceneTextMotionRequestType::Play) {
+				textMotionSystem_.Play(*activeDocument, request.entityId, request.clipId);
+			} else if (request.type == SceneTextMotionRequestType::Stop) {
+				textMotionSystem_.Stop(request.entityId);
+			} else {
+				textMotionSystem_.Reset(request.entityId);
+			}
 		}
 		cameraSystem_.ApplyEventRequests(
 			*activeDocument,
@@ -570,7 +618,11 @@ void RuntimeScene::Update(float deltaTime)
 	}
 	postProcessProfileSystem_.Update(playing ? gameplayDeltaTime : 0.0f);
 	textRenderSystem_.ClearTextOverrides();
+	textRenderSystem_.ClearPresentationOverrides();
 	if (activeDocument) {
+		for (const SceneGameFlowTextRequest& request : gameFlowResult.textRequests) {
+			textRenderSystem_.SetTextOverride(request.entityId, request.text);
+		}
 		SceneEntity* statusText = postProcessProfileSystem_.GetStatusTextEntityId() != 0
 			? activeDocument->FindEntity(
 				postProcessProfileSystem_.GetStatusTextEntityId()
@@ -589,6 +641,16 @@ void RuntimeScene::Update(float deltaTime)
 					postProcessProfileSystem_.GetActiveProfileLabel()
 			);
 		}
+	}
+	for (const auto& [entityId, presentation] :
+		textMotionSystem_.GetPresentationOverrides()) {
+		textRenderSystem_.SetPresentationOverride(
+			entityId,
+			presentation.positionOffset,
+			presentation.rotationOffset,
+			presentation.scaleMultiplier,
+			presentation.opacityMultiplier
+		);
 	}
 	textRenderSystem_.Sync(activeDocument);
 }
@@ -751,6 +813,8 @@ void RuntimeScene::Finalize()
 	hitStopSystem_.Clear();
 	enemySystem_.Clear();
 	eventSystem_.Clear();
+	textMotionSystem_.Clear();
+	gameFlowSystem_.Clear();
 	audioSystem_.Clear();
 	postProcessProfileSystem_.Reset();
 	stateMachineSystem_.Clear();
@@ -785,6 +849,8 @@ void RuntimeScene::Finalize()
 
 void RuntimeScene::PrepareForSceneTransition()
 {
+	textMotionSystem_.Clear();
+	gameFlowSystem_.Clear();
 	SceneExecutionContext* executionContext = sceneManager_
 		? sceneManager_->GetExecutionContext()
 		: nullptr;

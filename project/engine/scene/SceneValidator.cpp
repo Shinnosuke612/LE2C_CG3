@@ -534,6 +534,61 @@ bool SceneValidator::ValidateDocument(
 							"TextRenderer contains an invalid 2D placement profile");
 					}
 				}
+			} else if (component.type == "TextMotion") {
+				const SceneComponent* textRenderer =
+					SceneEntityQuery::FindEnabledComponent(entity, "TextRenderer");
+				if (!textRenderer) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"TextMotion requires an enabled TextRenderer on the same Entity"
+					);
+				}
+				std::unordered_set<std::string> clipIds;
+				for (const SceneTextMotionClip& clip : component.textMotionClips) {
+					if (clip.id.empty() || !clipIds.insert(clip.id).second) {
+						addIssue(SceneValidationSeverity::Error, entity.id,
+							"TextMotion contains an empty or duplicate clip Id");
+					}
+					if (clip.keyframes.size() < 2) {
+						addIssue(SceneValidationSeverity::Error, entity.id,
+							"TextMotion clip requires at least two keyframes: " + clip.id);
+					}
+					float previousTime = -1.0f;
+					for (const SceneTextMotionKeyframe& keyframe : clip.keyframes) {
+						const bool validEasing =
+							keyframe.easingToNext == "Linear" ||
+							keyframe.easingToNext == "EaseIn" ||
+							keyframe.easingToNext == "EaseOut" ||
+							keyframe.easingToNext == "EaseInOut" ||
+							keyframe.easingToNext == "SmoothStep";
+						if (!std::isfinite(keyframe.timeSeconds) ||
+							!std::isfinite(keyframe.positionOffset.x) ||
+							!std::isfinite(keyframe.positionOffset.y) ||
+							!std::isfinite(keyframe.rotationOffset) ||
+							!std::isfinite(keyframe.scaleMultiplier.x) ||
+							!std::isfinite(keyframe.scaleMultiplier.y) ||
+							!std::isfinite(keyframe.opacityMultiplier) ||
+							keyframe.timeSeconds < 0.0f ||
+							keyframe.timeSeconds <= previousTime ||
+							keyframe.scaleMultiplier.x <= 0.0f ||
+							keyframe.scaleMultiplier.y <= 0.0f ||
+							keyframe.opacityMultiplier < 0.0f ||
+							keyframe.opacityMultiplier > 1.0f || !validEasing) {
+							addIssue(SceneValidationSeverity::Error, entity.id,
+								"TextMotion clip contains an invalid keyframe: " + clip.id);
+							break;
+						}
+						previousTime = keyframe.timeSeconds;
+					}
+					if (!clip.keyframes.empty() &&
+						(clip.keyframes.front().timeSeconds != 0.0f ||
+							clip.keyframes.back().timeSeconds <= 0.0f)) {
+						addIssue(SceneValidationSeverity::Error, entity.id,
+							"TextMotion clip must start at zero and end after zero: " +
+								clip.id);
+					}
+				}
 			} else if (component.type == "Light") {
 				if (
 					component.lightType != "Directional" &&
@@ -810,7 +865,8 @@ bool SceneValidator::ValidateDocument(
 					const std::string& targetName,
 					const char* componentName,
 					const char* label,
-					bool checkPathPoints
+					bool checkPathPoints,
+					bool allowInactiveTarget = false
 				) {
 					if (targetId == 0 && targetName.empty()) {
 						addIssue(
@@ -833,7 +889,8 @@ bool SceneValidator::ValidateDocument(
 						: nullptr;
 					if (
 						!target || !targetComponent ||
-						!SceneEntityQuery::IsEntityActiveInHierarchy(document, *target)
+						(!allowInactiveTarget &&
+							!SceneEntityQuery::IsEntityActiveInHierarchy(document, *target))
 					) {
 						addIssue(
 							SceneValidationSeverity::Error,
@@ -887,6 +944,59 @@ bool SceneValidator::ValidateDocument(
 						}
 					}
 				};
+				auto resolveEventTarget = [&document](
+					uint64_t targetId,
+					const std::string& targetName
+				) -> const SceneEntity* {
+					const SceneEntity* target = targetId != 0
+						? document.FindEntity(targetId)
+						: nullptr;
+					if (!target && !targetName.empty()) {
+						target = document.FindEntityByName(targetName);
+					}
+					return target;
+				};
+				auto hasActiveParentHierarchy = [&document](const SceneEntity& target) {
+					std::unordered_set<uint64_t> visited;
+					const SceneEntity* current = &target;
+					while (current->parentId != 0) {
+						if (!visited.insert(current->id).second) {
+							return false;
+						}
+						current = document.FindEntity(current->parentId);
+						if (!current || !current->active) {
+							return false;
+						}
+					}
+					return true;
+				};
+				std::unordered_set<uint64_t> onStartActivatedEntityIds;
+				if (component.enabled && activeInHierarchy) {
+					for (const SceneEventBinding& binding : component.eventBindings) {
+						if (binding.triggerType != "OnStart") {
+							continue;
+						}
+						for (const SceneEventAction& action : binding.actions) {
+							if (action.type != "SetEntityActive" || !action.active) {
+								continue;
+							}
+							const SceneEntity* target = resolveEventTarget(
+								action.targetEntityId,
+								action.targetEntityName
+							);
+							if (target && hasActiveParentHierarchy(*target)) {
+								onStartActivatedEntityIds.insert(target->id);
+							}
+						}
+					}
+				}
+				auto isActivatedOnStart = [
+					&onStartActivatedEntityIds,
+					&resolveEventTarget
+				](uint64_t targetId, const std::string& targetName) {
+					const SceneEntity* target = resolveEventTarget(targetId, targetName);
+					return target && onStartActivatedEntityIds.contains(target->id);
+				};
 				for (const SceneEventBinding& binding : component.eventBindings) {
 					const bool triggerUsesTarget =
 						binding.triggerType == "OnStatReachedMin" ||
@@ -927,7 +1037,43 @@ bool SceneValidator::ValidateDocument(
 							false
 						);
 					}
-					for (const SceneEventAction& action : binding.actions) {
+					if (binding.triggerType == "OnTextMotionCompleted") {
+						validateCameraEventTarget(
+							binding.targetEntityId,
+							binding.targetEntityName,
+							"TextMotion",
+							"OnTextMotionCompleted",
+							false,
+							isActivatedOnStart(
+								binding.targetEntityId,
+								binding.targetEntityName
+							)
+						);
+						const SceneEntity* target = binding.targetEntityId != 0
+							? document.FindEntity(binding.targetEntityId) : nullptr;
+						if (!target && !binding.targetEntityName.empty()) {
+							target = document.FindEntityByName(binding.targetEntityName);
+						}
+						const SceneComponent* motion = target
+							? SceneEntityQuery::FindEnabledComponent(*target, "TextMotion")
+							: nullptr;
+						if (motion && !binding.textMotionClipId.empty() &&
+							!std::any_of(
+								motion->textMotionClips.begin(),
+								motion->textMotionClips.end(),
+								[&binding](const SceneTextMotionClip& clip) {
+									return clip.id == binding.textMotionClipId;
+								}
+							)) {
+							addIssue(SceneValidationSeverity::Error, entity.id,
+								"OnTextMotionCompleted clip Id is unresolved: " +
+									binding.textMotionClipId);
+						}
+					}
+					for (size_t actionIndex = 0;
+						actionIndex < binding.actions.size();
+						++actionIndex) {
+						const SceneEventAction& action = binding.actions[actionIndex];
 						const bool actionUsesTarget =
 							action.type == "ModifyStat" ||
 							action.type == "SetEntityActive" ||
@@ -936,7 +1082,10 @@ bool SceneValidator::ValidateDocument(
 							action.type == "PlayAudio" ||
 							action.type == "StopAudio" ||
 							action.type == "PauseAudio" ||
-							action.type == "ResumeAudio";
+							action.type == "ResumeAudio" ||
+							action.type == "PlayTextMotion" ||
+							action.type == "StopTextMotion" ||
+							action.type == "ResetTextMotion";
 						if (actionUsesTarget) {
 							validateEntityReference(
 								action.targetEntityId,
@@ -971,6 +1120,65 @@ bool SceneValidator::ValidateDocument(
 								"SelectCamera",
 								false
 							);
+						}
+						if (
+							action.type == "PlayTextMotion" ||
+							action.type == "StopTextMotion" ||
+							action.type == "ResetTextMotion"
+						) {
+							const bool activatedByEarlierOnStartAction =
+								binding.triggerType == "OnStart" &&
+								std::any_of(
+									binding.actions.begin(),
+									binding.actions.begin() + actionIndex,
+									[&action](const SceneEventAction& priorAction) {
+										if (priorAction.type != "SetEntityActive" ||
+											!priorAction.active) {
+											return false;
+										}
+										if (action.targetEntityId != 0) {
+											return priorAction.targetEntityId == action.targetEntityId;
+										}
+										return !action.targetEntityName.empty() &&
+											priorAction.targetEntityName == action.targetEntityName;
+									}
+								);
+							validateCameraEventTarget(
+								action.targetEntityId,
+								action.targetEntityName,
+								"TextMotion",
+								action.type.c_str(),
+								false,
+								action.type == "PlayTextMotion" &&
+									(binding.triggerType == "OnStart"
+										? activatedByEarlierOnStartAction
+										: isActivatedOnStart(
+											action.targetEntityId,
+											action.targetEntityName
+										))
+							);
+							if (action.type == "PlayTextMotion") {
+								const SceneEntity* target = action.targetEntityId != 0
+									? document.FindEntity(action.targetEntityId) : nullptr;
+								if (!target && !action.targetEntityName.empty()) {
+									target = document.FindEntityByName(action.targetEntityName);
+								}
+								const SceneComponent* motion = target
+									? SceneEntityQuery::FindEnabledComponent(*target, "TextMotion")
+									: nullptr;
+								const bool hasClip = motion && std::any_of(
+									motion->textMotionClips.begin(),
+									motion->textMotionClips.end(),
+									[&action](const SceneTextMotionClip& clip) {
+										return clip.id == action.textMotionClipId;
+									}
+								);
+								if (!hasClip) {
+									addIssue(SceneValidationSeverity::Error, entity.id,
+										"PlayTextMotion clip Id is unresolved: " +
+											action.textMotionClipId);
+								}
+							}
 						}
 						if (
 							action.type == "SetPostProcessProfile" ||

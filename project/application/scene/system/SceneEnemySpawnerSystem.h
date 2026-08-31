@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -9,7 +10,30 @@
 
 class SceneEnemySpawnerSystem {
 public:
+	enum class FiniteWaveState {
+		Idle,
+		Running,
+		Complete,
+		Failed
+	};
+
+	struct FiniteWaveStatus {
+		FiniteWaveState state = FiniteWaveState::Idle;
+		uint64_t generation = 0;
+		int requestedCount = 0;
+		int activatedCount = 0;
+		int activeCount = 0;
+		std::string diagnostic;
+	};
+
 	void Update(SceneDocument& document, float deltaTime);
+	void BeginFiniteWave(
+		uint64_t spawnerEntityId,
+		uint64_t generation,
+		int requestedCount
+	);
+	FiniteWaveStatus GetFiniteWaveStatus(uint64_t spawnerEntityId) const;
+	void StopFiniteWave(uint64_t spawnerEntityId);
 	std::vector<uint64_t> ConsumeResetEntityIds();
 	void Clear();
 
@@ -25,7 +49,16 @@ private:
 		int spawnedInitial = 0;
 		uint32_t spawnIndex = 0;
 		std::vector<Instance> instances;
+		FiniteWaveStatus finiteWave;
 	};
+
+	void UpdateFiniteWave(
+		SceneDocument& document,
+		const SceneEntity& spawnerEntity,
+		const SceneComponent& spawner,
+		Runtime& runtime,
+		float deltaTime
+	);
 
 	bool RestoreInstance(
 		SceneDocument& document,

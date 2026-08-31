@@ -16,7 +16,8 @@ public:
 	void Initialize(Object3dCommon* object3dCommon, const char* modelName);
 	void Initialize(Object3d* object);
 	void Update(
-		const Camera* camera
+		const Camera* camera,
+		bool acceptGameplayInput
 	);
 	void PostPhysicsUpdate();
 	void Draw();

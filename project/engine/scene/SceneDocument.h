@@ -106,6 +106,7 @@ struct SceneEventAction {
 	uint64_t postProcessManagerEntityId = 0;
 	std::string postProcessManagerEntityName;
 	std::string postProcessProfileId;
+	std::string textMotionClipId;
 };
 
 struct SceneEventBinding {
@@ -120,6 +121,7 @@ struct SceneEventBinding {
 	float radius = 1.0f;
 	bool triggerOnce = true;
 	float cooldown = 0.0f;
+	std::string textMotionClipId;
 	std::vector<SceneEventAction> actions;
 };
 
@@ -285,6 +287,32 @@ struct Text2DPlacement {
 	bool clipEnabled = false;
 };
 
+struct SceneTextMotionKeyframe {
+	float timeSeconds = 0.0f;
+	Vector2 positionOffset = { 0.0f, 0.0f };
+	float rotationOffset = 0.0f;
+	Vector2 scaleMultiplier = { 1.0f, 1.0f };
+	float opacityMultiplier = 1.0f;
+	std::string easingToNext = "SmoothStep";
+};
+
+struct SceneTextMotionClip {
+	std::string id;
+	bool holdFinalPose = false;
+	std::vector<SceneTextMotionKeyframe> keyframes;
+};
+
+struct SceneGameFlowWave {
+	uint64_t spawnerEntityId = 0;
+	int count = 1;
+};
+
+struct SceneGameFlowPhase {
+	std::string id;
+	std::string label;
+	std::vector<SceneGameFlowWave> waves;
+};
+
 struct SceneComponent {
 	SceneComponent() = default;
 	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
@@ -338,6 +366,28 @@ struct SceneComponent {
 	bool textHasPlacementProfiles = false;
 	Text2DPlacement textOverlayPlacement{};
 	Text2DPlacement textScene2DPlacement{};
+	std::vector<SceneTextMotionClip> textMotionClips;
+	bool gameFlowAutoStart = true;
+	int gameFlowCountdownStart = 3;
+	float gameFlowCountdownStepSeconds = 1.0f;
+	std::string gameFlowStartCueText = "START!";
+	float gameFlowStartCueSeconds = 0.75f;
+	float gameFlowInterPhaseDelaySeconds = 1.0f;
+	float gameFlowResultRevealDelaySeconds = 0.75f;
+	float gameFlowTimerDisplayStepSeconds = 0.1f;
+	std::string gameFlowTimerPrefix = "TIME ";
+	std::string gameFlowResultPrefix = "CLEAR TIME ";
+	uint64_t gameFlowCountdownTextEntityId = 0;
+	std::string gameFlowCountdownMotionClipId;
+	uint64_t gameFlowPhaseTextEntityId = 0;
+	std::string gameFlowPhaseMotionClipId;
+	uint64_t gameFlowTimerTextEntityId = 0;
+	uint64_t gameFlowRemainingTextEntityId = 0;
+	std::string gameFlowRemainingPrefix = "ENEMIES ";
+	uint64_t gameFlowResultRootEntityId = 0;
+	uint64_t gameFlowResultTimeTextEntityId = 0;
+	std::string gameFlowResultMotionClipId;
+	std::vector<SceneGameFlowPhase> gameFlowPhases;
 	bool cameraIsMain = false;
 	float cameraFovY = 0.45f;
 	float cameraNearClip = 0.1f;

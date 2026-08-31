@@ -14,6 +14,7 @@
 #include "system/SceneEventSystem.h"
 #include "system/SceneHitReactionSystem.h"
 #include "system/SceneHitStopSystem.h"
+#include "system/SceneGameFlowSystem.h"
 #include "system/SceneEffectRenderSystem.h"
 #include "system/SceneEnvironmentSystem.h"
 #include "system/SceneLightingSystem.h"
@@ -28,6 +29,7 @@
 #include "system/SceneStatSystem.h"
 #include "system/SceneStateMachineSystem.h"
 #include "system/SceneTextRenderSystem.h"
+#include "system/SceneTextMotionSystem.h"
 #include "system/SceneTransitionSystem.h"
 
 #include <cstdint>
@@ -97,6 +99,7 @@ private:
 	SceneDebugSystem debugSystem_;
 	SceneEnemySystem enemySystem_;
 	SceneEnemySpawnerSystem enemySpawnerSystem_;
+	SceneGameFlowSystem gameFlowSystem_;
 	SceneEventSystem eventSystem_;
 	SceneHitReactionSystem hitReactionSystem_;
 	SceneHitStopSystem hitStopSystem_;
@@ -114,6 +117,7 @@ private:
 	SceneRuntimeEffectSystem runtimeEffectSystem_;
 	SceneStatSystem statSystem_;
 	SceneStateMachineSystem stateMachineSystem_;
+	SceneTextMotionSystem textMotionSystem_;
 	SceneTextRenderSystem textRenderSystem_;
 };
 

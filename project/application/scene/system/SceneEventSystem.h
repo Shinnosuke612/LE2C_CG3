@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "SceneTextMotionSystem.h"
+
 class SceneDocument;
 class SceneStatSystem;
 class SceneStateMachineSystem;
@@ -48,9 +50,22 @@ struct SceneAudioRequest {
 	uint64_t entityId = 0;
 };
 
+enum class SceneTextMotionRequestType {
+	Play,
+	Stop,
+	Reset
+};
+
+struct SceneTextMotionRequest {
+	SceneTextMotionRequestType type = SceneTextMotionRequestType::Play;
+	uint64_t entityId = 0;
+	std::string clipId;
+};
+
 struct SceneEventRuntimeSignals {
 	uint64_t completedCameraPathEntityId = 0;
 	std::vector<uint64_t> finishedAudioEntityIds;
+	std::vector<SceneTextMotionCompletion> textMotionCompletions;
 };
 
 struct SceneEventResult {
@@ -58,6 +73,7 @@ struct SceneEventResult {
 	ScenePostProcessRequest postProcessRequest;
 	std::vector<SceneCameraRequest> cameraRequests;
 	std::vector<SceneAudioRequest> audioRequests;
+	std::vector<SceneTextMotionRequest> textMotionRequests;
 };
 
 class SceneEventSystem {

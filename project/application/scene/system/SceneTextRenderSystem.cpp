@@ -130,6 +130,34 @@ void SceneTextRenderSystem::ClearTextOverrides() {
 	textOverrides_.clear();
 }
 
+void SceneTextRenderSystem::SetPresentationOverride(
+	uint64_t entityId,
+	const Vector2& positionOffset,
+	float rotationOffset,
+	const Vector2& scaleMultiplier,
+	float opacityMultiplier
+) {
+	if (entityId == 0) {
+		return;
+	}
+	presentationOverrides_[entityId] = {
+		positionOffset,
+		rotationOffset,
+		scaleMultiplier,
+		std::clamp(opacityMultiplier, 0.0f, 1.0f)
+	};
+}
+
+void SceneTextRenderSystem::ClearPresentationOverrides() {
+	presentationOverrides_.clear();
+}
+
+const SceneTextRenderSystem::PresentationOverride*
+SceneTextRenderSystem::FindPresentationOverride(uint64_t entityId) const {
+	const auto found = presentationOverrides_.find(entityId);
+	return found == presentationOverrides_.end() ? nullptr : &found->second;
+}
+
 void SceneTextRenderSystem::Sync(SceneDocument* document) {
 	if (!document || !dxCommon_) {
 		Finalize();
@@ -211,13 +239,24 @@ void SceneTextRenderSystem::DrawScene2D(
 		}
 		const Transform transform = ResolveScene2DTransform(document, *entity);
 		const Text2DPlacement* placement = GetPlacement(*component);
+		const PresentationOverride* motion = FindPresentationOverride(entity->id);
+		const Vector2 positionOffset = motion ? motion->positionOffset : Vector2{};
+		const float rotationOffset = motion ? motion->rotationOffset : 0.0f;
+		const Vector2 scaleMultiplier = motion
+			? motion->scaleMultiplier : Vector2{ 1.0f, 1.0f };
+		const float opacityMultiplier = motion ? motion->opacityMultiplier : 1.0f;
+		const Vector2 basePosition = placement
+			? placement->position : Vector2{ transform.translate.x, transform.translate.y };
+		const float baseRotation = placement ? placement->rotation : transform.rotate.z;
+		const Vector2 baseScale = placement
+			? placement->scale : Vector2{ transform.scale.x, transform.scale.y };
 		found->second.sprite->Update(
-			placement ? placement->position : Vector2{ transform.translate.x, transform.translate.y },
-			placement ? placement->rotation : transform.rotate.z,
-			{ found->second.bitmapSize.x * (placement ? placement->scale.x : transform.scale.x),
-				found->second.bitmapSize.y * (placement ? placement->scale.y : transform.scale.y) },
+			{ basePosition.x + positionOffset.x, basePosition.y + positionOffset.y },
+			baseRotation + rotationOffset,
+			{ found->second.bitmapSize.x * baseScale.x * scaleMultiplier.x,
+				found->second.bitmapSize.y * baseScale.y * scaleMultiplier.y },
 			placement ? placement->pivot : component->textPivot,
-			{ 1.0f, 1.0f, 1.0f, 1.0f },
+			{ 1.0f, 1.0f, 1.0f, 1.0f * opacityMultiplier },
 			width,
 			height
 		);
@@ -239,18 +278,29 @@ void SceneTextRenderSystem::DrawScreenOverlay(
 		}
 		const Transform transform = ResolveScene2DTransform(document, *entity);
 		const Text2DPlacement* placement = GetPlacement(*component);
+		const PresentationOverride* motion = FindPresentationOverride(entity->id);
+		const Vector2 positionOffset = motion ? motion->positionOffset : Vector2{};
+		const float rotationOffset = motion ? motion->rotationOffset : 0.0f;
+		const Vector2 scaleMultiplier = motion
+			? motion->scaleMultiplier : Vector2{ 1.0f, 1.0f };
+		const float opacityMultiplier = motion ? motion->opacityMultiplier : 1.0f;
 		const Vector2 anchor = placement ? placement->viewportAnchor : component->textViewportAnchor;
+		const Vector2 basePosition = placement
+			? placement->position : Vector2{ transform.translate.x, transform.translate.y };
+		const float baseRotation = placement ? placement->rotation : transform.rotate.z;
+		const Vector2 baseScale = placement
+			? placement->scale : Vector2{ transform.scale.x, transform.scale.y };
 		const Vector2 position{
-			anchor.x * static_cast<float>(width) + (placement ? placement->position.x : transform.translate.x),
-			anchor.y * static_cast<float>(height) + (placement ? placement->position.y : transform.translate.y)
+			anchor.x * static_cast<float>(width) + basePosition.x + positionOffset.x,
+			anchor.y * static_cast<float>(height) + basePosition.y + positionOffset.y
 		};
 		found->second.sprite->Update(
 			position,
-			placement ? placement->rotation : transform.rotate.z,
-			{ found->second.bitmapSize.x * (placement ? placement->scale.x : transform.scale.x),
-				found->second.bitmapSize.y * (placement ? placement->scale.y : transform.scale.y) },
+			baseRotation + rotationOffset,
+			{ found->second.bitmapSize.x * baseScale.x * scaleMultiplier.x,
+				found->second.bitmapSize.y * baseScale.y * scaleMultiplier.y },
 			placement ? placement->pivot : component->textPivot,
-			{ 1.0f, 1.0f, 1.0f, 1.0f },
+			{ 1.0f, 1.0f, 1.0f, 1.0f * opacityMultiplier },
 			width,
 			height
 		);
@@ -270,4 +320,5 @@ bool SceneTextRenderSystem::HasScreenOverlay(const SceneDocument& document) cons
 void SceneTextRenderSystem::Finalize() {
 	texts_.clear();
 	textOverrides_.clear();
+	presentationOverrides_.clear();
 }

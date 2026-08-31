@@ -135,6 +135,31 @@ namespace {
 		return entity && SceneEntityQuery::IsEntityActiveInHierarchy(document, *entity) &&
 			SceneEntityQuery::FindEnabledComponent(*entity, "AudioSource");
 	}
+
+	bool IsValidTextMotionAction(
+		const SceneDocument& document,
+		const SceneEventAction& action
+	) {
+		const SceneEntity* entity = action.targetEntityId != 0
+			? document.FindEntity(action.targetEntityId) : nullptr;
+		if (!entity && !action.targetEntityName.empty()) {
+			entity = document.FindEntityByName(action.targetEntityName);
+		}
+		const SceneComponent* component = entity &&
+			SceneEntityQuery::IsEntityActiveInHierarchy(document, *entity)
+			? SceneEntityQuery::FindEnabledComponent(*entity, "TextMotion")
+			: nullptr;
+		if (!component) {
+			return false;
+		}
+		return action.type != "PlayTextMotion" || std::any_of(
+			component->textMotionClips.begin(),
+			component->textMotionClips.end(),
+			[&action](const SceneTextMotionClip& clip) {
+				return clip.id == action.textMotionClipId;
+			}
+		);
+	}
 }
 
 SceneEventResult SceneEventSystem::Update(
@@ -231,6 +256,19 @@ SceneEventResult SceneEventSystem::Update(
 						target->id
 					) != signals.finishedAudioEntityIds.end();
 				// 完了は状態ではなくgenerationごとのpulseなので、連続Frameも取りこぼさない。
+				shouldFire = condition;
+			} else if (binding.triggerType == "OnTextMotionCompleted") {
+				condition = target &&
+					SceneEntityQuery::FindEnabledComponent(*target, "TextMotion") &&
+					std::any_of(
+						signals.textMotionCompletions.begin(),
+						signals.textMotionCompletions.end(),
+						[&binding, target](const SceneTextMotionCompletion& completion) {
+							return completion.entityId == target->id &&
+								(binding.textMotionClipId.empty() ||
+									completion.clipId == binding.textMotionClipId);
+						}
+					);
 				shouldFire = condition;
 			}
 
@@ -353,6 +391,19 @@ SceneEventResult SceneEventSystem::Update(
 			else if (action.type == "ResumeAudio") type = SceneAudioRequestType::Resume;
 			result.audioRequests.push_back({ type, target->id });
 		} else if (
+			(action.type == "PlayTextMotion" || action.type == "StopTextMotion" ||
+				action.type == "ResetTextMotion") &&
+			IsValidTextMotionAction(document, action)
+		) {
+			SceneTextMotionRequestType type = SceneTextMotionRequestType::Play;
+			if (action.type == "StopTextMotion") type = SceneTextMotionRequestType::Stop;
+			else if (action.type == "ResetTextMotion") type = SceneTextMotionRequestType::Reset;
+			result.textMotionRequests.push_back({
+				type,
+				target->id,
+				action.textMotionClipId
+			});
+		} else if (
 			action.type == "PlayCameraPath" &&
 			IsValidCameraAction(document, action, "CameraPath")
 		) {
@@ -385,6 +436,7 @@ SceneEventResult SceneEventSystem::Update(
 		result.postProcessRequest.type = ScenePostProcessRequestType::None;
 		result.cameraRequests.clear();
 		result.audioRequests.clear();
+		result.textMotionRequests.clear();
 	}
 	return result;
 }
