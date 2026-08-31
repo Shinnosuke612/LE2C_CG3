@@ -209,9 +209,6 @@ void Object3d::Draw(){
 	if (!model) {
 		return;
 	}
-	if (!TextureManager::GetInstance()->HasTexture(environmentTextureFilePath_)) {
-		return;
-	}
 
 	auto* commandList = object3dCommon->GetDxCommon()->GetCommandList();
 	if (skinCluster_ && skinCluster_->IsValid()) {
