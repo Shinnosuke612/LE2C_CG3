@@ -95,6 +95,8 @@ bool SceneValidator::ValidateDocument(
 	uint64_t firstAudioListenerEntityId = 0;
 	uint32_t persistentBgmPlayOnStartCount = 0;
 	uint64_t firstPersistentBgmEntityId = 0;
+	uint32_t fishingDirectorCount = 0;
+	uint64_t firstFishingDirectorEntityId = 0;
 	std::unordered_map<uint64_t, std::unordered_set<uint64_t>> prefabLocalIds;
 	for (const SceneEntity& entity : document.GetEntities()) {
 		if (!entity.teamName.empty() && !document.FindTeam(entity.teamName)) {
@@ -1527,8 +1529,222 @@ bool SceneValidator::ValidateDocument(
 					component.projectileHomingTargetEntityId,
 					"Projectile homing target"
 				);
+			} else if (component.type == "FishingScoreAttackDirector") {
+				auto validateFishingComponentReference = [
+					&addIssue,
+					&document,
+					&entity
+				](uint64_t targetId, const char* componentType, const char* label) {
+					if (targetId == 0) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							std::string(label) + " Entity is not set"
+						);
+						return;
+					}
+					const SceneEntity* target = document.FindEntity(targetId);
+					if (!target || !SceneEntityQuery::FindEnabledComponent(*target, componentType)) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							std::string(label) + " does not reference an enabled " + componentType
+						);
+					}
+				};
+				validateFishingComponentReference(
+					component.fishingPlayerEntityId,
+					"PlayerBehavior",
+					"Fishing Player"
+				);
+				validateFishingComponentReference(
+					component.fishingHookSpawnAreaEntityId,
+					"FishingHookSpawnArea",
+					"Fishing Hook Spawn Area"
+				);
+				validateFishingComponentReference(
+					component.fishingHookPoolEntityId,
+					"FishingHookPool",
+					"Fishing Hook Pool"
+				);
+				if (component.fishingFishEntityIds.empty()) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"FishingScoreAttackDirector has no fish entities"
+					);
+				}
+				if (component.fishingMaxSelectableFishCount < 0 ||
+					component.fishingMaxSelectableFishCount > 5 ||
+					component.fishingMaxSelectableFishCount >
+						static_cast<int>(component.fishingFishEntityIds.size())) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"FishingScoreAttackDirector max fish count is invalid"
+					);
+				}
+				if (!std::isfinite(component.fishingDurationSeconds) ||
+					component.fishingDurationSeconds <= 0.0f ||
+					component.fishingDistanceBandCount <= 0 ||
+					!std::isfinite(component.fishingDistanceMultiplierBase) ||
+					component.fishingDistanceMultiplierBase < 0.0f ||
+					!std::isfinite(component.fishingDistanceMultiplierStep) ||
+					component.fishingDistanceMultiplierStep < 0.0f) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"FishingScoreAttackDirector contains invalid timing or multiplier values"
+					);
+				}
+				std::unordered_set<uint64_t> fishIds;
+				for (const uint64_t fishId : component.fishingFishEntityIds) {
+					validateEntityReference(fishId, "Fishing fish");
+					if (!fishIds.insert(fishId).second) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"FishingScoreAttackDirector contains a duplicate fish Entity"
+						);
+					}
+				}
+				for (const uint64_t textId : {
+					component.fishingFishCountTextEntityId,
+					component.fishingTimerTextEntityId,
+					component.fishingScoreTextEntityId,
+					component.fishingMultiplierTextEntityId,
+					component.fishingResultTextEntityId
+				}) {
+					if (textId == 0) {
+						continue;
+					}
+					validateFishingComponentReference(textId, "TextRenderer", "Fishing HUD");
+				}
+				if (component.enabled && activeInHierarchy) {
+					++fishingDirectorCount;
+					if (firstFishingDirectorEntityId == 0) {
+						firstFishingDirectorEntityId = entity.id;
+					}
+				}
+			} else if (component.type == "FishingHookSpawnArea") {
+				if (!std::isfinite(component.fishingSpawnHalfSizeX) ||
+					!std::isfinite(component.fishingSpawnHalfSizeZ) ||
+					component.fishingSpawnHalfSizeX <= 0.0f ||
+					component.fishingSpawnHalfSizeZ <= 0.0f ||
+					!std::isfinite(component.fishingSpawnMinimumDistance) ||
+					component.fishingSpawnMinimumDistance < 0.0f ||
+					component.fishingSpawnMaxAttempts <= 0) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"FishingHookSpawnArea contains invalid bounds"
+					);
+				}
+			} else if (component.type == "FishingHookPool") {
+				std::unordered_set<uint64_t> hookIds;
+				const SceneComponent* fishingDirector = nullptr;
+				for (const SceneEntity& candidateEntity : document.GetEntities()) {
+					for (const SceneComponent& candidateComponent : candidateEntity.components) {
+						if (
+							candidateComponent.enabled &&
+							candidateComponent.type == "FishingScoreAttackDirector" &&
+							candidateComponent.fishingHookPoolEntityId == entity.id
+						) {
+							fishingDirector = &candidateComponent;
+							break;
+						}
+					}
+					if (fishingDirector) {
+						break;
+					}
+				}
+				if (component.fishingHookPoolEntries.empty()) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"FishingHookPool has no entries"
+					);
+				}
+				for (const SceneFishingHookPoolEntry& entry : component.fishingHookPoolEntries) {
+					validateEntityReference(entry.hookEntityId, "Fishing hook");
+					const SceneEntity* hook = document.FindEntity(entry.hookEntityId);
+					if (!hook || !SceneEntityQuery::FindEnabledComponent(*hook, "FishingHook")) {
+						continue;
+					}
+					if (!hookIds.insert(entry.hookEntityId).second) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"FishingHookPool contains a duplicate hook Entity"
+						);
+					}
+					if (
+						fishingDirector &&
+						static_cast<int>(entry.weightsByDistanceBand.size()) !=
+							fishingDirector->fishingDistanceBandCount
+					) {
+						addIssue(
+							SceneValidationSeverity::Error,
+							entity.id,
+							"FishingHookPool entry has a mismatched distance band count"
+						);
+					}
+					for (const float weight : entry.weightsByDistanceBand) {
+						if (!std::isfinite(weight) || weight < 0.0f) {
+							addIssue(
+								SceneValidationSeverity::Error,
+								entity.id,
+								"FishingHookPool contains an invalid distance weight"
+							);
+							break;
+						}
+					}
+				}
+				if (fishingDirector) {
+					for (int bandIndex = 0;
+						bandIndex < fishingDirector->fishingDistanceBandCount;
+						++bandIndex) {
+						float totalWeight = 0.0f;
+						for (const SceneFishingHookPoolEntry& entry : component.fishingHookPoolEntries) {
+							if (bandIndex < static_cast<int>(entry.weightsByDistanceBand.size())) {
+								totalWeight += entry.weightsByDistanceBand[bandIndex];
+							}
+						}
+						if (totalWeight <= 0.0f) {
+							addIssue(
+								SceneValidationSeverity::Error,
+								entity.id,
+								"FishingHookPool has no selectable hook for a distance band"
+							);
+						}
+					}
+				}
+			} else if (component.type == "FishingHook") {
+				if (component.fishingHookBaseScore < 0) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"FishingHook base score must be greater than or equal to zero"
+					);
+				}
+				const SceneComponent* collider =
+					SceneEntityQuery::FindEnabledComponent(entity, "OBBCollider");
+				if (!collider || !collider->colliderIsTrigger) {
+					addIssue(
+						SceneValidationSeverity::Error,
+						entity.id,
+						"FishingHook requires an enabled Trigger Collider"
+					);
+				}
 			}
 		}
+	}
+	if (fishingDirectorCount > 1) {
+		addIssue(
+			SceneValidationSeverity::Error,
+			firstFishingDirectorEntityId,
+			"Scene contains multiple active FishingScoreAttackDirector components"
+		);
 	}
 	if (activeAudioListenerCount > 1) {
 		addIssue(

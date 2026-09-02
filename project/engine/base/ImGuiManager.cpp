@@ -12466,6 +12466,286 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "FishingScoreAttackDirector") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool fishingChanged = false;
+				auto drawFishingEntityReference = [
+					&document,
+					&fishingChanged
+				](const char* label, uint64_t& entityId, const char* requiredType) {
+					const SceneEntity* selected = entityId != 0
+						? document.FindEntity(entityId)
+						: nullptr;
+					const std::string preview = selected
+						? BuildEntityHierarchyLabel(document, *selected)
+						: "Select Entity...";
+					if (ImGui::BeginCombo(label, preview.c_str())) {
+						for (const SceneEntity& candidate : document.GetEntities()) {
+							if (!FindEnabledComponent(candidate, requiredType)) {
+								continue;
+							}
+							const std::string candidateLabel =
+								BuildEntityHierarchyLabel(document, candidate);
+							if (ImGui::Selectable(
+								candidateLabel.c_str(), entityId == candidate.id
+							)) {
+								entityId = candidate.id;
+								fishingChanged = true;
+							}
+						}
+						ImGui::EndCombo();
+					}
+				};
+				drawFishingEntityReference(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Player"),
+					component.fishingPlayerEntityId,
+					"PlayerBehavior"
+				);
+				drawFishingEntityReference(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Hook Spawn Area"),
+					component.fishingHookSpawnAreaEntityId,
+					"FishingHookSpawnArea"
+				);
+				drawFishingEntityReference(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Hook Pool"),
+					component.fishingHookPoolEntityId,
+					"FishingHookPool"
+				);
+				fishingChanged |= ImGui::DragFloat(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Duration Seconds"),
+					&component.fishingDurationSeconds, 0.1f, 0.1f, 3600.0f
+				);
+				fishingChanged |= ImGui::SliderInt(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Max Fish Count"),
+					&component.fishingMaxSelectableFishCount, 0, 5
+				);
+				fishingChanged |= ImGui::DragInt(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Distance Band Count"),
+					&component.fishingDistanceBandCount, 1.0f, 1, 32
+				);
+				fishingChanged |= ImGui::DragFloat(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Multiplier Base"),
+					&component.fishingDistanceMultiplierBase, 0.05f, 0.0f, 100.0f
+				);
+				fishingChanged |= ImGui::DragFloat(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Multiplier Step"),
+					&component.fishingDistanceMultiplierStep, 0.05f, 0.0f, 100.0f
+				);
+				fishingChanged |= ImGui::Checkbox(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Randomize Seed On Play"),
+					&component.fishingRandomizeSeedOnPlay
+				);
+				fishingChanged |= ImGui::InputInt(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Random Seed"),
+					&component.fishingRandomSeed
+				);
+				if (ImGui::TreeNodeEx(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Fish Entities"),
+					ImGuiTreeNodeFlags_DefaultOpen
+				)) {
+					int removeFishIndex = -1;
+					for (size_t fishIndex = 0;
+						fishIndex < component.fishingFishEntityIds.size();
+						++fishIndex) {
+						ImGui::PushID(static_cast<int>(fishIndex));
+						drawFishingEntityReference(
+							"Fish", component.fishingFishEntityIds[fishIndex],
+							"AgentBehavior"
+						);
+						if (ImGui::SmallButton(SelectEditorText(
+							editorLanguage_, "削除###RemoveFishingFish", "Remove###RemoveFishingFish"
+						))) {
+							removeFishIndex = static_cast<int>(fishIndex);
+						}
+						ImGui::PopID();
+					}
+					if (removeFishIndex >= 0) {
+						component.fishingFishEntityIds.erase(
+							component.fishingFishEntityIds.begin() + removeFishIndex
+						);
+						fishingChanged = true;
+					}
+					if (component.fishingFishEntityIds.size() < 5 && ImGui::SmallButton(
+						SelectEditorText(editorLanguage_, "魚を追加###AddFishingFish", "Add Fish###AddFishingFish")
+					)) {
+						component.fishingFishEntityIds.push_back(0);
+						fishingChanged = true;
+					}
+					ImGui::TreePop();
+				}
+				if (ImGui::TreeNodeEx(
+					LocalizedComponentWidgetLabel(editorLanguage_, "HUD Text References"),
+					ImGuiTreeNodeFlags_DefaultOpen
+				)) {
+					drawFishingEntityReference(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Fish Count Text"),
+						component.fishingFishCountTextEntityId, "TextRenderer"
+					);
+					drawFishingEntityReference(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Timer Text"),
+						component.fishingTimerTextEntityId, "TextRenderer"
+					);
+					drawFishingEntityReference(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Score Text"),
+						component.fishingScoreTextEntityId, "TextRenderer"
+					);
+					drawFishingEntityReference(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Multiplier Text"),
+						component.fishingMultiplierTextEntityId, "TextRenderer"
+					);
+					drawFishingEntityReference(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Result Text"),
+						component.fishingResultTextEntityId, "TextRenderer"
+					);
+					fishingChanged |= InputTextString(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Fish Count Prefix"),
+						component.fishingFishCountPrefix
+					);
+					fishingChanged |= InputTextString(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Timer Prefix"),
+						component.fishingTimerPrefix
+					);
+					fishingChanged |= InputTextString(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Score Prefix"),
+						component.fishingScorePrefix
+					);
+					fishingChanged |= InputTextString(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Multiplier Prefix"),
+						component.fishingMultiplierPrefix
+					);
+					fishingChanged |= InputTextString(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Result Prefix"),
+						component.fishingResultPrefix
+					);
+					ImGui::TreePop();
+				}
+				if (fishingChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "FishingHookSpawnArea") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool fishingAreaChanged = false;
+				fishingAreaChanged |= ImGui::DragFloat(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Half Size X"),
+					&component.fishingSpawnHalfSizeX, 0.1f, 0.001f, 10000.0f
+				);
+				fishingAreaChanged |= ImGui::DragFloat(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Half Size Z"),
+					&component.fishingSpawnHalfSizeZ, 0.1f, 0.001f, 10000.0f
+				);
+				fishingAreaChanged |= ImGui::DragFloat(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Minimum Distance"),
+					&component.fishingSpawnMinimumDistance, 0.1f, 0.0f, 10000.0f
+				);
+				fishingAreaChanged |= ImGui::DragInt(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Max Spawn Attempts"),
+					&component.fishingSpawnMaxAttempts, 1.0f, 1, 256
+				);
+				if (fishingAreaChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "FishingHookPool") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool fishingPoolChanged = false;
+				int removeEntryIndex = -1;
+				for (size_t entryIndex = 0;
+					entryIndex < component.fishingHookPoolEntries.size();
+					++entryIndex) {
+					SceneFishingHookPoolEntry& entry =
+						component.fishingHookPoolEntries[entryIndex];
+					ImGui::PushID(static_cast<int>(entryIndex));
+					if (ImGui::TreeNodeEx(
+						"FishingHookPoolEntry",
+						ImGuiTreeNodeFlags_DefaultOpen,
+						"Entry %zu", entryIndex + 1
+					)) {
+						const SceneEntity* selected = entry.hookEntityId != 0
+							? document.FindEntity(entry.hookEntityId) : nullptr;
+						const std::string preview = selected
+							? BuildEntityHierarchyLabel(document, *selected)
+							: "Select Hook Entity...";
+						if (ImGui::BeginCombo(
+							LocalizedComponentWidgetLabel(editorLanguage_, "Hook Entity"),
+							preview.c_str()
+						)) {
+							for (const SceneEntity& candidate : document.GetEntities()) {
+								if (!FindEnabledComponent(candidate, "FishingHook")) {
+									continue;
+									}
+								const std::string candidateLabel =
+									BuildEntityHierarchyLabel(document, candidate);
+								if (ImGui::Selectable(
+									candidateLabel.c_str(), entry.hookEntityId == candidate.id
+								)) {
+									entry.hookEntityId = candidate.id;
+									fishingPoolChanged = true;
+								}
+							}
+							ImGui::EndCombo();
+						}
+						for (size_t bandIndex = 0;
+							bandIndex < entry.weightsByDistanceBand.size();
+							++bandIndex) {
+							fishingPoolChanged |= ImGui::DragFloat(
+								("Band " + std::to_string(bandIndex)).c_str(),
+								&entry.weightsByDistanceBand[bandIndex], 0.1f, 0.0f, 100000.0f
+							);
+						}
+						if (ImGui::SmallButton(SelectEditorText(
+							editorLanguage_, "Bandを追加###AddFishingWeightBand", "Add Band###AddFishingWeightBand"
+						))) {
+							entry.weightsByDistanceBand.push_back(1.0f);
+							fishingPoolChanged = true;
+						}
+						if (!entry.weightsByDistanceBand.empty()) {
+							ImGui::SameLine();
+							if (ImGui::SmallButton(SelectEditorText(
+								editorLanguage_, "Bandを削除###RemoveFishingWeightBand", "Remove Band###RemoveFishingWeightBand"
+							))) {
+								entry.weightsByDistanceBand.pop_back();
+								fishingPoolChanged = true;
+							}
+						}
+						if (ImGui::SmallButton(SelectEditorText(
+							editorLanguage_, "Entryを削除###RemoveFishingHookEntry", "Remove Entry###RemoveFishingHookEntry"
+						))) {
+							removeEntryIndex = static_cast<int>(entryIndex);
+						}
+						ImGui::TreePop();
+					}
+					ImGui::PopID();
+				}
+				if (removeEntryIndex >= 0) {
+					component.fishingHookPoolEntries.erase(
+						component.fishingHookPoolEntries.begin() + removeEntryIndex
+					);
+					fishingPoolChanged = true;
+				}
+				if (ImGui::Button(SelectEditorText(
+					editorLanguage_, "Entryを追加###AddFishingHookEntry", "Add Entry###AddFishingHookEntry"
+				))) {
+					SceneFishingHookPoolEntry entry{};
+					entry.weightsByDistanceBand = { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
+					component.fishingHookPoolEntries.push_back(std::move(entry));
+					fishingPoolChanged = true;
+				}
+				if (fishingPoolChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
+			} else if (component.type == "FishingHook") {
+				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
+				bool fishingHookChanged = false;
+				fishingHookChanged |= ImGui::DragInt(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Base Score"),
+					&component.fishingHookBaseScore, 10.0f, 0, 1000000000
+				);
+				if (fishingHookChanged) {
+					document.MarkDirty();
+				}
+				ImGui::EndDisabled();
 			} else if (component.type == "AgentBehavior") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool agentChanged = false;

@@ -27,7 +27,8 @@ public:
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
 		float deltaTime,
 		bool runtimeActive,
-		bool playing
+		bool playing,
+		bool acceptWheelZoom
 	);
 	// 移動後のPlayer座標へ追従Cameraを合わせ、最終行列を更新する。
 	void UpdateAfterSimulation(
@@ -97,7 +98,8 @@ private:
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
 		float deltaTime,
 		bool playing,
-		bool acceptMouseInput
+		bool acceptMouseInput,
+		bool acceptWheelZoom
 	);
 	void ApplyPlayerDissolve(
 		const std::vector<SceneRuntimeObjectBinding>& bindings,

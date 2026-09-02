@@ -156,6 +156,9 @@
 	<ClCompile Include="application\scene\system\SceneGameFlowSystem.cpp">
 		<Filter>Application\Scene\System</Filter>
 	</ClCompile>
+	<ClCompile Include="application\scene\system\SceneFishingScoreAttackSystem.cpp">
+		<Filter>Application\Scene\System</Filter>
+	</ClCompile>
 	<ClCompile Include="application\scene\system\SceneAudioSystem.cpp">
 		<Filter>Application\Scene\System</Filter>
 	</ClCompile>
@@ -435,6 +438,9 @@
 		<Filter>Application\Scene\System</Filter>
 	</ClInclude>
 	<ClInclude Include="application\scene\system\SceneGameFlowSystem.h">
+		<Filter>Application\Scene\System</Filter>
+	</ClInclude>
+	<ClInclude Include="application\scene\system\SceneFishingScoreAttackSystem.h">
 		<Filter>Application\Scene\System</Filter>
 	</ClInclude>
 	<ClInclude Include="application\scene\system\SceneAudioSystem.h">

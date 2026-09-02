@@ -328,6 +328,7 @@ FodyWeavers.xsd
 
 # Codex local files
 /.codex/
+/AGENTS.md
 
 # Runtime logs
 /project/Logs/

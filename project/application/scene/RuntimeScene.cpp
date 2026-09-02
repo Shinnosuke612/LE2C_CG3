@@ -274,6 +274,16 @@ void RuntimeScene::Update(float deltaTime)
 	} else {
 		gameFlowSystem_.Clear();
 	}
+	if (activeDocument && playing) {
+		// Fish選択はObject同期前に確定し、同FrameのCollider生成へ反映する。
+		fishingScoreAttackSystem_.UpdateBeforeSimulation(
+			*activeDocument,
+			deltaTime,
+			true
+		);
+	} else {
+		fishingScoreAttackSystem_.Clear();
+	}
 	const std::string runtimeSceneId = GetSceneAssetId().empty()
 		? "runtime"
 		: GetSceneAssetId();
@@ -446,12 +456,17 @@ void RuntimeScene::Update(float deltaTime)
 			runtimeObjectBindings_,
 			deltaTime,
 			playing,
-			playing
+			playing,
+			fishingScoreAttackSystem_.AcceptWheelZoom()
 		);
 	}
 	Vector3 playerAttackInputDirection{};
 	if (player_ && playing) {
-		player_->Update(camera_, gameFlowResult.gameplayAllowed);
+		player_->Update(
+			camera_,
+			gameFlowResult.gameplayAllowed &&
+				fishingScoreAttackSystem_.IsPlayerMovementAllowed()
+		);
 		const Vector3& playerVelocity = player_->GetPhysicsBody().velocity;
 		playerAttackInputDirection = { playerVelocity.x, 0.0f, playerVelocity.z };
 		if (Math::Length(playerAttackInputDirection) > 0.0001f) {
@@ -501,6 +516,14 @@ void RuntimeScene::Update(float deltaTime)
 				player_->GetObject()->GetTransform()
 			);
 		}
+	}
+	if (activeDocument && playing) {
+		// Player Physics後のCollider world transformで釣り針Triggerを判定する。
+		fishingScoreAttackSystem_.UpdateAfterSimulation(
+			*activeDocument,
+			runtimeObjectBindings_,
+			true
+		);
 	}
 	if (activeDocument && playing && gameFlowResult.gameplayAllowed && gameplayDeltaTime > 0.0f) {
 		// Bone追従はAnimation/Physics後、当たり判定とEventは最終Transform後に評価する。
@@ -621,6 +644,10 @@ void RuntimeScene::Update(float deltaTime)
 	textRenderSystem_.ClearPresentationOverrides();
 	if (activeDocument) {
 		for (const SceneGameFlowTextRequest& request : gameFlowResult.textRequests) {
+			textRenderSystem_.SetTextOverride(request.entityId, request.text);
+		}
+		for (const SceneFishingScoreAttackTextRequest& request :
+			fishingScoreAttackSystem_.GetTextRequests()) {
 			textRenderSystem_.SetTextOverride(request.entityId, request.text);
 		}
 		SceneEntity* statusText = postProcessProfileSystem_.GetStatusTextEntityId() != 0

@@ -5,9 +5,15 @@
       "name": "TITLE",
       "path": "resources/scenes/title.scene.json",
       "runtimeProfile": "RUNTIME"
+    },
+    {
+      "id": "gameplay",
+      "name": "GAMEPLAY",
+      "path": "resources/scenes/GAMEPLAY.scene.json",
+      "runtimeProfile": "RUNTIME"
     }
   ],
-  "startScene": "title",
+  "startScene": "gameplay",
   "startup": {
     "debug": "EDITOR",
     "development": "EDITOR",

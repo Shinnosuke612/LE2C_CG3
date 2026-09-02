@@ -313,6 +313,11 @@ struct SceneGameFlowPhase {
 	std::vector<SceneGameFlowWave> waves;
 };
 
+struct SceneFishingHookPoolEntry {
+	uint64_t hookEntityId = 0;
+	std::vector<float> weightsByDistanceBand;
+};
+
 struct SceneComponent {
 	SceneComponent() = default;
 	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
@@ -388,6 +393,33 @@ struct SceneComponent {
 	uint64_t gameFlowResultTimeTextEntityId = 0;
 	std::string gameFlowResultMotionClipId;
 	std::vector<SceneGameFlowPhase> gameFlowPhases;
+	uint64_t fishingPlayerEntityId = 0;
+	std::vector<uint64_t> fishingFishEntityIds;
+	uint64_t fishingHookSpawnAreaEntityId = 0;
+	uint64_t fishingHookPoolEntityId = 0;
+	float fishingDurationSeconds = 60.0f;
+	int fishingMaxSelectableFishCount = 5;
+	int fishingDistanceBandCount = 5;
+	float fishingDistanceMultiplierBase = 1.0f;
+	float fishingDistanceMultiplierStep = 0.2f;
+	bool fishingRandomizeSeedOnPlay = true;
+	int fishingRandomSeed = 1;
+	uint64_t fishingFishCountTextEntityId = 0;
+	uint64_t fishingTimerTextEntityId = 0;
+	uint64_t fishingScoreTextEntityId = 0;
+	uint64_t fishingMultiplierTextEntityId = 0;
+	uint64_t fishingResultTextEntityId = 0;
+	std::string fishingFishCountPrefix = "FISH ";
+	std::string fishingTimerPrefix = "TIME ";
+	std::string fishingScorePrefix = "SCORE ";
+	std::string fishingMultiplierPrefix = "MULTIPLIER ";
+	std::string fishingResultPrefix = "RESULT ";
+	float fishingSpawnHalfSizeX = 10.0f;
+	float fishingSpawnHalfSizeZ = 10.0f;
+	float fishingSpawnMinimumDistance = 0.0f;
+	int fishingSpawnMaxAttempts = 16;
+	std::vector<SceneFishingHookPoolEntry> fishingHookPoolEntries;
+	int fishingHookBaseScore = 0;
 	bool cameraIsMain = false;
 	float cameraFovY = 0.45f;
 	float cameraNearClip = 0.1f;
