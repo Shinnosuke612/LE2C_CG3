@@ -330,6 +330,7 @@ struct SceneComponent {
 	bool enabled = true;
 	std::string modelPath;
 	std::string meshCullMode = "Back";
+	Vector3 meshVisualRotation{};
 	bool meshEnvironmentReflectionOverride = false;
 	float meshEnvironmentReflectionIntensity = 0.3f;
 	std::vector<SceneMeshMaterialOverride> meshMaterialOverrides;
@@ -397,9 +398,11 @@ struct SceneComponent {
 	std::vector<uint64_t> fishingFishEntityIds;
 	uint64_t fishingHookSpawnAreaEntityId = 0;
 	uint64_t fishingHookPoolEntityId = 0;
+	uint64_t fishingWaterVolumeEntityId = 0;
 	float fishingDurationSeconds = 60.0f;
 	int fishingMaxSelectableFishCount = 5;
 	int fishingDistanceBandCount = 5;
+	int fishingHooksPerDistanceBand = 2;
 	float fishingDistanceMultiplierBase = 1.0f;
 	float fishingDistanceMultiplierStep = 0.2f;
 	bool fishingRandomizeSeedOnPlay = true;

@@ -8835,6 +8835,15 @@ void ImGuiManager::DrawInspectorWindow() {
 						}
 					}
 				}
+				const bool visualRotationChanged = ImGui::DragFloat3(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Visual Rotation (radians)"),
+					&component.meshVisualRotation.x,
+					0.01f
+				);
+				if (visualRotationChanged) {
+					document.MarkDirty();
+					editorSession_->RequestSceneReload();
+				}
 				const char* currentCullMode = component.meshCullMode.empty()
 					? "Back"
 					: component.meshCullMode.c_str();
@@ -12502,6 +12511,11 @@ void ImGuiManager::DrawInspectorWindow() {
 					"PlayerBehavior"
 				);
 				drawFishingEntityReference(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Water Volume"),
+					component.fishingWaterVolumeEntityId,
+					"WaterVolume"
+				);
+				drawFishingEntityReference(
 					LocalizedComponentWidgetLabel(editorLanguage_, "Hook Spawn Area"),
 					component.fishingHookSpawnAreaEntityId,
 					"FishingHookSpawnArea"
@@ -12522,6 +12536,10 @@ void ImGuiManager::DrawInspectorWindow() {
 				fishingChanged |= ImGui::DragInt(
 					LocalizedComponentWidgetLabel(editorLanguage_, "Distance Band Count"),
 					&component.fishingDistanceBandCount, 1.0f, 1, 32
+				);
+				fishingChanged |= ImGui::SliderInt(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Hooks Per Distance Band"),
+					&component.fishingHooksPerDistanceBand, 1, 4
 				);
 				fishingChanged |= ImGui::DragFloat(
 					LocalizedComponentWidgetLabel(editorLanguage_, "Multiplier Base"),
@@ -12746,6 +12764,22 @@ void ImGuiManager::DrawInspectorWindow() {
 					document.MarkDirty();
 				}
 				ImGui::EndDisabled();
+			} else if (component.type == "FishingObstacle") {
+				ImGui::TextDisabled(
+					SelectEditorText(
+						editorLanguage_,
+						"MeshRendererと非Trigger Colliderを使用するStatic障害物です。",
+						"Uses MeshRenderer and a non-trigger collider as a static obstacle."
+					)
+				);
+			} else if (component.type == "AgentTeamLeaderController") {
+				ImGui::TextDisabled(
+					SelectEditorText(
+						editorLanguage_,
+						"所属Teamの仮想リーダーを、このEntityのTransformで制御します。Event設定はありません。",
+						"Controls the owning Team's virtual leader from this Entity's Transform. No Event settings are available."
+					)
+				);
 			} else if (component.type == "AgentBehavior") {
 				ImGui::BeginDisabled(!editorSession_->IsEditing() || entityLocked);
 				bool agentChanged = false;
@@ -18938,6 +18972,11 @@ void ImGuiManager::DrawPrefabInspector() {
 				}
 				ImGui::EndCombo();
 			}
+			changed |= ImGui::DragFloat3(
+				LocalizedComponentWidgetLabel(editorLanguage_, "Visual Rotation (radians)"),
+				&component.meshVisualRotation.x,
+				0.01f
+			);
 		} else if (component.type == "Animator") {
 			changed |= ImGui::Checkbox(
 				LocalizedComponentWidgetLabel(editorLanguage_, "Play On Start"), &component.animatorPlayOnStart

@@ -1361,6 +1361,7 @@ namespace {
 		if (component.type == "MeshRenderer") {
 			result["modelPath"] = component.modelPath;
 			result["cullMode"] = component.meshCullMode;
+			result["visualRotation"] = VectorToJson(component.meshVisualRotation);
 			result["environmentReflectionOverride"] =
 				component.meshEnvironmentReflectionOverride;
 			result["environmentReflectionIntensity"] =
@@ -1487,9 +1488,11 @@ namespace {
 			result["fishEntityIds"] = component.fishingFishEntityIds;
 			result["hookSpawnAreaEntityId"] = component.fishingHookSpawnAreaEntityId;
 			result["hookPoolEntityId"] = component.fishingHookPoolEntityId;
+			result["waterVolumeEntityId"] = component.fishingWaterVolumeEntityId;
 			result["durationSeconds"] = component.fishingDurationSeconds;
 			result["maxSelectableFishCount"] = component.fishingMaxSelectableFishCount;
 			result["distanceBandCount"] = component.fishingDistanceBandCount;
+			result["hooksPerDistanceBand"] = component.fishingHooksPerDistanceBand;
 			result["distanceMultiplierBase"] = component.fishingDistanceMultiplierBase;
 			result["distanceMultiplierStep"] = component.fishingDistanceMultiplierStep;
 			result["randomizeSeedOnPlay"] = component.fishingRandomizeSeedOnPlay;
@@ -2453,6 +2456,9 @@ namespace {
 		component.fishingHookPoolEntityId = RemapEntityId(
 			component.fishingHookPoolEntityId, idMap, preserveUnmappedIds
 		);
+		component.fishingWaterVolumeEntityId = RemapEntityId(
+			component.fishingWaterVolumeEntityId, idMap, preserveUnmappedIds
+		);
 		for (SceneFishingHookPoolEntry& entry : component.fishingHookPoolEntries) {
 			entry.hookEntityId = RemapEntityId(
 				entry.hookEntityId, idMap, preserveUnmappedIds
@@ -2531,6 +2537,12 @@ namespace {
 					"cullMode",
 					component.meshCullMode
 				);
+				if (component.type == "MeshRenderer" && value.contains("visualRotation")) {
+					component.meshVisualRotation = JsonToVector(
+						value.at("visualRotation"),
+						component.meshVisualRotation
+					);
+				}
 				component.meshEnvironmentReflectionOverride = value.value(
 					"environmentReflectionOverride",
 					component.meshEnvironmentReflectionOverride
@@ -2822,6 +2834,9 @@ namespace {
 					component.fishingHookPoolEntityId = value.value(
 						"hookPoolEntityId", component.fishingHookPoolEntityId
 					);
+					component.fishingWaterVolumeEntityId = value.value(
+						"waterVolumeEntityId", component.fishingWaterVolumeEntityId
+					);
 					component.fishingDurationSeconds = (std::max)(
 						value.value("durationSeconds", component.fishingDurationSeconds),
 						0.001f
@@ -2833,6 +2848,11 @@ namespace {
 					component.fishingDistanceBandCount = (std::max)(
 						value.value("distanceBandCount", component.fishingDistanceBandCount),
 						1
+					);
+					component.fishingHooksPerDistanceBand = std::clamp(
+						value.value("hooksPerDistanceBand", component.fishingHooksPerDistanceBand),
+						1,
+						4
 					);
 					component.fishingDistanceMultiplierBase = (std::max)(
 						value.value("distanceMultiplierBase", component.fishingDistanceMultiplierBase),
@@ -8472,9 +8492,11 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.gameFlowPhases.clear();
 	} else if (type == "FishingScoreAttackDirector") {
 		component.fishingFishEntityIds.clear();
+		component.fishingWaterVolumeEntityId = 0;
 		component.fishingDurationSeconds = 60.0f;
 		component.fishingMaxSelectableFishCount = 5;
 		component.fishingDistanceBandCount = 5;
+		component.fishingHooksPerDistanceBand = 2;
 		component.fishingDistanceMultiplierBase = 1.0f;
 		component.fishingDistanceMultiplierStep = 0.2f;
 		component.fishingRandomizeSeedOnPlay = true;

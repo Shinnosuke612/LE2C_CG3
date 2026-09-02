@@ -104,7 +104,10 @@ void Object3d::UpdateInternal() {
 					skeleton_.joints[skeleton_.root].skeletonSpaceMatrix;
 			}
 		}
-		modelWorldMatrix = Multiply(localMatrix, worldMatrix);
+		modelWorldMatrix = Multiply(
+			Multiply(localMatrix, visualLocalRotationMatrix_),
+			worldMatrix
+		);
 	}
 
 	Matrix4x4 worldViewProjectionMatrix;
@@ -122,6 +125,14 @@ void Object3d::UpdateInternal() {
 	if (camera) {
 		cameraData->worldPosition = camera->GetTranslate();
 	}
+}
+
+void Object3d::SetVisualLocalRotation(const Vector3& rotation) {
+	visualLocalRotationMatrix_ = MakeAffineMatrix(
+		{ 1.0f, 1.0f, 1.0f },
+		rotation,
+		{ 0.0f, 0.0f, 0.0f }
+	);
 }
 
 void Object3d::SetModel(Model* model) {

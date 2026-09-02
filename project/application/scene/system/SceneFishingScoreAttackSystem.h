@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../SceneRuntimeObjectBinding.h"
+#include "../../../engine/math/Transform.h"
 
 #include <cstdint>
 #include <random>
@@ -25,6 +26,25 @@ struct SceneFishingScoreAttackTextRequest {
 	std::string text;
 };
 
+struct SceneFishingScoreAttackPlayerWaterBounds {
+	uint64_t playerEntityId = 0;
+	Vector3 center{};
+	float yaw = 0.0f;
+	float halfSizeX = 0.0f;
+	float halfSizeZ = 0.0f;
+};
+
+struct SceneFishingScoreAttackPlayerResetRequest {
+	uint64_t playerEntityId = 0;
+	Transform transform{};
+	std::string teamName;
+	struct EntityReset {
+		uint64_t entityId = 0;
+		Transform transform{};
+	};
+	std::vector<EntityReset> entityResets;
+};
+
 // SceneやObject、Colliderの所有権は持たず、保存済みComponentからRuntimeの判断だけを行う。
 class SceneFishingScoreAttackSystem {
 public:
@@ -41,6 +61,8 @@ public:
 
 	bool IsPlayerMovementAllowed() const;
 	bool AcceptWheelZoom() const;
+	bool TryGetPlayerWaterBounds(SceneFishingScoreAttackPlayerWaterBounds& bounds) const;
+	bool ConsumePlayerResetRequest(SceneFishingScoreAttackPlayerResetRequest& request);
 	const std::vector<SceneFishingScoreAttackTextRequest>& GetTextRequests() const {
 		return textRequests_;
 	}
@@ -65,7 +87,20 @@ private:
 
 	SceneFishingScoreAttackState state_ = SceneFishingScoreAttackState::Inactive;
 	uint64_t directorEntityId_ = 0;
-	uint64_t activeHookEntityId_ = 0;
+	struct ActiveHook {
+		uint64_t entityId = 0;
+		int distanceBand = 0;
+		float multiplier = 0.0f;
+	};
+	std::vector<ActiveHook> activeHooks_;
+	Transform initialPlayerTransform_{};
+	std::vector<uint64_t> initialFishEntityIds_;
+	std::vector<Transform> initialFishTransforms_;
+	std::string fishingTeamName_;
+	SceneFishingScoreAttackPlayerWaterBounds playerWaterBounds_{};
+	bool hasInitialPlayerTransform_ = false;
+	bool hasPlayerWaterBounds_ = false;
+	bool hasPlayerResetRequest_ = false;
 	int selectedFishCount_ = 0;
 	int roundFishCount_ = 0;
 	int roundDistanceBand_ = 0;

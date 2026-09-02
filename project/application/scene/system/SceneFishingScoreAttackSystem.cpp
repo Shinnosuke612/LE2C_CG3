@@ -113,6 +113,25 @@ namespace {
 		};
 	}
 
+	Vector3 ToLocalXZ(const Transform& transform, const Vector3& worldPosition) {
+		const float cosine = std::cos(transform.rotate.y);
+		const float sine = std::sin(transform.rotate.y);
+		const float deltaX = worldPosition.x - transform.translate.x;
+		const float deltaZ = worldPosition.z - transform.translate.z;
+		return {
+			deltaX * cosine - deltaZ * sine,
+			0.0f,
+			deltaX * sine + deltaZ * cosine
+		};
+	}
+
+	float ColliderRadiusXZ(const SceneComponent& collider) {
+		return std::sqrt(
+			collider.colliderSizeMultiplier.x * collider.colliderSizeMultiplier.x +
+			collider.colliderSizeMultiplier.z * collider.colliderSizeMultiplier.z
+		);
+	}
+
 	const SceneRuntimeObjectBinding* FindBinding(
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
 		uint64_t entityId
@@ -206,48 +225,58 @@ void SceneFishingScoreAttackSystem::UpdateAfterSimulation(
 		Clear();
 		return;
 	}
-	const SceneRuntimeObjectBinding* playerBinding = FindBinding(
-		bindings,
-		director->fishingPlayerEntityId
-	);
-	const SceneRuntimeObjectBinding* hookBinding = FindBinding(
-		bindings,
-		activeHookEntityId_
-	);
-	if (
-		!playerBinding || !hookBinding ||
-		!playerBinding->entity || !hookBinding->entity ||
-		!playerBinding->collider || !hookBinding->collider ||
-		!IsEntityActiveInHierarchy(document, *playerBinding->entity) ||
-		!IsEntityActiveInHierarchy(document, *hookBinding->entity) ||
-		!playerBinding->collider->CanCollideWith(*hookBinding->collider) ||
-		!playerBinding->collider->Intersects(*hookBinding->collider)
-	) {
-		return;
+	const ActiveHook* hitHook = nullptr;
+	const SceneComponent* hitHookComponent = nullptr;
+	for (const ActiveHook& activeHook : activeHooks_) {
+		const SceneRuntimeObjectBinding* hookBinding = FindBinding(bindings, activeHook.entityId);
+		if (!hookBinding || !hookBinding->entity || !hookBinding->collider ||
+			!IsEntityActiveInHierarchy(document, *hookBinding->entity)) {
+			continue;
+		}
+		for (int fishIndex = 0; fishIndex < roundFishCount_; ++fishIndex) {
+			if (fishIndex >= static_cast<int>(director->fishingFishEntityIds.size())) {
+				break;
+			}
+			const SceneRuntimeObjectBinding* fishBinding = FindBinding(
+				bindings,
+				director->fishingFishEntityIds[static_cast<size_t>(fishIndex)]
+			);
+			if (
+				!fishBinding ||
+				!fishBinding->entity ||
+				!fishBinding->collider ||
+				!IsEntityActiveInHierarchy(document, *fishBinding->entity) ||
+				!fishBinding->collider->CanCollideWith(*hookBinding->collider) ||
+				!fishBinding->collider->Intersects(*hookBinding->collider)
+			) {
+				continue;
+			}
+			hitHook = &activeHook;
+			hitHookComponent = FindComponent(
+				document,
+				activeHook.entityId,
+				"FishingHook"
+			);
+			break;
+		}
+		if (hitHook) {
+			break;
+		}
 	}
-
-	const SceneComponent* hook = FindComponent(
-		document,
-		activeHookEntityId_,
-		"FishingHook"
-	);
-	if (!hook) {
-		Fault(document, *director, "Active FishingHook is missing");
+	if (!hitHook || !hitHookComponent) {
 		return;
 	}
 	const double score = std::round(
-		static_cast<double>(roundMultiplier_) *
+		static_cast<double>(hitHook->multiplier) *
 		static_cast<double>(roundFishCount_) *
-		static_cast<double>(hook->fishingHookBaseScore)
+		static_cast<double>(hitHookComponent->fishingHookBaseScore)
 	);
 	const double maximumScore = static_cast<double>(
 		(std::numeric_limits<long long>::max)() - totalScore_
 	);
 	totalScore_ += static_cast<long long>((std::min)(score, maximumScore));
-	if (SceneEntity* activeHook = document.FindEntity(activeHookEntityId_)) {
-		activeHook->active = false;
-	}
-	activeHookEntityId_ = 0;
+	DeactivatePoolHooks(document, *director);
+	hasPlayerResetRequest_ = hasInitialPlayerTransform_;
 	state_ = SceneFishingScoreAttackState::SelectingNext;
 	SetFishPreview(document, *director);
 	BuildTextRequests(*director);
@@ -261,6 +290,39 @@ bool SceneFishingScoreAttackSystem::AcceptWheelZoom() const {
 	return !hasDirector_ || state_ == SceneFishingScoreAttackState::Navigating;
 }
 
+bool SceneFishingScoreAttackSystem::TryGetPlayerWaterBounds(
+	SceneFishingScoreAttackPlayerWaterBounds& bounds
+) const {
+	if (!hasPlayerWaterBounds_) {
+		return false;
+	}
+	bounds = playerWaterBounds_;
+	return true;
+}
+
+bool SceneFishingScoreAttackSystem::ConsumePlayerResetRequest(
+	SceneFishingScoreAttackPlayerResetRequest& request
+) {
+	if (!hasPlayerResetRequest_) {
+		return false;
+	}
+	request.playerEntityId = playerWaterBounds_.playerEntityId;
+	request.transform = initialPlayerTransform_;
+	request.teamName = fishingTeamName_;
+	request.entityResets.clear();
+	request.entityResets.reserve(initialFishTransforms_.size());
+	for (size_t index = 0; index < initialFishTransforms_.size(); ++index) {
+		request.entityResets.push_back({
+			index < initialFishEntityIds_.size()
+				? initialFishEntityIds_[index]
+				: 0,
+			initialFishTransforms_[index]
+		});
+	}
+	hasPlayerResetRequest_ = false;
+	return true;
+}
+
 bool SceneFishingScoreAttackSystem::Preflight(
 	const SceneDocument& document,
 	uint64_t directorEntityId,
@@ -271,12 +333,14 @@ bool SceneFishingScoreAttackSystem::Preflight(
 		director.fishingPlayerEntityId == 0 ||
 		director.fishingHookSpawnAreaEntityId == 0 ||
 		director.fishingHookPoolEntityId == 0 ||
+		director.fishingWaterVolumeEntityId == 0 ||
 		director.fishingFishEntityIds.empty() ||
-		director.fishingMaxSelectableFishCount < 0 ||
+		director.fishingMaxSelectableFishCount < 1 ||
 		director.fishingMaxSelectableFishCount > 5 ||
 		director.fishingMaxSelectableFishCount >
 			static_cast<int>(director.fishingFishEntityIds.size()) ||
 		director.fishingDistanceBandCount < 1 ||
+		director.fishingHooksPerDistanceBand < 1 ||
 		!std::isfinite(director.fishingDurationSeconds) ||
 		director.fishingDurationSeconds <= 0.0f ||
 		!IsFiniteNonNegative(director.fishingDistanceMultiplierBase) ||
@@ -298,13 +362,55 @@ bool SceneFishingScoreAttackSystem::Preflight(
 		director.fishingPlayerEntityId,
 		"PhysicsBody"
 	);
+	const SceneTeamSettings* playerTeam = playerEntity
+		? document.ResolveEntityTeam(*playerEntity)
+		: nullptr;
+	const SceneComponent* playerLeaderController = playerEntity
+		? FindEnabledComponent(*playerEntity, "AgentTeamLeaderController")
+		: nullptr;
 	if (
 		!playerEntity ||
+		playerEntity->parentId != 0 ||
 		!IsEntityActiveInHierarchy(document, *playerEntity) ||
 		!FindComponent(document, director.fishingPlayerEntityId, "PlayerBehavior") ||
+		!playerTeam ||
+		!playerLeaderController ||
 		!playerCollider || !playerBody || !playerBody->physicsFreezePositionY
 	) {
-		diagnostic = "Fishing player requires active PlayerBehavior, Collider, and Y freeze";
+		diagnostic = "Fishing player requires PlayerBehavior, Y freeze, an owning Team, and AgentTeamLeaderController";
+		return false;
+	}
+	int playerTeamControllerCount = 0;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (
+			!IsEntityActiveInHierarchy(document, entity) ||
+			!FindEnabledComponent(entity, "AgentTeamLeaderController")
+		) {
+			continue;
+		}
+		const SceneTeamSettings* team = document.ResolveEntityTeam(entity);
+		if (team && team->name == playerTeam->name) {
+			++playerTeamControllerCount;
+		}
+	}
+	if (playerTeamControllerCount != 1) {
+		diagnostic = "Fishing player Team requires exactly one active AgentTeamLeaderController";
+		return false;
+	}
+	const SceneEntity* waterEntity = document.FindEntity(
+		director.fishingWaterVolumeEntityId
+	);
+	const SceneComponent* waterVolume = FindComponent(
+		document,
+		director.fishingWaterVolumeEntityId,
+		"WaterVolume"
+	);
+	if (!waterEntity || !waterVolume ||
+		!std::isfinite(waterVolume->waterHalfSize.x) ||
+		!std::isfinite(waterVolume->waterHalfSize.z) ||
+		waterVolume->waterHalfSize.x <= 0.0f ||
+		waterVolume->waterHalfSize.z <= 0.0f) {
+		diagnostic = "FishingScoreAttackDirector requires a valid WaterVolume";
 		return false;
 	}
 	const SceneEntity* spawnAreaEntity = document.FindEntity(
@@ -333,23 +439,39 @@ bool SceneFishingScoreAttackSystem::Preflight(
 		director.fishingHookPoolEntityId,
 		"FishingHookPool"
 	);
-	if (!pool || pool->fishingHookPoolEntries.empty()) {
-		diagnostic = "FishingHookPool is missing or empty";
+	const int requiredHookCount = director.fishingDistanceBandCount *
+		director.fishingHooksPerDistanceBand;
+	if (!pool || static_cast<int>(pool->fishingHookPoolEntries.size()) < requiredHookCount) {
+		diagnostic = "FishingHookPool has too few entries for simultaneous hooks";
 		return false;
 	}
 
 	std::unordered_set<uint64_t> fishIds;
+	std::vector<const SceneComponent*> fishColliders;
 	for (uint64_t fishEntityId : director.fishingFishEntityIds) {
 		const SceneEntity* fish = document.FindEntity(fishEntityId);
+		const SceneComponent* fishBehavior = fish
+			? FindEnabledComponent(*fish, "AgentBehavior")
+			: nullptr;
+		const SceneComponent* fishCollider = fish
+			? FindEnabledComponent(*fish, "OBBCollider")
+			: nullptr;
+		const SceneTeamSettings* fishTeam = fish
+			? document.ResolveEntityTeam(*fish)
+			: nullptr;
 		if (
 			fishEntityId == 0 || !fish ||
 			!fishIds.insert(fishEntityId).second ||
-			!FindEnabledComponent(*fish, "AgentBehavior") ||
+			!fishBehavior ||
+			!fishTeam || fishTeam->name != playerTeam->name ||
+			!fishCollider || !fishCollider->colliderActive ||
+			!fishCollider->colliderIsTrigger ||
 			!HasIdentityAncestors(document, *fish)
 		) {
-			diagnostic = "Fishing fish references require unique AgentBehavior and identity ancestors";
+			diagnostic = "Fishing fish require unique AgentBehavior, same Team, identity ancestors, and active Trigger Colliders";
 			return false;
 		}
+		fishColliders.push_back(fishCollider);
 	}
 
 	std::unordered_set<uint64_t> hookIds;
@@ -373,10 +495,17 @@ bool SceneFishingScoreAttackSystem::Preflight(
 			!hookIds.insert(entry.hookEntityId).second ||
 			!hookCollider->colliderIsTrigger || !hookCollider->colliderActive ||
 			entry.weightsByDistanceBand.size() != weightTotals.size() ||
-			(playerCollider->colliderMask & hookCollider->colliderLayer) == 0 ||
-			(hookCollider->colliderMask & playerCollider->colliderLayer) == 0
+			std::any_of(
+				fishColliders.begin(),
+				fishColliders.end(),
+				[hookCollider](const SceneComponent* fishCollider) {
+					return
+						(fishCollider->colliderMask & hookCollider->colliderLayer) == 0 ||
+						(hookCollider->colliderMask & fishCollider->colliderLayer) == 0;
+				}
+			)
 		) {
-			diagnostic = "FishingHookPool entry or Player collision settings are invalid";
+			diagnostic = "FishingHookPool entry or Fish collision settings are invalid";
 			return false;
 		}
 		for (size_t bandIndex = 0; bandIndex < weightTotals.size(); ++bandIndex) {
@@ -422,7 +551,7 @@ void SceneFishingScoreAttackSystem::InitializeRun(
 	} else {
 		random_.seed(static_cast<std::mt19937::result_type>(director.fishingRandomSeed));
 	}
-	selectedFishCount_ = 0;
+	selectedFishCount_ = 1;
 	roundFishCount_ = 0;
 	roundDistanceBand_ = 0;
 	roundMultiplier_ = director.fishingDistanceMultiplierBase;
@@ -430,6 +559,60 @@ void SceneFishingScoreAttackSystem::InitializeRun(
 	totalScore_ = 0;
 	timerRunning_ = false;
 	diagnostic_.clear();
+	initialFishEntityIds_ = director.fishingFishEntityIds;
+	initialFishTransforms_.clear();
+	initialFishTransforms_.reserve(initialFishEntityIds_.size());
+	const SceneTeamSettings* playerTeam = nullptr;
+	const SceneEntity* player = document.FindEntity(director.fishingPlayerEntityId);
+	const SceneEntity* waterEntity = document.FindEntity(director.fishingWaterVolumeEntityId);
+	const SceneComponent* playerCollider = FindComponent(
+		document,
+		director.fishingPlayerEntityId,
+		"OBBCollider"
+	);
+	const SceneComponent* waterVolume = FindComponent(
+		document,
+		director.fishingWaterVolumeEntityId,
+		"WaterVolume"
+	);
+	if (player && waterEntity && playerCollider && waterVolume) {
+		initialPlayerTransform_ =
+			SceneTransformResolver::ResolveScene3DTransform(document, *player);
+		const Transform waterTransform =
+			SceneTransformResolver::ResolveScene3DTransform(document, *waterEntity);
+		constexpr float kWaterBoundarySafetyMargin = 0.1f;
+		const float playerRadius = ColliderRadiusXZ(*playerCollider);
+		playerWaterBounds_.playerEntityId = player->id;
+		playerWaterBounds_.center = {
+			waterTransform.translate.x + waterVolume->waterOffset.x,
+			waterTransform.translate.y + waterVolume->waterOffset.y,
+			waterTransform.translate.z + waterVolume->waterOffset.z
+		};
+		playerWaterBounds_.yaw = waterTransform.rotate.y;
+		playerWaterBounds_.halfSizeX = (std::max)(
+			waterVolume->waterHalfSize.x - playerRadius - kWaterBoundarySafetyMargin,
+			0.001f
+		);
+		playerWaterBounds_.halfSizeZ = (std::max)(
+			waterVolume->waterHalfSize.z - playerRadius - kWaterBoundarySafetyMargin,
+			0.001f
+		);
+		hasInitialPlayerTransform_ = true;
+		hasPlayerWaterBounds_ = true;
+	}
+	if (player) {
+		playerTeam = document.ResolveEntityTeam(*player);
+	}
+	fishingTeamName_ = playerTeam ? playerTeam->name : std::string{};
+	for (uint64_t fishEntityId : initialFishEntityIds_) {
+		const SceneEntity* fish = document.FindEntity(fishEntityId);
+		initialFishTransforms_.push_back(
+			fish
+				? SceneTransformResolver::ResolveScene3DTransform(document, *fish)
+				: Transform{}
+		);
+	}
+	hasPlayerResetRequest_ = false;
 	DeactivatePoolHooks(document, director);
 	SetFishPreview(document, director);
 	state_ = SceneFishingScoreAttackState::SelectingInitial;
@@ -449,7 +632,7 @@ void SceneFishingScoreAttackSystem::UpdateSelection(
 		const int wheelNotches = static_cast<int>(std::round(wheel));
 		selectedFishCount_ = std::clamp(
 			selectedFishCount_ + wheelNotches,
-			0,
+			1,
 			director.fishingMaxSelectableFishCount
 		);
 		SetFishPreview(document, director);
@@ -481,7 +664,13 @@ void SceneFishingScoreAttackSystem::StartRound(
 		director.fishingHookPoolEntityId,
 		"FishingHookPool"
 	);
-	if (!player || !spawnAreaEntity || !spawnArea || !pool) {
+	const SceneEntity* waterEntity = document.FindEntity(director.fishingWaterVolumeEntityId);
+	const SceneComponent* waterVolume = FindComponent(
+		document,
+		director.fishingWaterVolumeEntityId,
+		"WaterVolume"
+	);
+	if (!player || !spawnAreaEntity || !spawnArea || !pool || !waterEntity || !waterVolume) {
 		Fault(document, director, "Fishing round references became invalid");
 		return;
 	}
@@ -490,6 +679,11 @@ void SceneFishingScoreAttackSystem::StartRound(
 		SceneTransformResolver::ResolveScene3DTransform(document, *player);
 	const Transform areaTransform =
 		SceneTransformResolver::ResolveScene3DTransform(document, *spawnAreaEntity);
+	Transform waterTransform =
+		SceneTransformResolver::ResolveScene3DTransform(document, *waterEntity);
+	waterTransform.translate.x += waterVolume->waterOffset.x;
+	waterTransform.translate.y += waterVolume->waterOffset.y;
+	waterTransform.translate.z += waterVolume->waterOffset.z;
 	std::uniform_real_distribution<float> xDistribution(
 		-spawnArea->fishingSpawnHalfSizeX,
 		spawnArea->fishingSpawnHalfSizeX
@@ -498,89 +692,107 @@ void SceneFishingScoreAttackSystem::StartRound(
 		-spawnArea->fishingSpawnHalfSizeZ,
 		spawnArea->fishingSpawnHalfSizeZ
 	);
-	Vector3 spawnPosition{};
-	for (int attempt = 0; attempt < spawnArea->fishingSpawnMaxAttempts; ++attempt) {
-		spawnPosition = ToSpawnWorldPosition(
-			areaTransform,
-			xDistribution(random_),
-			zDistribution(random_),
-			playerTransform.translate.y
-		);
-		if (
-			DistanceXZ(spawnPosition, playerTransform.translate) >=
-			spawnArea->fishingSpawnMinimumDistance
-		) {
-			break;
-		}
-	}
-
-	float maximumReachableDistance = 0.0f;
-	for (const float xSign : { -1.0f, 1.0f }) {
-		for (const float zSign : { -1.0f, 1.0f }) {
-			maximumReachableDistance = (std::max)(
-				maximumReachableDistance,
-				DistanceXZ(
-					playerTransform.translate,
-					ToSpawnWorldPosition(
-						areaTransform,
-						xSign * spawnArea->fishingSpawnHalfSizeX,
-						zSign * spawnArea->fishingSpawnHalfSizeZ,
-						playerTransform.translate.y
-					)
-				)
-			);
-		}
-	}
-	const float spawnDistance = DistanceXZ(spawnPosition, playerTransform.translate);
-	const float distanceRange = maximumReachableDistance -
-		spawnArea->fishingSpawnMinimumDistance;
-	const float normalizedDistance = distanceRange > 0.0001f
-		? std::clamp(
-			(spawnDistance - spawnArea->fishingSpawnMinimumDistance) / distanceRange,
-			0.0f,
-			1.0f
-		)
-		: 0.0f;
-	const int bandIndex = (std::min)(
-		static_cast<int>(std::floor(
-			normalizedDistance * director.fishingDistanceBandCount
-		)),
-		director.fishingDistanceBandCount - 1
-	);
-
-	float totalWeight = 0.0f;
-	for (const SceneFishingHookPoolEntry& entry : pool->fishingHookPoolEntries) {
-		totalWeight += entry.weightsByDistanceBand[static_cast<size_t>(bandIndex)];
-	}
-	if (!std::isfinite(totalWeight) || totalWeight <= 0.0f) {
-		Fault(document, director, "FishingHookPool has no selectable hook for the selected band");
-		return;
-	}
-	std::uniform_real_distribution<float> weightDistribution(0.0f, totalWeight);
-	float remainingWeight = weightDistribution(random_);
-	const SceneFishingHookPoolEntry* selectedEntry =
-		&pool->fishingHookPoolEntries.back();
-	for (const SceneFishingHookPoolEntry& entry : pool->fishingHookPoolEntries) {
-		remainingWeight -= entry.weightsByDistanceBand[static_cast<size_t>(bandIndex)];
-		if (remainingWeight <= 0.0f) {
-			selectedEntry = &entry;
-			break;
-		}
-	}
-
 	DeactivatePoolHooks(document, director);
-	SceneEntity* hookEntity = document.FindEntity(selectedEntry->hookEntityId);
-	if (!hookEntity) {
-		Fault(document, director, "Selected FishingHook is missing");
-		return;
+	std::unordered_set<uint64_t> usedHookIds;
+	std::vector<Vector3> spawnPositions;
+	std::vector<float> spawnRadii;
+	for (int bandIndex = 0; bandIndex < director.fishingDistanceBandCount; ++bandIndex) {
+		for (int hookIndex = 0; hookIndex < director.fishingHooksPerDistanceBand; ++hookIndex) {
+			float totalWeight = 0.0f;
+			for (const SceneFishingHookPoolEntry& entry : pool->fishingHookPoolEntries) {
+				if (usedHookIds.find(entry.hookEntityId) == usedHookIds.end()) {
+					totalWeight += entry.weightsByDistanceBand[static_cast<size_t>(bandIndex)];
+				}
+			}
+			if (!std::isfinite(totalWeight) || totalWeight <= 0.0f) {
+				Fault(document, director, "FishingHookPool cannot select unique hooks for a distance band");
+				return;
+			}
+			std::uniform_real_distribution<float> weightDistribution(0.0f, totalWeight);
+			float remainingWeight = weightDistribution(random_);
+			const SceneFishingHookPoolEntry* selectedEntry = nullptr;
+			for (const SceneFishingHookPoolEntry& entry : pool->fishingHookPoolEntries) {
+				if (usedHookIds.find(entry.hookEntityId) != usedHookIds.end()) {
+					continue;
+				}
+				const float weight = entry.weightsByDistanceBand[static_cast<size_t>(bandIndex)];
+				if (weight <= 0.0f) {
+					continue;
+				}
+				remainingWeight -= weight;
+				if (remainingWeight <= 0.0f) {
+					selectedEntry = &entry;
+					break;
+				}
+			}
+			if (!selectedEntry) {
+				Fault(document, director, "FishingHookPool selection failed");
+				return;
+			}
+			const SceneComponent* hookCollider = FindComponent(
+				document, selectedEntry->hookEntityId, "OBBCollider"
+			);
+			Vector3 spawnPosition{};
+			bool foundPosition = false;
+			for (int attempt = 0; attempt < spawnArea->fishingSpawnMaxAttempts; ++attempt) {
+				const Vector3 candidate = ToSpawnWorldPosition(
+					areaTransform, xDistribution(random_), zDistribution(random_), playerTransform.translate.y
+				);
+				const Vector3 waterLocal = ToLocalXZ(waterTransform, candidate);
+				const float normalizedZ = (waterLocal.z + waterVolume->waterHalfSize.z) /
+					(2.0f * waterVolume->waterHalfSize.z);
+				const int candidateBand = (std::min)(
+					static_cast<int>(std::floor(std::clamp(normalizedZ, 0.0f, 0.99999f) * director.fishingDistanceBandCount)),
+					director.fishingDistanceBandCount - 1
+				);
+				if (std::abs(waterLocal.x) > waterVolume->waterHalfSize.x ||
+					std::abs(waterLocal.z) > waterVolume->waterHalfSize.z || candidateBand != bandIndex ||
+					DistanceXZ(candidate, playerTransform.translate) < spawnArea->fishingSpawnMinimumDistance) {
+					continue;
+				}
+				const float hookRadius = hookCollider ? ColliderRadiusXZ(*hookCollider) : 0.0f;
+				bool overlaps = false;
+				for (size_t existingIndex = 0; existingIndex < spawnPositions.size(); ++existingIndex) {
+					if (DistanceXZ(candidate, spawnPositions[existingIndex]) < hookRadius + spawnRadii[existingIndex]) {
+						overlaps = true;
+						break;
+					}
+				}
+				for (const SceneEntity& entity : document.GetEntities()) {
+					if (!FindEnabledComponent(entity, "FishingObstacle")) { continue; }
+					const SceneComponent* obstacleCollider = FindEnabledComponent(entity, "OBBCollider");
+					if (!obstacleCollider) { continue; }
+					const Transform obstacleTransform = SceneTransformResolver::ResolveScene3DTransform(document, entity);
+					const Vector3 obstacleCenter = ToSpawnWorldPosition(
+						obstacleTransform,
+						obstacleCollider->colliderOffset.x,
+						obstacleCollider->colliderOffset.z,
+						obstacleTransform.translate.y + obstacleCollider->colliderOffset.y
+					);
+					if (DistanceXZ(candidate, obstacleCenter) < hookRadius + ColliderRadiusXZ(*obstacleCollider)) {
+						overlaps = true; break;
+					}
+				}
+				if (!overlaps) { spawnPosition = candidate; foundPosition = true; break; }
+			}
+			if (!foundPosition) {
+				Fault(document, director, "FishingHookSpawnArea has no valid position for a distance band");
+				return;
+			}
+			SceneEntity* hookEntity = document.FindEntity(selectedEntry->hookEntityId);
+			if (!hookEntity) { Fault(document, director, "Selected FishingHook is missing"); return; }
+			hookEntity->transform.translate = spawnPosition;
+			hookEntity->active = true;
+			usedHookIds.insert(hookEntity->id);
+			spawnPositions.push_back(spawnPosition);
+			spawnRadii.push_back(hookCollider ? ColliderRadiusXZ(*hookCollider) : 0.0f);
+			activeHooks_.push_back({ hookEntity->id, bandIndex,
+				director.fishingDistanceMultiplierBase + director.fishingDistanceMultiplierStep * static_cast<float>(bandIndex) });
+		}
 	}
-	hookEntity->transform.translate = spawnPosition;
-	hookEntity->active = true;
-	activeHookEntityId_ = hookEntity->id;
 	roundFishCount_ = selectedFishCount_;
-	roundDistanceBand_ = bandIndex;
-	roundMultiplier_ = director.fishingDistanceMultiplierBase +
-		director.fishingDistanceMultiplierStep * static_cast<float>(bandIndex);
+	roundDistanceBand_ = 0;
+	roundMultiplier_ = director.fishingDistanceMultiplierBase;
 	state_ = SceneFishingScoreAttackState::Navigating;
 	SetFishPreview(document, director);
 }
@@ -646,7 +858,7 @@ void SceneFishingScoreAttackSystem::DeactivatePoolHooks(
 			}
 		}
 	}
-	activeHookEntityId_ = 0;
+	activeHooks_.clear();
 }
 
 void SceneFishingScoreAttackSystem::BuildTextRequests(
@@ -678,7 +890,15 @@ void SceneFishingScoreAttackSystem::BuildTextRequests(
 	);
 	addText(
 		director.fishingMultiplierTextEntityId,
-		director.fishingMultiplierPrefix + FormatOneDecimal(roundMultiplier_)
+		state_ == SceneFishingScoreAttackState::Navigating
+			? director.fishingMultiplierPrefix +
+				FormatOneDecimal(director.fishingDistanceMultiplierBase) + "x - " +
+				FormatOneDecimal(
+					director.fishingDistanceMultiplierBase +
+					director.fishingDistanceMultiplierStep *
+						static_cast<float>(director.fishingDistanceBandCount - 1)
+				) + "x"
+			: std::string{}
 	);
 	addText(
 		director.fishingResultTextEntityId,
@@ -691,7 +911,15 @@ void SceneFishingScoreAttackSystem::BuildTextRequests(
 void SceneFishingScoreAttackSystem::Clear() {
 	state_ = SceneFishingScoreAttackState::Inactive;
 	directorEntityId_ = 0;
-	activeHookEntityId_ = 0;
+	activeHooks_.clear();
+	initialPlayerTransform_ = {};
+	playerWaterBounds_ = {};
+	hasInitialPlayerTransform_ = false;
+	hasPlayerWaterBounds_ = false;
+	hasPlayerResetRequest_ = false;
+	initialFishEntityIds_.clear();
+	initialFishTransforms_.clear();
+	fishingTeamName_.clear();
 	selectedFishCount_ = 0;
 	roundFishCount_ = 0;
 	roundDistanceBand_ = 0;

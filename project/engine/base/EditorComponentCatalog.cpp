@@ -28,7 +28,7 @@ namespace {
 		EditorComponentTag::Prefab
 	}};
 
-	constexpr std::array<EditorComponentDefinition, 42> kDefinitions = {{
+	constexpr std::array<EditorComponentDefinition, 44> kDefinitions = {{
 		{
 			"MeshRenderer", "3Dモデル表示", "Mesh Renderer",
 			"3DモデルとMaterialをSceneへ表示します。",
@@ -402,6 +402,24 @@ namespace {
 			SceneContext, 37, -1, "OBBCollider",
 			EditorComponentTagBit(EditorComponentTag::Collision) |
 			EditorComponentTagBit(EditorComponentTag::Spawn)
+		},
+		{
+			"FishingObstacle", "釣り障害物", "Fishing Obstacle",
+			"Cubeなどの見た目とStatic Colliderを持つ釣り用障害物です。",
+			"Marks a fishing obstacle with a visible mesh and a static collider.",
+			EditorComponentCategory::Gameplay,
+			SceneContext, 38, -1, "OBBCollider",
+			EditorComponentTagBit(EditorComponentTag::Collision) |
+			EditorComponentTagBit(EditorComponentTag::ThreeD)
+		},
+		{
+			"AgentTeamLeaderController", "群れ仮想リーダー制御", "Agent Team Leader Controller",
+			"所属Teamの仮想リーダーを、このEntityのTransformで制御します。",
+			"Controls the owning Team's virtual leader from this Entity's Transform.",
+			EditorComponentCategory::Gameplay,
+			SceneContext, 39, -1, "",
+			EditorComponentTagBit(EditorComponentTag::ThreeD) |
+			EditorComponentTagBit(EditorComponentTag::Reference)
 		}
 	}};
 

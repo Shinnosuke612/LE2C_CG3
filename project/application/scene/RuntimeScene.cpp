@@ -510,6 +510,17 @@ void RuntimeScene::Update(float deltaTime)
 		SceneEntity* playerEntity = activeDocument
 			? activeDocument->FindEntityByName("Player")
 			: nullptr;
+		SceneFishingScoreAttackPlayerWaterBounds waterBounds{};
+		if (playerEntity &&
+			fishingScoreAttackSystem_.TryGetPlayerWaterBounds(waterBounds) &&
+			waterBounds.playerEntityId == playerEntity->id) {
+			player_->ClampToWaterBounds(
+				waterBounds.center,
+				waterBounds.yaw,
+				waterBounds.halfSizeX,
+				waterBounds.halfSizeZ
+			);
+		}
 		if (playerEntity && player_->GetObject()) {
 			SynchronizeSceneTransform(
 				playerEntity->transform,
@@ -524,6 +535,43 @@ void RuntimeScene::Update(float deltaTime)
 			runtimeObjectBindings_,
 			true
 		);
+		SceneFishingScoreAttackPlayerResetRequest resetRequest{};
+		if (player_ &&
+			fishingScoreAttackSystem_.ConsumePlayerResetRequest(resetRequest)) {
+			SceneEntity* playerEntity = activeDocument->FindEntity(
+				resetRequest.playerEntityId
+			);
+			if (playerEntity && player_->GetObject()) {
+				player_->SetTransform(resetRequest.transform);
+				SynchronizeSceneTransform(
+					playerEntity->transform,
+					player_->GetObject()->GetTransform()
+				);
+			}
+			for (const SceneFishingScoreAttackPlayerResetRequest::EntityReset& entityReset :
+				resetRequest.entityResets) {
+				for (const SceneRuntimeObjectBinding& binding : runtimeObjectBindings_) {
+					if (
+						!binding.entity ||
+						binding.entity->id != entityReset.entityId ||
+						!binding.object
+					) {
+						continue;
+					}
+					binding.object->GetTransform() = entityReset.transform;
+					binding.object->Update();
+					SynchronizeSceneTransform(
+						binding.entity->transform,
+						binding.object->GetTransform()
+					);
+					break;
+				}
+			}
+			agentSystem_.ResetTeam(
+				*activeDocument,
+				resetRequest.teamName
+			);
+		}
 	}
 	if (activeDocument && playing && gameFlowResult.gameplayAllowed && gameplayDeltaTime > 0.0f) {
 		// Bone追従はAnimation/Physics後、当たり判定とEventは最終Transform後に評価する。

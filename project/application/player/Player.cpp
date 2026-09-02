@@ -7,6 +7,7 @@
 #include "../../engine/math/Math.h"
 
 #include <algorithm>
+#include <cmath>
 
 void Player::Initialize(Object3dCommon* object3dCommon, const char* modelName) {
 	object_ = new Object3d();
@@ -93,12 +94,11 @@ void Player::Update(
 		move = Math::Multiply(Math::Normalize(move), activeMoveSpeed);
 		desiredVelocity.x = move.x;
 		desiredVelocity.z = move.z;
+		object_->SetRotate({ 0.0f, std::atan2(move.x, move.z), 0.0f });
 		if (inWater_) {
 			desiredVelocity.y = move.y;
 		}
 	}
-
-	object_->SetRotate({ 0.0f, 0.0f, 0.0f });
 
 	if (acceptGameplayInput && inWater_) {
 		const bool swimUp = input && input->PushKey(DIK_SPACE);
@@ -161,9 +161,41 @@ void Player::SetTransform(const Transform& transform) {
 	physicsBody_.velocity = {};
 	physicsBody_.isGrounded = false;
 	object_->GetTransform() = transform;
-	object_->SetRotate({ 0.0f, 0.0f, 0.0f });
 	ApplyPosition();
 	object_->Update();
+}
+
+bool Player::ClampToWaterBounds(
+	const Vector3& center,
+	float yaw,
+	float halfSizeX,
+	float halfSizeZ
+) {
+	if (!object_ || !std::isfinite(yaw) ||
+		!std::isfinite(halfSizeX) || !std::isfinite(halfSizeZ)) {
+		return false;
+	}
+	const float cosine = std::cos(yaw);
+	const float sine = std::sin(yaw);
+	const Vector3 worldDelta = {
+		position_.x - center.x,
+		0.0f,
+		position_.z - center.z
+	};
+	const float localX = worldDelta.x * cosine - worldDelta.z * sine;
+	const float localZ = worldDelta.x * sine + worldDelta.z * cosine;
+	const float clampedX = std::clamp(localX, -halfSizeX, halfSizeX);
+	const float clampedZ = std::clamp(localZ, -halfSizeZ, halfSizeZ);
+	if (clampedX == localX && clampedZ == localZ) {
+		return false;
+	}
+	position_.x = center.x + clampedX * cosine + clampedZ * sine;
+	position_.z = center.z - clampedX * sine + clampedZ * cosine;
+	physicsBody_.velocity.x = 0.0f;
+	physicsBody_.velocity.z = 0.0f;
+	ApplyPosition();
+	object_->Update();
+	return true;
 }
 
 void Player::SetBehaviorSettings(

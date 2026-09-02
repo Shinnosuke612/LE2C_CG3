@@ -30,6 +30,12 @@ public:
 	Object3d* GetObject() const { return object_; }
 	void SetCollider(Collider* collider);
 	void SetTransform(const Transform& transform);
+	bool ClampToWaterBounds(
+		const Vector3& center,
+		float yaw,
+		float halfSizeX,
+		float halfSizeZ
+	);
 	void SetBehaviorSettings(
 		float moveSpeed,
 		float jumpVelocity,
