@@ -72,7 +72,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker Low 2",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -173,7 +173,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker Low 3",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -274,7 +274,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker Low 4",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -375,7 +375,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker Medium 2",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -476,7 +476,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker Medium 3",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -577,7 +577,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker Medium 4",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -678,7 +678,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker Medium 5",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -779,7 +779,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker High 2",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -880,7 +880,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker High 3",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -981,7 +981,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker High 4",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -1082,7 +1082,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker High 5",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -1183,7 +1183,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker High 6",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -1290,7 +1290,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend Title",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -1397,7 +1397,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x1",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -1504,7 +1504,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x2",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -1611,7 +1611,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x3",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -1718,7 +1718,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x4",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -1825,7 +1825,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x5",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -1932,7 +1932,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x6",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -2039,7 +2039,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x7",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -2146,7 +2146,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x8",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -2253,7 +2253,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x9",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -2360,7 +2360,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Legend x10",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -2460,7 +2460,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Fishing Rock 1",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -2560,7 +2560,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Fishing Rock 2",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -2660,7 +2660,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Fishing Rock 3",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -2760,7 +2760,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Fishing Rock 4",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -2860,7 +2860,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Fishing Rock 5",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -2960,7 +2960,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Fishing Rock 6",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -3040,7 +3040,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Water Wall Left",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -3120,7 +3120,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Water Wall Right",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -3200,7 +3200,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Water Wall Start",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -3280,7 +3280,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Water Wall End",
-      "parentId": 0,
+      "parentId": 85,
       "sprite": {
         "anchor": [
           0.5,
@@ -3400,7 +3400,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Environment",
-      "parentId": 0,
+      "parentId": 82,
       "sprite": {
         "anchor": [
           0.5,
@@ -3508,7 +3508,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Water",
-      "parentId": 0,
+      "parentId": 82,
       "sprite": {
         "anchor": [
           0.5,
@@ -4891,7 +4891,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Score Attack Director",
-      "parentId": 0,
+      "parentId": 83,
       "sprite": {
         "anchor": [
           0.5,
@@ -4950,7 +4950,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Spawn Area",
-      "parentId": 0,
+      "parentId": 83,
       "sprite": {
         "anchor": [
           0.5,
@@ -5157,7 +5157,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing Hook Pool",
-      "parentId": 0,
+      "parentId": 83,
       "sprite": {
         "anchor": [
           0.5,
@@ -5258,7 +5258,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker Low",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -5359,7 +5359,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker Medium",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -5460,7 +5460,7 @@
       "locked": false,
       "modelPath": "Cube.obj",
       "name": "Hook Marker High",
-      "parentId": 0,
+      "parentId": 84,
       "sprite": {
         "anchor": [
           0.5,
@@ -5609,7 +5609,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing HUD Fish",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -5716,7 +5716,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing HUD Timer",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -5823,7 +5823,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing HUD Score",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -5930,7 +5930,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing HUD Multiplier",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -6037,7 +6037,7 @@
       "locked": false,
       "modelPath": "",
       "name": "Fishing HUD Result",
-      "parentId": 0,
+      "parentId": 86,
       "sprite": {
         "anchor": [
           0.5,
@@ -10514,6 +10514,321 @@
       "locked": false,
       "modelPath": "",
       "name": "Light",
+      "parentId": 82,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [],
+      "folder": true,
+      "folderTeamEnabled": false,
+      "id": 82,
+      "locked": false,
+      "modelPath": "",
+      "name": "Scene Environment",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [],
+      "folder": true,
+      "folderTeamEnabled": false,
+      "id": 83,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Score Attack",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [],
+      "folder": true,
+      "folderTeamEnabled": false,
+      "id": 84,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hooks",
+      "parentId": 83,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [],
+      "folder": true,
+      "folderTeamEnabled": false,
+      "id": 85,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Obstacles",
+      "parentId": 83,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [],
+      "folder": true,
+      "folderTeamEnabled": false,
+      "id": 86,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing HUD",
+      "parentId": 83,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "bgmFadeSeconds": 0.5,
+          "bus": "UI",
+          "clipPath": "resources/海岸1.mp3",
+          "decompressOnLoad": true,
+          "enabled": true,
+          "localId": 1,
+          "loop": true,
+          "maximumDistance": 30.0,
+          "minimumDistance": 1.399999976158142,
+          "persistAcrossScenes": false,
+          "pitch": 1.0,
+          "playOnStart": true,
+          "spatialMode": "TwoD",
+          "stereoAreaWidth": 1.0,
+          "stopOnDisable": true,
+          "streamFromDisk": false,
+          "type": "AudioSource",
+          "volume": 0.5099999904632568
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 87,
+      "locked": false,
+      "modelPath": "",
+      "name": "Entity",
       "parentId": 0,
       "sprite": {
         "anchor": [
