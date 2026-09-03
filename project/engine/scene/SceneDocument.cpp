@@ -713,6 +713,18 @@ namespace {
 			0.0f,
 			1.0f
 		);
+		if (!std::isfinite(team.agentMemberMinimumDistance) ||
+			team.agentMemberMinimumDistance < 0.0f) {
+			team.agentMemberMinimumDistance = 0.0f;
+		}
+		if (!std::isfinite(team.agentFormationCapsuleRadius) ||
+			team.agentFormationCapsuleRadius < 0.0f) {
+			team.agentFormationCapsuleRadius = 0.0f;
+		}
+		if (!std::isfinite(team.agentFormationCapsuleHalfSegmentLength) ||
+			team.agentFormationCapsuleHalfSegmentLength < 0.0f) {
+			team.agentFormationCapsuleHalfSegmentLength = 0.0f;
+		}
 		team.agentTeamHeadingDirection = NormalizeDirectionVector(
 			team.agentTeamHeadingDirection,
 			{ 0.0f, 0.0f, 1.0f }
@@ -786,6 +798,13 @@ namespace {
 			{ "agentMemberSeparationUpdateInterval",
 				team.agentMemberSeparationUpdateInterval },
 			{ "agentMemberSeparationBlend", team.agentMemberSeparationBlend },
+		{ "agentMemberMinimumDistance", team.agentMemberMinimumDistance },
+		{ "agentFormationCapsuleEnabled", team.agentFormationCapsuleEnabled },
+		{ "agentFormationCapsuleScaleWithActiveMembers",
+			team.agentFormationCapsuleScaleWithActiveMembers },
+		{ "agentFormationCapsuleRadius", team.agentFormationCapsuleRadius },
+			{ "agentFormationCapsuleHalfSegmentLength",
+				team.agentFormationCapsuleHalfSegmentLength },
 			{ "agentUseTeamHeading", team.agentUseTeamHeading },
 			{ "agentTeamHeadingFromAverage",
 				team.agentTeamHeadingFromAverage },
@@ -929,6 +948,26 @@ namespace {
 		team.agentMemberSeparationBlend = source.value(
 			"agentMemberSeparationBlend",
 			team.agentMemberSeparationBlend
+		);
+		team.agentMemberMinimumDistance = source.value(
+			"agentMemberMinimumDistance",
+			team.agentMemberMinimumDistance
+		);
+		team.agentFormationCapsuleEnabled = source.value(
+			"agentFormationCapsuleEnabled",
+			team.agentFormationCapsuleEnabled
+		);
+		team.agentFormationCapsuleScaleWithActiveMembers = source.value(
+			"agentFormationCapsuleScaleWithActiveMembers",
+			team.agentFormationCapsuleScaleWithActiveMembers
+		);
+		team.agentFormationCapsuleRadius = source.value(
+			"agentFormationCapsuleRadius",
+			team.agentFormationCapsuleRadius
+		);
+		team.agentFormationCapsuleHalfSegmentLength = source.value(
+			"agentFormationCapsuleHalfSegmentLength",
+			team.agentFormationCapsuleHalfSegmentLength
 		);
 		team.agentUseTeamHeading = source.value(
 			"agentUseTeamHeading",
@@ -1495,6 +1534,33 @@ namespace {
 			result["hooksPerDistanceBand"] = component.fishingHooksPerDistanceBand;
 			result["distanceMultiplierBase"] = component.fishingDistanceMultiplierBase;
 			result["distanceMultiplierStep"] = component.fishingDistanceMultiplierStep;
+			result["useHookBandSettings"] = component.fishingUseHookBandSettings;
+			json hookBands = json::array();
+			for (const SceneFishingHookBandSettings& band : component.fishingHookBands) {
+				hookBands.push_back({
+					{ "distanceMultiplier", band.distanceMultiplier },
+					{ "hookCount", band.hookCount },
+					{ "hookMultiplierWeights", band.hookMultiplierWeights }
+				});
+			}
+			result["hookBands"] = std::move(hookBands);
+			result["hookScoreUnit"] = component.fishingHookScoreUnit;
+			result["fishMultiplierBase"] = component.fishingFishMultiplierBase;
+			result["fishMultiplierPerAdditionalFish"] =
+				component.fishingFishMultiplierPerAdditionalFish;
+			json hookMultiplierColors = json::array();
+			for (const Vector4& color : component.fishingHookMultiplierColors) {
+				hookMultiplierColors.push_back(VectorToJson(color));
+			}
+			result["hookMultiplierColors"] = std::move(hookMultiplierColors);
+			result["hookColorEmissiveIntensity"] =
+				component.fishingHookColorEmissiveIntensity;
+			result["hookLegendVisible"] = component.fishingHookLegendVisible;
+			result["hookLegendTitleTextEntityId"] =
+				component.fishingHookLegendTitleTextEntityId;
+			result["hookLegendTextEntityIds"] = component.fishingHookLegendTextEntityIds;
+			result["hookLegendTitle"] = component.fishingHookLegendTitle;
+			result["hookLegendPrefix"] = component.fishingHookLegendPrefix;
 			result["randomizeSeedOnPlay"] = component.fishingRandomizeSeedOnPlay;
 			result["randomSeed"] = component.fishingRandomSeed;
 			result["fishCountTextEntityId"] = component.fishingFishCountTextEntityId;
@@ -1507,6 +1573,16 @@ namespace {
 			result["scorePrefix"] = component.fishingScorePrefix;
 			result["multiplierPrefix"] = component.fishingMultiplierPrefix;
 			result["resultPrefix"] = component.fishingResultPrefix;
+			result["useFormationCapsuleCollision"] =
+				component.fishingUseFormationCapsuleCollision;
+			result["formationOutlineVisible"] =
+				component.fishingFormationOutlineVisible;
+			result["formationOutlineColor"] =
+				VectorToJson(component.fishingFormationOutlineColor);
+			result["formationOutlineYOffset"] =
+				component.fishingFormationOutlineYOffset;
+			result["formationOutlineSegments"] =
+				component.fishingFormationOutlineSegments;
 		} else if (component.type == "FishingHookSpawnArea") {
 			result["halfSizeX"] = component.fishingSpawnHalfSizeX;
 			result["halfSizeZ"] = component.fishingSpawnHalfSizeZ;
@@ -1655,6 +1731,7 @@ namespace {
 			result["dashMultiplier"] = component.playerDashMultiplier;
 			result["cameraRelativeMove"] = component.playerCameraRelativeMove;
 			result["allowJump"] = component.playerAllowJump;
+			result["autoForward"] = component.playerAutoForward;
 		} else if (component.type == "AgentBehavior") {
 			result["behaviorName"] = component.agentBehaviorName;
 			result["movementMode"] = component.agentMovementMode;
@@ -1692,6 +1769,8 @@ namespace {
 				component.agentMemberSeparationUpdateInterval;
 			result["memberSeparationBlend"] =
 				component.agentMemberSeparationBlend;
+			result["memberMinimumDistance"] =
+				component.agentMemberMinimumDistance;
 			result["boundsWeight"] = component.agentBoundsWeight;
 			result["useTeamHeading"] = component.agentUseTeamHeading;
 			result["teamHeadingFromAverage"] =
@@ -2459,6 +2538,12 @@ namespace {
 		component.fishingWaterVolumeEntityId = RemapEntityId(
 			component.fishingWaterVolumeEntityId, idMap, preserveUnmappedIds
 		);
+		component.fishingHookLegendTitleTextEntityId = RemapEntityId(
+			component.fishingHookLegendTitleTextEntityId, idMap, preserveUnmappedIds
+		);
+		for (uint64_t& textEntityId : component.fishingHookLegendTextEntityIds) {
+			textEntityId = RemapEntityId(textEntityId, idMap, preserveUnmappedIds);
+		}
 		for (SceneFishingHookPoolEntry& entry : component.fishingHookPoolEntries) {
 			entry.hookEntityId = RemapEntityId(
 				entry.hookEntityId, idMap, preserveUnmappedIds
@@ -2843,7 +2928,7 @@ namespace {
 					);
 					component.fishingMaxSelectableFishCount = std::clamp(
 						value.value("maxSelectableFishCount", component.fishingMaxSelectableFishCount),
-						0, 5
+						1, kFishingScoreAttackMaxFishCount
 					);
 					component.fishingDistanceBandCount = (std::max)(
 						value.value("distanceBandCount", component.fishingDistanceBandCount),
@@ -2861,6 +2946,73 @@ namespace {
 					component.fishingDistanceMultiplierStep = (std::max)(
 						value.value("distanceMultiplierStep", component.fishingDistanceMultiplierStep),
 						0.0f
+					);
+					component.fishingUseHookBandSettings = value.value(
+						"useHookBandSettings", component.fishingUseHookBandSettings
+					);
+					component.fishingHookBands.clear();
+					if (const auto hookBands = value.find("hookBands");
+						hookBands != value.end() && hookBands->is_array()) {
+						for (const json& sourceBand : *hookBands) {
+							if (!sourceBand.is_object()) {
+								continue;
+							}
+							SceneFishingHookBandSettings band{};
+							band.distanceMultiplier = sourceBand.value(
+								"distanceMultiplier", band.distanceMultiplier
+							);
+							band.hookCount = sourceBand.value(
+								"hookCount", band.hookCount
+							);
+							if (const auto weights = sourceBand.find("hookMultiplierWeights");
+								weights != sourceBand.end() && weights->is_array()) {
+								for (const json& weight : *weights) {
+									if (weight.is_number()) {
+										band.hookMultiplierWeights.push_back(weight.get<float>());
+									}
+								}
+							}
+							component.fishingHookBands.push_back(std::move(band));
+						}
+					}
+					component.fishingHookScoreUnit = value.value(
+						"hookScoreUnit", component.fishingHookScoreUnit
+					);
+					component.fishingFishMultiplierBase = value.value(
+						"fishMultiplierBase", component.fishingFishMultiplierBase
+					);
+					component.fishingFishMultiplierPerAdditionalFish = value.value(
+						"fishMultiplierPerAdditionalFish",
+						component.fishingFishMultiplierPerAdditionalFish
+					);
+					if (const auto colors = value.find("hookMultiplierColors");
+						colors != value.end() && colors->is_array()) {
+						component.fishingHookMultiplierColors.clear();
+						for (const json& color : *colors) {
+							component.fishingHookMultiplierColors.push_back(
+								JsonToVector(color, Vector4{ 1.0f, 1.0f, 1.0f, 1.0f })
+							);
+						}
+					}
+					component.fishingHookColorEmissiveIntensity = value.value(
+						"hookColorEmissiveIntensity",
+						component.fishingHookColorEmissiveIntensity
+					);
+					component.fishingHookLegendVisible = value.value(
+						"hookLegendVisible", component.fishingHookLegendVisible
+					);
+					component.fishingHookLegendTitleTextEntityId = value.value(
+						"hookLegendTitleTextEntityId",
+						component.fishingHookLegendTitleTextEntityId
+					);
+					component.fishingHookLegendTextEntityIds = value.value(
+						"hookLegendTextEntityIds", std::vector<uint64_t>{}
+					);
+					component.fishingHookLegendTitle = value.value(
+						"hookLegendTitle", component.fishingHookLegendTitle
+					);
+					component.fishingHookLegendPrefix = value.value(
+						"hookLegendPrefix", component.fishingHookLegendPrefix
 					);
 					component.fishingRandomizeSeedOnPlay = value.value(
 						"randomizeSeedOnPlay", component.fishingRandomizeSeedOnPlay
@@ -2897,6 +3049,32 @@ namespace {
 					);
 					component.fishingResultPrefix = value.value(
 						"resultPrefix", component.fishingResultPrefix
+					);
+					component.fishingUseFormationCapsuleCollision = value.value(
+						"useFormationCapsuleCollision",
+						component.fishingUseFormationCapsuleCollision
+					);
+					component.fishingFormationOutlineVisible = value.value(
+						"formationOutlineVisible",
+						component.fishingFormationOutlineVisible
+					);
+					if (value.contains("formationOutlineColor")) {
+						component.fishingFormationOutlineColor = JsonToVector(
+							value.at("formationOutlineColor"),
+							component.fishingFormationOutlineColor
+						);
+					}
+					component.fishingFormationOutlineYOffset = value.value(
+						"formationOutlineYOffset",
+						component.fishingFormationOutlineYOffset
+					);
+					component.fishingFormationOutlineSegments = std::clamp(
+						value.value(
+							"formationOutlineSegments",
+							component.fishingFormationOutlineSegments
+						),
+						12,
+						128
 					);
 				} else if (component.type == "FishingHookSpawnArea") {
 					component.fishingSpawnHalfSizeX = (std::max)(
@@ -3404,6 +3582,10 @@ namespace {
 					"allowJump",
 					component.playerAllowJump
 				);
+				component.playerAutoForward = value.value(
+					"autoForward",
+					component.playerAutoForward
+				);
 				component.agentBehaviorName = value.value(
 					"behaviorName",
 					component.agentBehaviorName
@@ -3531,6 +3713,10 @@ namespace {
 				component.agentMemberSeparationBlend = value.value(
 					"memberSeparationBlend",
 					component.agentMemberSeparationBlend
+				);
+				component.agentMemberMinimumDistance = value.value(
+					"memberMinimumDistance",
+					component.agentMemberMinimumDistance
 				);
 				component.agentBoundsWeight = value.value(
 					"boundsWeight",
@@ -4300,6 +4486,10 @@ namespace {
 						0.0f,
 						1.0f
 					);
+					if (!std::isfinite(component.agentMemberMinimumDistance) ||
+						component.agentMemberMinimumDistance < 0.0f) {
+						component.agentMemberMinimumDistance = 0.0f;
+					}
 					component.agentBoundsWeight =
 						(std::max)(component.agentBoundsWeight, 0.0f);
 					component.agentTeamHeadingDirection =
@@ -8077,6 +8267,44 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 				found->physicsMaxFallSpeed = 100.0f;
 				changed = true;
 			}
+		} else if (type == "FishingScoreAttackDirector") {
+			const float outlineYOffset = std::isfinite(
+				found->fishingFormationOutlineYOffset
+			)
+				? found->fishingFormationOutlineYOffset
+				: 0.0f;
+			const int outlineSegments = std::clamp(
+				found->fishingFormationOutlineSegments,
+				12,
+				128
+			);
+			const Vector4 outlineColor = {
+				std::isfinite(found->fishingFormationOutlineColor.x)
+					? std::clamp(found->fishingFormationOutlineColor.x, 0.0f, 1.0f)
+					: 0.1f,
+				std::isfinite(found->fishingFormationOutlineColor.y)
+					? std::clamp(found->fishingFormationOutlineColor.y, 0.0f, 1.0f)
+					: 0.9f,
+				std::isfinite(found->fishingFormationOutlineColor.z)
+					? std::clamp(found->fishingFormationOutlineColor.z, 0.0f, 1.0f)
+					: 1.0f,
+				std::isfinite(found->fishingFormationOutlineColor.w)
+					? std::clamp(found->fishingFormationOutlineColor.w, 0.0f, 1.0f)
+					: 1.0f
+			};
+			if (
+				found->fishingFormationOutlineYOffset != outlineYOffset ||
+				found->fishingFormationOutlineSegments != outlineSegments ||
+				found->fishingFormationOutlineColor.x != outlineColor.x ||
+				found->fishingFormationOutlineColor.y != outlineColor.y ||
+				found->fishingFormationOutlineColor.z != outlineColor.z ||
+				found->fishingFormationOutlineColor.w != outlineColor.w
+			) {
+				found->fishingFormationOutlineYOffset = outlineYOffset;
+				found->fishingFormationOutlineSegments = outlineSegments;
+				found->fishingFormationOutlineColor = outlineColor;
+				changed = true;
+			}
 		} else if (type == "PlayerBehavior") {
 			if (found->playerMoveSpeed < 0.0f) {
 				found->playerMoveSpeed = 0.0f;
@@ -8499,6 +8727,29 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.fishingHooksPerDistanceBand = 2;
 		component.fishingDistanceMultiplierBase = 1.0f;
 		component.fishingDistanceMultiplierStep = 0.2f;
+		component.fishingUseHookBandSettings = false;
+		component.fishingHookBands.clear();
+		component.fishingHookScoreUnit = 100.0f;
+		component.fishingFishMultiplierBase = 1.0f;
+		component.fishingFishMultiplierPerAdditionalFish = 1.0f;
+		component.fishingHookMultiplierColors = {
+			{ 0.25f, 0.55f, 1.00f, 1.00f },
+			{ 0.15f, 0.85f, 1.00f, 1.00f },
+			{ 0.20f, 0.95f, 0.55f, 1.00f },
+			{ 0.55f, 0.95f, 0.25f, 1.00f },
+			{ 0.95f, 0.85f, 0.20f, 1.00f },
+			{ 1.00f, 0.58f, 0.15f, 1.00f },
+			{ 1.00f, 0.30f, 0.12f, 1.00f },
+			{ 1.00f, 0.12f, 0.28f, 1.00f },
+			{ 0.85f, 0.18f, 1.00f, 1.00f },
+			{ 1.00f, 0.90f, 0.45f, 1.00f }
+		};
+		component.fishingHookColorEmissiveIntensity = 0.35f;
+		component.fishingHookLegendVisible = false;
+		component.fishingHookLegendTitleTextEntityId = 0;
+		component.fishingHookLegendTextEntityIds.clear();
+		component.fishingHookLegendTitle = "HOOK BONUS";
+		component.fishingHookLegendPrefix = "x";
 		component.fishingRandomizeSeedOnPlay = true;
 		component.fishingRandomSeed = 1;
 		component.fishingFishCountTextEntityId = 0;
@@ -8511,6 +8762,11 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.fishingScorePrefix = "SCORE ";
 		component.fishingMultiplierPrefix = "MULTIPLIER ";
 		component.fishingResultPrefix = "RESULT ";
+		component.fishingUseFormationCapsuleCollision = false;
+		component.fishingFormationOutlineVisible = false;
+		component.fishingFormationOutlineColor = { 0.1f, 0.9f, 1.0f, 1.0f };
+		component.fishingFormationOutlineYOffset = 0.25f;
+		component.fishingFormationOutlineSegments = 48;
 	} else if (type == "FishingHookSpawnArea") {
 		component.fishingSpawnHalfSizeX = 10.0f;
 		component.fishingSpawnHalfSizeZ = 10.0f;
@@ -8626,6 +8882,7 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.playerDashMultiplier = 1.65f;
 		component.playerCameraRelativeMove = true;
 		component.playerAllowJump = true;
+		component.playerAutoForward = false;
 	} else if (type == "AgentBehavior") {
 		component.agentBehaviorName = "Agent";
 		component.agentMovementMode = "Free3D";
@@ -8648,6 +8905,7 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.agentSeparationWeight = 1.8f;
 		component.agentAlignmentWeight = 0.8f;
 		component.agentCohesionWeight = 0.9f;
+		component.agentMemberMinimumDistance = 0.0f;
 		component.agentAttractorWeight = 0.0f;
 		component.agentVisualColor = { 0.25f, 0.75f, 1.0f, 1.0f };
 		component.agentEnableLighting = true;

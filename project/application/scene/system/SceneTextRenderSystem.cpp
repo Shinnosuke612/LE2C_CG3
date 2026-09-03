@@ -24,7 +24,8 @@ namespace {
 
 	TextRasterizer::Settings ToRasterizerSettings(
 		const SceneComponent& component,
-		const std::string& text
+		const std::string& text,
+		const Vector4& color
 	) {
 		TextRasterizer::Settings settings{};
 		settings.text = text;
@@ -32,7 +33,7 @@ namespace {
 		settings.fontSize = component.textFontSize;
 		settings.bold = component.textFontWeight == "Bold";
 		settings.italic = component.textFontStyle == "Italic";
-		settings.color = component.textColor;
+		settings.color = color;
 		settings.opacity = component.textOpacity;
 		settings.horizontalAlignment = component.textHorizontalAlignment;
 		settings.verticalAlignment = component.textVerticalAlignment;
@@ -61,14 +62,15 @@ namespace {
 
 	std::string BuildContentSignature(
 		const SceneComponent& component,
-		const std::string& text
+		const std::string& text,
+		const Vector4& color
 	) {
 		std::ostringstream stream;
 		stream << text << '\n' << component.textFontFamily << '|'
 			<< component.textFontSize << '|' << component.textFontWeight << '|'
-			<< component.textFontStyle << '|' << component.textColor.x << ','
-			<< component.textColor.y << ',' << component.textColor.z << ','
-			<< component.textColor.w << '|' << component.textOpacity << '|'
+			<< component.textFontStyle << '|' << color.x << ','
+			<< color.y << ',' << color.z << ',' << color.w << '|'
+			<< component.textOpacity << '|'
 			<< component.textHorizontalAlignment << '|' << component.textVerticalAlignment << '|'
 			<< component.textWrapMode << '|' << component.textOverflowMode << '|'
 			<< component.textLayoutSize.x << ',' << component.textLayoutSize.y << '|'
@@ -130,6 +132,19 @@ void SceneTextRenderSystem::ClearTextOverrides() {
 	textOverrides_.clear();
 }
 
+void SceneTextRenderSystem::SetTextColorOverride(
+	uint64_t entityId,
+	const Vector4& color
+) {
+	if (entityId != 0) {
+		textColorOverrides_[entityId] = color;
+	}
+}
+
+void SceneTextRenderSystem::ClearTextColorOverrides() {
+	textColorOverrides_.clear();
+}
+
 void SceneTextRenderSystem::SetPresentationOverride(
 	uint64_t entityId,
 	const Vector2& positionOffset,
@@ -181,13 +196,17 @@ void SceneTextRenderSystem::Sync(SceneDocument* document) {
 		const std::string& text = override != textOverrides_.end()
 			? override->second
 			: component->textValue;
-		const std::string signature = BuildContentSignature(*component, text);
+		const auto colorOverride = textColorOverrides_.find(entity.id);
+		const Vector4& color = colorOverride != textColorOverrides_.end()
+			? colorOverride->second
+			: component->textColor;
+		const std::string signature = BuildContentSignature(*component, text, color);
 		if (runtime.contentSignature == signature && runtime.bitmapSize.x > 0.0f) {
 			continue;
 		}
 		TextRasterizer::Bitmap bitmap{};
 		if (!rasterizer.Rasterize(
-			ToRasterizerSettings(*component, text), bitmap
+			ToRasterizerSettings(*component, text, color), bitmap
 		)) {
 			runtime.bitmapSize = {};
 			continue;
@@ -320,5 +339,6 @@ bool SceneTextRenderSystem::HasScreenOverlay(const SceneDocument& document) cons
 void SceneTextRenderSystem::Finalize() {
 	texts_.clear();
 	textOverrides_.clear();
+	textColorOverrides_.clear();
 	presentationOverrides_.clear();
 }

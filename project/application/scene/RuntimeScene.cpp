@@ -393,6 +393,10 @@ void RuntimeScene::Update(float deltaTime)
 			*activeDocument,
 			runtimeObjectBindings_
 		);
+		fishingScoreAttackSystem_.ApplyHookVisualOverrides(
+			*activeDocument,
+			runtimeObjectBindings_
+		);
 		physicsSystem_.SyncSceneSettings(
 			*activeDocument,
 			player_,
@@ -465,7 +469,8 @@ void RuntimeScene::Update(float deltaTime)
 		player_->Update(
 			camera_,
 			gameFlowResult.gameplayAllowed &&
-				fishingScoreAttackSystem_.IsPlayerMovementAllowed()
+				fishingScoreAttackSystem_.IsPlayerMovementAllowed(),
+			gameplayDeltaTime
 		);
 		const Vector3& playerVelocity = player_->GetPhysicsBody().velocity;
 		playerAttackInputDirection = { playerVelocity.x, 0.0f, playerVelocity.z };
@@ -533,8 +538,30 @@ void RuntimeScene::Update(float deltaTime)
 		fishingScoreAttackSystem_.UpdateAfterSimulation(
 			*activeDocument,
 			runtimeObjectBindings_,
+			agentSystem_,
 			true
 		);
+		SceneFishingScoreAttackPlayerConstraintRequest constraintRequest{};
+		if (
+			player_ &&
+			fishingScoreAttackSystem_.ConsumePlayerConstraintRequest(constraintRequest)
+		) {
+			SceneEntity* playerEntity = activeDocument->FindEntity(
+				constraintRequest.playerEntityId
+			);
+			if (
+				playerEntity &&
+				player_->RestorePlanarPose(
+					constraintRequest.planarPosition,
+					constraintRequest.yaw
+				)
+			) {
+				SynchronizeSceneTransform(
+					playerEntity->transform,
+					player_->GetObject()->GetTransform()
+				);
+			}
+		}
 		SceneFishingScoreAttackPlayerResetRequest resetRequest{};
 		if (player_ &&
 			fishingScoreAttackSystem_.ConsumePlayerResetRequest(resetRequest)) {
@@ -620,6 +647,12 @@ void RuntimeScene::Update(float deltaTime)
 	}
 	// Transform確定後に環境設定とDebug形状を登録し、描画時の状態を揃える。
 	environmentSystem_.Sync(activeDocument, runtimeObjectBindings_);
+	if (activeDocument) {
+		fishingScoreAttackSystem_.AddFormationOutlineDebugDraw(
+			*activeDocument,
+			agentSystem_
+		);
+	}
 	if (activeDocument && playing) {
 		// Eventは同FrameのTextMotion completionを次Packageで受け取れる位置に置く。
 		textMotionSystem_.Update(*activeDocument, deltaTime);
@@ -689,6 +722,7 @@ void RuntimeScene::Update(float deltaTime)
 	}
 	postProcessProfileSystem_.Update(playing ? gameplayDeltaTime : 0.0f);
 	textRenderSystem_.ClearTextOverrides();
+	textRenderSystem_.ClearTextColorOverrides();
 	textRenderSystem_.ClearPresentationOverrides();
 	if (activeDocument) {
 		for (const SceneGameFlowTextRequest& request : gameFlowResult.textRequests) {
@@ -697,6 +731,9 @@ void RuntimeScene::Update(float deltaTime)
 		for (const SceneFishingScoreAttackTextRequest& request :
 			fishingScoreAttackSystem_.GetTextRequests()) {
 			textRenderSystem_.SetTextOverride(request.entityId, request.text);
+			if (request.hasColor) {
+				textRenderSystem_.SetTextColorOverride(request.entityId, request.color);
+			}
 		}
 		SceneEntity* statusText = postProcessProfileSystem_.GetStatusTextEntityId() != 0
 			? activeDocument->FindEntity(

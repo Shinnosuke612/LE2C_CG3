@@ -34,6 +34,7 @@ void Player::Initialize(Object3d* object) {
 		return;
 	}
 	position_ = object_->GetTransform().translate;
+	targetYaw_ = GetYaw();
 	physicsBody_.type = PhysicsBodyType::Dynamic;
 	physicsBody_.transform = &object_->GetTransform();
 	physicsBody_.collider = collider_;
@@ -50,11 +51,13 @@ void Player::SetCollider(Collider* collider) {
 
 void Player::Update(
 	const Camera*,
-	bool acceptGameplayInput
+	bool acceptGameplayInput,
+	float deltaTime
 ) {
 	if (!object_) {
 		return;
 	}
+	const float dt = std::clamp(deltaTime, 0.0f, 0.1f);
 	Vector3 inputMove{};
 	Input* input = acceptGameplayInput ? Input::GetInstance() : nullptr;
 
@@ -82,7 +85,52 @@ void Player::Update(
 		input && (input->PushKey(DIK_LSHIFT) || input->PushKey(DIK_RSHIFT));
 	const float speedMultiplier = dash ? dashMultiplier_ : 1.0f;
 
-	if (Math::Length(inputMove) > 0.000001f) {
+	const float inputLength = Math::Length(inputMove);
+	if (autoForward_ && acceptGameplayInput) {
+		const float currentYaw = GetYaw();
+		if (inputLength > 0.000001f) {
+			const Vector3 inputDirection = Math::Normalize(
+				Math::Add(
+					Math::Multiply(movementRight, inputMove.x),
+					Math::Multiply(movementForward, inputMove.z)
+				)
+			);
+			targetYaw_ = std::atan2(inputDirection.x, inputDirection.z);
+		} else {
+			// 方向入力を離したら旋回目標を現在向きへ戻し、前進だけを継続する。
+			targetYaw_ = currentYaw;
+		}
+		const float responsiveness = std::clamp(
+			turnResponsiveness_,
+			0.0f,
+			1.0f
+		);
+		const float turnAlpha = responsiveness <= 0.0f
+			? 0.0f
+			: responsiveness >= 1.0f
+				? 1.0f
+				: 1.0f - std::pow(1.0f - responsiveness, dt * 60.0f);
+		const float yaw = inputLength > 0.000001f
+			? currentYaw + std::atan2(
+				std::sin(targetYaw_ - currentYaw),
+				std::cos(targetYaw_ - currentYaw)
+			) * turnAlpha
+			: currentYaw;
+		const float activeMoveSpeed =
+			moveSpeed_ * speedMultiplier *
+			(inWater_ ? waterMoveSpeedMultiplier_ : 1.0f);
+		const Vector3 move = {
+			std::sin(yaw) * activeMoveSpeed,
+			0.0f,
+			std::cos(yaw) * activeMoveSpeed
+		};
+		desiredVelocity.x = move.x;
+		desiredVelocity.z = move.z;
+		object_->SetRotate({ 0.0f, yaw, 0.0f });
+		if (inWater_) {
+			desiredVelocity.y = move.y;
+		}
+	} else if (inputLength > 0.000001f) {
 		Vector3 move = Math::Add(
 			Math::Multiply(movementRight, inputMove.x),
 			Math::Multiply(movementForward, inputMove.z)
@@ -98,6 +146,9 @@ void Player::Update(
 		if (inWater_) {
 			desiredVelocity.y = move.y;
 		}
+		targetYaw_ = std::atan2(move.x, move.z);
+	} else {
+		targetYaw_ = GetYaw();
 	}
 
 	if (acceptGameplayInput && inWater_) {
@@ -161,8 +212,38 @@ void Player::SetTransform(const Transform& transform) {
 	physicsBody_.velocity = {};
 	physicsBody_.isGrounded = false;
 	object_->GetTransform() = transform;
+	targetYaw_ = GetYaw();
 	ApplyPosition();
 	object_->Update();
+}
+
+bool Player::RestorePlanarPosition(const Vector3& position) {
+	if (!object_ || !std::isfinite(position.x) || !std::isfinite(position.z)) {
+		return false;
+	}
+	position_.x = position.x;
+	position_.z = position.z;
+	physicsBody_.velocity.x = 0.0f;
+	physicsBody_.velocity.z = 0.0f;
+	ApplyPosition();
+	object_->Update();
+	return true;
+}
+
+bool Player::RestorePlanarPose(const Vector3& position, float yaw) {
+	if (!object_ || !std::isfinite(position.x) ||
+		!std::isfinite(position.z) || !std::isfinite(yaw)) {
+		return false;
+	}
+	position_.x = position.x;
+	position_.z = position.z;
+	physicsBody_.velocity.x = 0.0f;
+	physicsBody_.velocity.z = 0.0f;
+	object_->SetRotate({ 0.0f, yaw, 0.0f });
+	targetYaw_ = yaw;
+	ApplyPosition();
+	object_->Update();
+	return true;
 }
 
 bool Player::ClampToWaterBounds(
@@ -191,8 +272,35 @@ bool Player::ClampToWaterBounds(
 	}
 	position_.x = center.x + clampedX * cosine + clampedZ * sine;
 	position_.z = center.z - clampedX * sine + clampedZ * cosine;
-	physicsBody_.velocity.x = 0.0f;
-	physicsBody_.velocity.z = 0.0f;
+	if (autoForward_) {
+		const float localVelocityX =
+			physicsBody_.velocity.x * cosine - physicsBody_.velocity.z * sine;
+		const float localVelocityZ =
+			physicsBody_.velocity.x * sine + physicsBody_.velocity.z * cosine;
+		float correctedVelocityX = localVelocityX;
+		float correctedVelocityZ = localVelocityZ;
+		if (
+			(clampedX != localX) &&
+			((localX > halfSizeX && correctedVelocityX > 0.0f) ||
+				(localX < -halfSizeX && correctedVelocityX < 0.0f))
+		) {
+			correctedVelocityX = 0.0f;
+		}
+		if (
+			(clampedZ != localZ) &&
+			((localZ > halfSizeZ && correctedVelocityZ > 0.0f) ||
+				(localZ < -halfSizeZ && correctedVelocityZ < 0.0f))
+		) {
+			correctedVelocityZ = 0.0f;
+		}
+		physicsBody_.velocity.x =
+			correctedVelocityX * cosine + correctedVelocityZ * sine;
+		physicsBody_.velocity.z =
+			-correctedVelocityX * sine + correctedVelocityZ * cosine;
+	} else {
+		physicsBody_.velocity.x = 0.0f;
+		physicsBody_.velocity.z = 0.0f;
+	}
 	ApplyPosition();
 	object_->Update();
 	return true;
@@ -204,7 +312,8 @@ void Player::SetBehaviorSettings(
 	float turnResponsiveness,
 	float dashMultiplier,
 	bool cameraRelativeMove,
-	bool allowJump
+	bool allowJump,
+	bool autoForward
 ) {
 	moveSpeed_ = (std::max)(moveSpeed, 0.0f);
 	jumpVelocity_ = (std::max)(jumpVelocity, 0.0f);
@@ -212,6 +321,10 @@ void Player::SetBehaviorSettings(
 	dashMultiplier_ = (std::max)(dashMultiplier, 1.0f);
 	cameraRelativeMove_ = cameraRelativeMove;
 	allowJump_ = allowJump;
+	if (autoForward && !autoForward_ && object_) {
+		targetYaw_ = GetYaw();
+	}
+	autoForward_ = autoForward;
 }
 
 void Player::SetWaterState(
@@ -228,4 +341,24 @@ void Player::ApplyPosition() {
 	if (object_) {
 		object_->SetTranslate(position_);
 	}
+}
+
+float Player::GetYaw() const {
+	if (!object_) {
+		return targetYaw_;
+	}
+	const Transform& transform = object_->GetTransform();
+	if (transform.useQuaternionRotation) {
+		const Matrix4x4 rotationMatrix = MakeRotateMatrix(
+			transform.quaternionRotate
+		);
+		const float yaw = std::atan2(
+			rotationMatrix.m[2][0],
+			rotationMatrix.m[2][2]
+		);
+		return std::isfinite(yaw) ? yaw : targetYaw_;
+	}
+	return std::isfinite(transform.rotate.y)
+		? transform.rotate.y
+		: targetYaw_;
 }

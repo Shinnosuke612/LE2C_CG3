@@ -324,7 +324,8 @@ void ScenePhysicsSystem::ApplyPlayerBehavior(
 		behavior->playerTurnResponsiveness,
 		behavior->playerDashMultiplier,
 		behavior->playerCameraRelativeMove,
-		behavior->playerAllowJump
+		behavior->playerAllowJump,
+		behavior->playerAutoForward
 	);
 }
 

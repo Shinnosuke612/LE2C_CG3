@@ -17,7 +17,8 @@ public:
 	void Initialize(Object3d* object);
 	void Update(
 		const Camera* camera,
-		bool acceptGameplayInput
+		bool acceptGameplayInput,
+		float deltaTime
 	);
 	void PostPhysicsUpdate();
 	void Draw();
@@ -30,6 +31,8 @@ public:
 	Object3d* GetObject() const { return object_; }
 	void SetCollider(Collider* collider);
 	void SetTransform(const Transform& transform);
+	bool RestorePlanarPosition(const Vector3& position);
+	bool RestorePlanarPose(const Vector3& position, float yaw);
 	bool ClampToWaterBounds(
 		const Vector3& center,
 		float yaw,
@@ -42,7 +45,8 @@ public:
 		float turnResponsiveness,
 		float dashMultiplier,
 		bool cameraRelativeMove,
-		bool allowJump
+		bool allowJump,
+		bool autoForward
 	);
 	void SetWaterState(
 		bool inWater,
@@ -52,6 +56,7 @@ public:
 
 private:
 	void ApplyPosition();
+	float GetYaw() const;
 
 private:
 	Object3d* object_ = nullptr;
@@ -68,4 +73,6 @@ private:
 	bool inWater_ = false;
 	float waterMoveSpeedMultiplier_ = 0.45f;
 	float waterSwimUpSpeed_ = 12.0f;
+	float targetYaw_ = 0.0f;
+	bool autoForward_ = false;
 };

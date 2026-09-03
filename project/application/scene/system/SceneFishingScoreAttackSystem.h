@@ -3,6 +3,7 @@
 
 #include "../SceneRuntimeObjectBinding.h"
 #include "../../../engine/math/Transform.h"
+#include "../../../engine/math/Vector4.h"
 
 #include <cstdint>
 #include <random>
@@ -10,6 +11,7 @@
 #include <vector>
 
 class SceneDocument;
+class SceneAgentSystem;
 struct SceneComponent;
 
 enum class SceneFishingScoreAttackState {
@@ -24,6 +26,8 @@ enum class SceneFishingScoreAttackState {
 struct SceneFishingScoreAttackTextRequest {
 	uint64_t entityId = 0;
 	std::string text;
+	bool hasColor = false;
+	Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
 struct SceneFishingScoreAttackPlayerWaterBounds {
@@ -32,6 +36,12 @@ struct SceneFishingScoreAttackPlayerWaterBounds {
 	float yaw = 0.0f;
 	float halfSizeX = 0.0f;
 	float halfSizeZ = 0.0f;
+};
+
+struct SceneFishingScoreAttackPlayerConstraintRequest {
+	uint64_t playerEntityId = 0;
+	Vector3 planarPosition{};
+	float yaw = 0.0f;
 };
 
 struct SceneFishingScoreAttackPlayerResetRequest {
@@ -56,13 +66,25 @@ public:
 	void UpdateAfterSimulation(
 		SceneDocument& document,
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
+		const SceneAgentSystem& agentSystem,
 		bool playing
 	);
+	void ApplyHookVisualOverrides(
+		const SceneDocument& document,
+		const std::vector<SceneRuntimeObjectBinding>& bindings
+	) const;
 
 	bool IsPlayerMovementAllowed() const;
 	bool AcceptWheelZoom() const;
 	bool TryGetPlayerWaterBounds(SceneFishingScoreAttackPlayerWaterBounds& bounds) const;
+	bool ConsumePlayerConstraintRequest(
+		SceneFishingScoreAttackPlayerConstraintRequest& request
+	);
 	bool ConsumePlayerResetRequest(SceneFishingScoreAttackPlayerResetRequest& request);
+	void AddFormationOutlineDebugDraw(
+		const SceneDocument& document,
+		const SceneAgentSystem& agentSystem
+	) const;
 	const std::vector<SceneFishingScoreAttackTextRequest>& GetTextRequests() const {
 		return textRequests_;
 	}
@@ -91,6 +113,7 @@ private:
 		uint64_t entityId = 0;
 		int distanceBand = 0;
 		float multiplier = 0.0f;
+		int hookMultiplierTier = 1;
 	};
 	std::vector<ActiveHook> activeHooks_;
 	Transform initialPlayerTransform_{};
@@ -100,7 +123,13 @@ private:
 	SceneFishingScoreAttackPlayerWaterBounds playerWaterBounds_{};
 	bool hasInitialPlayerTransform_ = false;
 	bool hasPlayerWaterBounds_ = false;
+	Vector3 lastSafePlayerPlanarPosition_{};
+	float lastSafePlayerYaw_ = 0.0f;
+	bool hasLastSafePlayerPlanarPosition_ = false;
+	SceneFishingScoreAttackPlayerConstraintRequest playerConstraintRequest_{};
+	bool hasPlayerConstraintRequest_ = false;
 	bool hasPlayerResetRequest_ = false;
+	bool startFromPositiveWaterZ_ = false;
 	int selectedFishCount_ = 0;
 	int roundFishCount_ = 0;
 	int roundDistanceBand_ = 0;

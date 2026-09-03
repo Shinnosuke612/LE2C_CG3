@@ -52,9 +52,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            0.6000000238418579,
-            1.7999999523162842,
-            0.6000000238418579
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -101,9 +101,9 @@
           1.0
         ],
         "scale": [
-          0.6000000238418579,
-          1.7999999523162842,
-          0.6000000238418579
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -153,9 +153,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            0.6000000238418579,
-            1.7999999523162842,
-            0.6000000238418579
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -202,9 +202,9 @@
           1.0
         ],
         "scale": [
-          0.6000000238418579,
-          1.7999999523162842,
-          0.6000000238418579
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -254,9 +254,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            0.6000000238418579,
-            1.7999999523162842,
-            0.6000000238418579
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -303,9 +303,9 @@
           1.0
         ],
         "scale": [
-          0.6000000238418579,
-          1.7999999523162842,
-          0.6000000238418579
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -759,9 +759,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            1.100000023841858,
-            3.200000047683716,
-            1.100000023841858
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -808,9 +808,9 @@
           1.0
         ],
         "scale": [
-          1.100000023841858,
-          3.200000047683716,
-          1.100000023841858
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -860,9 +860,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            1.100000023841858,
-            3.200000047683716,
-            1.100000023841858
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -909,9 +909,9 @@
           1.0
         ],
         "scale": [
-          1.100000023841858,
-          3.200000047683716,
-          1.100000023841858
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -961,9 +961,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            1.100000023841858,
-            3.200000047683716,
-            1.100000023841858
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -1010,9 +1010,9 @@
           1.0
         ],
         "scale": [
-          1.100000023841858,
-          3.200000047683716,
-          1.100000023841858
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -1062,9 +1062,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            1.100000023841858,
-            3.200000047683716,
-            1.100000023841858
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -1111,9 +1111,9 @@
           1.0
         ],
         "scale": [
-          1.100000023841858,
-          3.200000047683716,
-          1.100000023841858
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -1163,9 +1163,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            1.100000023841858,
-            3.200000047683716,
-            1.100000023841858
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -1212,9 +1212,9 @@
           1.0
         ],
         "scale": [
-          1.100000023841858,
-          3.200000047683716,
-          1.100000023841858
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -1227,10 +1227,1187 @@
       "active": true,
       "components": [
         {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 24.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 120,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 71,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend Title",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -24.0,
+          -200.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 72,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x1",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -112.0,
+          -160.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 73,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x2",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -112.0,
+          -128.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 74,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x3",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -112.0,
+          -96.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 75,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x4",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -112.0,
+          -64.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 76,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x5",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -112.0,
+          -32.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 77,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x6",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -24.0,
+          -160.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 78,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x7",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -24.0,
+          -128.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 79,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x8",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -24.0,
+          -96.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 80,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x9",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -24.0,
+          -64.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "characterSpacing": 0.0,
+          "clipEnabled": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "fontFamily": "Yu Gothic UI",
+          "fontSize": 22.0,
+          "fontStyle": "Normal",
+          "fontWeight": "Bold",
+          "horizontalAlignment": "Right",
+          "layoutSize": [
+            0.0,
+            0.0
+          ],
+          "lineSpacing": 1.0,
+          "localId": 1,
+          "opacity": 1.0,
+          "outlineColor": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "outlineEnabled": true,
+          "outlineWidth": 2.0,
+          "overflowMode": "Overflow",
+          "pivot": [
+            1.0,
+            1.0
+          ],
+          "renderSpace": "ScreenOverlay",
+          "shadowColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.5
+          ],
+          "shadowEnabled": false,
+          "shadowOffset": [
+            2.0,
+            2.0
+          ],
+          "sortingOrder": 121,
+          "text": "",
+          "type": "TextRenderer",
+          "verticalAlignment": "Bottom",
+          "viewportAnchor": [
+            1.0,
+            1.0
+          ],
+          "wrapMode": "NoWrap"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 81,
+      "locked": false,
+      "modelPath": "",
+      "name": "Fishing Hook Legend x10",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -24.0,
+          -32.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
           "cullMode": "Back",
           "enabled": true,
-          "environmentReflectionIntensity": 0.30000001192092896,
-          "environmentReflectionOverride": false,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
           "localId": 1,
           "materialOverrides": [],
           "modelPath": "Cube.obj",
@@ -1329,8 +2506,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
-          "environmentReflectionIntensity": 0.30000001192092896,
-          "environmentReflectionOverride": false,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
           "localId": 1,
           "materialOverrides": [],
           "modelPath": "Cube.obj",
@@ -1407,9 +2584,9 @@
       "transform": {
         "rotation": [
           0.0,
-          -0.2873478829860687,
+          -0.2873479127883911,
           0.0,
-          0.9578262567520142
+          0.9578263163566589
         ],
         "scale": [
           4.0,
@@ -1429,8 +2606,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
-          "environmentReflectionIntensity": 0.30000001192092896,
-          "environmentReflectionOverride": false,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
           "localId": 1,
           "materialOverrides": [],
           "modelPath": "Cube.obj",
@@ -1529,8 +2706,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
-          "environmentReflectionIntensity": 0.30000001192092896,
-          "environmentReflectionOverride": false,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
           "localId": 1,
           "materialOverrides": [],
           "modelPath": "Cube.obj",
@@ -1629,8 +2806,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
-          "environmentReflectionIntensity": 0.30000001192092896,
-          "environmentReflectionOverride": false,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
           "localId": 1,
           "materialOverrides": [],
           "modelPath": "Cube.obj",
@@ -1729,8 +2906,8 @@
         {
           "cullMode": "Back",
           "enabled": true,
-          "environmentReflectionIntensity": 0.30000001192092896,
-          "environmentReflectionOverride": false,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
           "localId": 1,
           "materialOverrides": [],
           "modelPath": "Cube.obj",
@@ -2205,12 +3382,12 @@
       }
     },
     {
-      "active": true,
+      "active": false,
       "components": [
         {
           "enabled": true,
           "localId": 1,
-          "reflectionIntensity": 0.30000001192092896,
+          "reflectionIntensity": 0.0,
           "skyboxEnabled": true,
           "skyboxIntensity": 1.0,
           "skyboxPath": "resources/rostock_laage_airport_4k.dds",
@@ -2276,7 +3453,7 @@
           "gravityScale": 0.550000011920929,
           "halfSize": [
             65.0999984741211,
-            100.0,
+            331.20001220703125,
             84.0999984741211
           ],
           "lightColor": [
@@ -2305,17 +3482,17 @@
           ],
           "surfaceAlpha": 0.36000001430511475,
           "surfaceBaseColor": [
-            0.03999999910593033,
-            0.550000011920929,
-            0.7799999713897705,
+            0.0,
+            0.0,
+            0.0,
             1.0
           ],
           "surfaceEnabled": true,
           "surfaceFresnelPower": 3.0,
           "surfaceHighlightColor": [
-            0.41999998688697815,
-            0.949999988079071,
-            1.2000000476837158,
+            0.0,
+            0.0,
+            0.0,
             1.0
           ],
           "surfaceNormalStrength": 0.75,
@@ -2330,7 +3507,7 @@
       "id": 3,
       "locked": false,
       "modelPath": "",
-      "name": "Entity",
+      "name": "Water",
       "parentId": 0,
       "sprite": {
         "anchor": [
@@ -2366,7 +3543,7 @@
         ],
         "translate": [
           0.0,
-          70.0,
+          236.96356201171875,
           0.0
         ]
       }
@@ -2391,13 +3568,14 @@
         },
         {
           "allowJump": true,
+          "autoForward": true,
           "cameraRelativeMove": false,
           "dashMultiplier": 1.649999976158142,
           "enabled": true,
           "jumpVelocity": 37.20000076293945,
           "localId": 2,
           "moveSpeed": 19.799999237060547,
-          "turnResponsiveness": 0.017999999225139618,
+          "turnResponsiveness": 0.05000000074505806,
           "type": "PlayerBehavior"
         },
         {
@@ -2611,6 +3789,7 @@
           "memberJitterUpdateInterval": 0.5,
           "memberLeashDistance": 4.0,
           "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
           "memberSeparationBlend": 0.5,
           "memberSeparationUpdateInterval": 0.10000000149011612,
           "memberSpeedVariation": 0.15000000596046448,
@@ -2784,6 +3963,7 @@
           "memberJitterUpdateInterval": 0.5,
           "memberLeashDistance": 4.0,
           "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
           "memberSeparationBlend": 0.5,
           "memberSeparationUpdateInterval": 0.10000000149011612,
           "memberSpeedVariation": 0.15000000596046448,
@@ -2957,6 +4137,7 @@
           "memberJitterUpdateInterval": 0.5,
           "memberLeashDistance": 4.0,
           "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
           "memberSeparationBlend": 0.5,
           "memberSeparationUpdateInterval": 0.10000000149011612,
           "memberSpeedVariation": 0.15000000596046448,
@@ -3167,6 +4348,7 @@
           "memberJitterUpdateInterval": 0.5,
           "memberLeashDistance": 4.0,
           "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
           "memberSeparationBlend": 0.5,
           "memberSeparationUpdateInterval": 0.10000000149011612,
           "memberSpeedVariation": 0.15000000596046448,
@@ -3340,6 +4522,7 @@
           "memberJitterUpdateInterval": 0.5,
           "memberLeashDistance": 4.0,
           "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
           "memberSeparationBlend": 0.5,
           "memberSeparationUpdateInterval": 0.10000000149011612,
           "memberSpeedVariation": 0.15000000596046448,
@@ -3480,13 +4663,211 @@
             7,
             8,
             9,
-            10
+            10,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55,
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63,
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70
+          ],
+          "fishMultiplierBase": 1.0,
+          "fishMultiplierPerAdditionalFish": 1.0,
+          "formationOutlineColor": [
+            0.10000000149011612,
+            0.8999999761581421,
+            1.0,
+            1.0
+          ],
+          "formationOutlineSegments": 48,
+          "formationOutlineVisible": true,
+          "formationOutlineYOffset": 0.25,
+          "hookBands": [
+            {
+              "distanceMultiplier": 0.0,
+              "hookCount": 0,
+              "hookMultiplierWeights": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "distanceMultiplier": 1.0,
+              "hookCount": 4,
+              "hookMultiplierWeights": [
+                40.0,
+                35.0,
+                25.0,
+                2.0,
+                2.0,
+                2.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            {
+              "distanceMultiplier": 1.2000000476837158,
+              "hookCount": 3,
+              "hookMultiplierWeights": [
+                8.0,
+                8.0,
+                8.0,
+                24.0,
+                24.0,
+                24.0,
+                2.0,
+                2.0,
+                1.0,
+                1.0
+              ]
+            },
+            {
+              "distanceMultiplier": 1.399999976158142,
+              "hookCount": 2,
+              "hookMultiplierWeights": [
+                6.0,
+                6.0,
+                6.0,
+                20.0,
+                20.0,
+                20.0,
+                10.0,
+                10.0,
+                1.0,
+                1.0
+              ]
+            },
+            {
+              "distanceMultiplier": 1.600000023841858,
+              "hookCount": 2,
+              "hookMultiplierWeights": [
+                3.0,
+                3.0,
+                3.0,
+                10.0,
+                10.0,
+                10.0,
+                24.0,
+                24.0,
+                4.0,
+                9.0
+              ]
+            }
+          ],
+          "hookColorEmissiveIntensity": 0.3499999940395355,
+          "hookLegendPrefix": "x",
+          "hookLegendTextEntityIds": [
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79,
+            80,
+            81
+          ],
+          "hookLegendTitle": "HOOK BONUS",
+          "hookLegendTitleTextEntityId": 71,
+          "hookLegendVisible": true,
+          "hookMultiplierColors": [
+            [
+              0.25,
+              0.550000011920929,
+              1.0,
+              1.0
+            ],
+            [
+              0.15000000596046448,
+              0.8500000238418579,
+              1.0,
+              1.0
+            ],
+            [
+              0.20000000298023224,
+              0.949999988079071,
+              0.550000011920929,
+              1.0
+            ],
+            [
+              0.550000011920929,
+              0.949999988079071,
+              0.25,
+              1.0
+            ],
+            [
+              0.949999988079071,
+              0.8500000238418579,
+              0.20000000298023224,
+              1.0
+            ],
+            [
+              1.0,
+              0.5799999833106995,
+              0.15000000596046448,
+              1.0
+            ],
+            [
+              1.0,
+              0.30000001192092896,
+              0.11999999731779099,
+              1.0
+            ],
+            [
+              1.0,
+              0.11999999731779099,
+              0.2800000011920929,
+              1.0
+            ],
+            [
+              0.8500000238418579,
+              0.18000000715255737,
+              1.0,
+              1.0
+            ],
+            [
+              1.0,
+              0.8999999761581421,
+              0.44999998807907104,
+              1.0
+            ]
           ],
           "hookPoolEntityId": 13,
+          "hookScoreUnit": 100.0,
           "hookSpawnAreaEntityId": 12,
           "hooksPerDistanceBand": 2,
           "localId": 1,
-          "maxSelectableFishCount": 5,
+          "maxSelectableFishCount": 30,
           "multiplierPrefix": "MULTIPLIER ",
           "multiplierTextEntityId": 20,
           "playerEntityId": 5,
@@ -3499,6 +4880,8 @@
           "timerPrefix": "TIME ",
           "timerTextEntityId": 18,
           "type": "FishingScoreAttackDirector",
+          "useFormationCapsuleCollision": true,
+          "useHookBandSettings": true,
           "waterVolumeEntityId": 3
         }
       ],
@@ -3855,9 +5238,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            0.6000000238418579,
-            1.7999999523162842,
-            0.6000000238418579
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -3904,9 +5287,9 @@
           1.0
         ],
         "scale": [
-          0.6000000238418579,
-          1.7999999523162842,
-          0.6000000238418579
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -4057,9 +5440,9 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            1.100000023841858,
-            3.200000047683716,
-            1.100000023841858
+            0.800000011920929,
+            2.4000000953674316,
+            0.800000011920929
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -4106,9 +5489,9 @@
           1.0
         ],
         "scale": [
-          1.100000023841858,
-          3.200000047683716,
-          1.100000023841858
+          0.800000011920929,
+          2.4000000953674316,
+          0.800000011920929
         ],
         "translate": [
           0.0,
@@ -4151,11 +5534,53 @@
           "outlineEnabled": true,
           "outlineWidth": 2.0,
           "overflowMode": "Overflow",
+          "overlayPlacement": {
+            "clipEnabled": false,
+            "pivot": [
+              0.0,
+              0.0
+            ],
+            "position": [
+              24.0,
+              24.0
+            ],
+            "rotation": -0.0,
+            "scale": [
+              1.0,
+              1.0
+            ],
+            "sortingOrder": 100,
+            "viewportAnchor": [
+              0.0,
+              0.0
+            ]
+          },
           "pivot": [
             0.0,
             0.0
           ],
           "renderSpace": "ScreenOverlay",
+          "scene2DPlacement": {
+            "clipEnabled": false,
+            "pivot": [
+              0.0,
+              0.0
+            ],
+            "position": [
+              24.0,
+              24.0
+            ],
+            "rotation": -0.0,
+            "scale": [
+              1.0,
+              1.0
+            ],
+            "sortingOrder": 100,
+            "viewportAnchor": [
+              0.0,
+              0.0
+            ]
+          },
           "shadowColor": [
             0.0,
             0.0,
@@ -4654,6 +6079,4356 @@
     },
     {
       "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 6,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 46,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 6",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -12.0,
+          2.5,
+          -60.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 7,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 47,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 7",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -6.0,
+          4.5,
+          -60.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 8,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 48,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 8",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          6.5,
+          -60.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 9,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 49,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 9",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          6.0,
+          3.5,
+          -60.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 10,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 50,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 10",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          12.0,
+          5.5,
+          -60.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 11,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 51,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 11",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -12.0,
+          2.5,
+          -65.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 12,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 52,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 12",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -6.0,
+          4.5,
+          -65.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 13,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 53,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 13",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          6.5,
+          -65.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 14,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 54,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 14",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          6.0,
+          3.5,
+          -65.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 15,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 55,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 15",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          12.0,
+          5.5,
+          -65.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 16,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 56,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 16",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -12.0,
+          2.5,
+          -70.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 17,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 57,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 17",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -6.0,
+          4.5,
+          -70.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 18,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 58,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 18",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          6.5,
+          -70.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 19,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 59,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 19",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          6.0,
+          3.5,
+          -70.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 20,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 60,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 20",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          12.0,
+          5.5,
+          -70.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 21,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 61,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 21",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -12.0,
+          2.5,
+          -75.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 22,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 62,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 22",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -6.0,
+          4.5,
+          -75.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 23,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 63,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 23",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          6.5,
+          -75.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 24,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 64,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 24",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          6.0,
+          3.5,
+          -75.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 25,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 65,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 25",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          12.0,
+          5.5,
+          -75.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 26,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 66,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 26",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -12.0,
+          2.5,
+          -80.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 27,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 67,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 27",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          -6.0,
+          4.5,
+          -80.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 28,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 68,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 28",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          6.5,
+          -80.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 29,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 69,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 29",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          6.0,
+          3.5,
+          -80.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "alignForwardToVelocity": true,
+          "alignmentRadius": 4.0,
+          "alignmentWeight": 0.800000011920929,
+          "attractorEntityId": 0,
+          "attractorTag": "",
+          "attractorWeight": 0.0,
+          "bankingStrength": 0.0,
+          "behaviorName": "PlayerFish",
+          "boundsEntityId": 0,
+          "boundsName": "",
+          "boundsWeight": 3.0,
+          "cohesionRadius": 5.0,
+          "cohesionWeight": 0.8999999761581421,
+          "enableLighting": true,
+          "enabled": true,
+          "flockAcceleration": 4.0,
+          "flockDecisionInterval": 0.25,
+          "flockTurnRate": 1.5,
+          "forwardAxis": "-X",
+          "groupName": "PlayerFish",
+          "localId": 2,
+          "maxSpeed": 30.0,
+          "memberCatchupSpeed": 2.0,
+          "memberCenterFollow": 1.5,
+          "memberJitterFollowSpeed": 2.0,
+          "memberJitterFrequency": 0.8999999761581421,
+          "memberJitterStrength": 0.3499999940395355,
+          "memberJitterUpdateInterval": 0.5,
+          "memberLeashDistance": 4.0,
+          "memberLeashStrength": 1.5,
+          "memberMinimumDistance": 0.0,
+          "memberSeparationBlend": 0.5,
+          "memberSeparationUpdateInterval": 0.10000000149011612,
+          "memberSpeedVariation": 0.15000000596046448,
+          "minSpeed": 30.0,
+          "movementMode": "Free3D",
+          "neighborLimit": 4,
+          "pitchFromVerticalVelocity": 1.0,
+          "profileName": "Default",
+          "randomSeed": 30,
+          "randomizeSeedOnPlay": true,
+          "rotateAxisX": true,
+          "rotateAxisY": true,
+          "rotateAxisZ": false,
+          "rotationFollowSpeed": 12.0,
+          "schooling": true,
+          "schoolingBlend": 1.0,
+          "schoolingUpdateInterval": 0.0,
+          "schoolingUpdateJitter": 0.0,
+          "separationRadius": 1.2000000476837158,
+          "separationWeight": 1.7999999523162842,
+          "teamHeadingDirection": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "teamHeadingFollowSpeed": 2.5,
+          "teamHeadingFromAverage": true,
+          "teamHeadingWeight": 0.75,
+          "teamRotationFollowSpeed": 4.0,
+          "teamRotationWeight": 0.6000000238418579,
+          "teamSettingsOverride": false,
+          "turnSpeed": 2.5,
+          "type": "AgentBehavior",
+          "useTeamHeading": false,
+          "useTeamRotation": false,
+          "useWaterBounds": true,
+          "visualColor": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "wanderChangeInterval": 4.0,
+          "wanderDirectionRange": 1.100000023841858,
+          "wanderStrength": 0.800000011920929,
+          "wanderVerticalRange": 0.18000000715255737
+        },
+        {
+          "active": true,
+          "debugColor": [
+            0.20000000298023224,
+            0.949999988079071,
+            0.699999988079071,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 3,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 70,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "PlayerFish 30",
+      "parentId": 44,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          12.0,
+          5.5,
+          -80.0
+        ]
+      }
+    },
+    {
+      "active": true,
       "components": [],
       "folder": true,
       "folderTeamEnabled": true,
@@ -4682,6 +10457,84 @@
         "texturePath": ""
       },
       "team": "PlayerFish",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "castsShadow": false,
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "decay": 1.0,
+          "enabled": true,
+          "innerAngle": 25.0,
+          "intensity": 2.0,
+          "lightType": "Directional",
+          "localId": 1,
+          "outerAngle": 35.0,
+          "range": 8.0,
+          "shadow": {
+            "bias": 0.0024999999441206455,
+            "distance": 45.0,
+            "farClip": 120.0,
+            "nearClip": 0.10000000149011612,
+            "normalBias": 0.019999999552965164,
+            "orthographicSize": 40.0,
+            "strength": 0.550000011920929,
+            "texelSnap": true
+          },
+          "type": "Light"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 45,
+      "locked": false,
+      "modelPath": "",
+      "name": "Light",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
       "transform": {
         "rotation": [
           0.0,
@@ -4783,7 +10636,7 @@
     "underwaterDistortion": 0.012000000104308128,
     "underwaterEnabled": true,
     "underwaterFogDensity": 0.03500000014901161,
-    "underwaterIntensity": 0.6499999761581421,
+    "underwaterIntensity": 0.20000000298023224,
     "underwaterTintColor": [
       0.019999999552965164,
       0.44999998807907104,
@@ -4819,6 +10672,10 @@
       "agentFlockAcceleration": 4.0,
       "agentFlockDecisionInterval": 0.25,
       "agentFlockTurnRate": 1.5,
+      "agentFormationCapsuleEnabled": true,
+      "agentFormationCapsuleHalfSegmentLength": 10.5,
+      "agentFormationCapsuleRadius": 8.5,
+      "agentFormationCapsuleScaleWithActiveMembers": true,
       "agentForwardAxis": "-X",
       "agentGroupName": "PlayerFish",
       "agentLeaderStartPosition": [
@@ -4830,16 +10687,17 @@
       "agentMemberCatchupSpeed": 5.0,
       "agentMemberCenterFollow": 1.25,
       "agentMemberJitterFollowSpeed": 1.0,
-      "agentMemberJitterFrequency": 0.65,
+      "agentMemberJitterFrequency": 0.6499999761581421,
       "agentMemberJitterStrength": 3.5,
-      "agentMemberJitterUpdateInterval": 1.2,
-      "agentMemberLeashDistance": 7.0,
+      "agentMemberJitterUpdateInterval": 1.2000000476837158,
+      "agentMemberLeashDistance": 12.0,
       "agentMemberLeashStrength": 1.5,
-      "agentMemberSeparationBlend": 0.800000011920929,
-      "agentMemberSeparationUpdateInterval": 0.10000000149011612,
+      "agentMemberMinimumDistance": 4.0,
+      "agentMemberSeparationBlend": 1.0,
+      "agentMemberSeparationUpdateInterval": 0.0,
       "agentMemberSpeedVariation": 0.15000000596046448,
       "agentMinSpeed": 30.0,
-      "agentNeighborLimit": 4,
+      "agentNeighborLimit": 0,
       "agentPitchFromVerticalVelocity": 1.0,
       "agentRandomSeed": 1,
       "agentRandomizeSeedOnPlay": true,
@@ -4851,8 +10709,8 @@
       "agentSchoolingBlend": 1.0,
       "agentSchoolingUpdateInterval": 0.0,
       "agentSchoolingUpdateJitter": 0.0,
-      "agentSeparationRadius": 2.5,
-      "agentSeparationWeight": 2.5,
+      "agentSeparationRadius": 6.0,
+      "agentSeparationWeight": 4.0,
       "agentTeamHeadingDirection": [
         0.0,
         0.0,

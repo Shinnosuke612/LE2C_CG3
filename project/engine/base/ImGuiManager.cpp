@@ -8079,6 +8079,89 @@ void ImGuiManager::DrawInspectorWindow() {
 						0.0f,
 						100.0f
 					);
+					teamChanged |= ImGui::DragFloat(
+						"Member Minimum Distance",
+						&selectedTeam->agentMemberMinimumDistance,
+						0.05f,
+						0.0f,
+						100.0f
+					);
+					ImGui::SeparatorText("Formation Capsule");
+					teamChanged |= ImGui::Checkbox(
+						"Enable Formation Capsule",
+						&selectedTeam->agentFormationCapsuleEnabled
+					);
+					teamChanged |= ImGui::Checkbox(
+						"Scale Capsule With Active Members",
+						&selectedTeam->agentFormationCapsuleScaleWithActiveMembers
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Formation Capsule Radius",
+						&selectedTeam->agentFormationCapsuleRadius,
+						0.05f,
+						0.0f,
+						1000.0f
+					);
+					teamChanged |= ImGui::DragFloat(
+						"Formation Capsule Half Segment Length",
+						&selectedTeam->agentFormationCapsuleHalfSegmentLength,
+						0.05f,
+						0.0f,
+						1000.0f
+					);
+					if (ImGui::Button("Fit Capsule From Team Members")) {
+						int memberCount = 0;
+						for (const SceneEntity& candidate : document.GetEntities()) {
+							if (!IsEntityActiveInHierarchy(document, candidate) ||
+								!FindEnabledComponent(candidate, "AgentBehavior")) {
+								continue;
+							}
+							const SceneTeamSettings* candidateTeam =
+								document.ResolveEntityTeam(candidate);
+							if (candidateTeam && candidateTeam->name == selectedTeam->name) {
+								++memberCount;
+							}
+						}
+						const float memberCountValue = static_cast<float>((std::max)(memberCount, 1));
+						const float spacing = (std::max)(
+							selectedTeam->agentMemberMinimumDistance,
+							0.001f
+						);
+						constexpr float kPi = 3.14159265359f;
+						constexpr float kPackingEfficiency = 0.72f;
+						constexpr float kSafetyFactor = 1.10f;
+						constexpr float kLengthToWidthRatio = 2.25f;
+						const float requiredArea =
+							memberCountValue * kPi * (spacing * 0.5f) * (spacing * 0.5f) *
+							kSafetyFactor / kPackingEfficiency;
+						const float areaCoefficient =
+							4.0f * (kLengthToWidthRatio - 1.0f) + kPi;
+						const float radius = std::sqrt(requiredArea / areaCoefficient);
+						selectedTeam->agentFormationCapsuleRadius =
+							std::ceil(radius * 2.0f) * 0.5f;
+						selectedTeam->agentFormationCapsuleHalfSegmentLength =
+							std::ceil(
+								(kLengthToWidthRatio - 1.0f) * radius * 2.0f
+							) * 0.5f;
+						teamChanged = true;
+					}
+					ImGui::Text(
+						"Members: %d | Width: %.1f | Length: %.1f",
+						static_cast<int>(std::count_if(
+							document.GetEntities().begin(),
+							document.GetEntities().end(),
+							[&document, selectedTeam](const SceneEntity& candidate) {
+								return IsEntityActiveInHierarchy(document, candidate) &&
+									FindEnabledComponent(candidate, "AgentBehavior") &&
+									document.ResolveEntityTeam(candidate) == selectedTeam;
+							}
+						)),
+						selectedTeam->agentFormationCapsuleRadius * 2.0f,
+						2.0f * (
+							selectedTeam->agentFormationCapsuleHalfSegmentLength +
+							selectedTeam->agentFormationCapsuleRadius
+						)
+					);
 
 					ImGui::SeparatorText("Team Heading");
 					teamChanged |= ImGui::Checkbox(
@@ -8379,6 +8462,10 @@ void ImGuiManager::DrawInspectorWindow() {
 						(std::max)(selectedTeam->agentAlignmentWeight, 0.0f);
 					selectedTeam->agentCohesionWeight =
 						(std::max)(selectedTeam->agentCohesionWeight, 0.0f);
+					if (!std::isfinite(selectedTeam->agentMemberMinimumDistance) ||
+						selectedTeam->agentMemberMinimumDistance < 0.0f) {
+						selectedTeam->agentMemberMinimumDistance = 0.0f;
+					}
 					teamChanged |=
 						previousMinSpeed != selectedTeam->agentMinSpeed ||
 						previousMaxSpeed != selectedTeam->agentMaxSpeed ||
@@ -12454,6 +12541,10 @@ void ImGuiManager::DrawInspectorWindow() {
 					LocalizedComponentWidgetLabel(editorLanguage_, "Allow Jump"),
 					&component.playerAllowJump
 				);
+				playerChanged |= ImGui::Checkbox(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Auto Forward"),
+					&component.playerAutoForward
+				);
 				if (component.playerMoveSpeed < 0.0f) {
 					component.playerMoveSpeed = 0.0f;
 					playerChanged = true;
@@ -12531,7 +12622,7 @@ void ImGuiManager::DrawInspectorWindow() {
 				);
 				fishingChanged |= ImGui::SliderInt(
 					LocalizedComponentWidgetLabel(editorLanguage_, "Max Fish Count"),
-					&component.fishingMaxSelectableFishCount, 0, 5
+					&component.fishingMaxSelectableFishCount, 1, kFishingScoreAttackMaxFishCount
 				);
 				fishingChanged |= ImGui::DragInt(
 					LocalizedComponentWidgetLabel(editorLanguage_, "Distance Band Count"),
@@ -12550,12 +12641,158 @@ void ImGuiManager::DrawInspectorWindow() {
 					&component.fishingDistanceMultiplierStep, 0.05f, 0.0f, 100.0f
 				);
 				fishingChanged |= ImGui::Checkbox(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Use Hook Band Settings"),
+					&component.fishingUseHookBandSettings
+				);
+				if (component.fishingUseHookBandSettings) {
+					ImGui::SeparatorText(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Hook Band Settings")
+					);
+					if (ImGui::Button(SelectEditorText(
+						editorLanguage_,
+						"推奨5区間設定を適用###ApplyFishingHookBandTemplate",
+						"Apply Recommended 5-Band Template###ApplyFishingHookBandTemplate"
+					))) {
+						component.fishingHookBands = {
+							{ 0.0f, 0, { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } },
+							{ 1.0f, 4, { 40.0f, 35.0f, 25.0f, 2.0f, 2.0f, 2.0f, 1.0f, 1.0f, 1.0f, 1.0f } },
+							{ 1.2f, 3, { 8.0f, 8.0f, 8.0f, 24.0f, 24.0f, 24.0f, 2.0f, 2.0f, 1.0f, 1.0f } },
+							{ 1.4f, 2, { 6.0f, 6.0f, 6.0f, 20.0f, 20.0f, 20.0f, 10.0f, 10.0f, 1.0f, 1.0f } },
+							{ 1.6f, 2, { 3.0f, 3.0f, 3.0f, 10.0f, 10.0f, 10.0f, 24.0f, 24.0f, 4.0f, 9.0f } }
+						};
+						component.fishingHookMultiplierColors = {
+							{ 0.25f, 0.55f, 1.00f, 1.00f },
+							{ 0.15f, 0.85f, 1.00f, 1.00f },
+							{ 0.20f, 0.95f, 0.55f, 1.00f },
+							{ 0.55f, 0.95f, 0.25f, 1.00f },
+							{ 0.95f, 0.85f, 0.20f, 1.00f },
+							{ 1.00f, 0.58f, 0.15f, 1.00f },
+							{ 1.00f, 0.30f, 0.12f, 1.00f },
+							{ 1.00f, 0.12f, 0.28f, 1.00f },
+							{ 0.85f, 0.18f, 1.00f, 1.00f },
+							{ 1.00f, 0.90f, 0.45f, 1.00f }
+						};
+						fishingChanged = true;
+					}
+					fishingChanged |= ImGui::DragFloat(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Hook Score Unit"),
+						&component.fishingHookScoreUnit, 10.0f, 0.001f, 1000000000.0f
+					);
+					fishingChanged |= ImGui::DragFloat(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Fish Multiplier Base"),
+						&component.fishingFishMultiplierBase, 0.05f, 0.0f, 100000.0f
+					);
+					fishingChanged |= ImGui::DragFloat(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Fish Multiplier Per Additional Fish"),
+						&component.fishingFishMultiplierPerAdditionalFish,
+						0.05f, 0.0f, 100000.0f
+					);
+					fishingChanged |= ImGui::DragFloat(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Hook Color Emissive Intensity"),
+						&component.fishingHookColorEmissiveIntensity,
+						0.05f, 0.0f, 100.0f
+					);
+					for (size_t bandIndex = 0; bandIndex < component.fishingHookBands.size(); ++bandIndex) {
+						SceneFishingHookBandSettings& band = component.fishingHookBands[bandIndex];
+						ImGui::PushID(static_cast<int>(bandIndex));
+						if (ImGui::TreeNodeEx(
+							"FishingHookBandSettings", ImGuiTreeNodeFlags_DefaultOpen,
+							"Band %zu", bandIndex
+						)) {
+							fishingChanged |= ImGui::DragFloat(
+								"Distance Multiplier", &band.distanceMultiplier, 0.05f, 0.0f, 100.0f
+							);
+							fishingChanged |= ImGui::SliderInt(
+								"Hook Count", &band.hookCount, 0, 30
+							);
+							if (band.hookMultiplierWeights.size() != 10) {
+								band.hookMultiplierWeights.resize(10, 0.0f);
+								fishingChanged = true;
+							}
+							float totalWeight = 0.0f;
+							for (float weight : band.hookMultiplierWeights) {
+								totalWeight += weight;
+							}
+							for (size_t tierIndex = 0; tierIndex < 10; ++tierIndex) {
+								const std::string label = "x" + std::to_string(tierIndex + 1);
+								fishingChanged |= ImGui::DragFloat(
+									label.c_str(), &band.hookMultiplierWeights[tierIndex],
+									0.1f, 0.0f, 100000.0f
+								);
+								const float percentage = totalWeight > 0.0f
+									? band.hookMultiplierWeights[tierIndex] / totalWeight * 100.0f
+									: 0.0f;
+								ImGui::SameLine();
+								ImGui::Text("(%.1f%%)", percentage);
+							}
+							ImGui::TreePop();
+						}
+						ImGui::PopID();
+					}
+					if (ImGui::TreeNodeEx(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Hook Multiplier Colors"),
+						ImGuiTreeNodeFlags_DefaultOpen
+					)) {
+						if (component.fishingHookMultiplierColors.size() != 10) {
+							component.fishingHookMultiplierColors.resize(
+								10, Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
+							);
+							fishingChanged = true;
+						}
+						for (size_t tierIndex = 0; tierIndex < 10; ++tierIndex) {
+							const std::string label = "x" + std::to_string(tierIndex + 1);
+							fishingChanged |= ImGui::ColorEdit4(
+								label.c_str(), &component.fishingHookMultiplierColors[tierIndex].x
+							);
+						}
+						ImGui::TreePop();
+					}
+				}
+				fishingChanged |= ImGui::Checkbox(
 					LocalizedComponentWidgetLabel(editorLanguage_, "Randomize Seed On Play"),
 					&component.fishingRandomizeSeedOnPlay
 				);
 				fishingChanged |= ImGui::InputInt(
 					LocalizedComponentWidgetLabel(editorLanguage_, "Random Seed"),
 					&component.fishingRandomSeed
+				);
+				ImGui::SeparatorText(
+					LocalizedComponentWidgetLabel(editorLanguage_, "Formation Capsule")
+				);
+				fishingChanged |= ImGui::Checkbox(
+					LocalizedComponentWidgetLabel(
+						editorLanguage_, "Use Formation Capsule Collision"
+					),
+					&component.fishingUseFormationCapsuleCollision
+				);
+				fishingChanged |= ImGui::Checkbox(
+					LocalizedComponentWidgetLabel(
+						editorLanguage_, "Formation Outline Visible"
+					),
+					&component.fishingFormationOutlineVisible
+				);
+				fishingChanged |= ImGui::ColorEdit4(
+					LocalizedComponentWidgetLabel(
+						editorLanguage_, "Formation Outline Color"
+					),
+					&component.fishingFormationOutlineColor.x
+				);
+				fishingChanged |= ImGui::DragFloat(
+					LocalizedComponentWidgetLabel(
+						editorLanguage_, "Formation Outline Y Offset"
+					),
+					&component.fishingFormationOutlineYOffset,
+					0.01f,
+					-100.0f,
+					100.0f
+				);
+				fishingChanged |= ImGui::SliderInt(
+					LocalizedComponentWidgetLabel(
+						editorLanguage_, "Formation Outline Segments"
+					),
+					&component.fishingFormationOutlineSegments,
+					12,
+					128
 				);
 				if (ImGui::TreeNodeEx(
 					LocalizedComponentWidgetLabel(editorLanguage_, "Fish Entities"),
@@ -12583,7 +12820,8 @@ void ImGuiManager::DrawInspectorWindow() {
 						);
 						fishingChanged = true;
 					}
-					if (component.fishingFishEntityIds.size() < 5 && ImGui::SmallButton(
+					if (component.fishingFishEntityIds.size() <
+						static_cast<size_t>(kFishingScoreAttackMaxFishCount) && ImGui::SmallButton(
 						SelectEditorText(editorLanguage_, "魚を追加###AddFishingFish", "Add Fish###AddFishingFish")
 					)) {
 						component.fishingFishEntityIds.push_back(0);
@@ -12615,6 +12853,35 @@ void ImGuiManager::DrawInspectorWindow() {
 						LocalizedComponentWidgetLabel(editorLanguage_, "Result Text"),
 						component.fishingResultTextEntityId, "TextRenderer"
 					);
+					if (component.fishingUseHookBandSettings) {
+						fishingChanged |= ImGui::Checkbox(
+							LocalizedComponentWidgetLabel(editorLanguage_, "Hook Legend Visible"),
+							&component.fishingHookLegendVisible
+						);
+						drawFishingEntityReference(
+							LocalizedComponentWidgetLabel(editorLanguage_, "Hook Legend Title Text"),
+							component.fishingHookLegendTitleTextEntityId, "TextRenderer"
+						);
+						for (size_t tierIndex = 0; tierIndex < 10; ++tierIndex) {
+							if (component.fishingHookLegendTextEntityIds.size() <= tierIndex) {
+								component.fishingHookLegendTextEntityIds.resize(tierIndex + 1, 0);
+							}
+							ImGui::PushID(static_cast<int>(tierIndex));
+							drawFishingEntityReference(
+								("Hook Legend x" + std::to_string(tierIndex + 1)).c_str(),
+								component.fishingHookLegendTextEntityIds[tierIndex], "TextRenderer"
+							);
+							ImGui::PopID();
+						}
+						fishingChanged |= InputTextString(
+							LocalizedComponentWidgetLabel(editorLanguage_, "Hook Legend Title"),
+							component.fishingHookLegendTitle
+						);
+						fishingChanged |= InputTextString(
+							LocalizedComponentWidgetLabel(editorLanguage_, "Hook Legend Prefix"),
+							component.fishingHookLegendPrefix
+						);
+					}
 					fishingChanged |= InputTextString(
 						LocalizedComponentWidgetLabel(editorLanguage_, "Fish Count Prefix"),
 						component.fishingFishCountPrefix
@@ -13058,6 +13325,13 @@ void ImGuiManager::DrawInspectorWindow() {
 						&component.agentMemberSeparationBlend,
 						0.0f,
 						1.0f
+					);
+					agentChanged |= ImGui::DragFloat(
+						LocalizedComponentWidgetLabel(editorLanguage_, "Member Minimum Distance"),
+						&component.agentMemberMinimumDistance,
+						0.05f,
+						0.0f,
+						100.0f
 					);
 
 					ImGui::SeparatorText(SelectEditorText(editorLanguage_, "Team Heading", "Team Heading"));

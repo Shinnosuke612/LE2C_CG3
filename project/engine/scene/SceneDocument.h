@@ -13,6 +13,8 @@
 #include "../math/Vector2.h"
 #include "../math/Vector4.h"
 
+inline constexpr int kFishingScoreAttackMaxFishCount = 30;
+
 struct SceneTeamSettings {
 	std::string name = "Team";
 	bool agentBehaviorOverride = false;
@@ -42,6 +44,11 @@ struct SceneTeamSettings {
 	float agentMemberCatchupSpeed = 2.0f;
 	float agentMemberSeparationUpdateInterval = 0.1f;
 	float agentMemberSeparationBlend = 0.5f;
+	float agentMemberMinimumDistance = 0.0f;
+	bool agentFormationCapsuleEnabled = false;
+	bool agentFormationCapsuleScaleWithActiveMembers = false;
+	float agentFormationCapsuleRadius = 8.5f;
+	float agentFormationCapsuleHalfSegmentLength = 10.5f;
 	bool agentUseTeamHeading = false;
 	bool agentTeamHeadingFromAverage = true;
 	Vector3 agentTeamHeadingDirection = { 0.0f, 0.0f, 1.0f };
@@ -318,6 +325,12 @@ struct SceneFishingHookPoolEntry {
 	std::vector<float> weightsByDistanceBand;
 };
 
+struct SceneFishingHookBandSettings {
+	float distanceMultiplier = 1.0f;
+	int hookCount = 0;
+	std::vector<float> hookMultiplierWeights;
+};
+
 struct SceneComponent {
 	SceneComponent() = default;
 	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
@@ -405,6 +418,18 @@ struct SceneComponent {
 	int fishingHooksPerDistanceBand = 2;
 	float fishingDistanceMultiplierBase = 1.0f;
 	float fishingDistanceMultiplierStep = 0.2f;
+	bool fishingUseHookBandSettings = false;
+	std::vector<SceneFishingHookBandSettings> fishingHookBands;
+	float fishingHookScoreUnit = 100.0f;
+	float fishingFishMultiplierBase = 1.0f;
+	float fishingFishMultiplierPerAdditionalFish = 1.0f;
+	std::vector<Vector4> fishingHookMultiplierColors;
+	float fishingHookColorEmissiveIntensity = 0.35f;
+	bool fishingHookLegendVisible = false;
+	uint64_t fishingHookLegendTitleTextEntityId = 0;
+	std::vector<uint64_t> fishingHookLegendTextEntityIds;
+	std::string fishingHookLegendTitle = "HOOK BONUS";
+	std::string fishingHookLegendPrefix = "x";
 	bool fishingRandomizeSeedOnPlay = true;
 	int fishingRandomSeed = 1;
 	uint64_t fishingFishCountTextEntityId = 0;
@@ -417,6 +442,11 @@ struct SceneComponent {
 	std::string fishingScorePrefix = "SCORE ";
 	std::string fishingMultiplierPrefix = "MULTIPLIER ";
 	std::string fishingResultPrefix = "RESULT ";
+	bool fishingUseFormationCapsuleCollision = false;
+	bool fishingFormationOutlineVisible = false;
+	Vector4 fishingFormationOutlineColor = { 0.1f, 0.9f, 1.0f, 1.0f };
+	float fishingFormationOutlineYOffset = 0.25f;
+	int fishingFormationOutlineSegments = 48;
 	float fishingSpawnHalfSizeX = 10.0f;
 	float fishingSpawnHalfSizeZ = 10.0f;
 	float fishingSpawnMinimumDistance = 0.0f;
@@ -527,6 +557,7 @@ struct SceneComponent {
 	float playerDashMultiplier = 1.65f;
 	bool playerCameraRelativeMove = true;
 	bool playerAllowJump = true;
+	bool playerAutoForward = false;
 	std::string agentBehaviorName = "Fish";
 	// Free3Dは既存の遊泳群制御、GroundXZはEnemyBehaviorの速度へ離隔だけを加える。
 	std::string agentMovementMode = "Free3D";
@@ -560,6 +591,7 @@ struct SceneComponent {
 	float agentMemberCatchupSpeed = 2.0f;
 	float agentMemberSeparationUpdateInterval = 0.1f;
 	float agentMemberSeparationBlend = 0.5f;
+	float agentMemberMinimumDistance = 0.0f;
 	float agentBoundsWeight = 3.0f;
 	bool agentUseTeamHeading = false;
 	bool agentTeamHeadingFromAverage = true;

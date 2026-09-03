@@ -517,8 +517,9 @@ void Game::Update() {
 		editorCameraSnapshot_ = CaptureCameraSnapshot();
 	}
 
-#if defined(_DEBUG) || defined(DEVELOPMENT)
 	DebugRenderer::GetInstance()->Clear();
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	if (editorSession_) {
 
 	ImGui::Begin("Post Process Stack");
@@ -1467,10 +1468,10 @@ void Game::Draw() {
 	) {
 		EditorGridRenderer::AddGrid(*DebugRenderer::GetInstance());
 	}
+#endif
 	DebugRenderer::GetInstance()->Draw(
 		Object3dCommon::GetInstance()->GetDefaultCamera()
 	);
-#endif
 	sceneRenderTarget_->End();
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
