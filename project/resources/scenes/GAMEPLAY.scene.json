@@ -3452,9 +3452,9 @@
           "enabled": true,
           "gravityScale": 0.550000011920929,
           "halfSize": [
-            100.0,
+            113.0,
             331.20001220703125,
-            140.0
+            155.0
           ],
           "lightColor": [
             0.550000011920929,
@@ -4865,6 +4865,18 @@
           "hookPoolEntityId": 13,
           "hookScoreUnit": 100.0,
           "hookSpawnAreaEntityId": 12,
+          "hookTierScoreMultipliers": [
+            1.0,
+            2.0,
+            3.0,
+            4.0,
+            5.0,
+            6.0,
+            7.0,
+            8.0,
+            9.0,
+            10.0
+          ],
           "hooksPerDistanceBand": 2,
           "localId": 1,
           "maxSelectableFishCount": 30,
@@ -10985,20 +10997,27 @@
       "active": true,
       "components": [
         {
+          "cullMode": "Back",
           "enabled": true,
+          "environmentReflectionIntensity": 0.0,
+          "environmentReflectionOverride": true,
           "localId": 1,
-          "targetSceneId": "gameplay",
-          "triggerKey": "ENTER",
-          "triggerType": "Key",
-          "type": "SceneTransition"
+          "materialOverrides": [],
+          "modelPath": "sand/sand.obj",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
         }
       ],
       "folder": false,
       "folderTeamEnabled": false,
-      "id": 89,
+      "id": 90,
       "locked": false,
-      "modelPath": "",
-      "name": "Entity",
+      "modelPath": "sand/sand.obj",
+      "name": "Ground",
       "parentId": 0,
       "sprite": {
         "anchor": [
@@ -11028,9 +11047,9 @@
           1.0
         ],
         "scale": [
-          1.0,
-          1.0,
-          1.0
+          159.08279418945313,
+          0.9300000071525574,
+          230.28135681152344
         ],
         "translate": [
           0.0,
