@@ -192,6 +192,9 @@
     <ClCompile Include="application\scene\system\SceneLightingSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
+    <ClCompile Include="application\scene\system\SceneMiniMapSystem.cpp">
+      <Filter>Application\Scene\System</Filter>
+    </ClCompile>
     <ClCompile Include="application\scene\system\SceneMonitorSystem.cpp">
       <Filter>Application\Scene\System</Filter>
     </ClCompile>
@@ -474,6 +477,9 @@
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
     <ClInclude Include="application\scene\system\SceneLightingSystem.h">
+      <Filter>Application\Scene\System</Filter>
+    </ClInclude>
+    <ClInclude Include="application\scene\system\SceneMiniMapSystem.h">
       <Filter>Application\Scene\System</Filter>
     </ClInclude>
     <ClInclude Include="application\scene\system\SceneMonitorSystem.h">

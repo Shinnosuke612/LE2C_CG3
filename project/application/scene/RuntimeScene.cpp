@@ -204,6 +204,10 @@ void RuntimeScene::Initialize()
 		Object3dCommon::GetInstance()->GetDxCommon(),
 		SrvManager::GetInstance()
 	);
+	miniMapSystem_.Initialize(
+		Object3dCommon::GetInstance()->GetDxCommon(),
+		SrvManager::GetInstance()
+	);
 
 	effectRenderSystem_.Initialize(
 		Object3dCommon::GetInstance()->GetDxCommon()
@@ -822,13 +826,19 @@ void RuntimeScene::DrawForegroundEffectsWithCamera(Camera* viewCamera)
 bool RuntimeScene::HasScreenOverlay() const
 {
 	const SceneDocument* document = GetSceneDocument();
-	return document && textRenderSystem_.HasScreenOverlay(*document);
+	return
+		document &&
+		(
+			miniMapSystem_.HasScreenOverlay(document) ||
+			textRenderSystem_.HasScreenOverlay(*document)
+		);
 }
 
 void RuntimeScene::DrawScreenOverlay(uint32_t width, uint32_t height)
 {
 	SceneDocument* document = GetSceneDocument();
 	if (document) {
+		miniMapSystem_.DrawScreenOverlay(document, width, height);
 		textRenderSystem_.DrawScreenOverlay(*document, width, height);
 	}
 }
@@ -844,8 +854,14 @@ void RuntimeScene::DrawOffscreenViews()
 			DrawSceneView(monitorCamera, skipEntityId);
 		}
 	);
+	miniMapSystem_.DrawOffscreen(
+		document,
+		[this](Camera* miniMapCamera, uint64_t skipEntityId) {
+			DrawSceneView(miniMapCamera, skipEntityId);
+		}
+	);
 	if (document) {
-		// Monitor描画が差し替えたCameraを、通常Scene View用へ戻す。
+		// Offscreen描画が差し替えたCameraを、通常Scene View用へ戻す。
 		ApplyRenderCamera(GetSceneViewCamera());
 	}
 }
@@ -881,6 +897,7 @@ void RuntimeScene::Finalize()
 {
 	// 非所有参照を持つSystemから解除し、最後にObjectとCameraを破棄する。
 	monitorSystem_.Finalize(&runtimeObjectBindings_);
+	miniMapSystem_.Finalize();
 	agentSystem_.Clear();
 	attachmentSystem_.Clear(&objectSystem_);
 	combatSystem_.Clear();

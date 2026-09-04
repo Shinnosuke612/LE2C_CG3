@@ -221,6 +221,7 @@
     <ClCompile Include="application\scene\system\SceneEffectRenderSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEnvironmentSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneLightingSystem.cpp" />
+    <ClCompile Include="application\scene\system\SceneMiniMapSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneMonitorSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneObjectSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneParticleSystem.cpp" />
@@ -484,6 +485,7 @@
     <ClInclude Include="application\scene\system\SceneEffectRenderSystem.h" />
     <ClInclude Include="application\scene\system\SceneEnvironmentSystem.h" />
     <ClInclude Include="application\scene\system\SceneLightingSystem.h" />
+    <ClInclude Include="application\scene\system\SceneMiniMapSystem.h" />
     <ClInclude Include="application\scene\system\SceneMonitorSystem.h" />
     <ClInclude Include="application\scene\system\SceneObjectSystem.h" />
     <ClInclude Include="application\scene\system\SceneParticleSystem.h" />

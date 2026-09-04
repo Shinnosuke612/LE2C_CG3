@@ -19,6 +19,7 @@
 #include "system/SceneEffectRenderSystem.h"
 #include "system/SceneEnvironmentSystem.h"
 #include "system/SceneLightingSystem.h"
+#include "system/SceneMiniMapSystem.h"
 #include "system/SceneMonitorSystem.h"
 #include "system/SceneObjectSystem.h"
 #include "system/SceneParticleSystem.h"
@@ -108,6 +109,7 @@ private:
 	SceneEffectRenderSystem effectRenderSystem_;
 	SceneEnvironmentSystem environmentSystem_;
 	SceneLightingSystem lightingSystem_;
+	SceneMiniMapSystem miniMapSystem_;
 	SceneMonitorSystem monitorSystem_;
 	SceneObjectSystem objectSystem_;
 	SceneTransitionSystem transitionSystem_;
