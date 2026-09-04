@@ -20,6 +20,7 @@ public:
 		const std::vector<SceneRuntimeObjectBinding>& bindings,
 		float deltaTime
 	);
+	void ResetTeam(SceneDocument& document, const std::string& teamName);
 	void Clear();
 
 private:

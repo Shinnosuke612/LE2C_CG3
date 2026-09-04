@@ -15,9 +15,11 @@
 #include "system/SceneHitReactionSystem.h"
 #include "system/SceneHitStopSystem.h"
 #include "system/SceneGameFlowSystem.h"
+#include "system/SceneFishingScoreAttackSystem.h"
 #include "system/SceneEffectRenderSystem.h"
 #include "system/SceneEnvironmentSystem.h"
 #include "system/SceneLightingSystem.h"
+#include "system/SceneMiniMapSystem.h"
 #include "system/SceneMonitorSystem.h"
 #include "system/SceneObjectSystem.h"
 #include "system/SceneParticleSystem.h"
@@ -100,12 +102,14 @@ private:
 	SceneEnemySystem enemySystem_;
 	SceneEnemySpawnerSystem enemySpawnerSystem_;
 	SceneGameFlowSystem gameFlowSystem_;
+	SceneFishingScoreAttackSystem fishingScoreAttackSystem_;
 	SceneEventSystem eventSystem_;
 	SceneHitReactionSystem hitReactionSystem_;
 	SceneHitStopSystem hitStopSystem_;
 	SceneEffectRenderSystem effectRenderSystem_;
 	SceneEnvironmentSystem environmentSystem_;
 	SceneLightingSystem lightingSystem_;
+	SceneMiniMapSystem miniMapSystem_;
 	SceneMonitorSystem monitorSystem_;
 	SceneObjectSystem objectSystem_;
 	SceneTransitionSystem transitionSystem_;

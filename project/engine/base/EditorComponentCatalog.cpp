@@ -28,7 +28,7 @@ namespace {
 		EditorComponentTag::Prefab
 	}};
 
-	constexpr std::array<EditorComponentDefinition, 38> kDefinitions = {{
+	constexpr std::array<EditorComponentDefinition, 44> kDefinitions = {{
 		{
 			"MeshRenderer", "3Dモデル表示", "Mesh Renderer",
 			"3DモデルとMaterialをSceneへ表示します。",
@@ -366,6 +366,60 @@ namespace {
 			EditorComponentTagBit(EditorComponentTag::Combat) |
 			EditorComponentTagBit(EditorComponentTag::Animation) |
 			EditorComponentTagBit(EditorComponentTag::Prefab)
+		},
+		{
+			"FishingScoreAttackDirector", "釣りスコア管理", "Fishing Score Attack Director",
+			"魚数選択、距離倍率、釣り針Pool、制限時間の設定を保持します。",
+			"Stores fish selection, distance multipliers, hook pool, and time-limit settings.",
+			EditorComponentCategory::Gameplay,
+			SceneContext, 34, -1, "",
+			EditorComponentTagBit(EditorComponentTag::Spawn) |
+			EditorComponentTagBit(EditorComponentTag::UI)
+		},
+		{
+			"FishingHookSpawnArea", "釣り針生成範囲", "Fishing Hook Spawn Area",
+			"釣り針をランダム生成するXZ範囲を設定します。",
+			"Configures the XZ area used to randomly place fishing hooks.",
+			EditorComponentCategory::Gameplay,
+			SceneContext, 35, -1, "",
+			EditorComponentTagBit(EditorComponentTag::Spawn) |
+			EditorComponentTagBit(EditorComponentTag::ThreeD)
+		},
+		{
+			"FishingHookPool", "釣り針Pool", "Fishing Hook Pool",
+			"距離区間ごとの釣り針抽選Weightを設定します。",
+			"Configures hook selection weights for each distance band.",
+			EditorComponentCategory::Gameplay,
+			SceneContext, 36, -1, "",
+			EditorComponentTagBit(EditorComponentTag::Spawn) |
+			EditorComponentTagBit(EditorComponentTag::Reference)
+		},
+		{
+			"FishingHook", "釣り針", "Fishing Hook",
+			"釣り針に接触したときの基礎スコアを設定します。",
+			"Configures the base score awarded when the player reaches a hook.",
+			EditorComponentCategory::Gameplay,
+			SceneContext, 37, -1, "OBBCollider",
+			EditorComponentTagBit(EditorComponentTag::Collision) |
+			EditorComponentTagBit(EditorComponentTag::Spawn)
+		},
+		{
+			"FishingObstacle", "釣り障害物", "Fishing Obstacle",
+			"Cubeなどの見た目とStatic Colliderを持つ釣り用障害物です。",
+			"Marks a fishing obstacle with a visible mesh and a static collider.",
+			EditorComponentCategory::Gameplay,
+			SceneContext, 38, -1, "OBBCollider",
+			EditorComponentTagBit(EditorComponentTag::Collision) |
+			EditorComponentTagBit(EditorComponentTag::ThreeD)
+		},
+		{
+			"AgentTeamLeaderController", "群れ仮想リーダー制御", "Agent Team Leader Controller",
+			"所属Teamの仮想リーダーを、このEntityのTransformで制御します。",
+			"Controls the owning Team's virtual leader from this Entity's Transform.",
+			EditorComponentCategory::Gameplay,
+			SceneContext, 39, -1, "",
+			EditorComponentTagBit(EditorComponentTag::ThreeD) |
+			EditorComponentTagBit(EditorComponentTag::Reference)
 		}
 	}};
 

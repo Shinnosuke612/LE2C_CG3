@@ -17,6 +17,9 @@
 #include <filesystem>
 
 namespace {
+	constexpr char kDefaultEnvironmentMapPath[] =
+		"resources/rostock_laage_airport_4k.dds";
+
 	float ResolveReflectionIntensity(
 		const SceneComponent* meshRenderer,
 		float environmentDefault
@@ -66,13 +69,13 @@ void SceneEnvironmentSystem::Sync(
 	}
 
 	bool skyboxEnabled = false;
-	std::string requestedPath;
+	std::string requestedPath = kDefaultEnvironmentMapPath;
 	float skyboxIntensity = 1.0f;
 	float requestedReflectionIntensity = 0.3f;
 	if (environment) {
 		skyboxEnabled = environment->environmentSkyboxEnabled;
 		requestedPath = environment->environmentSkyboxPath.empty()
-			? "resources/rostock_laage_airport_4k.dds"
+			? kDefaultEnvironmentMapPath
 			: environment->environmentSkyboxPath;
 		skyboxIntensity =
 			(std::max)(0.0f, environment->environmentSkyboxIntensity);
@@ -83,31 +86,26 @@ void SceneEnvironmentSystem::Sync(
 		);
 	}
 
-	std::string texturePath;
-	if (skyboxEnabled && !requestedPath.empty()) {
-		const std::filesystem::path requestedFilePath =
-			StringUtility::ToPath(requestedPath);
-		texturePath = requestedFilePath.is_absolute()
-			? StringUtility::ToUtf8(
-				EditableResourcePath::ToProjectRelative(requestedFilePath)
-			)
-			: requestedPath;
+	const std::filesystem::path requestedFilePath =
+		StringUtility::ToPath(requestedPath);
+	const std::string texturePath = requestedFilePath.is_absolute()
+		? StringUtility::ToUtf8(
+			EditableResourcePath::ToProjectRelative(requestedFilePath)
+		)
+		: requestedPath;
+	const bool environmentMapChanged = texturePath != environmentMapPath_;
+	if (environmentMapChanged &&
+		TextureManager::GetInstance()->LoadTexture(texturePath)) {
+		environmentMapPath_ = texturePath;
 	}
+	reflectionIntensity_ = requestedReflectionIntensity;
 
-	if (!skyboxEnabled || texturePath.empty()) {
+	if (!skyboxEnabled || environmentMapPath_.empty()) {
 		skybox_.reset();
-		environmentMapPath_.clear();
-		reflectionIntensity_ = 0.0f;
-	} else if (texturePath != environmentMapPath_) {
-		if (TextureManager::GetInstance()->LoadTexture(texturePath)) {
-			skybox_ = std::make_unique<Skybox>();
-			skybox_->Initialize(Object3dCommon::GetInstance(), texturePath);
-			skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
-			environmentMapPath_ = texturePath;
-			reflectionIntensity_ = requestedReflectionIntensity;
-		}
-	} else {
-		reflectionIntensity_ = requestedReflectionIntensity;
+	} else if (!skybox_ || environmentMapChanged) {
+		skybox_ = std::make_unique<Skybox>();
+		skybox_->Initialize(Object3dCommon::GetInstance(), environmentMapPath_);
+		skybox_->SetScale({ 100.0f, 100.0f, 100.0f });
 	}
 
 	if (skybox_) {
