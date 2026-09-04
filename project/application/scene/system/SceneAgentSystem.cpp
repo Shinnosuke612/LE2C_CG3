@@ -357,6 +357,7 @@ void SceneAgentSystem::Update(
 		SceneEntity* entity = nullptr;
 		SceneComponent behavior{};
 		Object3d* object = nullptr;
+		PhysicsBody* body = nullptr;
 		AgentRuntime* runtime = nullptr;
 		Transform transform{};
 		std::string teamKey;
@@ -451,6 +452,7 @@ void SceneAgentSystem::Update(
 			&entity,
 			resolvedBehavior,
 			object,
+			binding.body,
 			&runtime,
 			object->GetTransform(),
 			ResolveAgentTeamRuntimeKey(document, entity)
@@ -783,8 +785,46 @@ void SceneAgentSystem::Update(
 		bool useLeaderStartPosition = false;
 		bool hasMotionBehavior = false;
 	};
+	struct TeamControllerState {
+		Object3d* object = nullptr;
+		PhysicsBody* body = nullptr;
+		Transform transform{};
+	};
 
 	std::unordered_map<std::string, TeamFrameState> teamFrames;
+	std::unordered_map<std::string, TeamControllerState> teamControllers;
+	std::unordered_set<std::string> ambiguousTeamControllers;
+	for (const SceneRuntimeObjectBinding& binding : bindings) {
+		if (
+			!binding.entity ||
+			!binding.object ||
+			!IsEntityActiveInHierarchy(document, *binding.entity) ||
+			!FindEnabledComponent(
+				*binding.entity,
+				"AgentTeamLeaderController"
+			)
+		) {
+			continue;
+		}
+		const SceneTeamSettings* team =
+			document.ResolveEntityTeam(*binding.entity);
+		if (!team || team->name.empty()) {
+			continue;
+		}
+		const std::string teamKey = "team:" + team->name;
+		if (teamControllers.contains(teamKey)) {
+			ambiguousTeamControllers.insert(teamKey);
+			continue;
+		}
+		teamControllers.emplace(
+			teamKey,
+			TeamControllerState{
+				binding.object,
+				binding.body,
+				binding.object->GetTransform()
+			}
+		);
+	}
 	std::unordered_set<std::string> requiredTeamKeys;
 	// 群れの仮想リーダーは個体更新より先に決定し、同じフレームの共通基準にする。
 	for (const AgentUpdateEntry& agent : agents) {
@@ -837,6 +877,11 @@ void SceneAgentSystem::Update(
 		const float invCount = 1.0f / static_cast<float>(frame.count);
 		const Vector3 center = Math::Multiply(frame.centerSum, invCount);
 		TeamRuntime& runtime = teamRuntimes_[teamKey];
+		const bool wasInitialized = runtime.initialized;
+		const auto controllerIt = teamControllers.find(teamKey);
+		const bool controlled =
+			controllerIt != teamControllers.end() &&
+			!ambiguousTeamControllers.contains(teamKey);
 		if (!runtime.initialized) {
 			runtime.center = frame.useLeaderStartPosition
 				? frame.leaderStartPosition
@@ -882,6 +927,39 @@ void SceneAgentSystem::Update(
 			runtime.desiredSpeed = initialSpeed;
 			runtime.decisionValid = false;
 			runtime.initialized = true;
+		}
+		if (controlled) {
+			const TeamControllerState& controller = controllerIt->second;
+			const Vector3 previousCenter = runtime.center;
+			runtime.center = controller.transform.translate;
+			const Vector3 controllerRotation = controller.transform.useQuaternionRotation
+				? MakeEulerFromQuaternion(controller.transform.quaternionRotate)
+				: controller.transform.rotate;
+			runtime.heading = ForwardDirectionFromRotation(
+				controllerRotation,
+				"+Z",
+				runtime.heading
+			);
+			if (
+				wasInitialized &&
+				controller.body &&
+				Math::Length(controller.body->velocity) > 0.0001f
+			) {
+				runtime.velocity = controller.body->velocity;
+			} else if (wasInitialized && dt > 0.0f) {
+				runtime.velocity = Math::Multiply(
+					Math::Subtract(runtime.center, previousCenter),
+					1.0f / dt
+				);
+			} else {
+				runtime.velocity = {};
+			}
+			runtime.desiredDirection = runtime.heading;
+			runtime.desiredSpeed = Math::Length(runtime.velocity);
+			runtime.rotation = controllerRotation;
+			runtime.forwardAxis = frame.motionBehavior.agentForwardAxis;
+			runtime.decisionValid = true;
+			continue;
 		}
 
 		const SceneComponent& behavior = frame.motionBehavior;
@@ -1463,6 +1541,29 @@ void SceneAgentSystem::Update(
 		agent.object->Update();
 		SynchronizeSceneTransform(*agent.entity, transform);
 		agent.transform = transform;
+	}
+}
+
+void SceneAgentSystem::ResetTeam(
+	SceneDocument& document,
+	const std::string& teamName
+) {
+	if (teamName.empty()) {
+		return;
+	}
+	const std::string teamKey = "team:" + teamName;
+	teamRuntimes_.erase(teamKey);
+	for (auto iterator = agentRuntimes_.begin();
+		iterator != agentRuntimes_.end();) {
+		const SceneEntity* entity = document.FindEntity(iterator->first);
+		const SceneTeamSettings* team = entity
+			? document.ResolveEntityTeam(*entity)
+			: nullptr;
+		if (team && team->name == teamName) {
+			iterator = agentRuntimes_.erase(iterator);
+		} else {
+			++iterator;
+		}
 	}
 }
 

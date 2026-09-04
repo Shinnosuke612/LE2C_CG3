@@ -209,6 +209,7 @@
 	<ClCompile Include="application\scene\system\SceneTextRenderSystem.cpp" />
 	<ClCompile Include="application\scene\system\SceneTextMotionSystem.cpp" />
 	<ClCompile Include="application\scene\system\SceneGameFlowSystem.cpp" />
+	<ClCompile Include="application\scene\system\SceneFishingScoreAttackSystem.cpp" />
 	<ClCompile Include="application\scene\system\SceneAudioSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneDebugSystem.cpp" />
     <ClCompile Include="application\scene\system\SceneEnemySystem.cpp" />
@@ -471,6 +472,7 @@
 	<ClInclude Include="application\scene\system\SceneTextRenderSystem.h" />
 	<ClInclude Include="application\scene\system\SceneTextMotionSystem.h" />
 	<ClInclude Include="application\scene\system\SceneGameFlowSystem.h" />
+	<ClInclude Include="application\scene\system\SceneFishingScoreAttackSystem.h" />
 	<ClInclude Include="application\scene\system\SceneAudioSystem.h" />
     <ClInclude Include="application\scene\system\SceneDebugSystem.h" />
     <ClInclude Include="application\scene\system\SceneEnemySystem.h" />
@@ -543,6 +545,7 @@
     <None Include="resources\shaders\UpdateGpuParticle.CS.hlsl" />
     <None Include="resources\shaders\RadialBlur.PS.hlsl" />
     <None Include="resources\shaders\Grayscale.PS.hlsl" />
+    <None Include="resources\shaders\IrisTransition.PS.hlsl" />
     <None Include="resources\shaders\Noise.PS.hlsl" />
     <None Include="resources\shaders\Outline.PS.hlsl" />
     <None Include="resources\shaders\Skinning.CS.hlsl" />

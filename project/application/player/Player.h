@@ -30,6 +30,12 @@ public:
 	Object3d* GetObject() const { return object_; }
 	void SetCollider(Collider* collider);
 	void SetTransform(const Transform& transform);
+	bool ClampToWaterBounds(
+		const Vector3& center,
+		float yaw,
+		float halfSizeX,
+		float halfSizeZ
+	);
 	void SetBehaviorSettings(
 		float moveSpeed,
 		float jumpVelocity,
@@ -46,7 +52,6 @@ public:
 
 private:
 	void ApplyPosition();
-	void SyncRotationStateFromObject();
 
 private:
 	Object3d* object_ = nullptr;
@@ -58,10 +63,6 @@ private:
 	float turnResponsiveness_ = 0.018f;
 	float jumpVelocity_ = 37.2f;
 	float dashMultiplier_ = 1.65f;
-	float currentYaw_ = 0.0f;
-	float currentPitch_ = 0.0f;
-	Quaternion currentRotation_ = { 0.0f, 0.0f, 0.0f, 1.0f };
-	bool rotationInitialized_ = false;
 	bool cameraRelativeMove_ = true;
 	bool allowJump_ = true;
 	bool inWater_ = false;

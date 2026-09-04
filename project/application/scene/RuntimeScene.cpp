@@ -245,7 +245,7 @@ void RuntimeScene::Update(float deltaTime)
 		const std::string targetSceneId =
 			transitionSystem_.Update(*activeDocument);
 		if (!targetSceneId.empty()) {
-			sceneManager_->ChangeScene(targetSceneId);
+			sceneManager_->RequestSceneTransition(targetSceneId);
 			return;
 		}
 	}
@@ -273,6 +273,16 @@ void RuntimeScene::Update(float deltaTime)
 		}
 	} else {
 		gameFlowSystem_.Clear();
+	}
+	if (activeDocument && playing) {
+		// Fish選択はObject同期前に確定し、同FrameのCollider生成へ反映する。
+		fishingScoreAttackSystem_.UpdateBeforeSimulation(
+			*activeDocument,
+			deltaTime,
+			true
+		);
+	} else {
+		fishingScoreAttackSystem_.Clear();
 	}
 	const std::string runtimeSceneId = GetSceneAssetId().empty()
 		? "runtime"
@@ -446,12 +456,17 @@ void RuntimeScene::Update(float deltaTime)
 			runtimeObjectBindings_,
 			deltaTime,
 			playing,
-			playing
+			playing,
+			fishingScoreAttackSystem_.AcceptWheelZoom()
 		);
 	}
 	Vector3 playerAttackInputDirection{};
 	if (player_ && playing) {
-		player_->Update(camera_, gameFlowResult.gameplayAllowed);
+		player_->Update(
+			camera_,
+			gameFlowResult.gameplayAllowed &&
+				fishingScoreAttackSystem_.IsPlayerMovementAllowed()
+		);
 		const Vector3& playerVelocity = player_->GetPhysicsBody().velocity;
 		playerAttackInputDirection = { playerVelocity.x, 0.0f, playerVelocity.z };
 		if (Math::Length(playerAttackInputDirection) > 0.0001f) {
@@ -495,10 +510,66 @@ void RuntimeScene::Update(float deltaTime)
 		SceneEntity* playerEntity = activeDocument
 			? activeDocument->FindEntityByName("Player")
 			: nullptr;
+		SceneFishingScoreAttackPlayerWaterBounds waterBounds{};
+		if (playerEntity &&
+			fishingScoreAttackSystem_.TryGetPlayerWaterBounds(waterBounds) &&
+			waterBounds.playerEntityId == playerEntity->id) {
+			player_->ClampToWaterBounds(
+				waterBounds.center,
+				waterBounds.yaw,
+				waterBounds.halfSizeX,
+				waterBounds.halfSizeZ
+			);
+		}
 		if (playerEntity && player_->GetObject()) {
 			SynchronizeSceneTransform(
 				playerEntity->transform,
 				player_->GetObject()->GetTransform()
+			);
+		}
+	}
+	if (activeDocument && playing) {
+		// Player Physics後のCollider world transformで釣り針Triggerを判定する。
+		fishingScoreAttackSystem_.UpdateAfterSimulation(
+			*activeDocument,
+			runtimeObjectBindings_,
+			true
+		);
+		SceneFishingScoreAttackPlayerResetRequest resetRequest{};
+		if (player_ &&
+			fishingScoreAttackSystem_.ConsumePlayerResetRequest(resetRequest)) {
+			SceneEntity* playerEntity = activeDocument->FindEntity(
+				resetRequest.playerEntityId
+			);
+			if (playerEntity && player_->GetObject()) {
+				player_->SetTransform(resetRequest.transform);
+				SynchronizeSceneTransform(
+					playerEntity->transform,
+					player_->GetObject()->GetTransform()
+				);
+			}
+			for (const SceneFishingScoreAttackPlayerResetRequest::EntityReset& entityReset :
+				resetRequest.entityResets) {
+				for (const SceneRuntimeObjectBinding& binding : runtimeObjectBindings_) {
+					if (
+						!binding.entity ||
+						binding.entity->id != entityReset.entityId ||
+						!binding.object
+					) {
+						continue;
+					}
+					binding.object->GetTransform() = entityReset.transform;
+					binding.object->Update();
+					SynchronizeSceneTransform(
+						binding.entity->transform,
+						binding.object->GetTransform()
+					);
+					break;
+				}
+			}
+			agentSystem_.ResetTeam(
+				*activeDocument,
+				resetRequest.teamName
 			);
 		}
 	}
@@ -583,7 +654,9 @@ void RuntimeScene::Update(float deltaTime)
 		);
 		if (!eventResult.sceneTransitionId.empty()) {
 			postProcessProfileSystem_.Reset(activeDocument);
-			sceneManager_->ChangeScene(eventResult.sceneTransitionId);
+			sceneManager_->RequestSceneTransition(
+				eventResult.sceneTransitionId
+			);
 			return;
 		}
 		for (const SceneTextMotionRequest& request : eventResult.textMotionRequests) {
@@ -621,6 +694,10 @@ void RuntimeScene::Update(float deltaTime)
 	textRenderSystem_.ClearPresentationOverrides();
 	if (activeDocument) {
 		for (const SceneGameFlowTextRequest& request : gameFlowResult.textRequests) {
+			textRenderSystem_.SetTextOverride(request.entityId, request.text);
+		}
+		for (const SceneFishingScoreAttackTextRequest& request :
+			fishingScoreAttackSystem_.GetTextRequests()) {
 			textRenderSystem_.SetTextOverride(request.entityId, request.text);
 		}
 		SceneEntity* statusText = postProcessProfileSystem_.GetStatusTextEntityId() != 0
