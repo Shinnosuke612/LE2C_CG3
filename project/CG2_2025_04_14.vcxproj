@@ -545,6 +545,7 @@
     <None Include="resources\shaders\UpdateGpuParticle.CS.hlsl" />
     <None Include="resources\shaders\RadialBlur.PS.hlsl" />
     <None Include="resources\shaders\Grayscale.PS.hlsl" />
+    <None Include="resources\shaders\IrisTransition.PS.hlsl" />
     <None Include="resources\shaders\Noise.PS.hlsl" />
     <None Include="resources\shaders\Outline.PS.hlsl" />
     <None Include="resources\shaders\Skinning.CS.hlsl" />

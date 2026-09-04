@@ -245,7 +245,7 @@ void RuntimeScene::Update(float deltaTime)
 		const std::string targetSceneId =
 			transitionSystem_.Update(*activeDocument);
 		if (!targetSceneId.empty()) {
-			sceneManager_->ChangeScene(targetSceneId);
+			sceneManager_->RequestSceneTransition(targetSceneId);
 			return;
 		}
 	}
@@ -654,7 +654,9 @@ void RuntimeScene::Update(float deltaTime)
 		);
 		if (!eventResult.sceneTransitionId.empty()) {
 			postProcessProfileSystem_.Reset(activeDocument);
-			sceneManager_->ChangeScene(eventResult.sceneTransitionId);
+			sceneManager_->RequestSceneTransition(
+				eventResult.sceneTransitionId
+			);
 			return;
 		}
 		for (const SceneTextMotionRequest& request : eventResult.textMotionRequests) {
