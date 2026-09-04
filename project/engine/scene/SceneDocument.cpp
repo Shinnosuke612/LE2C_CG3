@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <system_error>
 #include <unordered_map>
 #include <unordered_set>
@@ -1548,6 +1549,7 @@ namespace {
 			result["fishMultiplierBase"] = component.fishingFishMultiplierBase;
 			result["fishMultiplierPerAdditionalFish"] =
 				component.fishingFishMultiplierPerAdditionalFish;
+			result["hookTierScoreMultipliers"] = component.fishingHookTierScoreMultipliers;
 			json hookMultiplierColors = json::array();
 			for (const Vector4& color : component.fishingHookMultiplierColors) {
 				hookMultiplierColors.push_back(VectorToJson(color));
@@ -1599,6 +1601,19 @@ namespace {
 			result["entries"] = std::move(entries);
 		} else if (component.type == "FishingHook") {
 			result["baseScore"] = component.fishingHookBaseScore;
+		} else if (component.type == "FishingShark") {
+			result["radiusX"] = component.fishingSharkRadiusX;
+			result["radiusZ"] = component.fishingSharkRadiusZ;
+			result["angularSpeed"] = component.fishingSharkAngularSpeed;
+			result["initialPhase"] = component.fishingSharkInitialPhase;
+			result["penaltyScore"] = component.fishingSharkPenaltyScore;
+			result["hitCooldownSeconds"] = component.fishingSharkHitCooldownSeconds;
+			result["pathRandomness"] = component.fishingSharkPathRandomness;
+			result["wanderMoveSpeed"] = component.fishingSharkWanderMoveSpeed;
+			result["wanderMaximumTurnRate"] = component.fishingSharkWanderMaximumTurnRate;
+			result["obstacleAvoidanceDistance"] = component.fishingSharkObstacleAvoidanceDistance;
+			result["obstacleAvoidanceStrength"] = component.fishingSharkObstacleAvoidanceStrength;
+			result["obstacleAvoidanceResponse"] = component.fishingSharkObstacleAvoidanceResponse;
 		} else if (component.type == "Camera") {
 			result["isMain"] = component.cameraIsMain;
 			result["fovY"] = component.cameraFovY;
@@ -2928,7 +2943,7 @@ namespace {
 					);
 					component.fishingMaxSelectableFishCount = std::clamp(
 						value.value("maxSelectableFishCount", component.fishingMaxSelectableFishCount),
-						1, kFishingScoreAttackMaxFishCount
+						1, (std::numeric_limits<int>::max)()
 					);
 					component.fishingDistanceBandCount = (std::max)(
 						value.value("distanceBandCount", component.fishingDistanceBandCount),
@@ -2985,6 +3000,19 @@ namespace {
 						"fishMultiplierPerAdditionalFish",
 						component.fishingFishMultiplierPerAdditionalFish
 					);
+					component.fishingHookTierScoreMultipliers = {
+						1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+						6.0f, 7.0f, 8.0f, 9.0f, 10.0f
+					};
+					if (const auto tierScoreMultipliers = value.find("hookTierScoreMultipliers");
+						tierScoreMultipliers != value.end() && tierScoreMultipliers->is_array()) {
+						component.fishingHookTierScoreMultipliers.clear();
+						for (const json& multiplier : *tierScoreMultipliers) {
+							if (multiplier.is_number()) {
+								component.fishingHookTierScoreMultipliers.push_back(multiplier.get<float>());
+							}
+						}
+					}
 					if (const auto colors = value.find("hookMultiplierColors");
 						colors != value.end() && colors->is_array()) {
 						component.fishingHookMultiplierColors.clear();
@@ -3124,6 +3152,73 @@ namespace {
 					component.fishingHookBaseScore = (std::max)(
 						value.value("baseScore", component.fishingHookBaseScore),
 						0
+					);
+				} else if (component.type == "FishingShark") {
+					component.fishingSharkRadiusX = (std::max)(
+						value.value("radiusX", component.fishingSharkRadiusX),
+						0.001f
+					);
+					component.fishingSharkRadiusZ = (std::max)(
+						value.value("radiusZ", component.fishingSharkRadiusZ),
+						0.001f
+					);
+					component.fishingSharkAngularSpeed = value.value(
+						"angularSpeed", component.fishingSharkAngularSpeed
+					);
+					component.fishingSharkInitialPhase = value.value(
+						"initialPhase", component.fishingSharkInitialPhase
+					);
+					component.fishingSharkPenaltyScore = (std::max)(
+						value.value("penaltyScore", component.fishingSharkPenaltyScore),
+						0
+					);
+					component.fishingSharkHitCooldownSeconds = (std::max)(
+						value.value(
+							"hitCooldownSeconds",
+							component.fishingSharkHitCooldownSeconds
+						),
+						0.0f
+					);
+					component.fishingSharkPathRandomness = (std::clamp)(
+						value.value("pathRandomness", component.fishingSharkPathRandomness),
+						0.0f,
+						1.0f
+					);
+					component.fishingSharkWanderMoveSpeed = (std::max)(
+						value.value(
+							"wanderMoveSpeed",
+							component.fishingSharkWanderMoveSpeed
+						),
+						0.0f
+					);
+					component.fishingSharkWanderMaximumTurnRate = (std::max)(
+						value.value(
+							"wanderMaximumTurnRate",
+							component.fishingSharkWanderMaximumTurnRate
+						),
+						0.0f
+					);
+					component.fishingSharkObstacleAvoidanceDistance = (std::max)(
+						value.value(
+							"obstacleAvoidanceDistance",
+							component.fishingSharkObstacleAvoidanceDistance
+						),
+						0.0f
+					);
+					component.fishingSharkObstacleAvoidanceStrength = (std::clamp)(
+						value.value(
+							"obstacleAvoidanceStrength",
+							component.fishingSharkObstacleAvoidanceStrength
+						),
+						0.0f,
+						1.0f
+					);
+					component.fishingSharkObstacleAvoidanceResponse = (std::max)(
+						value.value(
+							"obstacleAvoidanceResponse",
+							component.fishingSharkObstacleAvoidanceResponse
+						),
+						0.0f
 					);
 				}
 				component.cameraIsMain = value.value("isMain", false);
@@ -8732,6 +8827,10 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.fishingHookScoreUnit = 100.0f;
 		component.fishingFishMultiplierBase = 1.0f;
 		component.fishingFishMultiplierPerAdditionalFish = 1.0f;
+		component.fishingHookTierScoreMultipliers = {
+			1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+			6.0f, 7.0f, 8.0f, 9.0f, 10.0f
+		};
 		component.fishingHookMultiplierColors = {
 			{ 0.25f, 0.55f, 1.00f, 1.00f },
 			{ 0.15f, 0.85f, 1.00f, 1.00f },
@@ -8776,6 +8875,19 @@ bool SceneDocument::AddComponent(uint64_t id, const std::string& type) {
 		component.fishingHookPoolEntries.clear();
 	} else if (type == "FishingHook") {
 		component.fishingHookBaseScore = 0;
+	} else if (type == "FishingShark") {
+		component.fishingSharkRadiusX = 12.0f;
+		component.fishingSharkRadiusZ = 18.0f;
+		component.fishingSharkAngularSpeed = 0.35f;
+		component.fishingSharkInitialPhase = 0.0f;
+		component.fishingSharkPenaltyScore = 300;
+		component.fishingSharkHitCooldownSeconds = 2.0f;
+		component.fishingSharkPathRandomness = 0.2f;
+		component.fishingSharkWanderMoveSpeed = 0.0f;
+		component.fishingSharkWanderMaximumTurnRate = 1.2f;
+		component.fishingSharkObstacleAvoidanceDistance = 8.0f;
+		component.fishingSharkObstacleAvoidanceStrength = 0.65f;
+		component.fishingSharkObstacleAvoidanceResponse = 4.0f;
 	} else if (type == "AudioSource") {
 		component.audioClipPath.clear();
 		component.audioSpatialMode = "TwoD";

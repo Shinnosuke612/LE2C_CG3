@@ -4,6 +4,7 @@
 #include "../../engine/scene/SceneManager.h"
 #include "../../engine/scene/SceneExecutionContext.h"
 #include "../../engine/scene/SceneDocument.h"
+#include "../../engine/scene/SceneTransformResolver.h"
 #include "../../engine/3d/SrvManager.h"
 #include "../../engine/base/DirectXCommon.h"
 
@@ -26,14 +27,25 @@ namespace {
 	}
 
 	void SynchronizeSceneTransform(
-		QuaternionTransform& destination,
+		const SceneDocument& document,
+		SceneEntity& entity,
+		Object3d& object,
 		const Transform& source
 	) {
-		destination.scale = source.scale;
-		destination.rotate = source.useQuaternionRotation
-			? source.quaternionRotate
-			: MakeQuaternionFromEuler(source.rotate);
-		destination.translate = source.translate;
+		Transform localTransform{};
+		if (!SceneTransformResolver::TryConvertSceneWorldTransformToLocal(
+			document,
+			entity,
+			source,
+			localTransform
+		)) {
+			return;
+		}
+		entity.transform.scale = localTransform.scale;
+		entity.transform.rotate = localTransform.quaternionRotate;
+		entity.transform.translate = localTransform.translate;
+		object.GetTransform() = localTransform;
+		object.Update();
 	}
 
 	Transform GetSceneTransform(
@@ -528,7 +540,9 @@ void RuntimeScene::Update(float deltaTime)
 		}
 		if (playerEntity && player_->GetObject()) {
 			SynchronizeSceneTransform(
-				playerEntity->transform,
+				*activeDocument,
+				*playerEntity,
+				*player_->GetObject(),
 				player_->GetObject()->GetTransform()
 			);
 		}
@@ -557,7 +571,9 @@ void RuntimeScene::Update(float deltaTime)
 				)
 			) {
 				SynchronizeSceneTransform(
-					playerEntity->transform,
+					*activeDocument,
+					*playerEntity,
+					*player_->GetObject(),
 					player_->GetObject()->GetTransform()
 				);
 			}
@@ -571,7 +587,9 @@ void RuntimeScene::Update(float deltaTime)
 			if (playerEntity && player_->GetObject()) {
 				player_->SetTransform(resetRequest.transform);
 				SynchronizeSceneTransform(
-					playerEntity->transform,
+					*activeDocument,
+					*playerEntity,
+					*player_->GetObject(),
 					player_->GetObject()->GetTransform()
 				);
 			}
@@ -585,11 +603,11 @@ void RuntimeScene::Update(float deltaTime)
 					) {
 						continue;
 					}
-					binding.object->GetTransform() = entityReset.transform;
-					binding.object->Update();
 					SynchronizeSceneTransform(
-						binding.entity->transform,
-						binding.object->GetTransform()
+						*activeDocument,
+						*binding.entity,
+						*binding.object,
+						entityReset.transform
 					);
 					break;
 				}

@@ -13,8 +13,6 @@
 #include "../math/Vector2.h"
 #include "../math/Vector4.h"
 
-inline constexpr int kFishingScoreAttackMaxFishCount = 30;
-
 struct SceneTeamSettings {
 	std::string name = "Team";
 	bool agentBehaviorOverride = false;
@@ -423,6 +421,10 @@ struct SceneComponent {
 	float fishingHookScoreUnit = 100.0f;
 	float fishingFishMultiplierBase = 1.0f;
 	float fishingFishMultiplierPerAdditionalFish = 1.0f;
+	std::vector<float> fishingHookTierScoreMultipliers = {
+		1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+		6.0f, 7.0f, 8.0f, 9.0f, 10.0f
+	};
 	std::vector<Vector4> fishingHookMultiplierColors;
 	float fishingHookColorEmissiveIntensity = 0.35f;
 	bool fishingHookLegendVisible = false;
@@ -453,6 +455,18 @@ struct SceneComponent {
 	int fishingSpawnMaxAttempts = 16;
 	std::vector<SceneFishingHookPoolEntry> fishingHookPoolEntries;
 	int fishingHookBaseScore = 0;
+	float fishingSharkRadiusX = 12.0f;
+	float fishingSharkRadiusZ = 18.0f;
+	float fishingSharkAngularSpeed = 0.35f;
+	float fishingSharkInitialPhase = 0.0f;
+	int fishingSharkPenaltyScore = 300;
+	float fishingSharkHitCooldownSeconds = 2.0f;
+	float fishingSharkPathRandomness = 0.2f;
+	float fishingSharkWanderMoveSpeed = 0.0f;
+	float fishingSharkWanderMaximumTurnRate = 1.2f;
+	float fishingSharkObstacleAvoidanceDistance = 8.0f;
+	float fishingSharkObstacleAvoidanceStrength = 0.65f;
+	float fishingSharkObstacleAvoidanceResponse = 4.0f;
 	bool cameraIsMain = false;
 	float cameraFovY = 0.45f;
 	float cameraNearClip = 0.1f;

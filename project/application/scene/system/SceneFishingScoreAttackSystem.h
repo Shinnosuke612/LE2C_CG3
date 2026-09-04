@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class SceneDocument;
@@ -101,6 +102,15 @@ private:
 	void InitializeRun(SceneDocument& document, const SceneComponent& director);
 	void UpdateSelection(SceneDocument& document, const SceneComponent& director);
 	void StartRound(SceneDocument& document, const SceneComponent& director);
+	void UpdateSharks(
+		SceneDocument& document,
+		const SceneComponent& director,
+		float deltaTime
+	);
+	bool ResetSharksForRound(
+		SceneDocument& document,
+		const SceneComponent& director
+	);
 	void Finish(SceneDocument& document, const SceneComponent& director);
 	void Fault(SceneDocument& document, const SceneComponent& director, std::string diagnostic);
 	void SetFishPreview(SceneDocument& document, const SceneComponent& director);
@@ -119,6 +129,27 @@ private:
 	Transform initialPlayerTransform_{};
 	std::vector<uint64_t> initialFishEntityIds_;
 	std::vector<Transform> initialFishTransforms_;
+	struct SharkRuntime {
+		Transform initialTransform{};
+		float phase = 0.0f;
+		float hitCooldown = 0.0f;
+		float radiusXScale = 1.0f;
+		float radiusZScale = 1.0f;
+		float angularSpeedScale = 1.0f;
+		float targetRadiusXScale = 1.0f;
+		float targetRadiusZScale = 1.0f;
+		float targetAngularSpeedScale = 1.0f;
+		float wobblePhase = 0.0f;
+		float retargetRemainingSeconds = 0.0f;
+		Vector3 avoidanceOffset{};
+		Vector3 previousPosition{};
+		bool hasPreviousPosition = false;
+		float wanderHeading = 0.0f;
+		float wanderTargetHeading = 0.0f;
+		int wanderAvoidanceSide = 0;
+		std::mt19937 wanderRandom{};
+	};
+	std::unordered_map<uint64_t, SharkRuntime> sharkRuntimes_;
 	std::string fishingTeamName_;
 	SceneFishingScoreAttackPlayerWaterBounds playerWaterBounds_{};
 	bool hasInitialPlayerTransform_ = false;
