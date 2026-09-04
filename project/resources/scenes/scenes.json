@@ -11,6 +11,12 @@
       "name": "GAMEPLAY",
       "path": "resources/scenes/GAMEPLAY.scene.json",
       "runtimeProfile": "RUNTIME"
+    },
+    {
+      "id": "result",
+      "name": "RESULT",
+      "path": "resources/scenes/RESULT.scene.json",
+      "runtimeProfile": "RUNTIME"
     }
   ],
   "startScene": "gameplay",

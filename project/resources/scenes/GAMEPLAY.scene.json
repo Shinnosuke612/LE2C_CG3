@@ -3028,7 +3028,7 @@
           "sizeMultiplier": [
             1.0,
             2.0,
-            85.0
+            140.89999389648438
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -3074,7 +3074,7 @@
           1.0
         ],
         "translate": [
-          -66.0,
+          -100.9000015258789,
           0.800000011920929,
           0.0
         ]
@@ -3108,7 +3108,7 @@
           "sizeMultiplier": [
             1.0,
             2.0,
-            85.0
+            140.89999389648438
           ],
           "sphereRadius": 0.5,
           "type": "OBBCollider"
@@ -3154,7 +3154,7 @@
           1.0
         ],
         "translate": [
-          66.0,
+          100.9000015258789,
           0.800000011920929,
           0.0
         ]
@@ -3186,7 +3186,7 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            65.0,
+            100.0,
             2.0,
             1.0
           ],
@@ -3236,7 +3236,7 @@
         "translate": [
           0.0,
           0.800000011920929,
-          -84.5999984741211
+          -140.5
         ]
       }
     },
@@ -3266,7 +3266,7 @@
           ],
           "shape": "Box",
           "sizeMultiplier": [
-            65.0,
+            100.0,
             2.0,
             1.0
           ],
@@ -3316,7 +3316,7 @@
         "translate": [
           0.0,
           0.800000011920929,
-          84.5999984741211
+          140.5
         ]
       }
     },
@@ -3452,9 +3452,9 @@
           "enabled": true,
           "gravityScale": 0.550000011920929,
           "halfSize": [
-            65.0999984741211,
+            100.0,
             331.20001220703125,
-            84.0999984741211
+            140.0
           ],
           "lightColor": [
             0.550000011920929,
@@ -3736,7 +3736,7 @@
         "translate": [
           0.0,
           0.8146223425865173,
-          -82.36654663085938
+          -138.26654052734375
         ]
       }
     },
@@ -3910,7 +3910,7 @@
         "translate": [
           -4.0,
           3.0,
-          -66.05957794189453
+          -71.95957946777344
         ]
       }
     },
@@ -4084,7 +4084,7 @@
         "translate": [
           4.0,
           4.5,
-          -67.05957794189453
+          -72.95957946777344
         ]
       }
     },
@@ -4258,7 +4258,7 @@
         "translate": [
           -2.0,
           6.0,
-          -72.05957794189453
+          -77.95957946777344
         ]
       }
     },
@@ -4469,7 +4469,7 @@
         "translate": [
           3.0,
           2.5,
-          -74.05957794189453
+          -79.95957946777344
         ]
       }
     },
@@ -4643,7 +4643,7 @@
         "translate": [
           0.0,
           5.0,
-          -64.05957794189453
+          -69.95957946777344
         ]
       }
     },
@@ -4936,8 +4936,8 @@
       "components": [
         {
           "enabled": true,
-          "halfSizeX": 45.0,
-          "halfSizeZ": 80.0,
+          "halfSizeX": 80.0,
+          "halfSizeZ": 136.0,
           "localId": 1,
           "maxSpawnAttempts": 128,
           "minimumDistance": 15.0,
@@ -6247,7 +6247,7 @@
         "translate": [
           -12.0,
           2.5,
-          -60.0
+          -65.0
         ]
       }
     },
@@ -6421,7 +6421,7 @@
         "translate": [
           -6.0,
           4.5,
-          -60.0
+          -65.0
         ]
       }
     },
@@ -6595,7 +6595,7 @@
         "translate": [
           0.0,
           6.5,
-          -60.0
+          -65.0
         ]
       }
     },
@@ -6769,7 +6769,7 @@
         "translate": [
           6.0,
           3.5,
-          -60.0
+          -65.0
         ]
       }
     },
@@ -6943,7 +6943,7 @@
         "translate": [
           12.0,
           5.5,
-          -60.0
+          -65.0
         ]
       }
     },
@@ -7117,7 +7117,7 @@
         "translate": [
           -12.0,
           2.5,
-          -65.0
+          -70.0
         ]
       }
     },
@@ -7291,7 +7291,7 @@
         "translate": [
           -6.0,
           4.5,
-          -65.0
+          -70.0
         ]
       }
     },
@@ -7465,7 +7465,7 @@
         "translate": [
           0.0,
           6.5,
-          -65.0
+          -70.0
         ]
       }
     },
@@ -7639,7 +7639,7 @@
         "translate": [
           6.0,
           3.5,
-          -65.0
+          -70.0
         ]
       }
     },
@@ -7813,7 +7813,7 @@
         "translate": [
           12.0,
           5.5,
-          -65.0
+          -70.0
         ]
       }
     },
@@ -7987,7 +7987,7 @@
         "translate": [
           -12.0,
           2.5,
-          -70.0
+          -75.0
         ]
       }
     },
@@ -8161,7 +8161,7 @@
         "translate": [
           -6.0,
           4.5,
-          -70.0
+          -75.0
         ]
       }
     },
@@ -8335,7 +8335,7 @@
         "translate": [
           0.0,
           6.5,
-          -70.0
+          -75.0
         ]
       }
     },
@@ -8509,7 +8509,7 @@
         "translate": [
           6.0,
           3.5,
-          -70.0
+          -75.0
         ]
       }
     },
@@ -8683,7 +8683,7 @@
         "translate": [
           12.0,
           5.5,
-          -70.0
+          -75.0
         ]
       }
     },
@@ -8857,7 +8857,7 @@
         "translate": [
           -12.0,
           2.5,
-          -75.0
+          -80.0
         ]
       }
     },
@@ -9031,7 +9031,7 @@
         "translate": [
           -6.0,
           4.5,
-          -75.0
+          -80.0
         ]
       }
     },
@@ -9205,7 +9205,7 @@
         "translate": [
           0.0,
           6.5,
-          -75.0
+          -80.0
         ]
       }
     },
@@ -9379,7 +9379,7 @@
         "translate": [
           6.0,
           3.5,
-          -75.0
+          -80.0
         ]
       }
     },
@@ -9553,7 +9553,7 @@
         "translate": [
           12.0,
           5.5,
-          -75.0
+          -80.0
         ]
       }
     },
@@ -9727,7 +9727,7 @@
         "translate": [
           -12.0,
           2.5,
-          -80.0
+          -85.0
         ]
       }
     },
@@ -9901,7 +9901,7 @@
         "translate": [
           -6.0,
           4.5,
-          -80.0
+          -85.0
         ]
       }
     },
@@ -10075,7 +10075,7 @@
         "translate": [
           0.0,
           6.5,
-          -80.0
+          -85.0
         ]
       }
     },
@@ -10249,7 +10249,7 @@
         "translate": [
           6.0,
           3.5,
-          -80.0
+          -85.0
         ]
       }
     },
@@ -10423,7 +10423,7 @@
         "translate": [
           12.0,
           5.5,
-          -80.0
+          -85.0
         ]
       }
     },
@@ -10472,7 +10472,7 @@
         "translate": [
           0.0,
           0.0,
-          0.0
+          -50.0
         ]
       }
     },
@@ -10803,6 +10803,118 @@
       "active": true,
       "components": [
         {
+          "cullMode": "Back",
+          "enabled": true,
+          "environmentReflectionIntensity": 0.30000001192092896,
+          "environmentReflectionOverride": false,
+          "localId": 1,
+          "materialOverrides": [],
+          "modelPath": "tuna.gltf",
+          "type": "MeshRenderer",
+          "visualRotation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "active": true,
+          "debugColor": [
+            1.0,
+            0.15000000596046448,
+            0.15000000596046448,
+            1.0
+          ],
+          "debugDrawMode": "Wireframe",
+          "debugSegments": 16,
+          "debugVisible": false,
+          "enabled": true,
+          "isTrigger": true,
+          "layer": 4294967295,
+          "localId": 2,
+          "mask": 4294967295,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "shape": "Box",
+          "sizeMultiplier": [
+            5.0,
+            2.0,
+            2.0
+          ],
+          "sphereRadius": 0.5,
+          "type": "OBBCollider"
+        },
+        {
+          "angularSpeed": 0.3499999940395355,
+          "enabled": true,
+          "hitCooldownSeconds": 2.0,
+          "initialPhase": 0.0,
+          "localId": 3,
+          "obstacleAvoidanceDistance": 14.0,
+          "obstacleAvoidanceResponse": 4.0,
+          "obstacleAvoidanceStrength": 1.0,
+          "pathRandomness": 0.75,
+          "penaltyScore": 300,
+          "radiusX": 30.0,
+          "radiusZ": 24.0,
+          "type": "FishingShark",
+          "wanderMaximumTurnRate": 1.399999976158142,
+          "wanderMoveSpeed": 9.5
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 88,
+      "locked": false,
+      "modelPath": "tuna.gltf",
+      "name": "Fishing Shark",
+      "parentId": 83,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          3.5,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
           "bgmFadeSeconds": 0.5,
           "bus": "UI",
           "clipPath": "resources/海岸1.mp3",
@@ -10826,6 +10938,64 @@
       "folder": false,
       "folderTeamEnabled": false,
       "id": 87,
+      "locked": false,
+      "modelPath": "",
+      "name": "Entity",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "enabled": true,
+          "localId": 1,
+          "targetSceneId": "gameplay",
+          "triggerKey": "ENTER",
+          "triggerType": "Key",
+          "type": "SceneTransition"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 89,
       "locked": false,
       "modelPath": "",
       "name": "Entity",

@@ -28,7 +28,7 @@ namespace {
 		EditorComponentTag::Prefab
 	}};
 
-	constexpr std::array<EditorComponentDefinition, 44> kDefinitions = {{
+	constexpr std::array<EditorComponentDefinition, 45> kDefinitions = {{
 		{
 			"MeshRenderer", "3Dモデル表示", "Mesh Renderer",
 			"3DモデルとMaterialをSceneへ表示します。",
@@ -404,11 +404,21 @@ namespace {
 			EditorComponentTagBit(EditorComponentTag::Spawn)
 		},
 		{
+			"FishingShark", "周回サメ", "Fishing Shark",
+			"水域を周回し、プレイヤーの魚群に接触すると減点します。",
+			"Patrols the water and subtracts points when it contacts the player's formation.",
+			EditorComponentCategory::Gameplay,
+			SceneContext, 38, -1, "OBBCollider",
+			EditorComponentTagBit(EditorComponentTag::Collision) |
+			EditorComponentTagBit(EditorComponentTag::Enemy) |
+			EditorComponentTagBit(EditorComponentTag::ThreeD)
+		},
+		{
 			"FishingObstacle", "釣り障害物", "Fishing Obstacle",
 			"Cubeなどの見た目とStatic Colliderを持つ釣り用障害物です。",
 			"Marks a fishing obstacle with a visible mesh and a static collider.",
 			EditorComponentCategory::Gameplay,
-			SceneContext, 38, -1, "OBBCollider",
+			SceneContext, 39, -1, "OBBCollider",
 			EditorComponentTagBit(EditorComponentTag::Collision) |
 			EditorComponentTagBit(EditorComponentTag::ThreeD)
 		},
@@ -417,7 +427,7 @@ namespace {
 			"所属Teamの仮想リーダーを、このEntityのTransformで制御します。",
 			"Controls the owning Team's virtual leader from this Entity's Transform.",
 			EditorComponentCategory::Gameplay,
-			SceneContext, 39, -1, "",
+			SceneContext, 40, -1, "",
 			EditorComponentTagBit(EditorComponentTag::ThreeD) |
 			EditorComponentTagBit(EditorComponentTag::Reference)
 		}

@@ -25,6 +25,7 @@ namespace {
 	using SceneEntityQuery::IsEntityActiveInHierarchy;
 
 	constexpr float kTransformEpsilon = 0.0001f;
+	constexpr float kTwoPi = 6.28318530717958647692f;
 
 	float ExtractPlanarYaw(const Transform& transform) {
 		if (transform.useQuaternionRotation) {
@@ -79,11 +80,8 @@ namespace {
 		return std::isfinite(value) && value >= 0.0f;
 	}
 
-	bool IsIdentityTransform(const Transform& transform) {
+	bool IsIdentityRotationScale(const Transform& transform) {
 		return
-			std::abs(transform.translate.x) <= kTransformEpsilon &&
-			std::abs(transform.translate.y) <= kTransformEpsilon &&
-			std::abs(transform.translate.z) <= kTransformEpsilon &&
 			std::abs(transform.rotate.x) <= kTransformEpsilon &&
 			std::abs(transform.rotate.y) <= kTransformEpsilon &&
 			std::abs(transform.rotate.z) <= kTransformEpsilon &&
@@ -92,7 +90,7 @@ namespace {
 			std::abs(transform.scale.z - 1.0f) <= kTransformEpsilon;
 	}
 
-	bool HasIdentityAncestors(
+	bool HasTranslationOnlyAncestors(
 		const SceneDocument& document,
 		const SceneEntity& entity
 	) {
@@ -103,7 +101,7 @@ namespace {
 			if (!parent) {
 				return false;
 			}
-			if (!IsIdentityTransform(
+			if (!IsIdentityRotationScale(
 				SceneTransformResolver::ResolveScene3DTransform(document, *parent)
 			)) {
 				return false;
@@ -157,6 +155,261 @@ namespace {
 		float x = 0.0f;
 		float z = 0.0f;
 	};
+
+	struct SharkObstacleFootprint {
+		Vector3 center{};
+		float axisXCosine = 1.0f;
+		float axisXSine = 0.0f;
+		float halfSizeX = 0.0f;
+		float halfSizeZ = 0.0f;
+	};
+
+	struct SharkWaterBounds {
+		Vector3 center{};
+		float axisXCosine = 1.0f;
+		float axisXSine = 0.0f;
+		float halfSizeX = 0.0f;
+		float halfSizeZ = 0.0f;
+	};
+
+	SharkObstacleFootprint BuildSharkObstacleFootprint(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& collider
+	) {
+		const Transform transform =
+			SceneTransformResolver::ResolveScene3DTransform(document, entity);
+		const float yaw = ExtractPlanarYaw(transform);
+		const float cosine = std::cos(yaw);
+		const float sine = std::sin(yaw);
+		const float scaleX = (std::max)(std::abs(transform.scale.x), 0.001f);
+		const float scaleZ = (std::max)(std::abs(transform.scale.z), 0.001f);
+		return {
+			ToSpawnWorldPosition(
+				transform,
+				collider.colliderOffset.x * scaleX,
+				collider.colliderOffset.z * scaleZ,
+				transform.translate.y + collider.colliderOffset.y
+			),
+			cosine,
+			sine,
+			std::abs(collider.colliderSizeMultiplier.x) * scaleX,
+			std::abs(collider.colliderSizeMultiplier.z) * scaleZ
+		};
+	}
+
+	std::vector<SharkObstacleFootprint> BuildSharkObstacleFootprints(
+		const SceneDocument& document
+	) {
+		std::vector<SharkObstacleFootprint> obstacles;
+		for (const SceneEntity& entity : document.GetEntities()) {
+			if (!IsEntityActiveInHierarchy(document, entity) ||
+				!FindEnabledComponent(entity, "FishingObstacle")) {
+				continue;
+			}
+			const SceneComponent* collider = FindEnabledComponent(
+				entity, "OBBCollider"
+			);
+			if (!collider || collider->colliderIsTrigger) {
+				continue;
+			}
+			obstacles.push_back(
+				BuildSharkObstacleFootprint(document, entity, *collider)
+			);
+		}
+		return obstacles;
+	}
+
+	float SharkColliderRadiusXZ(
+		const SceneComponent& collider,
+		const Transform& transform
+	) {
+		const float sizeX = std::abs(collider.colliderSizeMultiplier.x) *
+			(std::max)(std::abs(transform.scale.x), 0.001f);
+		const float sizeZ = std::abs(collider.colliderSizeMultiplier.z) *
+			(std::max)(std::abs(transform.scale.z), 0.001f);
+		return std::sqrt(sizeX * sizeX + sizeZ * sizeZ);
+	}
+
+	SharkWaterBounds BuildSharkWaterBounds(
+		const SceneDocument& document,
+		const SceneEntity& entity,
+		const SceneComponent& waterVolume
+	) {
+		Transform transform =
+			SceneTransformResolver::ResolveScene3DTransform(document, entity);
+		const float scaleX = (std::max)(std::abs(transform.scale.x), 0.001f);
+		const float scaleZ = (std::max)(std::abs(transform.scale.z), 0.001f);
+		const float yaw = ExtractPlanarYaw(transform);
+		transform.translate = ToSpawnWorldPosition(
+			transform,
+			waterVolume.waterOffset.x,
+			waterVolume.waterOffset.z,
+			transform.translate.y + waterVolume.waterOffset.y
+		);
+		return {
+			transform.translate,
+			std::cos(yaw),
+			std::sin(yaw),
+			waterVolume.waterHalfSize.x * scaleX,
+			waterVolume.waterHalfSize.z * scaleZ
+		};
+	}
+
+	XZPoint ToSharkLocalXZ(
+		const Vector3& position,
+		const Vector3& center,
+		float axisXCosine,
+		float axisXSine
+	) {
+		const float deltaX = position.x - center.x;
+		const float deltaZ = position.z - center.z;
+		return {
+			deltaX * axisXCosine - deltaZ * axisXSine,
+			deltaX * axisXSine + deltaZ * axisXCosine
+		};
+	}
+
+	bool SegmentIntersectsSharkObstacle(
+		const XZPoint& start,
+		const XZPoint& end,
+		const SharkObstacleFootprint& obstacle,
+		float inflation
+	) {
+		const XZPoint localStart = ToSharkLocalXZ(
+			{ start.x, 0.0f, start.z },
+			obstacle.center,
+			obstacle.axisXCosine,
+			obstacle.axisXSine
+		);
+		const XZPoint localEnd = ToSharkLocalXZ(
+			{ end.x, 0.0f, end.z },
+			obstacle.center,
+			obstacle.axisXCosine,
+			obstacle.axisXSine
+		);
+		const float halfSizeX = obstacle.halfSizeX + inflation;
+		const float halfSizeZ = obstacle.halfSizeZ + inflation;
+		const float delta[2] = {
+			localEnd.x - localStart.x,
+			localEnd.z - localStart.z
+		};
+		const float origin[2] = { localStart.x, localStart.z };
+		const float halfSize[2] = { halfSizeX, halfSizeZ };
+		float minimum = 0.0f;
+		float maximum = 1.0f;
+		for (int axis = 0; axis < 2; ++axis) {
+			if (std::abs(delta[axis]) <= kTransformEpsilon) {
+				if (std::abs(origin[axis]) > halfSize[axis]) {
+					return false;
+				}
+				continue;
+			}
+			float nearValue = (-halfSize[axis] - origin[axis]) / delta[axis];
+			float farValue = (halfSize[axis] - origin[axis]) / delta[axis];
+			if (nearValue > farValue) {
+				std::swap(nearValue, farValue);
+			}
+			minimum = (std::max)(minimum, nearValue);
+			maximum = (std::min)(maximum, farValue);
+			if (minimum > maximum) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool IsPointInsideSharkWater(
+		const XZPoint& point,
+		const SharkWaterBounds& water,
+		float margin
+	) {
+		const XZPoint local = ToSharkLocalXZ(
+			{ point.x, 0.0f, point.z },
+			water.center,
+			water.axisXCosine,
+			water.axisXSine
+		);
+		return std::abs(local.x) <= water.halfSizeX - margin &&
+			std::abs(local.z) <= water.halfSizeZ - margin;
+	}
+
+	bool IsSharkSegmentClear(
+		const XZPoint& start,
+		const XZPoint& end,
+		const SharkWaterBounds& water,
+		const std::vector<SharkObstacleFootprint>& obstacles,
+		float sharkRadius
+	) {
+		constexpr float kSafetyMargin = 0.25f;
+		if (!IsPointInsideSharkWater(end, water, sharkRadius + kSafetyMargin)) {
+			return false;
+		}
+		for (const SharkObstacleFootprint& obstacle : obstacles) {
+			if (SegmentIntersectsSharkObstacle(
+				start, end, obstacle, sharkRadius + kSafetyMargin
+			)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	float NormalizeSharkAngle(float angle) {
+		while (angle > 3.14159265358979323846f) {
+			angle -= kTwoPi;
+		}
+		while (angle < -3.14159265358979323846f) {
+			angle += kTwoPi;
+		}
+		return angle;
+	}
+
+	float SharkAngleDelta(float from, float to) {
+		return NormalizeSharkAngle(to - from);
+	}
+
+	float MoveSharkAngle(
+		float current,
+		float target,
+		float maximumDelta
+	) {
+		const float delta = SharkAngleDelta(current, target);
+		return NormalizeSharkAngle(
+			current + std::clamp(delta, -maximumDelta, maximumDelta)
+		);
+	}
+
+	Vector3 SharkHeadingVector(float heading) {
+		return { std::sin(heading), 0.0f, std::cos(heading) };
+	}
+
+	float MeasureSharkHeadingClearance(
+		const XZPoint& start,
+		float heading,
+		float lookahead,
+		const SharkWaterBounds& water,
+		const std::vector<SharkObstacleFootprint>& obstacles,
+		float sharkRadius
+	) {
+		constexpr int kSamples = 8;
+		const Vector3 direction = SharkHeadingVector(heading);
+		for (int sample = 1; sample <= kSamples; ++sample) {
+			const float distance = lookahead *
+				static_cast<float>(sample) / static_cast<float>(kSamples);
+			const XZPoint end = {
+				start.x + direction.x * distance,
+				start.z + direction.z * distance
+			};
+			if (!IsSharkSegmentClear(
+				start, end, water, obstacles, sharkRadius
+			)) {
+				return lookahead * static_cast<float>(sample - 1) /
+					static_cast<float>(kSamples);
+			}
+		}
+		return lookahead;
+	}
 
 	struct FormationCapsule {
 		Vector3 center{};
@@ -423,6 +676,14 @@ namespace {
 		std::snprintf(buffer, sizeof(buffer), "%.1f", value);
 		return buffer;
 	}
+
+	std::string FormatHookScoreMultiplier(float value) {
+		std::string formatted = FormatOneDecimal(value);
+		if (formatted.size() >= 2 && formatted.ends_with(".0")) {
+			formatted.resize(formatted.size() - 2);
+		}
+		return formatted;
+	}
 }
 
 void SceneFishingScoreAttackSystem::UpdateBeforeSimulation(
@@ -478,6 +739,9 @@ void SceneFishingScoreAttackSystem::UpdateBeforeSimulation(
 	) {
 		UpdateSelection(document, *director);
 	}
+	if (state_ == SceneFishingScoreAttackState::Navigating) {
+		UpdateSharks(document, *director, deltaTime);
+	}
 	BuildTextRequests(*director);
 }
 
@@ -513,6 +777,73 @@ void SceneFishingScoreAttackSystem::UpdateAfterSimulation(
 			*director,
 			"Fishing formation capsule is invalid for the Player Team"
 		);
+		return;
+	}
+	long long sharkPenaltyTotal = 0;
+	bool sharkPenaltyApplied = false;
+	if (director->fishingUseFormationCapsuleCollision) {
+		for (const SceneEntity& entity : document.GetEntities()) {
+			if (!IsEntityActiveInHierarchy(document, entity)) {
+				continue;
+			}
+			const SceneComponent* shark = FindEnabledComponent(
+				entity, "FishingShark"
+			);
+			if (!shark) {
+				continue;
+			}
+			auto runtime = sharkRuntimes_.find(entity.id);
+			if (runtime == sharkRuntimes_.end() ||
+				runtime->second.hitCooldown > 0.0f) {
+				continue;
+			}
+			const SceneRuntimeObjectBinding* sharkBinding = FindBinding(
+				bindings, entity.id
+			);
+			if (!sharkBinding || !sharkBinding->collider ||
+				sharkBinding->collider->GetType() != Collider::Type::OBB ||
+				!sharkBinding->collider->IsActive() ||
+				!sharkBinding->collider->IsTrigger()) {
+				continue;
+			}
+			const auto* sharkCollider = static_cast<const OBBCollider*>(
+				sharkBinding->collider
+			);
+			if (!IntersectsFormationCapsule(
+				formationCapsule,
+				sharkCollider->GetOBB()
+			)) {
+				continue;
+			}
+			const long long penalty = static_cast<long long>(
+				(std::max)(shark->fishingSharkPenaltyScore, 0)
+			);
+			const long long maximumScore = (std::numeric_limits<long long>::max)();
+			if (sharkPenaltyTotal > maximumScore - penalty) {
+				sharkPenaltyTotal = maximumScore;
+			} else {
+				sharkPenaltyTotal += penalty;
+			}
+			runtime->second.hitCooldown = (std::max)(
+				shark->fishingSharkHitCooldownSeconds,
+				0.0f
+			);
+			sharkPenaltyApplied = true;
+		}
+	}
+	if (sharkPenaltyApplied) {
+		const long long minimumScore =
+			(std::numeric_limits<long long>::lowest)();
+		if (totalScore_ < minimumScore + sharkPenaltyTotal) {
+			totalScore_ = minimumScore;
+		} else {
+			totalScore_ -= sharkPenaltyTotal;
+		}
+		DeactivatePoolHooks(document, *director);
+		hasPlayerResetRequest_ = hasInitialPlayerTransform_;
+		state_ = SceneFishingScoreAttackState::SelectingNext;
+		SetFishPreview(document, *director);
+		BuildTextRequests(*director);
 		return;
 	}
 	if (director->fishingUseFormationCapsuleCollision) {
@@ -647,7 +978,9 @@ void SceneFishingScoreAttackSystem::UpdateAfterSimulation(
 		score = std::round(
 			static_cast<double>(director->fishingHookScoreUnit) *
 			static_cast<double>(hitHook->multiplier) *
-			static_cast<double>(hitHook->hookMultiplierTier) *
+			static_cast<double>(director->fishingHookTierScoreMultipliers[
+				static_cast<size_t>(hitHook->hookMultiplierTier - 1)
+			]) *
 			fishMultiplier
 		);
 	} else {
@@ -658,9 +991,13 @@ void SceneFishingScoreAttackSystem::UpdateAfterSimulation(
 		);
 	}
 	const double maximumScore = static_cast<double>(
-		(std::numeric_limits<long long>::max)() - totalScore_
+		(std::numeric_limits<long long>::max)()
 	);
-	totalScore_ += static_cast<long long>((std::min)(score, maximumScore));
+	if (score > 0.0 && score >= maximumScore - static_cast<double>(totalScore_)) {
+		totalScore_ = (std::numeric_limits<long long>::max)();
+	} else {
+		totalScore_ += static_cast<long long>(score);
+	}
 	DeactivatePoolHooks(document, *director);
 	hasPlayerResetRequest_ = hasInitialPlayerTransform_;
 	state_ = SceneFishingScoreAttackState::SelectingNext;
@@ -858,12 +1195,9 @@ bool SceneFishingScoreAttackSystem::Preflight(
 		director.fishingHookPoolEntityId == 0 ||
 		director.fishingWaterVolumeEntityId == 0 ||
 		director.fishingFishEntityIds.empty() ||
-		director.fishingFishEntityIds.size() >
-			static_cast<size_t>(kFishingScoreAttackMaxFishCount) ||
 		director.fishingMaxSelectableFishCount < 1 ||
-		director.fishingMaxSelectableFishCount > kFishingScoreAttackMaxFishCount ||
-		director.fishingMaxSelectableFishCount >
-			static_cast<int>(director.fishingFishEntityIds.size()) ||
+		static_cast<size_t>(director.fishingMaxSelectableFishCount) >
+			director.fishingFishEntityIds.size() ||
 		!std::isfinite(director.fishingDurationSeconds) ||
 		director.fishingDurationSeconds <= 0.0f ||
 		(!useHookBandSettings && (
@@ -907,10 +1241,17 @@ bool SceneFishingScoreAttackSystem::Preflight(
 			director.fishingHookScoreUnit <= 0.0f ||
 			!IsFiniteNonNegative(director.fishingFishMultiplierBase) ||
 			!IsFiniteNonNegative(director.fishingFishMultiplierPerAdditionalFish) ||
+			director.fishingHookTierScoreMultipliers.size() != 10 ||
 			!IsFiniteNonNegative(director.fishingHookColorEmissiveIntensity) ||
 			director.fishingHookMultiplierColors.size() != 10) {
 			diagnostic = "FishingScoreAttackDirector hook score settings are invalid";
 			return false;
+		}
+		for (const float multiplier : director.fishingHookTierScoreMultipliers) {
+			if (!IsFiniteNonNegative(multiplier)) {
+				diagnostic = "FishingScoreAttackDirector hook tier score multipliers are invalid";
+				return false;
+			}
 		}
 		for (const Vector4& color : director.fishingHookMultiplierColors) {
 			if (!std::isfinite(color.x) || !std::isfinite(color.y) ||
@@ -923,6 +1264,34 @@ bool SceneFishingScoreAttackSystem::Preflight(
 				return false;
 			}
 		}
+	}
+	bool hasFreeWanderShark = false;
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity)) {
+			continue;
+		}
+		const SceneComponent* shark = FindEnabledComponent(entity, "FishingShark");
+		if (!shark) {
+			continue;
+		}
+		if (!IsFiniteNonNegative(shark->fishingSharkWanderMoveSpeed) ||
+			!IsFiniteNonNegative(shark->fishingSharkWanderMaximumTurnRate)) {
+			diagnostic = "FishingShark free-wander settings are invalid";
+			return false;
+		}
+		if (shark->fishingSharkWanderMoveSpeed <= kTransformEpsilon) {
+			continue;
+		}
+		hasFreeWanderShark = true;
+		if (shark->fishingSharkWanderMaximumTurnRate <= kTransformEpsilon) {
+			diagnostic = "FishingShark free-wander settings are invalid";
+			return false;
+		}
+	}
+	if (hasFreeWanderShark &&
+		(!useHookBandSettings || director.fishingHookBands.size() < 2)) {
+		diagnostic = "Free-wander FishingShark requires at least two hook bands";
+		return false;
 	}
 	const SceneEntity* playerEntity = document.FindEntity(
 		director.fishingPlayerEntityId
@@ -1081,7 +1450,7 @@ bool SceneFishingScoreAttackSystem::Preflight(
 			!fishTeam || fishTeam->name != playerTeam->name ||
 			!fishCollider || !fishCollider->colliderActive ||
 			!fishCollider->colliderIsTrigger ||
-			!HasIdentityAncestors(document, *fish)
+			!HasTranslationOnlyAncestors(document, *fish)
 		) {
 			diagnostic = "Fishing fish require unique AgentBehavior, same Team, identity ancestors, and active Trigger Colliders";
 			return false;
@@ -1301,6 +1670,39 @@ void SceneFishingScoreAttackSystem::InitializeRun(
 				? SceneTransformResolver::ResolveScene3DTransform(document, *fish)
 				: Transform{}
 		);
+	}
+	sharkRuntimes_.clear();
+	for (const SceneEntity& entity : document.GetEntities()) {
+		if (!IsEntityActiveInHierarchy(document, entity) ||
+			!FindEnabledComponent(entity, "FishingShark")) {
+			continue;
+		}
+		const SceneComponent* shark = FindEnabledComponent(entity, "FishingShark");
+		SharkRuntime runtime{};
+		runtime.initialTransform.scale = entity.transform.scale;
+		runtime.initialTransform.rotate = MakeEulerFromQuaternion(
+			entity.transform.rotate
+		);
+		runtime.initialTransform.translate = entity.transform.translate;
+		const float pathRandomness = shark && std::isfinite(
+			shark->fishingSharkPathRandomness
+		) ? std::clamp(shark->fishingSharkPathRandomness, 0.0f, 1.0f) : 0.0f;
+		runtime.wanderRandom.seed(random_());
+		std::uniform_real_distribution<float> scaleDistribution(
+			1.0f - pathRandomness,
+			1.0f + pathRandomness
+		);
+		std::uniform_real_distribution<float> retargetDistribution(1.5f, 3.5f);
+		std::uniform_real_distribution<float> phaseDistribution(0.0f, kTwoPi);
+		runtime.radiusXScale = scaleDistribution(runtime.wanderRandom);
+		runtime.radiusZScale = scaleDistribution(runtime.wanderRandom);
+		runtime.angularSpeedScale = scaleDistribution(runtime.wanderRandom);
+		runtime.targetRadiusXScale = scaleDistribution(runtime.wanderRandom);
+		runtime.targetRadiusZScale = scaleDistribution(runtime.wanderRandom);
+		runtime.targetAngularSpeedScale = scaleDistribution(runtime.wanderRandom);
+		runtime.retargetRemainingSeconds = retargetDistribution(runtime.wanderRandom);
+		runtime.wobblePhase = phaseDistribution(runtime.wanderRandom);
+		sharkRuntimes_.emplace(entity.id, runtime);
 	}
 	hasPlayerResetRequest_ = false;
 	lastSafePlayerPlanarPosition_ = {};
@@ -1565,8 +1967,615 @@ void SceneFishingScoreAttackSystem::StartRound(
 	hasLastSafePlayerPlanarPosition_ = true;
 	playerConstraintRequest_ = {};
 	hasPlayerConstraintRequest_ = false;
+	if (!ResetSharksForRound(document, director)) {
+		return;
+	}
 	state_ = SceneFishingScoreAttackState::Navigating;
 	SetFishPreview(document, director);
+}
+
+void SceneFishingScoreAttackSystem::UpdateSharks(
+	SceneDocument& document,
+	const SceneComponent& director,
+	float deltaTime
+) {
+	const float safeDeltaTime = (std::max)(deltaTime, 0.0f);
+	const SceneEntity* waterEntity = document.FindEntity(
+		director.fishingWaterVolumeEntityId
+	);
+	const SceneComponent* waterVolume = FindComponent(
+		document,
+		director.fishingWaterVolumeEntityId,
+		"WaterVolume"
+	);
+	const bool hasWaterBounds = waterEntity && waterVolume;
+	const SharkWaterBounds waterBounds = hasWaterBounds
+		? BuildSharkWaterBounds(document, *waterEntity, *waterVolume)
+		: SharkWaterBounds{};
+	const std::vector<SharkObstacleFootprint> obstacles =
+		BuildSharkObstacleFootprints(document);
+	for (auto& [entityId, runtime] : sharkRuntimes_) {
+		SceneEntity* entity = document.FindEntity(entityId);
+		if (!entity || !IsEntityActiveInHierarchy(document, *entity)) {
+			continue;
+		}
+		const SceneComponent* shark = FindEnabledComponent(
+			*entity, "FishingShark"
+		);
+		if (!shark) {
+			continue;
+		}
+		const float wanderMoveSpeed = std::isfinite(
+			shark->fishingSharkWanderMoveSpeed
+		) ? (std::max)(shark->fishingSharkWanderMoveSpeed, 0.0f) : 0.0f;
+		if (wanderMoveSpeed > kTransformEpsilon) {
+			const Transform sharkTransform =
+				SceneTransformResolver::ResolveScene3DTransform(document, *entity);
+			const SceneComponent* sharkCollider = FindEnabledComponent(
+				*entity, "OBBCollider"
+			);
+			const float sharkRadius = sharkCollider
+				? SharkColliderRadiusXZ(*sharkCollider, sharkTransform)
+				: 0.0f;
+			const float pathRandomness = std::isfinite(
+				shark->fishingSharkPathRandomness
+			) ? std::clamp(shark->fishingSharkPathRandomness, 0.0f, 1.0f) : 0.0f;
+			const float maximumTurnRate = std::isfinite(
+				shark->fishingSharkWanderMaximumTurnRate
+			) ? (std::max)(shark->fishingSharkWanderMaximumTurnRate, 0.0f) : 0.0f;
+			if (!std::isfinite(runtime.wanderHeading)) {
+				runtime.wanderHeading = ExtractPlanarYaw(sharkTransform);
+			}
+			if (!std::isfinite(runtime.wanderTargetHeading)) {
+				runtime.wanderTargetHeading = runtime.wanderHeading;
+			}
+			runtime.retargetRemainingSeconds -= safeDeltaTime;
+			if (runtime.retargetRemainingSeconds <= 0.0f) {
+				std::uniform_real_distribution<float> intervalDistribution(0.6f, 1.6f);
+				runtime.retargetRemainingSeconds = intervalDistribution(
+					runtime.wanderRandom
+				);
+				if (pathRandomness > kTransformEpsilon) {
+					std::uniform_real_distribution<float> angleDistribution(
+						0.25f * 3.14159265358979323846f * pathRandomness,
+						3.14159265358979323846f * pathRandomness
+					);
+					std::uniform_int_distribution<int> signDistribution(0, 1);
+					const float sign = signDistribution(runtime.wanderRandom) == 0
+						? -1.0f
+						: 1.0f;
+					runtime.wanderTargetHeading = NormalizeSharkAngle(
+						runtime.wanderHeading + sign * angleDistribution(
+							runtime.wanderRandom
+						)
+					);
+				} else {
+					runtime.wanderTargetHeading = runtime.wanderHeading;
+				}
+			}
+
+			const XZPoint start = {
+				runtime.previousPosition.x,
+				runtime.previousPosition.z
+			};
+			const float configuredAvoidanceDistance = std::isfinite(
+				shark->fishingSharkObstacleAvoidanceDistance
+			) ? (std::max)(shark->fishingSharkObstacleAvoidanceDistance, 0.0f) : 0.0f;
+			const float lookahead = (std::max)(
+				configuredAvoidanceDistance,
+				wanderMoveSpeed * 0.75f
+			);
+			const float desiredHeading = runtime.wanderTargetHeading;
+			const Vector3 desiredDirection = SharkHeadingVector(desiredHeading);
+			const XZPoint lookaheadEnd = {
+				start.x + desiredDirection.x * lookahead,
+				start.z + desiredDirection.z * lookahead
+			};
+			const bool navigationReady = hasWaterBounds && sharkCollider;
+			const bool threat = navigationReady &&
+				!IsSharkSegmentClear(
+					start, lookaheadEnd, waterBounds, obstacles, sharkRadius
+				);
+			float turnRate = maximumTurnRate;
+			if (threat) {
+				const float avoidanceStrength = std::isfinite(
+					shark->fishingSharkObstacleAvoidanceStrength
+				) ? std::clamp(shark->fishingSharkObstacleAvoidanceStrength, 0.0f, 1.0f) : 0.0f;
+				const float obstacleTurnRate = std::isfinite(
+					shark->fishingSharkObstacleAvoidanceResponse
+				) ? (std::max)(shark->fishingSharkObstacleAvoidanceResponse, 0.0f) : 0.0f;
+				turnRate = (std::max)(turnRate, obstacleTurnRate);
+				const float offsets[] = {
+					0.0f,
+					-0.52359877559829887308f,
+					0.52359877559829887308f,
+					-1.04719755119659774615f,
+					1.04719755119659774615f,
+					-1.57079632679489661923f,
+					1.57079632679489661923f
+				};
+				float bestClearance = -1.0f;
+				float bestOffset = 0.0f;
+				for (float offset : offsets) {
+					const float clearance = MeasureSharkHeadingClearance(
+						start,
+						runtime.wanderHeading + offset,
+						lookahead,
+						waterBounds,
+						obstacles,
+						sharkRadius
+					);
+					const int candidateSide = offset < -kTransformEpsilon
+						? -1
+						: offset > kTransformEpsilon ? 1 : 0;
+					if (clearance > bestClearance + kTransformEpsilon ||
+						(std::abs(clearance - bestClearance) <= kTransformEpsilon &&
+							candidateSide == runtime.wanderAvoidanceSide)) {
+						bestClearance = clearance;
+						bestOffset = offset;
+					}
+				}
+				if (bestClearance <= kTransformEpsilon) {
+					bestOffset = runtime.wanderAvoidanceSide < 0
+						? -1.57079632679489661923f
+						: 1.57079632679489661923f;
+				}
+				runtime.wanderAvoidanceSide = bestOffset < -kTransformEpsilon
+					? -1
+					: bestOffset > kTransformEpsilon ? 1 : 0;
+				const float avoidanceHeading = NormalizeSharkAngle(
+					runtime.wanderHeading + bestOffset
+				);
+				runtime.wanderTargetHeading = NormalizeSharkAngle(
+					runtime.wanderHeading +
+						SharkAngleDelta(runtime.wanderHeading, avoidanceHeading) *
+						avoidanceStrength
+				);
+			} else {
+				runtime.wanderAvoidanceSide = 0;
+			}
+			runtime.wanderHeading = MoveSharkAngle(
+				runtime.wanderHeading,
+				runtime.wanderTargetHeading,
+				turnRate * safeDeltaTime
+			);
+			const Vector3 direction = SharkHeadingVector(runtime.wanderHeading);
+			const XZPoint candidate = {
+				start.x + direction.x * wanderMoveSpeed * safeDeltaTime,
+				start.z + direction.z * wanderMoveSpeed * safeDeltaTime
+			};
+			XZPoint finalPosition = start;
+			if (navigationReady && IsSharkSegmentClear(
+				start, candidate, waterBounds, obstacles, sharkRadius
+			)) {
+				finalPosition = candidate;
+			}
+			entity->transform.scale = runtime.initialTransform.scale;
+			entity->transform.translate = {
+				finalPosition.x,
+				runtime.initialTransform.translate.y,
+				finalPosition.z
+			};
+			entity->transform.rotate = MakeQuaternionFromEuler({
+				0.0f,
+				runtime.wanderHeading,
+				0.0f
+			});
+			runtime.previousPosition = entity->transform.translate;
+			runtime.hasPreviousPosition = true;
+			runtime.hitCooldown = (std::max)(
+				runtime.hitCooldown - safeDeltaTime,
+				0.0f
+			);
+			continue;
+		}
+		const float pathRandomness = std::isfinite(
+			shark->fishingSharkPathRandomness
+		) ? std::clamp(shark->fishingSharkPathRandomness, 0.0f, 1.0f) : 0.0f;
+		const float minimumScale = 1.0f - pathRandomness;
+		const float maximumScale = 1.0f + pathRandomness;
+		runtime.radiusXScale = std::clamp(
+			runtime.radiusXScale, minimumScale, maximumScale
+		);
+		runtime.radiusZScale = std::clamp(
+			runtime.radiusZScale, minimumScale, maximumScale
+		);
+		runtime.angularSpeedScale = std::clamp(
+			runtime.angularSpeedScale, minimumScale, maximumScale
+		);
+		runtime.targetRadiusXScale = std::clamp(
+			runtime.targetRadiusXScale, minimumScale, maximumScale
+		);
+		runtime.targetRadiusZScale = std::clamp(
+			runtime.targetRadiusZScale, minimumScale, maximumScale
+		);
+		runtime.targetAngularSpeedScale = std::clamp(
+			runtime.targetAngularSpeedScale, minimumScale, maximumScale
+		);
+		runtime.retargetRemainingSeconds -= safeDeltaTime;
+		if (runtime.retargetRemainingSeconds <= 0.0f) {
+			std::uniform_real_distribution<float> scaleDistribution(
+				minimumScale, maximumScale
+			);
+			std::uniform_real_distribution<float> retargetDistribution(1.5f, 3.5f);
+			runtime.targetRadiusXScale = scaleDistribution(runtime.wanderRandom);
+			runtime.targetRadiusZScale = scaleDistribution(runtime.wanderRandom);
+			runtime.targetAngularSpeedScale = scaleDistribution(runtime.wanderRandom);
+			runtime.retargetRemainingSeconds = retargetDistribution(runtime.wanderRandom);
+		}
+		const float scaleSmoothing = std::clamp(
+			1.0f - std::exp(-1.5f * safeDeltaTime),
+			0.0f,
+			1.0f
+		);
+		runtime.radiusXScale = Math::Lerp(
+			runtime.radiusXScale,
+			runtime.targetRadiusXScale,
+			scaleSmoothing
+		);
+		runtime.radiusZScale = Math::Lerp(
+			runtime.radiusZScale,
+			runtime.targetRadiusZScale,
+			scaleSmoothing
+		);
+		runtime.angularSpeedScale = Math::Lerp(
+			runtime.angularSpeedScale,
+			runtime.targetAngularSpeedScale,
+			scaleSmoothing
+		);
+		const float angularSpeed = shark->fishingSharkAngularSpeed *
+			runtime.angularSpeedScale;
+		runtime.phase += angularSpeed * safeDeltaTime;
+		const float cosine = std::cos(runtime.phase);
+		const float sine = std::sin(runtime.phase);
+		const float xWobbleArgument = runtime.phase * 1.37f + runtime.wobblePhase;
+		const float zWobbleArgument = runtime.phase * 0.91f +
+			runtime.wobblePhase * 1.61f;
+		const float xFactor = 1.0f + pathRandomness * 0.15f *
+			std::sin(xWobbleArgument);
+		const float zFactor = 1.0f + pathRandomness * 0.15f *
+			std::sin(zWobbleArgument);
+		const float xFactorDerivative = pathRandomness * 0.15f * 1.37f *
+			std::cos(xWobbleArgument);
+		const float zFactorDerivative = pathRandomness * 0.15f * 0.91f *
+			std::cos(zWobbleArgument);
+		const float baseRadiusX = shark->fishingSharkRadiusX * runtime.radiusXScale;
+		const float baseRadiusZ = shark->fishingSharkRadiusZ * runtime.radiusZScale;
+		const float radiusX = baseRadiusX * xFactor;
+		const float radiusZ = baseRadiusZ * zFactor;
+		const Vector3 basePosition = {
+			runtime.initialTransform.translate.x + radiusX * cosine,
+			runtime.initialTransform.translate.y,
+			runtime.initialTransform.translate.z + radiusZ * sine
+		};
+		Vector3 desiredAvoidanceOffset{};
+		const float avoidanceDistance = std::isfinite(
+			shark->fishingSharkObstacleAvoidanceDistance
+		) ? (std::max)(shark->fishingSharkObstacleAvoidanceDistance, 0.0f) : 0.0f;
+		const float avoidanceStrength = std::isfinite(
+			shark->fishingSharkObstacleAvoidanceStrength
+		) ? std::clamp(shark->fishingSharkObstacleAvoidanceStrength, 0.0f, 1.0f) : 0.0f;
+		const SceneComponent* sharkCollider = FindEnabledComponent(*entity, "OBBCollider");
+		if (sharkCollider && avoidanceDistance > 0.0f && avoidanceStrength > 0.0f) {
+			const float sharkRadius = ColliderRadiusXZ(*sharkCollider);
+			for (const SceneEntity& obstacleEntity : document.GetEntities()) {
+				if (!IsEntityActiveInHierarchy(document, obstacleEntity) ||
+					!FindEnabledComponent(obstacleEntity, "FishingObstacle")) {
+					continue;
+				}
+				const SceneComponent* obstacleCollider = FindEnabledComponent(
+					obstacleEntity, "OBBCollider"
+				);
+				if (!obstacleCollider || obstacleCollider->colliderIsTrigger) {
+					continue;
+				}
+				const Transform obstacleTransform =
+					SceneTransformResolver::ResolveScene3DTransform(
+						document, obstacleEntity
+					);
+				const Vector3 obstacleCenter = ToSpawnWorldPosition(
+					obstacleTransform,
+					obstacleCollider->colliderOffset.x,
+					obstacleCollider->colliderOffset.z,
+					obstacleTransform.translate.y + obstacleCollider->colliderOffset.y
+				);
+				Vector3 away = {
+					basePosition.x - obstacleCenter.x,
+					0.0f,
+					basePosition.z - obstacleCenter.z
+				};
+				float distance = Math::Length(away);
+				const float threshold = sharkRadius + ColliderRadiusXZ(*obstacleCollider) +
+					avoidanceDistance;
+				if (distance >= threshold || threshold <= 0.0f) {
+					continue;
+				}
+				if (distance <= kTransformEpsilon) {
+					away = { cosine, 0.0f, sine };
+					distance = 1.0f;
+				}
+				const float pushMagnitude = (threshold - distance) * avoidanceStrength;
+				desiredAvoidanceOffset = Math::Add(
+					desiredAvoidanceOffset,
+					Math::Multiply(Math::Normalize(away), pushMagnitude)
+				);
+			}
+		}
+		const float maxAvoidanceOffset = avoidanceDistance * avoidanceStrength;
+		const float avoidanceLength = Math::Length(desiredAvoidanceOffset);
+		if (avoidanceLength > maxAvoidanceOffset && avoidanceLength > kTransformEpsilon) {
+			desiredAvoidanceOffset = Math::Multiply(
+				desiredAvoidanceOffset,
+				maxAvoidanceOffset / avoidanceLength
+			);
+		}
+		const float response = std::isfinite(
+			shark->fishingSharkObstacleAvoidanceResponse
+		) ? (std::max)(shark->fishingSharkObstacleAvoidanceResponse, 0.0f) : 0.0f;
+		const float smoothing = std::clamp(
+			1.0f - std::exp(-response * safeDeltaTime),
+			0.0f,
+			1.0f
+		);
+		runtime.avoidanceOffset = Math::Lerp(
+			runtime.avoidanceOffset,
+			desiredAvoidanceOffset,
+			smoothing
+		);
+		runtime.avoidanceOffset.y = 0.0f;
+		entity->transform.scale = runtime.initialTransform.scale;
+		entity->transform.rotate = MakeQuaternionFromEuler(
+			runtime.initialTransform.rotate
+		);
+		const Vector3 finalPosition = Math::Add(
+			basePosition,
+			runtime.avoidanceOffset
+		);
+		entity->transform.translate = finalPosition;
+		const float movementX = finalPosition.x - runtime.previousPosition.x;
+		const float movementZ = finalPosition.z - runtime.previousPosition.z;
+		if (runtime.hasPreviousPosition &&
+			std::sqrt(movementX * movementX + movementZ * movementZ) >
+			kTransformEpsilon) {
+			const float yaw = std::atan2(movementX, movementZ);
+			entity->transform.rotate = MakeQuaternionFromEuler({ 0.0f, yaw, 0.0f });
+		} else if (std::abs(angularSpeed) > kTransformEpsilon) {
+			const float tangentX = baseRadiusX *
+				(xFactorDerivative * cosine - xFactor * sine) * angularSpeed;
+			const float tangentZ = baseRadiusZ *
+				(zFactorDerivative * sine + zFactor * cosine) * angularSpeed;
+			const float yaw = std::atan2(tangentX, tangentZ);
+			entity->transform.rotate = MakeQuaternionFromEuler({ 0.0f, yaw, 0.0f });
+		}
+		runtime.previousPosition = finalPosition;
+		runtime.hasPreviousPosition = true;
+		runtime.hitCooldown = (std::max)(
+			runtime.hitCooldown - safeDeltaTime,
+		0.0f
+		);
+	}
+}
+
+bool SceneFishingScoreAttackSystem::ResetSharksForRound(
+	SceneDocument& document,
+	const SceneComponent& director
+) {
+	const SceneEntity* waterEntity = document.FindEntity(
+		director.fishingWaterVolumeEntityId
+	);
+	const SceneComponent* waterVolume = FindComponent(
+		document,
+		director.fishingWaterVolumeEntityId,
+		"WaterVolume"
+	);
+	const SceneEntity* spawnAreaEntity = document.FindEntity(
+		director.fishingHookSpawnAreaEntityId
+	);
+	const SceneComponent* spawnArea = FindComponent(
+		document,
+		director.fishingHookSpawnAreaEntityId,
+		"FishingHookSpawnArea"
+	);
+	const SceneEntity* player = document.FindEntity(director.fishingPlayerEntityId);
+	if (!waterEntity || !waterVolume || !spawnAreaEntity || !spawnArea || !player) {
+		Fault(document, director, "FishingShark spawn references became invalid");
+		return false;
+	}
+	const SharkWaterBounds waterBounds = BuildSharkWaterBounds(
+		document, *waterEntity, *waterVolume
+	);
+	const std::vector<SharkObstacleFootprint> obstacles =
+		BuildSharkObstacleFootprints(document);
+	const Transform playerTransform =
+		SceneTransformResolver::ResolveScene3DTransform(document, *player);
+	const Transform areaTransform =
+		SceneTransformResolver::ResolveScene3DTransform(document, *spawnAreaEntity);
+	Transform bandWaterTransform =
+		SceneTransformResolver::ResolveScene3DTransform(document, *waterEntity);
+	bandWaterTransform.translate.x += waterVolume->waterOffset.x;
+	bandWaterTransform.translate.y += waterVolume->waterOffset.y;
+	bandWaterTransform.translate.z += waterVolume->waterOffset.z;
+	std::uniform_real_distribution<float> xDistribution(
+		-spawnArea->fishingSpawnHalfSizeX,
+		spawnArea->fishingSpawnHalfSizeX
+	);
+	std::uniform_real_distribution<float> zDistribution(
+		-spawnArea->fishingSpawnHalfSizeZ,
+		spawnArea->fishingSpawnHalfSizeZ
+	);
+	std::uniform_int_distribution<int> bandDistribution(
+		1,
+		(std::max)(static_cast<int>(director.fishingHookBands.size()) - 1, 1)
+	);
+	std::uniform_real_distribution<float> headingDistribution(
+		-3.14159265358979323846f,
+		3.14159265358979323846f
+	);
+	std::uniform_real_distribution<float> intervalDistribution(0.6f, 1.6f);
+	std::vector<Vector3> spawnedSharkPositions;
+	std::vector<float> spawnedSharkRadii;
+	for (auto& [entityId, runtime] : sharkRuntimes_) {
+		SceneEntity* entity = document.FindEntity(entityId);
+		if (!entity) {
+			continue;
+		}
+		const SceneComponent* shark = FindEnabledComponent(
+			*entity, "FishingShark"
+		);
+		if (!shark) {
+			continue;
+		}
+		const float wanderMoveSpeed = std::isfinite(
+			shark->fishingSharkWanderMoveSpeed
+		) ? (std::max)(shark->fishingSharkWanderMoveSpeed, 0.0f) : 0.0f;
+		if (wanderMoveSpeed > kTransformEpsilon) {
+			const Transform sharkTransform =
+				SceneTransformResolver::ResolveScene3DTransform(document, *entity);
+			const SceneComponent* sharkCollider = FindEnabledComponent(
+				*entity, "OBBCollider"
+			);
+			if (!sharkCollider) {
+				Fault(document, director, "FishingShark requires an OBB Collider");
+				return false;
+			}
+			const float sharkRadius = SharkColliderRadiusXZ(
+				*sharkCollider, sharkTransform
+			);
+			const int selectedBand = bandDistribution(runtime.wanderRandom);
+			Vector3 spawnPosition{};
+			float spawnHeading = 0.0f;
+			bool foundPosition = false;
+			for (int attempt = 0; attempt < spawnArea->fishingSpawnMaxAttempts; ++attempt) {
+				const Vector3 candidate = ToSpawnWorldPosition(
+					areaTransform,
+					xDistribution(runtime.wanderRandom),
+					zDistribution(runtime.wanderRandom),
+					playerTransform.translate.y
+				);
+				const Vector3 rawWaterLocal = ToLocalXZ(
+					bandWaterTransform,
+					candidate
+				);
+				const float normalizedZ = (rawWaterLocal.z + waterVolume->waterHalfSize.z) /
+					(2.0f * waterVolume->waterHalfSize.z);
+				const float orientedZ = startFromPositiveWaterZ_
+					? 1.0f - std::clamp(normalizedZ, 0.0f, 0.99999f)
+					: std::clamp(normalizedZ, 0.0f, 0.99999f);
+				const int candidateBand = (std::min)(
+					static_cast<int>(std::floor(orientedZ * 5.0f)),
+					4
+				);
+				if (candidateBand != selectedBand ||
+					!IsPointInsideSharkWater(
+						{ candidate.x, candidate.z }, waterBounds, sharkRadius + 0.25f
+					) ||
+					DistanceXZ(candidate, playerTransform.translate) <
+						spawnArea->fishingSpawnMinimumDistance ||
+					!IsSharkSegmentClear(
+						{ candidate.x, candidate.z },
+						{ candidate.x, candidate.z },
+						waterBounds, obstacles, sharkRadius
+					)) {
+					continue;
+				}
+				bool overlapsShark = false;
+				for (size_t index = 0; index < spawnedSharkPositions.size(); ++index) {
+					if (DistanceXZ(candidate, spawnedSharkPositions[index]) <
+						sharkRadius + spawnedSharkRadii[index] + 0.25f) {
+						overlapsShark = true;
+						break;
+					}
+				}
+				if (overlapsShark) {
+					continue;
+				}
+				spawnHeading = headingDistribution(runtime.wanderRandom);
+				const float lookahead = (std::max)(
+					shark->fishingSharkObstacleAvoidanceDistance,
+					wanderMoveSpeed * 0.75f
+				);
+				if (MeasureSharkHeadingClearance(
+					{ candidate.x, candidate.z },
+					spawnHeading,
+					lookahead,
+					waterBounds,
+					obstacles,
+					sharkRadius
+				) < lookahead - kTransformEpsilon) {
+					continue;
+				}
+				spawnPosition = candidate;
+				foundPosition = true;
+				break;
+			}
+			if (!foundPosition) {
+				Fault(document, director, "FishingShark has no valid position in hook bands 2-5");
+				return false;
+			}
+			entity->transform.scale = runtime.initialTransform.scale;
+			entity->transform.translate = spawnPosition;
+			runtime.wanderHeading = spawnHeading;
+			runtime.wanderTargetHeading = spawnHeading;
+			runtime.wanderAvoidanceSide = 0;
+			runtime.retargetRemainingSeconds = intervalDistribution(
+				runtime.wanderRandom
+		);
+			runtime.hitCooldown = 0.0f;
+			runtime.previousPosition = spawnPosition;
+			runtime.hasPreviousPosition = true;
+			entity->transform.rotate = MakeQuaternionFromEuler({
+				0.0f, spawnHeading, 0.0f
+			});
+			spawnedSharkPositions.push_back(spawnPosition);
+			spawnedSharkRadii.push_back(sharkRadius);
+			continue;
+		}
+		runtime.phase = shark->fishingSharkInitialPhase;
+		runtime.hitCooldown = 0.0f;
+		runtime.avoidanceOffset = {};
+		const float pathRandomness = std::isfinite(
+			shark->fishingSharkPathRandomness
+		) ? std::clamp(shark->fishingSharkPathRandomness, 0.0f, 1.0f) : 0.0f;
+		const float cosine = std::cos(runtime.phase);
+		const float sine = std::sin(runtime.phase);
+		const float xWobbleArgument = runtime.phase * 1.37f + runtime.wobblePhase;
+		const float zWobbleArgument = runtime.phase * 0.91f +
+			runtime.wobblePhase * 1.61f;
+		const float xFactor = 1.0f + pathRandomness * 0.15f *
+			std::sin(xWobbleArgument);
+		const float zFactor = 1.0f + pathRandomness * 0.15f *
+			std::sin(zWobbleArgument);
+		const float xFactorDerivative = pathRandomness * 0.15f * 1.37f *
+			std::cos(xWobbleArgument);
+		const float zFactorDerivative = pathRandomness * 0.15f * 0.91f *
+			std::cos(zWobbleArgument);
+		const float baseRadiusX = shark->fishingSharkRadiusX * runtime.radiusXScale;
+		const float baseRadiusZ = shark->fishingSharkRadiusZ * runtime.radiusZScale;
+		const float radiusX = baseRadiusX * xFactor;
+		const float radiusZ = baseRadiusZ * zFactor;
+		const float angularSpeed = shark->fishingSharkAngularSpeed *
+			runtime.angularSpeedScale;
+		entity->transform.scale = runtime.initialTransform.scale;
+		entity->transform.rotate = MakeQuaternionFromEuler(
+			runtime.initialTransform.rotate
+		);
+		entity->transform.translate = {
+			runtime.initialTransform.translate.x + radiusX * cosine,
+			runtime.initialTransform.translate.y,
+			runtime.initialTransform.translate.z + radiusZ * sine
+		};
+		runtime.previousPosition = entity->transform.translate;
+		runtime.hasPreviousPosition = true;
+		if (std::abs(angularSpeed) > kTransformEpsilon) {
+			const float tangentX = baseRadiusX *
+				(xFactorDerivative * cosine - xFactor * sine) * angularSpeed;
+			const float tangentZ = baseRadiusZ *
+				(zFactorDerivative * sine + zFactor * cosine) * angularSpeed;
+			const float yaw = std::atan2(tangentX, tangentZ);
+			entity->transform.rotate = MakeQuaternionFromEuler({ 0.0f, yaw, 0.0f });
+		}
+	}
+	return true;
 }
 
 void SceneFishingScoreAttackSystem::Finish(
@@ -1692,7 +2701,8 @@ void SceneFishingScoreAttackSystem::BuildTextRequests(
 			(state_ == SceneFishingScoreAttackState::SelectingInitial ||
 				state_ == SceneFishingScoreAttackState::Navigating ||
 				state_ == SceneFishingScoreAttackState::SelectingNext) &&
-			director.fishingHookMultiplierColors.size() == 10;
+			director.fishingHookMultiplierColors.size() == 10 &&
+			director.fishingHookTierScoreMultipliers.size() == 10;
 		if (director.fishingHookLegendTitleTextEntityId != 0) {
 			textRequests_.push_back({
 				director.fishingHookLegendTitleTextEntityId,
@@ -1711,7 +2721,9 @@ void SceneFishingScoreAttackSystem::BuildTextRequests(
 			textRequests_.push_back({
 				entityId,
 				showLegend
-					? director.fishingHookLegendPrefix + std::to_string(tierIndex + 1)
+					? director.fishingHookLegendPrefix + FormatHookScoreMultiplier(
+						director.fishingHookTierScoreMultipliers[tierIndex]
+					)
 					: std::string{},
 				showLegend,
 				showLegend
@@ -1726,6 +2738,7 @@ void SceneFishingScoreAttackSystem::Clear() {
 	state_ = SceneFishingScoreAttackState::Inactive;
 	directorEntityId_ = 0;
 	activeHooks_.clear();
+	sharkRuntimes_.clear();
 	initialPlayerTransform_ = {};
 	playerWaterBounds_ = {};
 	hasInitialPlayerTransform_ = false;

@@ -49,14 +49,25 @@ namespace {
 	}
 
 	void SynchronizeSceneTransform(
+		const SceneDocument& document,
 		SceneEntity& entity,
-		const Transform& transform
+		Object3d& object,
+		const Transform& worldTransform
 	) {
-		entity.transform.scale = transform.scale;
-		entity.transform.rotate = transform.useQuaternionRotation
-			? transform.quaternionRotate
-			: MakeQuaternionFromEuler(transform.rotate);
-		entity.transform.translate = transform.translate;
+		Transform localTransform{};
+		if (!SceneTransformResolver::TryConvertSceneWorldTransformToLocal(
+			document,
+			entity,
+			worldTransform,
+			localTransform
+		)) {
+			return;
+		}
+		entity.transform.scale = localTransform.scale;
+		entity.transform.rotate = localTransform.quaternionRotate;
+		entity.transform.translate = localTransform.translate;
+		object.GetTransform() = localTransform;
+		object.Update();
 	}
 
 	bool IsPointInsideWaterVolume(
@@ -640,7 +651,7 @@ void SceneAgentSystem::Update(
 			binding.body,
 			binding.collider,
 			&runtime,
-			object->GetTransform(),
+			ResolveScene3DTransform(document, entity),
 			ResolveAgentTeamRuntimeKey(document, entity)
 		});
 	}
@@ -1024,7 +1035,7 @@ void SceneAgentSystem::Update(
 			TeamControllerState{
 				binding.object,
 				binding.body,
-				binding.object->GetTransform()
+				ResolveScene3DTransform(document, *binding.entity)
 			}
 		);
 	}
@@ -1612,9 +1623,12 @@ void SceneAgentSystem::Update(
 				dt
 			);
 			ApplyAgentRotation(transform, runtime.rotation);
-			agent.object->GetTransform() = transform;
-			agent.object->Update();
-			SynchronizeSceneTransform(*agent.entity, transform);
+			SynchronizeSceneTransform(
+				document,
+				*agent.entity,
+				*agent.object,
+				transform
+			);
 			agent.transform = transform;
 			continue;
 		}
@@ -1924,9 +1938,12 @@ void SceneAgentSystem::Update(
 		);
 		ApplyAgentRotation(transform, runtime.rotation);
 
-		agent.object->GetTransform() = transform;
-		agent.object->Update();
-		SynchronizeSceneTransform(*agent.entity, transform);
+		SynchronizeSceneTransform(
+			document,
+			*agent.entity,
+			*agent.object,
+			transform
+		);
 		agent.transform = transform;
 	}
 
@@ -2064,9 +2081,12 @@ void SceneAgentSystem::Update(
 		}
 	}
 	for (AgentUpdateEntry* agent : separationAgents) {
-		agent->object->GetTransform() = agent->transform;
-		agent->object->Update();
-		SynchronizeSceneTransform(*agent->entity, agent->transform);
+		SynchronizeSceneTransform(
+			document,
+			*agent->entity,
+			*agent->object,
+			agent->transform
+		);
 	}
 }
 
