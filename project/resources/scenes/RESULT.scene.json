@@ -1,12 +1,12 @@
 {
   "debug": {
     "jointAxisLength": 0.05999999865889549,
-    "jointRadius": 0.008999999612569809,
+    "jointRadius": 0.017999999225139618,
     "showCameraDirection": false,
     "showCameraPath": true,
     "showCameraPathPointCameraDirection": true,
     "showColliders": false,
-    "showJointAxes": false,
+    "showJointAxes": true,
     "showJointNames": false,
     "showSkeleton": false
   },
@@ -16,11 +16,14 @@
       "components": [
         {
           "enabled": true,
+          "farClip": 1000.0,
+          "fovY": 0.44999998807907104,
+          "invertPitch": false,
+          "invertYaw": false,
+          "isMain": true,
           "localId": 1,
-          "targetSceneId": "gameplay",
-          "triggerKey": "ENTER",
-          "triggerType": "Key",
-          "type": "SceneTransition"
+          "nearClip": 0.10000000149011612,
+          "type": "Camera"
         }
       ],
       "folder": false,
@@ -28,7 +31,66 @@
       "id": 1,
       "locked": false,
       "modelPath": "",
-      "name": "Entity",
+      "name": "Main Camera",
+      "parentId": 0,
+      "sprite": {
+        "anchor": [
+          0.5,
+          0.5
+        ],
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "flipX": false,
+        "flipY": false,
+        "size": [
+          100.0,
+          100.0
+        ],
+        "texturePath": ""
+      },
+      "team": "",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          2.0,
+          -10.0
+        ]
+      }
+    },
+    {
+      "active": true,
+      "components": [
+        {
+          "enabled": true,
+          "localId": 1,
+          "reflectionIntensity": 0.30000001192092896,
+          "skyboxEnabled": true,
+          "skyboxIntensity": 1.0,
+          "skyboxPath": "resources/rostock_laage_airport_4k.dds",
+          "type": "Environment"
+        }
+      ],
+      "folder": false,
+      "folderTeamEnabled": false,
+      "id": 2,
+      "locked": false,
+      "modelPath": "",
+      "name": "Environment",
       "parentId": 0,
       "sprite": {
         "anchor": [
@@ -71,7 +133,7 @@
     }
   ],
   "lighting": {
-    "shadowMapSize": 1024
+    "shadowMapSize": 4096
   },
   "postProcess": {
     "baseExposure": 1.0,
@@ -173,7 +235,7 @@
     ],
     "waterRefractionTintStrength": 0.11999999731779099
   },
-  "sceneName": "TITLE",
+  "sceneName": "RESULT",
   "teams": [],
   "version": 27
 }

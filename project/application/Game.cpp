@@ -62,6 +62,8 @@ namespace {
 	using SceneEntityQuery::FindEnabledComponent;
 	using SceneEntityQuery::IsEntityActiveInHierarchy;
 	using SceneTransformResolver::ResolveScene3DTransform;
+	constexpr const char* kSceneTransitionMaskPath =
+		"resources/transition/transition.png";
 
 	constexpr SceneBuildConfiguration GetCurrentBuildConfiguration() {
 #if defined(_DEBUG)
@@ -437,6 +439,7 @@ void Game::Initialize() {
 
 	TextureManager::GetInstance()->LoadTexture("resources/noise0.png");
 	TextureManager::GetInstance()->LoadTexture("resources/noise1.png");
+	TextureManager::GetInstance()->LoadTexture(kSceneTransitionMaskPath);
 
 	if (executionContext_) {
 		const SceneDocument* document = sceneManager_
@@ -517,8 +520,9 @@ void Game::Update() {
 		editorCameraSnapshot_ = CaptureCameraSnapshot();
 	}
 
-#if defined(_DEBUG) || defined(DEVELOPMENT)
 	DebugRenderer::GetInstance()->Clear();
+
+#if defined(_DEBUG) || defined(DEVELOPMENT)
 	if (editorSession_) {
 
 	ImGui::Begin("Post Process Stack");
@@ -1467,10 +1471,10 @@ void Game::Draw() {
 	) {
 		EditorGridRenderer::AddGrid(*DebugRenderer::GetInstance());
 	}
+#endif
 	DebugRenderer::GetInstance()->Draw(
 		Object3dCommon::GetInstance()->GetDefaultCamera()
 	);
-#endif
 	sceneRenderTarget_->End();
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)
@@ -1910,6 +1914,33 @@ void Game::Draw() {
 		sceneManager_->DrawScreenOverlay(renderWidth, renderHeight);
 		textOverlayRenderTarget_->End();
 		sourceHandle = textOverlayRenderTarget_->GetSrvGpuHandle();
+	}
+	if (
+		sceneManager_ &&
+		sceneManager_->IsSceneTransitioning()
+	) {
+		FullscreenCopy::Parameters parameters{};
+		parameters.radialBlurCenter[0] = 0.5f;
+		parameters.radialBlurCenter[1] = 0.5f;
+		parameters.radialBlurWidth = (
+			1.0f - sceneManager_->GetSceneTransitionFadeAmount()
+		);
+		SceneRenderTarget* destination =
+			postProcessRenderTargets_[passIndex % 2];
+		destination->Begin();
+		srvManager_->PreDraw();
+		fullscreenCopy_->SetParameters(parameters);
+		fullscreenCopy_->Draw(
+			sourceHandle,
+			depthHandle,
+			TextureManager::GetInstance()->GetSrvHandleGPU(
+				kSceneTransitionMaskPath
+			),
+			FullscreenCopy::Effect::kIrisTransition
+		);
+		destination->End();
+		sourceHandle = destination->GetSrvGpuHandle();
+		++passIndex;
 	}
 
 #if defined(_DEBUG) || defined(DEVELOPMENT)

@@ -184,6 +184,9 @@ void SceneObjectSystem::SyncModels(
 		runtimeTransform.translate = entity.transform.translate;
 		runtimeTransform.useQuaternionRotation = true;
 		runtimeTransform.quaternionRotate = entity.transform.rotate;
+		runtime.object->SetVisualLocalRotation(
+			meshRenderer ? meshRenderer->meshVisualRotation : Vector3{}
+		);
 		const bool isWaterVolume = HasComponent(entity, "WaterVolume");
 		runtime.object->SetCullMode(
 			isWaterVolume

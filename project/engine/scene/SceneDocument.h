@@ -42,6 +42,11 @@ struct SceneTeamSettings {
 	float agentMemberCatchupSpeed = 2.0f;
 	float agentMemberSeparationUpdateInterval = 0.1f;
 	float agentMemberSeparationBlend = 0.5f;
+	float agentMemberMinimumDistance = 0.0f;
+	bool agentFormationCapsuleEnabled = false;
+	bool agentFormationCapsuleScaleWithActiveMembers = false;
+	float agentFormationCapsuleRadius = 8.5f;
+	float agentFormationCapsuleHalfSegmentLength = 10.5f;
 	bool agentUseTeamHeading = false;
 	bool agentTeamHeadingFromAverage = true;
 	Vector3 agentTeamHeadingDirection = { 0.0f, 0.0f, 1.0f };
@@ -313,6 +318,17 @@ struct SceneGameFlowPhase {
 	std::vector<SceneGameFlowWave> waves;
 };
 
+struct SceneFishingHookPoolEntry {
+	uint64_t hookEntityId = 0;
+	std::vector<float> weightsByDistanceBand;
+};
+
+struct SceneFishingHookBandSettings {
+	float distanceMultiplier = 1.0f;
+	int hookCount = 0;
+	std::vector<float> hookMultiplierWeights;
+};
+
 struct SceneComponent {
 	SceneComponent() = default;
 	SceneComponent(const char* componentType) : type(componentType ? componentType : "") {}
@@ -325,6 +341,7 @@ struct SceneComponent {
 	bool enabled = true;
 	std::string modelPath;
 	std::string meshCullMode = "Back";
+	Vector3 meshVisualRotation{};
 	bool meshEnvironmentReflectionOverride = false;
 	float meshEnvironmentReflectionIntensity = 0.3f;
 	std::vector<SceneMeshMaterialOverride> meshMaterialOverrides;
@@ -388,6 +405,68 @@ struct SceneComponent {
 	uint64_t gameFlowResultTimeTextEntityId = 0;
 	std::string gameFlowResultMotionClipId;
 	std::vector<SceneGameFlowPhase> gameFlowPhases;
+	uint64_t fishingPlayerEntityId = 0;
+	std::vector<uint64_t> fishingFishEntityIds;
+	uint64_t fishingHookSpawnAreaEntityId = 0;
+	uint64_t fishingHookPoolEntityId = 0;
+	uint64_t fishingWaterVolumeEntityId = 0;
+	float fishingDurationSeconds = 60.0f;
+	int fishingMaxSelectableFishCount = 5;
+	int fishingDistanceBandCount = 5;
+	int fishingHooksPerDistanceBand = 2;
+	float fishingDistanceMultiplierBase = 1.0f;
+	float fishingDistanceMultiplierStep = 0.2f;
+	bool fishingUseHookBandSettings = false;
+	std::vector<SceneFishingHookBandSettings> fishingHookBands;
+	float fishingHookScoreUnit = 100.0f;
+	float fishingFishMultiplierBase = 1.0f;
+	float fishingFishMultiplierPerAdditionalFish = 1.0f;
+	std::vector<float> fishingHookTierScoreMultipliers = {
+		1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+		6.0f, 7.0f, 8.0f, 9.0f, 10.0f
+	};
+	std::vector<Vector4> fishingHookMultiplierColors;
+	float fishingHookColorEmissiveIntensity = 0.35f;
+	bool fishingHookLegendVisible = false;
+	uint64_t fishingHookLegendTitleTextEntityId = 0;
+	std::vector<uint64_t> fishingHookLegendTextEntityIds;
+	std::string fishingHookLegendTitle = "HOOK BONUS";
+	std::string fishingHookLegendPrefix = "x";
+	bool fishingRandomizeSeedOnPlay = true;
+	int fishingRandomSeed = 1;
+	uint64_t fishingFishCountTextEntityId = 0;
+	uint64_t fishingTimerTextEntityId = 0;
+	uint64_t fishingScoreTextEntityId = 0;
+	uint64_t fishingMultiplierTextEntityId = 0;
+	uint64_t fishingResultTextEntityId = 0;
+	std::string fishingFishCountPrefix = "FISH ";
+	std::string fishingTimerPrefix = "TIME ";
+	std::string fishingScorePrefix = "SCORE ";
+	std::string fishingMultiplierPrefix = "MULTIPLIER ";
+	std::string fishingResultPrefix = "RESULT ";
+	bool fishingUseFormationCapsuleCollision = false;
+	bool fishingFormationOutlineVisible = false;
+	Vector4 fishingFormationOutlineColor = { 0.1f, 0.9f, 1.0f, 1.0f };
+	float fishingFormationOutlineYOffset = 0.25f;
+	int fishingFormationOutlineSegments = 48;
+	float fishingSpawnHalfSizeX = 10.0f;
+	float fishingSpawnHalfSizeZ = 10.0f;
+	float fishingSpawnMinimumDistance = 0.0f;
+	int fishingSpawnMaxAttempts = 16;
+	std::vector<SceneFishingHookPoolEntry> fishingHookPoolEntries;
+	int fishingHookBaseScore = 0;
+	float fishingSharkRadiusX = 12.0f;
+	float fishingSharkRadiusZ = 18.0f;
+	float fishingSharkAngularSpeed = 0.35f;
+	float fishingSharkInitialPhase = 0.0f;
+	int fishingSharkPenaltyScore = 300;
+	float fishingSharkHitCooldownSeconds = 2.0f;
+	float fishingSharkPathRandomness = 0.2f;
+	float fishingSharkWanderMoveSpeed = 0.0f;
+	float fishingSharkWanderMaximumTurnRate = 1.2f;
+	float fishingSharkObstacleAvoidanceDistance = 8.0f;
+	float fishingSharkObstacleAvoidanceStrength = 0.65f;
+	float fishingSharkObstacleAvoidanceResponse = 4.0f;
 	bool cameraIsMain = false;
 	float cameraFovY = 0.45f;
 	float cameraNearClip = 0.1f;
@@ -492,6 +571,7 @@ struct SceneComponent {
 	float playerDashMultiplier = 1.65f;
 	bool playerCameraRelativeMove = true;
 	bool playerAllowJump = true;
+	bool playerAutoForward = false;
 	std::string agentBehaviorName = "Fish";
 	// Free3Dは既存の遊泳群制御、GroundXZはEnemyBehaviorの速度へ離隔だけを加える。
 	std::string agentMovementMode = "Free3D";
@@ -525,6 +605,7 @@ struct SceneComponent {
 	float agentMemberCatchupSpeed = 2.0f;
 	float agentMemberSeparationUpdateInterval = 0.1f;
 	float agentMemberSeparationBlend = 0.5f;
+	float agentMemberMinimumDistance = 0.0f;
 	float agentBoundsWeight = 3.0f;
 	bool agentUseTeamHeading = false;
 	bool agentTeamHeadingFromAverage = true;

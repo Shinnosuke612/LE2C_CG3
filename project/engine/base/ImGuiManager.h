@@ -337,6 +337,7 @@ private:
 	void BuildDefaultLayout();
 	void DrawHierarchyWindow(const char* sceneName);
 	void DrawInspectorWindow();
+	void DrawFishingScoreAttackConsoleWindow();
 	void StopAudioPreview();
 	void DrawSceneComponentPicker();
 	void DrawPrefabComponentPicker();
@@ -511,6 +512,7 @@ private:
 	bool showInspector_ = true;
 	bool showProject_ = true;
 	bool showConsole_ = true;
+	bool showFishingScoreAttackConsole_ = true;
 	bool showLoadedScenes_ = true;
 	bool showPrefab_ = false;
 	bool showPrefabInspector_ = true;
@@ -535,6 +537,8 @@ private:
 	std::string prefabSummarySelectedComponentType_;
 	int selectedHierarchyItem_ = 0;
 	uint64_t selectedEntityId_ = 0;
+	uint64_t fishingConsoleDirectorEntityId_ = 0;
+	int fishingConsolePreviewFishCount_ = 1;
 	ComponentPickerState sceneComponentPicker_;
 	// Hierarchyの複数選択と表示状態を保持する。selectedEntityId_はInspector/Gizmo用の基準Entity。
 	std::unordered_set<uint64_t> selectedEntityIds_;

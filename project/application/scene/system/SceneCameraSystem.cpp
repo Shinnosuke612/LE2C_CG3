@@ -97,7 +97,8 @@ void SceneCameraSystem::UpdateBeforeSimulation(
 	const std::vector<SceneRuntimeObjectBinding>& bindings,
 	float deltaTime,
 	bool runtimeActive,
-	bool playing
+	bool playing,
+	bool acceptWheelZoom
 ) {
 	if (!playing) {
 		if (wasPlaying_) {
@@ -138,7 +139,8 @@ void SceneCameraSystem::UpdateBeforeSimulation(
 			bindings,
 			deltaTime * 0.5f,
 			playing,
-			true
+			true,
+			acceptWheelZoom
 		);
 		TryStartCameraPath(document, camera);
 		if (cameraPathRuntime_.IsPlaying()) {
@@ -172,6 +174,7 @@ void SceneCameraSystem::UpdateAfterSimulation(
 			bindings,
 			deltaTime * 0.5f,
 			playing,
+			false,
 			false
 		);
 	}
@@ -391,7 +394,8 @@ bool SceneCameraSystem::UpdateThirdPersonCamera(
 	const std::vector<SceneRuntimeObjectBinding>& bindings,
 	float deltaTime,
 	bool playing,
-	bool acceptMouseInput
+	bool acceptMouseInput,
+	bool acceptWheelZoom
 ) {
 	(void)player;
 	if (!playing || !camera) {
@@ -564,7 +568,8 @@ bool SceneCameraSystem::UpdateThirdPersonCamera(
 		deltaTime,
 		acceptMouseInput &&
 			thirdPerson->thirdPersonAllowMouseInput &&
-			!altHeld
+			!altHeld,
+		acceptWheelZoom
 	);
 	ApplyPlayerDissolve(
 		bindings,
